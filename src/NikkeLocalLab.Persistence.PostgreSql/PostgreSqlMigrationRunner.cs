@@ -55,6 +55,15 @@ public sealed partial class PostgreSqlMigrationRunner
     await using var connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
     await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
+    await using (var lockCommand = new NpgsqlCommand(
+                     "SELECT pg_advisory_xact_lock($1);",
+                     connection,
+                     transaction))
+    {
+      lockCommand.Parameters.AddWithValue(AdvisoryLockKey);
+      await lockCommand.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     await ExecuteAsync(
         connection,
         transaction,
@@ -69,15 +78,6 @@ public sealed partial class PostgreSqlMigrationRunner
             );
             """,
         cancellationToken).ConfigureAwait(false);
-
-    await using (var lockCommand = new NpgsqlCommand(
-                     "SELECT pg_advisory_xact_lock($1);",
-                     connection,
-                     transaction))
-    {
-      lockCommand.Parameters.AddWithValue(AdvisoryLockKey);
-      await lockCommand.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-    }
 
     var applied = new Dictionary<int, (string Name, byte[] Checksum)>();
     await using (var readCommand = new NpgsqlCommand(
@@ -139,7 +139,7 @@ public sealed partial class PostgreSqlMigrationRunner
       insert.Parameters.AddWithValue(migration.Name);
       insert.Parameters.AddWithValue(migration.ScriptSha256.ToByteArray());
       insert.Parameters.AddWithValue(DateTimeOffset.UtcNow);
-      insert.Parameters.AddWithValue("phase1a");
+      insert.Parameters.AddWithValue("phase1b");
       await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
       appliedCount++;
     }

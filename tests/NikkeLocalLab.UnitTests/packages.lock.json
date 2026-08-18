@@ -131,8 +131,23 @@
       "nikkelocallab.configuration": {
         "type": "Project"
       },
+      "nikkelocallab.domain.character": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
       "nikkelocallab.identity": {
         "type": "Project"
+      },
+      "nikkelocallab.import.charactercatalog": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Domain.Character": "[1.0.0, )",
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
       },
       "nikkelocallab.import.sources": {
         "type": "Project",
@@ -146,6 +161,7 @@
         "type": "Project",
         "dependencies": {
           "NikkeLocalLab.Application": "[1.0.0, )",
+          "NikkeLocalLab.Domain.Character": "[1.0.0, )",
           "NikkeLocalLab.Identity": "[1.0.0, )",
           "NikkeLocalLab.Provenance": "[1.0.0, )",
           "Npgsql": "[10.0.3, )"

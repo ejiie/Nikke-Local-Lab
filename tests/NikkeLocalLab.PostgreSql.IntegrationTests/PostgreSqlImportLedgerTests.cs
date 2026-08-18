@@ -27,7 +27,7 @@ public sealed class PostgreSqlImportLedgerTests
     await ResetSchemasAsync(dataSource);
 
     var migrations = new PostgreSqlMigrationRunner();
-    Assert.Equal(1, await migrations.MigrateAsync(dataSource));
+    Assert.Equal(2, await migrations.MigrateAsync(dataSource));
     Assert.Equal(0, await migrations.MigrateAsync(dataSource));
     await AssertMigrationChecksumDriftFailsAsync(dataSource);
 
@@ -149,7 +149,10 @@ public sealed class PostgreSqlImportLedgerTests
       Sql = embedded[0].Sql + "\nSELECT 1;",
       ScriptSha256 = Sha256Digest.ComputeUtf8(embedded[0].Sql + "\nSELECT 1;")
     };
-    var driftRunner = new PostgreSqlMigrationRunner([changed]);
+    var changedSet = embedded
+        .Select(item => item.Version == changed.Version ? changed : item)
+        .ToArray();
+    var driftRunner = new PostgreSqlMigrationRunner(changedSet);
     var drift = await Assert.ThrowsAsync<MigrationIntegrityException>(() => driftRunner.MigrateAsync(dataSource));
     Assert.Equal("migration_checksum_mismatch", drift.Code);
   }
@@ -204,7 +207,7 @@ public sealed class PostgreSqlImportLedgerTests
         """
         SELECT column_name
         FROM information_schema.columns
-        WHERE table_schema = 'lab_import';
+        WHERE table_schema IN ('lab_import', 'lab_catalog', 'lab_private', 'lab_meta');
         """,
         connection);
     await using var reader = await command.ExecuteReaderAsync();
@@ -245,7 +248,12 @@ public sealed class PostgreSqlImportLedgerTests
     }
 
     await using var command = dataSource.CreateCommand(
-        "DROP SCHEMA IF EXISTS lab_import CASCADE; DROP SCHEMA IF EXISTS lab_meta CASCADE;");
+        """
+        DROP SCHEMA IF EXISTS lab_private CASCADE;
+        DROP SCHEMA IF EXISTS lab_catalog CASCADE;
+        DROP SCHEMA IF EXISTS lab_import CASCADE;
+        DROP SCHEMA IF EXISTS lab_meta CASCADE;
+        """);
     await command.ExecuteNonQueryAsync();
   }
 

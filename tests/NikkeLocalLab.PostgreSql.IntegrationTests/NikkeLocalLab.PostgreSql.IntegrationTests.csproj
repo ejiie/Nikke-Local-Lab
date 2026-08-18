@@ -10,6 +10,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\NikkeLocalLab.Application\NikkeLocalLab.Application.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.Character\NikkeLocalLab.Domain.Character.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Identity\NikkeLocalLab.Identity.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Import.Sources\NikkeLocalLab.Import.Sources.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Persistence.PostgreSql\NikkeLocalLab.Persistence.PostgreSql.csproj" />

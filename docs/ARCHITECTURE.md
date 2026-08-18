@@ -1,6 +1,6 @@
 # Architecture direction
 
-최종 실행 경로는 원본 UI와 실제 전투 runtime이 local backend를 사용하는 구조입니다. Phase 1A에서는 아래 경로의 import/provenance/persistence 기반만 구현했습니다.
+최종 실행 경로는 원본 UI와 실제 전투 runtime이 local backend를 사용하는 구조입니다. Phase 1B에서는 아래 경로 중 캐릭터 import/domain/catalog publish까지 구현했습니다.
 
     C:\NIKKE (read-only)
             |
@@ -28,20 +28,21 @@
 
 lab-owned harness는 importer, API, revision, admission, 결과 계약을 검증하는 sidecar입니다. 최종 사용자 실행 경로나 원본 전투 검증의 대체물이 아닙니다.
 
-## 구현된 Phase 1A 모듈
+## 구현된 Phase 1B 모듈
 
 - `Identity`: 자체 UUID와 HMAC source identity 경계
 - `Provenance`: source/dataset/extractor/request canonical hash
 - `Application`: path-free import coordinator와 ledger port
 - `Configuration`: fail-closed config와 runtime root
 - `Import.Sources`: 읽기 전용 source capability
-- `Persistence.PostgreSql`: migration과 import ledger
-- `Import.Cli`: config-check/init/migrate 진입점
+- `Domain.Character`: immutable 캐릭터 정의·버전과 combat-max/v1
+- `Import.CharacterCatalog`: strict StaticData/sd.bin reader와 정규화
+- `Persistence.PostgreSql`: import ledger와 원자적 character catalog publish
+- `Import.Cli`: config-check/init/migrate 및 character catalog inspect/import 진입점
 
 ## 후속 예정 모듈
 
-- `Import.Formats`: MemoryPack/NKDB/UnityFS 등 범용 reader
-- `Domain.Character`: 캐릭터 정의와 빌드 revision 계약
+- `Import.Formats`: Challenge에 필요한 NKDB/UnityFS reader
 - `Domain.Raid`: Challenge encounter, admission policy, RaidSnapshot, 활성 시즌
 - `Compatibility`: tier 평가와 Git 비추적 mapping adapter
 - `Api`: 조회·write API
