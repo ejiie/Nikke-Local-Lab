@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\NikkeLocalLab.Application\NikkeLocalLab.Application.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Identity\NikkeLocalLab.Identity.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Provenance\NikkeLocalLab.Provenance.csproj" />
+    <PackageReference Include="Npgsql" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Migrations\V*.sql" />
+  </ItemGroup>
+</Project>

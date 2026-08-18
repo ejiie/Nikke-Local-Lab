@@ -25,6 +25,10 @@
 - published raid snapshot 계약은 v2이며 `ready` 상태와 non-null compatibility map을 강제한다. 불완전 후보는 import diagnostic으로 분리한다.
 - 현재 시즌 목록은 dataset에서 정책으로 파생한 문서화 결과이지 config에 고정된 두 번째 allowlist가 아니다.
 - 공개 제재가 보이지 않는다는 정황은 permission 또는 gate 해제 근거로 사용하지 않는다.
+- Phase 1A source 보호는 importer capability 수준의 read-only 보장이다. OS 전체 쓰기 방지로 표현하지 않는다.
+- source path, file name, raw ID, decoded payload, exception text는 import ledger schema에 두지 않는다.
+- dataset snapshot은 경로가 없는 canonical source manifest hash로 식별하고, 동일 입력은 기존 snapshot을 재사용한다.
+- PostgreSQL은 loopback 연결만 허용하며 migration history는 embedded SQL checksum으로 잠근다.
 
 ## Phase 0을 막지 않는 미정사항
 

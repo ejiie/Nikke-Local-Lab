@@ -1,0 +1,66 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.Identity", "src\NikkeLocalLab.Identity\NikkeLocalLab.Identity.csproj", "{5B810457-7DB0-4A4D-90D3-76B6A72B6A01}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.Provenance", "src\NikkeLocalLab.Provenance\NikkeLocalLab.Provenance.csproj", "{5B810457-7DB0-4A4D-90D3-76B6A72B6A02}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.Application", "src\NikkeLocalLab.Application\NikkeLocalLab.Application.csproj", "{5B810457-7DB0-4A4D-90D3-76B6A72B6A03}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.Configuration", "src\NikkeLocalLab.Configuration\NikkeLocalLab.Configuration.csproj", "{5B810457-7DB0-4A4D-90D3-76B6A72B6A04}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.Import.Sources", "src\NikkeLocalLab.Import.Sources\NikkeLocalLab.Import.Sources.csproj", "{5B810457-7DB0-4A4D-90D3-76B6A72B6A05}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.Persistence.PostgreSql", "src\NikkeLocalLab.Persistence.PostgreSql\NikkeLocalLab.Persistence.PostgreSql.csproj", "{5B810457-7DB0-4A4D-90D3-76B6A72B6A06}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.Import.Cli", "src\NikkeLocalLab.Import.Cli\NikkeLocalLab.Import.Cli.csproj", "{5B810457-7DB0-4A4D-90D3-76B6A72B6A07}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.UnitTests", "tests\NikkeLocalLab.UnitTests\NikkeLocalLab.UnitTests.csproj", "{5B810457-7DB0-4A4D-90D3-76B6A72B6A08}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.PostgreSql.IntegrationTests", "tests\NikkeLocalLab.PostgreSql.IntegrationTests\NikkeLocalLab.PostgreSql.IntegrationTests.csproj", "{5B810457-7DB0-4A4D-90D3-76B6A72B6A09}"
+EndProject
+Global
+  GlobalSection(SolutionConfigurationPlatforms) = preSolution
+    Debug|Any CPU = Debug|Any CPU
+    Release|Any CPU = Release|Any CPU
+  EndGlobalSection
+  GlobalSection(ProjectConfigurationPlatforms) = postSolution
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A01}.Release|Any CPU.Build.0 = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A02}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A02}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A02}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A02}.Release|Any CPU.Build.0 = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A03}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A03}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A03}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A03}.Release|Any CPU.Build.0 = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A04}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A04}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A04}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A04}.Release|Any CPU.Build.0 = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A05}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A05}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A05}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A05}.Release|Any CPU.Build.0 = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A06}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A06}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A06}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A06}.Release|Any CPU.Build.0 = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A07}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A07}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A07}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A07}.Release|Any CPU.Build.0 = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A08}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A08}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A08}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A08}.Release|Any CPU.Build.0 = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A09}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A09}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A09}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {5B810457-7DB0-4A4D-90D3-76B6A72B6A09}.Release|Any CPU.Build.0 = Release|Any CPU
+  EndGlobalSection
+EndGlobal

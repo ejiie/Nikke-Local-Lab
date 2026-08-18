@@ -32,3 +32,15 @@ gate가 열리면 승인된 원본 client가 최종 실행 경로가 되고 harn
 - `0.0.0.0` 공개 bind와 인터넷 포트 포워딩을 기본 금지합니다.
 - 외부 텔레메트리를 사용하지 않습니다.
 - 공식 outbound는 fail-closed입니다. 차단을 검증하지 못하면 원본 client 실행을 시작하지 않습니다.
+
+## Phase 1A source 보장 범위
+
+`C:\NIKKE` 자체 ACL은 동일 사용자 프로세스의 모든 쓰기를 차단하지 않습니다. Phase 1A의 보장은 OS 전체 불변이 아니라 다음 capability 경계입니다.
+
+- source adapter는 `FileMode.Open`과 `FileAccess.Read`만 사용하고 쓰기 API를 노출하지 않습니다.
+- rooted path, traversal, UNC/device path, ADS, source/repository/runtime overlap을 거부합니다.
+- source root와 파일 경로의 junction, symlink, reparse point를 fail closed 처리합니다.
+- source 예외의 실제 경로와 원문을 ledger 또는 CLI 오류에 전달하지 않습니다.
+- 동시 로컬 공격자가 경로 검증과 파일 open 사이에 junction을 교체하는 상황은 Phase 1A threat model 밖입니다. 더 강한 보장이 필요하면 제한 계정/토큰과 handle 기반 final-path 검증을 별도 gate로 추가합니다.
+
+PostgreSQL 연결은 loopback host만 허용하고 `Include Error Detail=true`와 다중/원격 host를 거부합니다. connection string과 비밀번호는 출력하거나 ledger에 저장하지 않습니다.

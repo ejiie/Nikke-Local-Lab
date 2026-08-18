@@ -51,7 +51,7 @@ $Paths = switch ($Mode) {
     default { @(& git -C $RepositoryRoot ls-files --cached --others --exclude-standard) }
 }
 
-$ForbiddenDirectoryPattern = '(^|/)(data|Database|raw|decoded|decrypted|extracted|bundles|captures|dumps|outputs|artifacts|cache|var|logs|tmp|secrets)(/|$)'
+$ForbiddenDirectoryPattern = '(^|/)(data|Database|raw|decoded|decrypted|extracted|bundles|captures|dumps|outputs|artifacts|cache|var|logs|tmp|secrets|vault|staging|runtime|NikkeLocalLab|TestResults)(/|$)'
 $ForbiddenNamePattern = '(^|/)(\.env($|\.)|auth_state[^/]*\.json$|cookies?[^/]*\.json$|credentials?[^/]*\.json$|sessions?[^/]*\.json$|tokens?[^/]*\.json$|\.gitmodules$)'
 $ForbiddenExtensions = @(
     ".mpk", ".bundle", ".unity3d", ".assets", ".asset", ".ress", ".resource",
@@ -62,7 +62,8 @@ $ForbiddenExtensions = @(
     ".ogg", ".wav", ".mp3", ".bank", ".wem", ".mp4", ".webm", ".avi",
     ".mov", ".fbx", ".mesh", ".anim", ".controller", ".prefab", ".unity",
     ".spriteatlas", ".zip", ".7z", ".rar", ".tar", ".gz", ".xz", ".zst",
-    ".exe", ".dll", ".pdb", ".so", ".dylib", ".apk"
+    ".exe", ".dll", ".pdb", ".so", ".dylib", ".apk", ".log", ".trx",
+    ".dmp", ".etl", ".pcap", ".har", ".jsonl", ".ndjson"
 )
 
 $PrivateKeyPattern = '-----BEGIN ' + '[A-Z ]*PRIVATE KEY-----'
@@ -106,7 +107,9 @@ foreach ($PathEntry in $Paths) {
         $AllowedJson = (
             $RelativePath -match '^contracts/.+\.schema\.json$' -or
             $RelativePath -match '^config/.+\.example\.json$' -or
-            $RelativePath -match '^tests/fixtures/synthetic/.+\.json$'
+            $RelativePath -match '^tests/fixtures/synthetic/.+\.json$' -or
+            $RelativePath -eq 'global.json' -or
+            $RelativePath -match '(^|/)packages\.lock\.json$'
         )
         if (-not $AllowedJson) {
             Add-Failure "JSON is outside the Phase 0 allowlist: $RelativePath"

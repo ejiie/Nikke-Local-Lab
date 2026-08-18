@@ -17,6 +17,11 @@
     Phase 0 schema/fixture check
               |
               v
+    Phase 1A Windows build/unit check
+              |
+              +---- PostgreSQL integration check
+              |
+              v
     workflow self-contract check
               |
               v
@@ -37,6 +42,8 @@
 - merge는 `--match-head-commit`으로 검증한 event SHA와 PR head가 다르면 실패합니다.
 - 모든 agent publish run은 main 기준으로 직렬화합니다.
 - 검증 job은 feature branch와 당시 `origin/main`의 merge result를 검사하고 base SHA를 기록합니다.
+- Windows와 PostgreSQL 검증 job이 각각 같은 `origin/main` merge result를 검사합니다.
+- .NET SDK, setup action, PostgreSQL service image를 고정된 version/SHA/digest로 사용합니다.
 - publish 전에 remote main SHA가 달라졌으면 병합하지 않고 다음 push/retry를 요구합니다.
 
 GitHub가 `GITHUB_TOKEN`으로 만든 PR 이벤트를 별도 승인 대상으로 만들 수 있으므로, 이 설계는 **push workflow 자체에서 검증을 먼저 완료**한 뒤 PR을 만들고 merge합니다. 별도 PR-triggered 검증에 의존하지 않습니다.
@@ -55,6 +62,7 @@ push 이후에는 Actions run이 PR과 merge를 담당합니다. 실패 시 원�
 
     pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode working -AllowRemote
     pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
+    pwsh -NoProfile -File scripts/verify-phase1a.ps1
     pwsh -NoProfile -File scripts/verify-actions-contract.ps1
 
 GitHub 저장소 설정 변경이나 workflow 수정 후에는 실제 synthetic branch로 end-to-end push→PR→merge를 다시 검증합니다.

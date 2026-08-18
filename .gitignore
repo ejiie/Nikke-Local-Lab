@@ -32,6 +32,11 @@
 /logs/
 /tmp/
 /secrets/
+/vault/
+/staging/
+/runtime/
+/NikkeLocalLab/
+/TestResults/
 /assets/game/
 
 # Game containers and decoded Unity artifacts
@@ -113,6 +118,14 @@ dump.cs
 *.so
 *.dylib
 *.apk
+*.log
+*.trx
+*.dmp
+*.etl
+*.pcap
+*.har
+*.jsonl
+*.ndjson
 
 # .NET
 [Bb]in/

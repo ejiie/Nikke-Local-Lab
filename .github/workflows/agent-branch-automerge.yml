@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
 concurrency:
   group: agent-publish-main
   cancel-in-progress: false
@@ -29,6 +33,12 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Set up the pinned .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 8.0.407
+          global-json-file: global.json
 
       - name: Prepare the tested merge result
         id: base
@@ -53,13 +63,75 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
 
+      - name: Verify Phase 1A build and unit contracts
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/verify-phase1a.ps1
+
       - name: Verify Actions automation contract
         shell: pwsh
         run: pwsh -NoProfile -File scripts/verify-actions-contract.ps1
 
+  postgres:
+    name: Verify PostgreSQL import ledger
+    if: ${{ github.actor == github.repository_owner }}
+    permissions:
+      contents: read
+    outputs:
+      base_sha: ${{ steps.base.outputs.sha }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.6-bookworm@sha256:f3bd19c606e442c3d7bdfa8002e03fe260a1023351e0ea4598032022b68dd6e3
+        env:
+          POSTGRES_USER: lab
+          POSTGRES_PASSWORD: synthetic-ci-password
+          POSTGRES_DB: nikke_local_lab_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lab -d nikke_local_lab_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NIKKE_LAB_TEST_DB: Host=127.0.0.1;Port=5432;Database=nikke_local_lab_test;Username=lab;Password=synthetic-ci-password;Include Error Detail=false
+      NIKKE_LAB_TEST_RESET_TOKEN: allow-phase1a-disposable-schema-reset
+    steps:
+      - name: Check out the pushed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1e # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up the pinned .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 8.0.407
+          global-json-file: global.json
+
+      - name: Prepare the tested merge result
+        id: base
+        shell: pwsh
+        run: |
+          $BaseRef = "refs/remotes/origin/main"
+          $BaseSha = (git rev-parse $BaseRef).Trim()
+          if ($LASTEXITCODE -ne 0) {
+              throw "Cannot resolve origin/main."
+          }
+          "sha=$BaseSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          git merge --no-commit --no-ff $BaseRef
+          if ($LASTEXITCODE -ne 0) {
+              throw "Feature branch does not produce a clean merge result with origin/main."
+          }
+
+      - name: Verify Phase 1A with PostgreSQL
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/verify-phase1a.ps1 -Integration
+
   publish:
     name: Open PR and squash merge
-    needs: validate
+    needs: [validate, postgres]
     if: ${{ github.event_name == 'push' && github.actor == github.repository_owner && startsWith(github.ref, 'refs/heads/agent/') }}
     permissions:
       contents: write
@@ -72,12 +144,17 @@ jobs:
       HEAD_BRANCH: ${{ github.ref_name }}
       EXPECTED_SHA: ${{ github.sha }}
       EXPECTED_BASE_SHA: ${{ needs.validate.outputs.base_sha }}
+      EXPECTED_POSTGRES_BASE_SHA: ${{ needs.postgres.outputs.base_sha }}
     steps:
       - name: Create or reuse the pull request
         id: pull_request
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "$EXPECTED_BASE_SHA" != "$EXPECTED_POSTGRES_BASE_SHA" ]]; then
+            printf 'Validation jobs used different base revisions.\n' >&2
+            exit 1
+          fi
           current_base_sha="$(gh api \
             "repos/$GITHUB_REPOSITORY/git/ref/heads/$BASE_BRANCH" \
             --jq '.object.sha')"
@@ -100,7 +177,7 @@ jobs:
             body="$(printf '%s\n' \
               'Created by the owner-only agent branch workflow.' \
               '' \
-              'The same workflow validated the repository boundary, Phase 0 contracts, and automation contract before opening this PR.')"
+              'The same workflow validated repository boundaries, Phase 0, Phase 1A on Windows and PostgreSQL, and the automation contract before opening this PR.')"
             pr_url="$(gh pr create \
               --repo "$GITHUB_REPOSITORY" \
               --head "$HEAD_BRANCH" \

@@ -1,0 +1,17 @@
+{
+  "fixtureKind": "phase1a-catalog",
+  "privateSourceToken": "SYNTHETIC-RAW-ID-MUST-NOT-LEAK",
+  "decodedMarker": "SYNTHETIC-DECODED-CONTENT-MUST-NOT-LEAK",
+  "entities": [
+    {
+      "sourceAlias": "synthetic-private-alpha",
+      "kind": "synthetic_character",
+      "label": "Synthetic Unit Alpha"
+    },
+    {
+      "sourceAlias": "synthetic-private-beta",
+      "kind": "synthetic_character",
+      "label": "Synthetic Unit Beta"
+    }
+  ]
+}

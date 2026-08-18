@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\NikkeLocalLab.Application\NikkeLocalLab.Application.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Configuration\NikkeLocalLab.Configuration.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Provenance\NikkeLocalLab.Provenance.csproj" />
+  </ItemGroup>
+</Project>

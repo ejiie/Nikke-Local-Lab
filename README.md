@@ -4,7 +4,7 @@
 
 최종 인수 조건은 **원본 NIKKE UI와 실제 전투 runtime이 허용된 local backend를 사용해 선택된 Challenge를 실행하는 것**입니다. lab-owned harness는 importer·계약·API를 검증하는 개발 도구이며 최종 결과물을 대체하지 않습니다.
 
-현재 단계는 **Phase 0 완료, Phase 1A 착수 대기**입니다. 캐릭터 빌드와 Challenge raid snapshot 계약, private GitHub Actions 자동화는 정의됐지만 서버, 데이터베이스, importer, 원본 리테일 클라이언트 호환 계층은 아직 구현하지 않습니다.
+현재 단계는 **Phase 1A 완료, Phase 1B 착수 대기**입니다. .NET 8 모듈 골격, PostgreSQL import ledger와 migration runner, 런타임 루트 초기화, capability-level read-only source adapter, 합성 import 검증을 구현했습니다. 실제 게임 데이터 해석, 서버 API, 원본 리테일 클라이언트 호환 계층은 아직 구현하지 않습니다.
 
 ## 현재 확정 범위
 
@@ -28,6 +28,7 @@
 
     pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode working -AllowRemote
     pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
+    pwsh -NoProfile -File scripts/verify-phase1a.ps1
     pwsh -NoProfile -File scripts/verify-actions-contract.ps1
 
-계약 검사는 Draft 2020-12 schema 지원을 위해 PowerShell 7.4 이상이 필요합니다. 정책 검사는 실제 Git 추적 대상과 합성 fixture를 검사하며 `.gitignore`만 믿지 않습니다.
+PostgreSQL 통합 검사는 폐기 가능한 `nikke_local_lab_test` DB를 준비하고 loopback 전용 `NIKKE_LAB_TEST_DB`와 `NIKKE_LAB_TEST_RESET_TOKEN=allow-phase1a-disposable-schema-reset`을 설정한 뒤 `scripts/verify-phase1a.ps1 -Integration`으로 실행합니다. 자세한 안전 경계는 [docs/PHASE1A.md](docs/PHASE1A.md)를 따릅니다. GitHub Actions는 Windows 단위 검사와 PostgreSQL 17 통합 검사를 모두 통과해야 병합합니다. 정책 검사는 실제 Git 추적 대상과 합성 fixture를 검사하며 `.gitignore`만 믿지 않습니다.
