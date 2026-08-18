@@ -35,6 +35,12 @@
 
 복호물, compatibility map, 런타임 DB, cache와 log는 모두 Git 외부에 둡니다. 저장소 fixture에는 자체 UUID와 합성 hash만 사용합니다.
 
+## Private source remote 경계
+
+직접 작성한 source·계약·문서·합성 fixture는 사용자 소유 private GitHub repository에 저장할 수 있습니다. push 전에 working/staged/tracked 정책 검사를 통과해야 합니다.
+
+private remote도 제3자 저장소라는 점은 변하지 않습니다. 따라서 로컬 전용 금지 데이터는 암호화 여부와 관계없이 commit, Actions artifact, cache, log, release에 올리지 않습니다. Actions runner는 `C:\NIKKE`나 로컬 runtime root에 접근하지 않습니다.
+
 ## 배포 경계
 
-프로젝트와 데이터는 개인 로컬 실험에만 사용합니다. 원본 및 원본을 실질적으로 재구성할 수 있는 대량 파생 데이터는 공유·호스팅·커밋하지 않습니다. 로컬 사용은 저작권이나 서비스 약관 문제를 자동으로 해소하지 않으므로 범위가 바뀌면 별도 검토합니다.
+프로젝트는 개인 실험용이며 remote visibility를 public으로 바꾸거나 release/package를 발행하지 않습니다. 원본 및 원본을 실질적으로 재구성할 수 있는 대량 파생 데이터는 공유·호스팅·커밋하지 않습니다. 로컬 사용은 저작권이나 서비스 약관 문제를 자동으로 해소하지 않으므로 범위가 바뀌면 별도 검토합니다.

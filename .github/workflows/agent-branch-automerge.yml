@@ -1,0 +1,118 @@
+name: Validate and merge agent branches
+
+on:
+  push:
+    branches:
+      - "agent/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-publish-main
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate repository contracts
+    if: ${{ github.actor == github.repository_owner }}
+    permissions:
+      contents: read
+    outputs:
+      base_sha: ${{ steps.base.outputs.sha }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the pushed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1e # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare the tested merge result
+        id: base
+        shell: pwsh
+        run: |
+          $BaseRef = "refs/remotes/origin/main"
+          $BaseSha = (git rev-parse $BaseRef).Trim()
+          if ($LASTEXITCODE -ne 0) {
+              throw "Cannot resolve origin/main."
+          }
+          "sha=$BaseSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          git merge --no-commit --no-ff $BaseRef
+          if ($LASTEXITCODE -ne 0) {
+              throw "Feature branch does not produce a clean merge result with origin/main."
+          }
+
+      - name: Verify repository boundary
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode tracked -AllowRemote
+
+      - name: Verify Phase 0 contracts
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
+
+      - name: Verify Actions automation contract
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/verify-actions-contract.ps1
+
+  publish:
+    name: Open PR and squash merge
+    needs: validate
+    if: ${{ github.event_name == 'push' && github.actor == github.repository_owner && startsWith(github.ref, 'refs/heads/agent/') }}
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASE_BRANCH: main
+      HEAD_BRANCH: ${{ github.ref_name }}
+      EXPECTED_SHA: ${{ github.sha }}
+      EXPECTED_BASE_SHA: ${{ needs.validate.outputs.base_sha }}
+    steps:
+      - name: Create or reuse the pull request
+        id: pull_request
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_base_sha="$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/$BASE_BRANCH" \
+            --jq '.object.sha')"
+          if [[ "$current_base_sha" != "$EXPECTED_BASE_SHA" ]]; then
+            printf 'Base branch moved after validation: expected %s, found %s\n' \
+              "$EXPECTED_BASE_SHA" "$current_base_sha" >&2
+            exit 1
+          fi
+
+          pr_url="$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --head "$HEAD_BRANCH" \
+            --base "$BASE_BRANCH" \
+            --state open \
+            --json url \
+            --jq '.[0].url')"
+
+          if [[ -z "$pr_url" ]]; then
+            title="Automated merge: ${HEAD_BRANCH#agent/}"
+            body="$(printf '%s\n' \
+              'Created by the owner-only agent branch workflow.' \
+              '' \
+              'The same workflow validated the repository boundary, Phase 0 contracts, and automation contract before opening this PR.')"
+            pr_url="$(gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --head "$HEAD_BRANCH" \
+              --base "$BASE_BRANCH" \
+              --title "$title" \
+              --body "$body")"
+          fi
+
+          printf 'url=%s\n' "$pr_url" >> "$GITHUB_OUTPUT"
+
+      - name: Squash merge and delete the remote branch
+        shell: bash
+        env:
+          PR_URL: ${{ steps.pull_request.outputs.url }}
+        run: gh pr merge "$PR_URL" --repo "$GITHUB_REPOSITORY" --match-head-commit "$EXPECTED_SHA" --squash --delete-branch

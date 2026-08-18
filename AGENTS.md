@@ -11,7 +11,9 @@
 7. `docs/IDENTITY.md`
 8. `docs/DECISIONS.md`
 9. `docs/IMPLEMENTATION_PLAN.md`
-10. `docs/ARCHITECTURE.md`
+10. `docs/NEXT_STEPS.md`
+11. `docs/GITHUB_AUTOMATION.md`
+12. `docs/ARCHITECTURE.md`
 
 ## 불변 규칙
 
@@ -20,11 +22,12 @@
 - 공식 로그인, 계정 토큰, 패킷 가로채기, 게임 프로세스 주입, 안티치트 우회를 사용하지 않습니다.
 - 원본 리테일 클라이언트 연결은 `docs/FEASIBILITY_GATES.md`의 조건을 모두 충족하기 전까지 차단합니다.
 - 원본·복호물·번들·이미지·음성·DB·실계정 데이터는 커밋하지 않습니다.
-- 저장소에는 코드, 계약, migration, 직접 만든 합성 fixture만 둡니다.
+- private GitHub remote에는 source, 계약, migration, 직접 만든 합성 fixture만 push합니다.
 - 원본 게임 ID를 도메인 PK/FK, API, 로그에 노출하지 않습니다.
 - 미지값과 결손 참조는 임의 추정하지 않고 `unresolved` 또는 `not_applicable`로 보존합니다.
 - 캐릭터 빌드 수정은 기존 row 덮어쓰기가 아니라 새 revision 생성으로 처리합니다.
 - 기본값은 생성 시점 데이터 snapshot에서 실제 값으로 해소하여 저장합니다. 데이터 업데이트가 과거 revision을 자동 변경하면 안 됩니다.
 - Solo Raid는 Challenge만 지원하고 `challenge-boss-support/v1` admission policy를 통과한 보스만 publish합니다.
 - 일반 1~7단계와 Union Raid 전투 세션을 만들지 않습니다.
-- 작업 전후 `scripts/verify-repository.ps1`과 `scripts/verify-phase0-contract.ps1`을 실행합니다.
+- 변경은 `agent/**` branch에 commit하고 Actions가 검증·PR·squash merge하도록 합니다.
+- 작업 전후 repository, Phase 0, Actions contract 검사를 모두 실행합니다.
