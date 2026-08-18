@@ -4,35 +4,62 @@
 
 `SoloRaidChallenge`만 지원합니다. 일반 솔로 레이드 1~7단계는 전투 콘텐츠로 구현하지 않으며 Union Raid는 비활성 확장 지점입니다.
 
-## Normal-stage unlock stub
+## Boss admission policy
 
-lab-owned test harness가 Challenge 해금 선행조건을 재현해야 하는 경우에만 다음 합성 상태를 제공합니다.
+정책 ID는 `challenge-boss-support/v1`입니다.
+
+판정 순서는 다음과 같습니다.
+
+1. 시즌 14와 시즌 39는 명시적으로 제외한다.
+2. 시즌 40은 속성·약점과 무관한 별도 규칙으로 포함한다.
+3. 나머지는 보스 속성이 `electric`이고 약점 코드가 `iron`인 경우만 포함한다.
+4. authoritative Challenge chain을 완전히 해소하지 못한 후보는 publish하지 않고 import 진단으로 남긴다.
+
+현재 snapshot에서 전격·철갑 조건을 만족하는 시즌은 `7, 13, 14, 26, 29, 34, 39`입니다. 제외 정책과 시즌 40 별도 포함을 적용한 현재 파생 allowlist는 다음과 같습니다. 이 목록은 특정 dataset의 결과이며 config의 별도 실행 제한 목록이 아닙니다. 다음 dataset에서는 같은 정책으로 다시 계산합니다.
+
+| 시즌 | 보스 | admission |
+|---:|---|---|
+| 7 | 울트라 | `electric_weak_to_iron` |
+| 13 | 인디빌리아 | `electric_weak_to_iron` |
+| 26 | 프로비던스 | `electric_weak_to_iron` |
+| 29 | 마더웨일 전격 변종 | `electric_weak_to_iron` |
+| 34 | 앨트루이아 | `electric_weak_to_iron` |
+| 40 | 사치스러운 거미 | `season_40_explicit` |
+
+시즌 14와 시즌 39는 데이터가 존재하거나 분석돼 있어도 `excluded_by_policy`이며 `RaidSnapshot`을 publish하거나 활성화하지 않습니다.
+
+원본 element ID, weak-element ID, preset, wave, monster, spot, asset ID는 ephemeral staging 또는 Git 비추적 compatibility map에만 존재합니다. 도메인에는 `electric`, `iron`, `wind`, `fire` 같은 정규화 enum과 자체 UUID만 저장합니다.
+
+## Normal-stage unlock state
+
+Challenge 해금 선행조건 호환이 필요할 때 local session state에서 다음 합성 상태를 제공합니다.
 
     implemented = false
     lastClearLevel = 7
 
-이 stub은 일반 단계의 raid session, battle entry, result, reward를 만들 권한이 없습니다. API와 domain service는 `mode=challenge` 외의 전투 요청을 거부합니다. 원본 client gate가 해제되기 전에는 이 값을 원본 client에 전달하지 않으며 공식 계정·서비스 진행도 우회에 사용하지 않습니다.
+이 상태는 `RaidSnapshot`의 불변 provenance가 아니므로 snapshot에 저장하지 않습니다. 일반 단계의 raid session, battle entry, result, reward를 만들 권한도 없습니다. 원본 client gate가 해제되기 전에는 이 값을 원본 client에 전달하지 않으며 공식 계정·서비스 진행도 우회에 사용하지 않습니다.
 
-`difficultyType=2`와 `waveOrder=8`은 Challenge adapter의 고정 compatibility selector이며 도메인 entity ID가 아닙니다. 원본 preset, wave, monster, spot, asset ID는 ephemeral staging 또는 Git 비추적 compatibility map 밖으로 나오지 않습니다.
+`difficultyType=2`와 `waveOrder=8`은 Challenge adapter의 고정 compatibility selector이며 도메인 entity ID가 아닙니다.
 
 ## RaidSnapshot
 
-`RaidSnapshot`은 특정 시즌 Challenge를 재현하기 위한 불변 증거 묶음입니다.
+`RaidSnapshot` v2는 지원 정책을 통과하고 publish 준비가 끝난 특정 시즌 Challenge를 재현하기 위한 불변 증거 묶음입니다. 미해소·불완전·무효 후보는 별도 import diagnostic으로 남기며 이 schema로 직렬화하지 않습니다.
 
 - 자체 `raid_snapshot_uid`
-- 자체 `challenge_encounter_uid`와 `dataset_snapshot_uid`
-- 자체 `boss_variant_uid`
+- 자체 `challenge_encounter_uid`, `boss_variant_uid`, `dataset_snapshot_uid`
 - Git 비추적 local map을 가리키는 자체 `compatibility_map_uid`
 - 사용자-facing `season_number`
-- 고정 mode `challenge`
+- `challenge-boss-support/v1` admission rule과 정규화 속성/약점
 - 정적 데이터 artifact UID와 SHA-256
 - 선택 asset bundle artifact UID, 역할, SHA-256과 set hash
 - behavior와 timeline artifact UID 및 SHA-256
 - client runtime build UID, local label, SHA-256
 - compatibility tier와 runtime relation
-- validation status, blocking reason, warning
+- provenance readiness와 warning
 
 원본 content ID, 파일명, 설치 경로는 snapshot JSON과 API에 포함하지 않습니다.
+
+published snapshot은 `readiness.status=ready`이고 non-null `compatibility_map_uid`를 가져야 합니다. admission의 정규화 속성·약점은 authoritative import 결과이며, JSON이 자기 주장만으로 원천 관계를 증명한다고 보지 않습니다. importer가 map과 source artifact hash를 교차검증한 뒤에만 publish합니다.
 
 `localBuildLabel`은 lab DB 안에서만 쓰는 별칭이며 원본 build 식별자나 파일명을 복사하는 필드가 아닙니다.
 
@@ -40,9 +67,9 @@ lab-owned test harness가 Challenge 해금 선행조건을 재현해야 하는 �
 
 ## 활성 시즌
 
-`ActiveRaidSeason`은 현재 UI에 노출할 단 하나의 `RaidSnapshot`을 가리키는 가변 포인터입니다. snapshot 자체는 불변입니다.
+`ActiveRaidSeason`은 현재 UI에 노출할 단 하나의 published `RaidSnapshot`을 가리키는 가변 포인터입니다. snapshot 자체는 불변입니다.
 
-과거 시즌 선택은 snapshot 활성 포인터를 바꾸는 관리 작업이며, 원본 UI가 역사 시즌 browser를 제공한다고 가정하지 않습니다.
+지원 정책을 통과하지 못한 snapshot은 활성 포인터의 대상이 될 수 없습니다. 과거 시즌 선택은 이 포인터를 바꾸는 관리 작업이며, 원본 UI가 역사 시즌 browser를 제공한다고 가정하지 않습니다.
 
 ## 호환성 등급
 
@@ -55,7 +82,7 @@ lab-owned test harness가 Challenge 해금 선행조건을 재현해야 하는 �
 
 과거 asset을 현재 runtime에서 실행한 결과는 `historical_runtime_exact`가 아닙니다.
 
-호환성 tier와 실행 가능 여부는 별개입니다. `RaidSnapshot.execution.enabled`는 lab-owned harness에서 해당 snapshot을 실행할 수 있는지만 뜻합니다. 원본 리테일 클라이언트 연결은 별도 `OriginalClientGate`가 통제하며, snapshot이 `ready` 또는 `execution.enabled=true`여도 그 gate가 blocked이면 원본 client 실행은 허용되지 않습니다.
+호환성 tier와 원본 client 실행 가능 여부는 별개입니다. 원본 리테일 클라이언트 연결은 동적 `OriginalClientGate`가 통제합니다.
 
 ## 전투 결과
 

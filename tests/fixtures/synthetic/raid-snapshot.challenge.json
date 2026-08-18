@@ -1,19 +1,22 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "raidSnapshotUid": "10000000-0000-4000-8000-000000000001",
   "datasetSnapshotUid": "10000000-0000-4000-8000-000000000002",
   "challengeEncounterUid": "10000000-0000-4000-8000-000000000003",
   "bossVariantUid": "10000000-0000-4000-8000-000000000004",
   "compatibilityMapUid": "10000000-0000-4000-8000-000000000005",
-  "seasonNumber": 999,
+  "seasonNumber": 40,
   "mode": "challenge",
   "challengeCompatibility": {
     "difficultyType": 2,
     "waveOrder": 8
   },
-  "normalStageUnlockStub": {
-    "implemented": false,
-    "lastClearLevel": 7
+  "admission": {
+    "policyId": "challenge-boss-support/v1",
+    "rule": "season_40_explicit",
+    "bossElement": "wind",
+    "weaknessCode": "fire",
+    "status": "supported"
   },
   "provenance": {
     "staticData": {
@@ -59,12 +62,6 @@
     "tier": "asset_exact_runtime_current",
     "runtimeRelation": "current_runtime_match",
     "evidenceWarnings": []
-  },
-  "execution": {
-    "enabled": false,
-    "blockReasons": [
-      "lab_harness_not_implemented"
-    ]
   },
   "readiness": {
     "status": "ready",

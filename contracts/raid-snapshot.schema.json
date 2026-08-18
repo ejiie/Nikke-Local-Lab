@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:nikke-local-lab:raid-snapshot:v1",
-  "title": "SoloRaidChallengeSnapshot",
+  "$id": "urn:nikke-local-lab:raid-snapshot:v2",
+  "title": "PublishedSoloRaidChallengeSnapshot",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -14,24 +14,20 @@
     "seasonNumber",
     "mode",
     "challengeCompatibility",
-    "normalStageUnlockStub",
+    "admission",
     "provenance",
     "compatibility",
-    "execution",
     "readiness"
   ],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "raidSnapshotUid": { "$ref": "#/$defs/uuid" },
     "datasetSnapshotUid": { "$ref": "#/$defs/uuid" },
     "challengeEncounterUid": { "$ref": "#/$defs/uuid" },
     "bossVariantUid": { "$ref": "#/$defs/uuid" },
     "compatibilityMapUid": {
-      "description": "Own UUID for a Git-ignored local compatibility map; never a source content identifier.",
-      "oneOf": [
-        { "$ref": "#/$defs/uuid" },
-        { "type": "null" }
-      ]
+      "description": "Own UUID for the required Git-ignored local compatibility map; never a source content identifier.",
+      "$ref": "#/$defs/uuid"
     },
     "seasonNumber": {
       "description": "User-facing season ordinal, not a source table primary key.",
@@ -48,13 +44,28 @@
         "waveOrder": { "const": 8 }
       }
     },
-    "normalStageUnlockStub": {
+    "admission": {
+      "description": "Normalized, source-ID-free result of challenge-boss-support/v1.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["implemented", "lastClearLevel"],
+      "required": [
+        "policyId",
+        "rule",
+        "bossElement",
+        "weaknessCode",
+        "status"
+      ],
       "properties": {
-        "implemented": { "const": false },
-        "lastClearLevel": { "const": 7 }
+        "policyId": { "const": "challenge-boss-support/v1" },
+        "rule": {
+          "enum": [
+            "electric_weak_to_iron",
+            "season_40_explicit"
+          ]
+        },
+        "bossElement": { "$ref": "#/$defs/elementCode" },
+        "weaknessCode": { "$ref": "#/$defs/elementCode" },
+        "status": { "const": "supported" }
       }
     },
     "provenance": {
@@ -112,25 +123,13 @@
         }
       }
     },
-    "execution": {
-      "description": "Execution readiness for the lab-owned harness only; this never authorizes the original retail client.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["enabled", "blockReasons"],
-      "properties": {
-        "enabled": { "type": "boolean" },
-        "blockReasons": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 }
-        }
-      }
-    },
     "readiness": {
+      "description": "A published snapshot is data/provenance-ready. Import candidates and diagnostics use a separate contract.",
       "type": "object",
       "additionalProperties": false,
       "required": ["status", "warnings"],
       "properties": {
-        "status": { "enum": ["ready", "incomplete", "invalid"] },
+        "status": { "const": "ready" },
         "warnings": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
@@ -139,6 +138,34 @@
     }
   },
   "allOf": [
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "seasonNumber": { "const": 40 },
+            "admission": {
+              "properties": {
+                "rule": { "const": "season_40_explicit" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "seasonNumber": {
+              "not": { "enum": [14, 39, 40] }
+            },
+            "admission": {
+              "properties": {
+                "rule": { "const": "electric_weak_to_iron" },
+                "bossElement": { "const": "electric" },
+                "weaknessCode": { "const": "iron" }
+              }
+            }
+          }
+        }
+      ]
+    },
     {
       "if": {
         "properties": {
@@ -206,41 +233,6 @@
           }
         }
       }
-    },
-    {
-      "if": {
-        "properties": {
-          "execution": {
-            "type": "object",
-            "properties": { "enabled": { "const": true } },
-            "required": ["enabled"]
-          }
-        },
-        "required": ["execution"]
-      },
-      "then": {
-        "properties": {
-          "execution": {
-            "properties": {
-              "blockReasons": { "maxItems": 0 }
-            }
-          },
-          "readiness": {
-            "properties": {
-              "status": { "const": "ready" }
-            }
-          }
-        }
-      },
-      "else": {
-        "properties": {
-          "execution": {
-            "properties": {
-              "blockReasons": { "minItems": 1 }
-            }
-          }
-        }
-      }
     }
   ],
   "$defs": {
@@ -252,6 +244,9 @@
     "sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
+    },
+    "elementCode": {
+      "enum": ["fire", "water", "wind", "electric", "iron"]
     },
     "artifactRef": {
       "type": "object",

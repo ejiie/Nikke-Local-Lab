@@ -1,6 +1,8 @@
 # Nikke Local Lab
 
-개인 로컬 환경에서 NIKKE 전투 데이터를 보관하고, 재현 가능한 캐릭터 빌드와 Solo Raid Challenge snapshot으로 검증하기 위한 독립 실험 프로젝트입니다.
+개인 로컬 환경에서 NIKKE 전투 데이터를 보관하고, 재현 가능한 캐릭터 빌드와 제한된 Solo Raid Challenge snapshot으로 검증하기 위한 독립 실험 프로젝트입니다.
+
+최종 인수 조건은 **원본 NIKKE UI와 실제 전투 runtime이 허용된 local backend를 사용해 선택된 Challenge를 실행하는 것**입니다. lab-owned harness는 importer·계약·API를 검증하는 개발 도구이며 최종 결과물을 대체하지 않습니다.
 
 현재 단계는 **Phase 0: 저장소·계약·데이터·실행 경계 고정**입니다. 캐릭터 빌드와 Challenge raid snapshot 계약은 정의하지만 서버, 데이터베이스, 원본 리테일 클라이언트 호환 계층은 아직 구현하지 않습니다.
 
@@ -12,13 +14,15 @@
 - 장비 기본값은 전 부위 Tier 10, 강화 Level 5입니다.
 - 큐브는 자유롭게 장착·해제하며, 장착 시 기본 Level 15입니다. 큐브 종류는 사용자가 선택하기 전까지 추측하지 않습니다.
 - Solo Raid는 Challenge만 모델링합니다. 일반 1~7단계는 해금 상태 stub일 뿐 플레이할 수 없습니다.
+- 지원 정책은 `전격 보스 + 철갑 약점`에서 시즌 14·39를 제외하고 시즌 40을 별도 포함합니다.
+- 현재 스냅샷의 지원 시즌은 `7, 13, 26, 29, 34, 40`입니다.
 - Raid snapshot은 정적 데이터, behavior, timeline, asset bundle, client runtime의 근거와 호환성 등급을 함께 고정합니다.
 - 원본 게임 ID는 import staging 또는 Git 비추적 compatibility map에서만 해석하고 도메인/API에는 자체 ID만 사용합니다.
 - `C:\NIKKE`의 원본은 읽기 전용입니다. 복호·파생 데이터는 Git 외부 런타임 경계에서만 저장하며 Git에 넣지 않습니다.
 
-원본 리테일 클라이언트 연결은 현재 **차단 상태**입니다. 공식적으로 지원되는 로컬/테스트 경로 또는 서면 허가가 확인되기 전에는 endpoint/auth 변조, 공식 로그인·토큰 재사용, 주입·후킹, 안티치트 우회를 사용하지 않습니다.
+원본 리테일 클라이언트 연결은 현재 **차단 상태**입니다. 공식적으로 지원·승인된 로컬/테스트 경로가 확인되기 전에는 endpoint/auth 변조, 공식 로그인·토큰 재사용, 주입·후킹, 안티치트 우회를 사용하지 않습니다. 이 gate가 해제되지 않으면 최종 인수 조건은 미달 상태로 남습니다.
 
-세부 범위는 [docs/SCOPE.md](docs/SCOPE.md), 실행 게이트는 [docs/FEASIBILITY_GATES.md](docs/FEASIBILITY_GATES.md), 빌드 계약은 [docs/DOMAIN.md](docs/DOMAIN.md), Challenge 계약은 [docs/RAID_DOMAIN.md](docs/RAID_DOMAIN.md)를 참고합니다.
+세부 범위는 [docs/SCOPE.md](docs/SCOPE.md), 실행 게이트는 [docs/FEASIBILITY_GATES.md](docs/FEASIBILITY_GATES.md), 빌드 계약은 [docs/DOMAIN.md](docs/DOMAIN.md), Challenge 계약은 [docs/RAID_DOMAIN.md](docs/RAID_DOMAIN.md), 이후 계획은 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)를 참고합니다.
 
 ## 저장소 정책 확인
 

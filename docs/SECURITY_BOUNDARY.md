@@ -5,7 +5,7 @@
 - 로컬 디스크에 이미 존재하는 게임 파일의 읽기 전용 분석
 - 자체 생성한 합성 계정과 자체 ID 기반 데이터
 - loopback에서 실행되는 API와 관리 UI
-- 프로젝트가 소유한 test harness
+- 계약 검증용으로 프로젝트가 소유한 test harness
 - 사용자가 명시적으로 활성화한 사설망의 lab-owned client
 
 ## 제외
@@ -20,7 +20,9 @@
 
 ## 원본 클라이언트 게이트
 
-원본 리테일 클라이언트는 `docs/FEASIBILITY_GATES.md`의 모든 조건이 충족되기 전까지 연결 대상이 아닙니다. 현재 허용된 client는 lab-owned test harness뿐입니다. 기술적으로 가능한 경로와 프로젝트 정책상 허용된 경로를 혼동하지 않습니다.
+원본 리테일 클라이언트는 `docs/FEASIBILITY_GATES.md`의 모든 조건이 충족되기 전까지 연결 대상이 아닙니다. 현재 실제 연결이 허용된 client는 lab-owned test harness뿐이지만, 이는 backend 계약 검사용 임시 수단이며 최종 인수 조건을 대체하지 않습니다. 기술적으로 가능한 경로와 프로젝트 정책상 허용된 경로를 혼동하지 않습니다.
+
+gate가 열리면 승인된 원본 client가 최종 실행 경로가 되고 harness는 계속 자동 테스트에만 사용됩니다. gate가 열리지 않으면 최종 인수 상태는 `blocked`입니다.
 
 ## 네트워크 기본값
 

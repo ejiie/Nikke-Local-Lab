@@ -1,6 +1,6 @@
 # Architecture direction
 
-Phase 0에서는 경계만 고정하며 구현은 다음 단계부터 시작합니다.
+최종 실행 경로는 원본 UI와 실제 전투 runtime이 local backend를 사용하는 구조입니다. Phase 0에서는 경계만 고정하고 구현은 다음 단계부터 시작합니다.
 
     C:\NIKKE (read-only)
             |
@@ -17,13 +17,16 @@ Phase 0에서는 경계만 고정하며 구현은 다음 단계부터 시작합�
                                v
                           PostgreSQL
                                |
-                      local catalog API
-                               |
-              admin UI / lab-owned test harness
-                               |
-               Challenge session orchestrator
-                               |
-                    combat validation result
+                         local backend
+                         /           \
+                        v             v
+        lab-owned contract harness    OriginalClientCompatibilityAdapter
+              (test only)                  (disabled until gates pass)
+                                               |
+                                               v
+                               original NIKKE UI + battle runtime
+
+lab-owned harness는 importer, API, revision, admission, 결과 계약을 검증하는 sidecar입니다. 최종 사용자 실행 경로나 원본 전투 검증의 대체물이 아닙니다.
 
 ## 예정 모듈
 
@@ -32,22 +35,37 @@ Phase 0에서는 경계만 고정하며 구현은 다음 단계부터 시작합�
 - `Provenance`: snapshot, hash, diff, import 상태
 - `Identity`: 자체 ID와 비공개 source alias 경계
 - `Domain.Character`: 캐릭터 정의와 빌드 revision 계약
-- `Domain.Raid`: Challenge encounter, RaidSnapshot, 활성 시즌
+- `Domain.Raid`: Challenge encounter, admission policy, RaidSnapshot, 활성 시즌
 - `Compatibility`: tier 평가와 Git 비추적 mapping adapter
 - `Persistence`: 자체 ID와 versioned schema
 - `Api`: 조회·write API
 - `Challenge.Session`: Challenge-only entry와 결과 수집
-- `Harness`: 프로젝트 소유 test client
+- `Harness`: 프로젝트 소유 contract/integration test client
+- `OriginalClientCompatibilityAdapter`: gate 통과 후에만 활성화되는 원본 client 경계
 
-## 비활성 gated lane
+## 데이터와 실행 상태 분리
 
-원본 리테일 클라이언트 adapter는 주 실행 경로에 포함하지 않습니다.
+`RaidSnapshot`은 불변 데이터·asset·runtime provenance만 담습니다. 다음 가변 상태는 snapshot 밖에 둡니다.
 
-    original retail client
-      --[supported and authorized interface; currently blocked]-->
-    disabled OriginalClientCompatibilityAdapter
-      --> local API
+- active season pointer
+- normal-stage unlock stub
+- original client gate 상태
+- local session 및 battle execution 상태
+- 현재 client build에 대한 runtime admission
 
-gate가 모두 해제된 경우에만 별도 adapter로 추가하며, domain과 importer가 이 adapter에 의존하면 안 됩니다. 이 adapter는 공식 인증 protocol replay 또는 추측 구현으로 만들지 않습니다.
+이 분리로 gate 또는 구현 상태가 바뀌어도 과거 snapshot의 hash와 의미가 변하지 않습니다.
 
-기존 `Nikke-Dmg-Simulator`의 엔진과 직접 결합하지 않습니다. 필요해질 때 중립 DTO/package 계약으로만 연결합니다.
+## 원본 client gated lane
+
+원본 client adapter는 최종 목표의 필수 경로이지만 현재는 disabled입니다.
+
+    original NIKKE client
+      --[supported and authorized local/test interface only]-->
+    OriginalClientCompatibilityAdapter
+      --> local backend
+
+gate가 모두 해제된 경우에만 활성화합니다. domain, importer, persistence는 adapter에 의존하지 않으며 adapter는 자체 ID와 client compatibility reference의 변환만 담당합니다. 공식 인증 protocol replay, 추측 auth, endpoint 변조, 프로세스 주입 또는 보호 기능 우회로 만들지 않습니다.
+
+gate가 해제되지 않으면 개발 가능한 계층은 계속 검증하되 제품의 최종 인수 상태는 `blocked`로 남습니다.
+
+기존 `Nikke-Dmg-Simulator` 엔진과 직접 결합하지 않습니다. 필요한 정적 분석 결과는 출처 hash를 가진 import 입력으로만 다루고, 실행 엔진을 완제품 대체물로 사용하지 않습니다.

@@ -89,6 +89,22 @@ function Assert-CharacterFixture {
     Assert-True (@($Fixture.readiness.warnings).Count -eq 0) "Ready character fixture cannot contain warnings."
 }
 
+function New-RaidVariantJson {
+    param(
+        [int]$SeasonNumber,
+        [string]$Rule,
+        [string]$BossElement,
+        [string]$WeaknessCode
+    )
+
+    $Variant = $RaidFixtureText | ConvertFrom-Json
+    $Variant.seasonNumber = $SeasonNumber
+    $Variant.admission.rule = $Rule
+    $Variant.admission.bossElement = $BossElement
+    $Variant.admission.weaknessCode = $WeaknessCode
+    return $Variant | ConvertTo-Json -Depth 100
+}
+
 $ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $ScriptDirectory ".."))
 $ConfigPath = Join-Path $RepositoryRoot "config/appsettings.example.json"
@@ -172,12 +188,57 @@ Assert-True ($SoloRaid.normalStages.implemented -eq $false) "Normal Solo Raid ba
 Assert-True ($SoloRaid.normalStages.unlockStateOnly -eq $true) "Normal stages may only supply unlock state."
 Assert-True ($SoloRaid.normalStages.lastClearLevel -eq 7) "Challenge unlock stub must report lastClearLevel 7."
 Assert-True ($SoloRaid.unionRaidEnabled -eq $false) "Union Raid must remain disabled in Phase 0."
+Assert-True ($SoloRaid.requireRuntimeMatchForOriginalClientExecution -eq $true) "Original-client execution must require a runtime match."
+
+$Policy = $SoloRaid.supportPolicy
+Assert-True ($Policy.policyId -eq "challenge-boss-support/v1") "Solo Raid support policy mismatch."
+Assert-True ((@($Policy.excludedSeasonNumbers) -join ",") -eq "14,39") "Excluded seasons must be exactly 14 and 39."
+Assert-True (-not ($Policy.PSObject.Properties.Name -contains "currentDerivedSeasonAllowlist")) "A dataset-derived allowlist must not become a second config constraint."
+Assert-True ($Policy.rejectUnresolvedCandidates -eq $true) "Unresolved Challenge candidates must be rejected."
+Assert-True (@($Policy.rules).Count -eq 2) "Support policy must contain exactly two rules."
+$ElementRule = @($Policy.rules | Where-Object { $_.kind -eq "element_weakness" })
+$SeasonRule = @($Policy.rules | Where-Object { $_.kind -eq "explicit_season" })
+Assert-True (($ElementRule.Count -eq 1) -and ($ElementRule[0].bossElement -eq "electric") -and ($ElementRule[0].weaknessCode -eq "iron")) "Electric/Iron support rule mismatch."
+Assert-True (($SeasonRule.Count -eq 1) -and ($SeasonRule[0].seasonNumber -eq 40)) "Season 40 explicit rule mismatch."
 
 Assert-True ($RaidFixture.mode -eq "challenge") "Raid snapshot must be Challenge-only."
+Assert-True ($RaidFixture.schemaVersion -eq 2) "Published RaidSnapshot must use schema version 2."
+Assert-True ($RaidFixture.seasonNumber -eq 40) "Synthetic raid fixture must exercise Season 40."
 Assert-True ($RaidFixture.challengeCompatibility.difficultyType -eq 2) "Raid snapshot difficulty selector mismatch."
 Assert-True ($RaidFixture.challengeCompatibility.waveOrder -eq 8) "Raid snapshot wave selector mismatch."
-Assert-True ($RaidFixture.normalStageUnlockStub.implemented -eq $false) "Raid snapshot cannot implement normal stages."
-Assert-True ($RaidFixture.normalStageUnlockStub.lastClearLevel -eq 7) "Raid snapshot unlock stub mismatch."
+Assert-True ($RaidFixture.admission.policyId -eq "challenge-boss-support/v1") "Raid snapshot admission policy mismatch."
+Assert-True ($RaidFixture.admission.rule -eq "season_40_explicit") "Season 40 admission rule mismatch."
+Assert-True (($RaidFixture.admission.bossElement -eq "wind") -and ($RaidFixture.admission.weaknessCode -eq "fire")) "Season 40 normalized element/weakness mismatch."
+Assert-True (-not ($RaidFixture.PSObject.Properties.Name -contains "normalStageUnlockStub")) "Normal-stage unlock state must not be embedded in RaidSnapshot."
+Assert-True (-not ($RaidFixture.PSObject.Properties.Name -contains "execution")) "Live execution state must not be embedded in RaidSnapshot."
+
+$AcceptedElectricSeasons = @(7, 13, 26, 29, 34)
+$AcceptedFutureElectric = New-RaidVariantJson 41 "electric_weak_to_iron" "electric" "iron"
+$ExcludedSeason14 = New-RaidVariantJson 14 "electric_weak_to_iron" "electric" "iron"
+$ExcludedSeason39 = New-RaidVariantJson 39 "electric_weak_to_iron" "electric" "iron"
+$InvalidElement = New-RaidVariantJson 7 "electric_weak_to_iron" "wind" "fire"
+$InvalidSeason40Rule = New-RaidVariantJson 40 "electric_weak_to_iron" "electric" "iron"
+$Season40IndependentOfElement = New-RaidVariantJson 40 "season_40_explicit" "water" "electric"
+foreach ($Season in $AcceptedElectricSeasons) {
+    $AcceptedElectric = New-RaidVariantJson $Season "electric_weak_to_iron" "electric" "iron"
+    Assert-True (Test-Json -Json $AcceptedElectric -SchemaFile $RaidSchemaPath) "Schema must accept current Electric/Iron Season $Season."
+}
+Assert-True (Test-Json -Json $AcceptedFutureElectric -SchemaFile $RaidSchemaPath) "Schema must preserve the rule for a future Electric/Iron season."
+Assert-True (-not (Test-Json -Json $ExcludedSeason14 -SchemaFile $RaidSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject excluded Season 14."
+Assert-True (-not (Test-Json -Json $ExcludedSeason39 -SchemaFile $RaidSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject excluded Season 39."
+Assert-True (-not (Test-Json -Json $InvalidElement -SchemaFile $RaidSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject a non-Electric admission under the Electric/Iron rule."
+Assert-True (-not (Test-Json -Json $InvalidSeason40Rule -SchemaFile $RaidSchemaPath -ErrorAction SilentlyContinue)) "Schema must require Season 40's explicit admission rule."
+Assert-True (Test-Json -Json $Season40IndependentOfElement -SchemaFile $RaidSchemaPath) "Season 40 admission must be explicit and independent of its current element facts."
+
+$NullMapFixture = $RaidFixtureText | ConvertFrom-Json
+$NullMapFixture.compatibilityMapUid = $null
+$NullMapFixtureText = $NullMapFixture | ConvertTo-Json -Depth 100
+Assert-True (-not (Test-Json -Json $NullMapFixtureText -SchemaFile $RaidSchemaPath -ErrorAction SilentlyContinue)) "Published RaidSnapshot must require a compatibility map UUID."
+$IncompleteFixture = $RaidFixtureText | ConvertFrom-Json
+$IncompleteFixture.readiness.status = "incomplete"
+$IncompleteFixtureText = $IncompleteFixture | ConvertTo-Json -Depth 100
+Assert-True (-not (Test-Json -Json $IncompleteFixtureText -SchemaFile $RaidSchemaPath -ErrorAction SilentlyContinue)) "Published RaidSnapshot must reject incomplete candidates."
+
 Assert-True (Test-Uuid $RaidFixture.raidSnapshotUid) "Raid snapshot must use an own UUID."
 Assert-True (Test-Uuid $RaidFixture.challengeEncounterUid) "Challenge encounter must use an own UUID."
 Assert-True (Test-Uuid $RaidFixture.bossVariantUid) "Boss variant must use an own UUID."
@@ -214,11 +275,9 @@ $AllowedTiers = @(
 )
 Assert-True ($AllowedTiers -contains $RaidFixture.compatibility.tier) "Unknown raid compatibility tier."
 Assert-True ($RaidFixture.compatibility.runtimeRelation -eq "current_runtime_match") "Synthetic asset-exact fixture must bind the current runtime."
-Assert-True ($RaidFixture.execution.enabled -eq $false) "Lab harness execution must remain disabled until implemented."
-Assert-True (@($RaidFixture.execution.blockReasons).Count -ge 1) "Disabled lab harness execution must state a reason."
 Assert-True ($RaidFixture.readiness.status -eq "ready") "Synthetic raid evidence fixture must be data-ready."
 
 $ForbiddenRaidKeys = '(?i)"(monster(_?id)?|spot(_?ai)?|preset(_?id)?|wave(_?id)?|asset(path|_?id)|source(path|_?id)|file(name)?)"\s*:'
 Assert-True ($RaidFixtureText -notmatch $ForbiddenRaidKeys) "Raid fixture exposes a forbidden raw source key."
 
-Write-Output "Phase 0 character-build and Challenge raid contracts passed."
+Write-Output "Phase 0 character-build and restricted Challenge raid contracts passed."

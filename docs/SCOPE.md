@@ -2,7 +2,9 @@
 
 ## 목적
 
-NIKKE 캐릭터 빌드를 로컬 DB에 보관·수정하고, Solo Raid Challenge의 데이터·asset·runtime 근거와 빌드 revision을 고정하여 전투 결과를 검증합니다.
+자체 ID 기반 local backend에 NIKKE 캐릭터 빌드를 보관·수정하고, 선택된 Solo Raid Challenge의 데이터·asset·runtime 근거와 빌드 revision을 고정하여 **원본 UI와 실제 전투 runtime**으로 결과를 검증합니다.
+
+lab-owned harness는 계약과 backend를 준비·검사하는 보조 도구입니다. 자체 렌더러나 대미지 시뮬레이터만으로는 최종 목표를 달성한 것으로 보지 않습니다.
 
 ## Phase 0 확정 범위
 
@@ -11,6 +13,7 @@ NIKKE 캐릭터 빌드를 로컬 DB에 보관·수정하고, Solo Raid Challenge
 - 생성 기본 프리셋 `combat-max/v1`을 정의한다.
 - 자체 ID와 원본 ID 격리 원칙을 정의한다.
 - Challenge 전용 `RaidSnapshot`과 네 단계 호환성 등급을 정의한다.
+- `challenge-boss-support/v1` admission policy를 정의한다.
 - 일반 솔로 레이드 1~7단계는 전투가 아닌 Challenge 해금 상태 stub으로만 정의한다.
 - 원본 리테일 클라이언트 연결의 fail-closed 실행 게이트를 정의한다.
 - 계약용 JSON Schema와 직접 만든 합성 fixture를 둔다.
@@ -35,9 +38,11 @@ NIKKE 캐릭터 빌드를 로컬 DB에 보관·수정하고, Solo Raid Challenge
 ## Challenge 범위
 
 - 지원 모드는 `challenge` 하나뿐입니다.
+- 지원 판정은 `season == 40 OR (bossElement == electric AND weaknessCode == iron AND season NOT IN [14, 39])`입니다.
+- 현재 authoritative snapshot의 파생 allowlist는 `[7, 13, 26, 29, 34, 40]`입니다.
 - 일반 1~7단계는 `implemented=false`, `lastClearLevel=7`인 UI 해금 stub입니다.
 - 일반 단계의 전투 진입, 보상, 결과 저장 API는 만들지 않습니다.
-- 한 번에 하나의 Challenge season만 활성화합니다.
+- 한 번에 하나의 지원 Challenge season만 활성화합니다.
 - Union Raid는 향후 확장 지점만 예약하고 현재 비활성화합니다.
 
 ## 이번 단계에서 하지 않는 것
@@ -49,4 +54,4 @@ NIKKE 캐릭터 빌드를 로컬 DB에 보관·수정하고, Solo Raid Challenge
 - 일반 솔로 레이드 1~7단계 전투
 - Union Raid, 스테이지, 타워, 아레나, 상점, 전초기지 구현
 - 실제 게임 데이터 import 또는 원본 자산 복사
-- 기존 대미지 시뮬레이터 엔진 이관
+- 기존 대미지 시뮬레이터를 최종 전투 runtime으로 사용
