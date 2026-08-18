@@ -4,7 +4,7 @@
 
 최종 인수 조건은 **원본 NIKKE UI와 실제 전투 runtime이 허용된 local backend를 사용해 선택된 Challenge를 실행하는 것**입니다. lab-owned harness는 importer·계약·API를 검증하는 개발 도구이며 최종 결과물을 대체하지 않습니다.
 
-현재 단계는 **Phase 0: 저장소·계약·데이터·실행 경계 고정**입니다. 캐릭터 빌드와 Challenge raid snapshot 계약은 정의하지만 서버, 데이터베이스, 원본 리테일 클라이언트 호환 계층은 아직 구현하지 않습니다.
+현재 단계는 **Phase 0 완료, Phase 1A 착수 대기**입니다. 캐릭터 빌드와 Challenge raid snapshot 계약, private GitHub Actions 자동화는 정의됐지만 서버, 데이터베이스, importer, 원본 리테일 클라이언트 호환 계층은 아직 구현하지 않습니다.
 
 ## 현재 확정 범위
 
@@ -22,11 +22,12 @@
 
 원본 리테일 클라이언트 연결은 현재 **차단 상태**입니다. 공식적으로 지원·승인된 로컬/테스트 경로가 확인되기 전에는 endpoint/auth 변조, 공식 로그인·토큰 재사용, 주입·후킹, 안티치트 우회를 사용하지 않습니다. 이 gate가 해제되지 않으면 최종 인수 조건은 미달 상태로 남습니다.
 
-세부 범위는 [docs/SCOPE.md](docs/SCOPE.md), 실행 게이트는 [docs/FEASIBILITY_GATES.md](docs/FEASIBILITY_GATES.md), 빌드 계약은 [docs/DOMAIN.md](docs/DOMAIN.md), Challenge 계약은 [docs/RAID_DOMAIN.md](docs/RAID_DOMAIN.md), 이후 계획은 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)를 참고합니다.
+세부 범위는 [docs/SCOPE.md](docs/SCOPE.md), 실행 게이트는 [docs/FEASIBILITY_GATES.md](docs/FEASIBILITY_GATES.md), Challenge 계약은 [docs/RAID_DOMAIN.md](docs/RAID_DOMAIN.md), 전체 단계는 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md), 바로 다음 작업은 [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md), push→merge 자동화는 [docs/GITHUB_AUTOMATION.md](docs/GITHUB_AUTOMATION.md)를 참고합니다.
 
 ## 저장소 정책 확인
 
-    pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode working
+    pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode working -AllowRemote
     pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
+    pwsh -NoProfile -File scripts/verify-actions-contract.ps1
 
 계약 검사는 Draft 2020-12 schema 지원을 위해 PowerShell 7.4 이상이 필요합니다. 정책 검사는 실제 Git 추적 대상과 합성 fixture를 검사하며 `.gitignore`만 믿지 않습니다.
