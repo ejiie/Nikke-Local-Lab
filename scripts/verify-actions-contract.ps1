@@ -55,6 +55,9 @@ Assert-Contains $Workflow 'current_base_sha.*EXPECTED_BASE_SHA' "Publish job mus
 Assert-Contains $Workflow '--squash\s+--delete-branch' "Workflow must squash merge and remove the remote feature branch."
 Assert-Contains $Workflow 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1e' "Checkout action must remain pinned to the reviewed commit."
 Assert-Contains $Workflow 'actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1' "The .NET setup action must remain pinned to the reviewed commit."
+if ([regex]::Matches($Workflow, '(?m)^\s*dotnet-version:\s*8\.0\.407\s*$').Count -ne 2) {
+    throw "Both validation jobs must install the exact reviewed .NET SDK."
+}
 Assert-Contains $Workflow 'postgres:17\.6-bookworm@sha256:f3bd19c606e442c3d7bdfa8002e03fe260a1023351e0ea4598032022b68dd6e3' "The PostgreSQL service image must remain pinned by digest."
 Assert-Contains $Workflow '(?m)^\s*persist-credentials:\s*false\s*$' "Validation checkout must not persist even a read token."
 Assert-Contains $Workflow 'git\s+merge\s+--no-commit\s+--no-ff\s+\$BaseRef' "Validation must test the feature/main merge result."

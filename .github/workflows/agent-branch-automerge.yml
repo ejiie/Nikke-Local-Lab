@@ -37,6 +37,7 @@ jobs:
       - name: Set up the pinned .NET SDK
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
+          dotnet-version: 8.0.407
           global-json-file: global.json
 
       - name: Prepare the tested merge result
@@ -106,6 +107,7 @@ jobs:
       - name: Set up the pinned .NET SDK
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
+          dotnet-version: 8.0.407
           global-json-file: global.json
 
       - name: Prepare the tested merge result

@@ -21,8 +21,16 @@ function Invoke-Checked {
 $ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $ScriptDirectory ".."))
 $Solution = Join-Path $RepositoryRoot "NikkeLocalLab.sln"
+$GlobalJsonPath = Join-Path $RepositoryRoot "global.json"
 $UnitTests = Join-Path $RepositoryRoot "tests/NikkeLocalLab.UnitTests/NikkeLocalLab.UnitTests.csproj"
 $IntegrationTests = Join-Path $RepositoryRoot "tests/NikkeLocalLab.PostgreSql.IntegrationTests/NikkeLocalLab.PostgreSql.IntegrationTests.csproj"
+
+$GlobalJson = Get-Content -Raw -LiteralPath $GlobalJsonPath | ConvertFrom-Json
+if ($GlobalJson.sdk.version -ne "8.0.407" -or
+    $GlobalJson.sdk.rollForward -ne "disable" -or
+    [bool]$GlobalJson.sdk.allowPrerelease) {
+    throw "global.json must pin SDK 8.0.407 with rollForward disabled and prereleases denied."
+}
 
 $SdkVersion = (& dotnet --version).Trim()
 if ($LASTEXITCODE -ne 0 -or $SdkVersion -ne "8.0.407") {
