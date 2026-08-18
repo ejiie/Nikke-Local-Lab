@@ -187,9 +187,9 @@ raw capture에도 graphics/FPS/control setting은 없습니다. 이는 별도 ex
 ## 구현 순서
 
 1. Phase 1C — Challenge snapshot importer와 `V0003__raid_snapshot.sql`
-2. Phase 1D — equipment, cube, console, OL option 전투 보조 catalog와 `V0004__combat_support_catalog.sql`
+2. Phase 1D — Tier 9·10 equipment, cube, collection/favorite, console, OL option 전투 보조 catalog와 `V0004__combat_support_catalog.sql` — 완료
 3. Phase 2A1 — local account, account combat state, character build/profile revision과 `V0005__local_account_profile.sql`
 4. Phase 2A2 — offline legacy importer, export, loopback API와 별도 editor
 5. Phase 2B — runtime/control profile, Challenge session과 `V0006__battle_execution_context.sql`
 
-Phase 1C 구현과 legacy source 감사·계약 설계는 병행할 수 있습니다. migration, solution, CLI, workflow와 integration test가 충돌하므로 profile persistence와 editor 구현은 Phase 1C 병합 후 시작합니다.
+Phase 1D까지 병합한 뒤 Phase 2A1의 profile persistence를 시작하고, Phase 2A2에서 credential-bearing raw를 offline sanitizer로 연결합니다. 최신 raw는 계정/build seed일 뿐 graphics/control/ESC runtime 관측을 대체하지 않습니다.

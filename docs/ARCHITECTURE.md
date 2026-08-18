@@ -1,6 +1,6 @@
 # Architecture direction
 
-최종 실행 경로는 원본 UI와 실제 전투 runtime이 local backend를 사용하는 구조입니다. Phase 1C에서는 아래 경로 중 캐릭터 catalog와 Challenge RaidSnapshot import/domain/catalog publish까지 구현했습니다.
+최종 실행 경로는 원본 UI와 실제 전투 runtime이 local backend를 사용하는 구조입니다. Phase 1D에서는 아래 경로 중 캐릭터·전투 보조 catalog와 Challenge RaidSnapshot import/domain/catalog publish까지 구현했습니다.
 
     C:\NIKKE (read-only)
             |
@@ -9,11 +9,12 @@
             |                                  |
             +------------ provenance ----------+
                                |
-                 +-------------+-------------+
-                 v                           v
-          Character catalog            RaidSnapshot store
-                 |                           |
-                 +-------------+-------------+
+                 +-------------+-------------+-------------+
+                 v                           v             v
+          Character catalog        Combat-support       RaidSnapshot
+                                    catalog              store
+                 |                           |             |
+                 +-------------+-------------+-------------+
                                v
                           PostgreSQL
                                |
@@ -28,7 +29,7 @@
 
 lab-owned harness는 importer, API, revision, admission, 결과 계약을 검증하는 sidecar입니다. 최종 사용자 실행 경로나 원본 전투 검증의 대체물이 아닙니다.
 
-## 구현된 Phase 1C 모듈
+## 구현된 Phase 1D 모듈
 
 - `Identity`: 자체 UUID와 HMAC source identity 경계
 - `Provenance`: source/dataset/extractor/request canonical hash
@@ -37,10 +38,12 @@ lab-owned harness는 importer, API, revision, admission, 결과 계약을 검증
 - `Import.Sources`: 읽기 전용 source capability
 - `Domain.Character`: immutable 캐릭터 정의·버전과 combat-max/v1
 - `Import.CharacterCatalog`: strict StaticData/sd.bin reader와 정규화
+- `Domain.CombatSupport`: Tier 9·10 장비, cube, collection/favorite, console, OL definition/version과 canonical manifest
+- `Import.CombatSupportCatalog`: strict StaticData reader와 source-ID-free 전투 보조 candidate
 - `Domain.Raid`: Challenge admission policy, 정적 파츠와 ordered monster-skill slot 관계, evidence tier, RaidSnapshot v2
 - `Import.RaidCatalog`: strict Challenge FK chain과 typed behavior/bundle/timing evidence reader
-- `Persistence.PostgreSql`: import ledger와 원자적 character/Challenge raid catalog publish
-- `Import.Cli`: config-check/init/migrate 및 character/Challenge raid catalog inspect/import 진입점
+- `Persistence.PostgreSql`: import ledger와 원자적 character/combat-support/Challenge raid catalog publish
+- `Import.Cli`: config-check/init/migrate 및 세 catalog inspect/import 진입점
 
 ## 후속 예정 모듈
 

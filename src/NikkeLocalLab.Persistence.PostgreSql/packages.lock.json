@@ -44,6 +44,13 @@
           "NikkeLocalLab.Provenance": "[1.0.0, )"
         }
       },
+      "nikkelocallab.domain.combatsupport": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
       "nikkelocallab.domain.raid": {
         "type": "Project",
         "dependencies": {

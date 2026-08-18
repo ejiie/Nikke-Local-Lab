@@ -19,7 +19,7 @@ public sealed class PostgreSqlRaidSnapshotTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(3, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(4, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     Assert.Equal(0, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     var staticArtifact = Artifact("synthetic-static-data");
@@ -806,6 +806,7 @@ public sealed class PostgreSqlRaidSnapshotTests
 
     await using var command = dataSource.CreateCommand(
         """
+        DROP SCHEMA IF EXISTS lab_combat_support CASCADE;
         DROP SCHEMA IF EXISTS lab_raid CASCADE;
         DROP SCHEMA IF EXISTS lab_private CASCADE;
         DROP SCHEMA IF EXISTS lab_catalog CASCADE;

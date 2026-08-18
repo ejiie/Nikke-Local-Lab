@@ -40,6 +40,7 @@ public static class ImportDiagnosticCatalog
   private static readonly HashSet<string> StageCodes = new(StringComparer.Ordinal)
     {
         "catalog",
+        "combat_support_catalog",
         "extract",
         "raid_catalog",
         "source"
@@ -51,6 +52,9 @@ public static class ImportDiagnosticCatalog
         "character_skill_unresolved",
         "character_variant_conflict",
         "character_weapon_unresolved",
+        "collection_weapon_class_unknown",
+        "combat_stat_unknown",
+        "cube_stat_unit_unresolved",
         "affinity_unresolved",
         "authoritative_challenge_chain_unresolved",
         "behavior_evidence_unresolved",
@@ -59,13 +63,16 @@ public static class ImportDiagnosticCatalog
         "cube_maximum_unresolved",
         "excluded_by_policy",
         "fixture_kind_invalid",
+        "favorite_character_relation_unresolved",
         "monster_skill_relations_unresolved",
         "part_topology_unresolved",
         "part_type_unresolved",
         "source_changed_during_import",
+        "skill_definition_catalog_not_imported",
         "spot_behavior_unresolved",
         "synthetic_parse_failed",
-        "unsupported_by_policy"
+        "unsupported_by_policy",
+        "overload_duplicate_policy_unresolved"
     };
 
   public static string RequireStageCode(string value) =>

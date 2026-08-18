@@ -33,6 +33,9 @@
 - 캐릭터 catalog의 ledger 완료와 snapshot publish는 한 PostgreSQL transaction에서 원자적으로 처리한다.
 - 캐릭터 subtype과 sd.bin runtime cap을 함께 사용해 호감도 최대값을 해소한다.
 - 현재 설치본만으로 전체 캐릭터 StaticData를 구성할 수 없으므로 보관된 pack과의 혼합 입력은 검증 전용이며 current-authoritative로 게시하지 않는다.
+- 전투 보조 장비 catalog는 profile 이관 범위에 맞춰 Tier 9·10의 24개 정의만 게시한다. Tier 0은 미장착 상태이며 Tier 1~8은 unsupported다.
+- 콘솔은 9개 좌표마다 source snapshot에서 확인한 연속 Level `1..MaximumLevel` legality와 별도의 level당 flat stat 계수를 저장한다. Level 0은 기여 없는 account state다. 보존된 Aug13 snapshot은 최대 680, 이전 snapshot은 580이므로 상한을 코드에 고정하지 않는다.
+- OL은 표준 Tier 10 group의 9종 옵션, 각 15개 이산 값과 확률 band를 보존한다. 같은 장비 내 중복 옵션 정책만 `unresolved`이며 research exact write는 허용한다.
 - synchro와 9개 Recycler Room console은 캐릭터 build가 아니라 불변 `AccountCombatStateRevision`이 소유한다.
 - 그래픽·FPS와 전투 조작 설정은 `RaidSnapshot`이나 character build에 넣지 않고 별도 execution/control profile revision으로 저장한다.
 - target FPS, fixed delta, time scale, multiplayer override와 `MaxPerShotCorrect`가 unresolved인 전투는 golden 비교 대상으로 승격하지 않는다.

@@ -10,17 +10,11 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\NikkeLocalLab.Application\NikkeLocalLab.Application.csproj" />
-    <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.Character\NikkeLocalLab.Domain.Character.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.CombatSupport\NikkeLocalLab.Domain.CombatSupport.csproj" />
-    <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.Raid\NikkeLocalLab.Domain.Raid.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Identity\NikkeLocalLab.Identity.csproj" />
-    <ProjectReference Include="..\..\src\NikkeLocalLab.Import.Sources\NikkeLocalLab.Import.Sources.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Import.Cli\NikkeLocalLab.Import.Cli.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Import.CombatSupportCatalog\NikkeLocalLab.Import.CombatSupportCatalog.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Persistence.PostgreSql\NikkeLocalLab.Persistence.PostgreSql.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Provenance\NikkeLocalLab.Provenance.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="..\fixtures\synthetic\import-source.phase1a.json"
-          Link="Fixtures\import-source.phase1a.json"
-          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
