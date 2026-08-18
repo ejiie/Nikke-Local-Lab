@@ -24,12 +24,18 @@
 
 ## Phase 2 — local backend와 캐릭터 write
 
+Phase 2 전에 Phase 1D에서 equipment, cube, collection/favorite, console, OL option의 선택 가능한 자체 definition catalog를 완성합니다. 이 catalog는 `V0004__combat_support_catalog.sql`을 소유합니다.
+
 - PostgreSQL migration과 자체 합성 account/session을 구현한다.
+- synchro와 console level/EXP의 불변 account combat state revision을 구현한다.
 - 캐릭터 build 생성·조회·부분 수정·revision 전환 API를 구현한다.
 - 자유 레벨, T10/+5, 큐브 장착·해제/Lv15, 10/10/10, OL exact write, 소장품·애장품 적용 여부를 검증한다.
 - 5인 squad revision과 단일 active Challenge snapshot을 구현한다.
 - 일반 1~7단계는 전투 없이 Challenge 해금 상태만 제공한다.
 - Challenge session begin/result 계약과 재현용 trace 저장을 구현한다.
+- credential-bearing legacy raw는 offline sanitizer로만 읽고, allowlist field를 source-ID-free profile draft로 변환한다.
+- 별도 관리 UI는 loopback API를 통해 Save, Save As와 적용 diff를 수행한다.
+- runtime execution profile과 combat control profile을 전투 결과에 고정하고 requested/effective 값을 분리한다.
 
 lab-owned harness는 이 단계에서 API·계약·DB를 자동 검증하는 test client로만 사용합니다.
 
@@ -63,3 +69,5 @@ lab-owned harness는 이 단계에서 API·계약·DB를 자동 검증하는 tes
 - 허용되지 않은 시즌을 임시 실행 가능 snapshot으로 만들지 않는다.
 - 원본 ID·경로·파일명을 domain/API/log에 노출하지 않는다.
 - runtime 근거가 부족한 시즌을 `historical_runtime_exact`로 승격하지 않는다.
+- legacy crawler, 로그인 session 또는 authenticated request replay를 local backend에 이식하지 않는다.
+- profile editor가 PostgreSQL, 원본 게임 파일 또는 공식 계정을 직접 수정하게 하지 않는다.

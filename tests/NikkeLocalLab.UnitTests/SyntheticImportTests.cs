@@ -13,6 +13,17 @@ public sealed class SyntheticImportTests
   [Fact]
   public void DiagnosticCodesMustComeFromTheControlledCatalog()
   {
+    var staticBindingMismatch = new SafeDiagnostic(
+        ImportDiagnosticSeverity.Warning,
+        "raid_catalog",
+        "compatibility_static_binding_mismatch");
+    var unmatchedEvidence = new SafeDiagnostic(
+        ImportDiagnosticSeverity.Warning,
+        "raid_catalog",
+        "compatibility_evidence_unmatched");
+
+    Assert.Equal("compatibility_static_binding_mismatch", staticBindingMismatch.DiagnosticCode);
+    Assert.Equal("compatibility_evidence_unmatched", unmatchedEvidence.DiagnosticCode);
     Assert.Throws<ArgumentException>(() => new SafeDiagnostic(
         ImportDiagnosticSeverity.Error,
         "extract",

@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net8.0": {
+      "nikkelocallab.identity": {
+        "type": "Project"
+      },
+      "nikkelocallab.provenance": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )"
+        }
+      }
+    }
+  }
+}

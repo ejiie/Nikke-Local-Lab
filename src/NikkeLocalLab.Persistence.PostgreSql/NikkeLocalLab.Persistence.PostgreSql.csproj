@@ -2,6 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="..\NikkeLocalLab.Application\NikkeLocalLab.Application.csproj" />
     <ProjectReference Include="..\NikkeLocalLab.Domain.Character\NikkeLocalLab.Domain.Character.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Domain.Raid\NikkeLocalLab.Domain.Raid.csproj" />
     <ProjectReference Include="..\NikkeLocalLab.Identity\NikkeLocalLab.Identity.csproj" />
     <ProjectReference Include="..\NikkeLocalLab.Provenance\NikkeLocalLab.Provenance.csproj" />
     <PackageReference Include="Npgsql" />

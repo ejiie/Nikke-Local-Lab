@@ -41,6 +41,7 @@ public static class ImportDiagnosticCatalog
     {
         "catalog",
         "extract",
+        "raid_catalog",
         "source"
     };
 
@@ -50,10 +51,21 @@ public static class ImportDiagnosticCatalog
         "character_skill_unresolved",
         "character_variant_conflict",
         "character_weapon_unresolved",
+        "affinity_unresolved",
+        "authoritative_challenge_chain_unresolved",
+        "behavior_evidence_unresolved",
+        "compatibility_evidence_unmatched",
+        "compatibility_static_binding_mismatch",
         "cube_maximum_unresolved",
+        "excluded_by_policy",
         "fixture_kind_invalid",
+        "monster_skill_relations_unresolved",
+        "part_topology_unresolved",
+        "part_type_unresolved",
         "source_changed_during_import",
-        "synthetic_parse_failed"
+        "spot_behavior_unresolved",
+        "synthetic_parse_failed",
+        "unsupported_by_policy"
     };
 
   public static string RequireStageCode(string value) =>

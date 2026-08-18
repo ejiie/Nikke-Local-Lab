@@ -15,6 +15,7 @@
     "mode",
     "challengeCompatibility",
     "admission",
+    "staticRelations",
     "provenance",
     "compatibility",
     "readiness"
@@ -26,7 +27,7 @@
     "challengeEncounterUid": { "$ref": "#/$defs/uuid" },
     "bossVariantUid": { "$ref": "#/$defs/uuid" },
     "compatibilityMapUid": {
-      "description": "Own UUID for the required Git-ignored local compatibility map; never a source content identifier.",
+      "description": "Own UUID for the dataset-scoped, source-free compatibility binding marker. Raw client mappings are not part of this published contract.",
       "$ref": "#/$defs/uuid"
     },
     "seasonNumber": {
@@ -68,6 +69,7 @@
         "status": { "const": "supported" }
       }
     },
+    "staticRelations": { "$ref": "#/$defs/staticRelations" },
     "provenance": {
       "type": "object",
       "additionalProperties": false,
@@ -77,25 +79,54 @@
         "assetBundleSetSha256",
         "behavior",
         "timelines",
-        "clientRuntime"
+        "clientRuntime",
+        "timing"
       ],
       "properties": {
         "staticData": { "$ref": "#/$defs/artifactRef" },
         "selectedAssetBundles": {
           "type": "array",
-          "minItems": 1,
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/assetBundleRef" }
         },
-        "assetBundleSetSha256": { "$ref": "#/$defs/sha256" },
-        "behavior": { "$ref": "#/$defs/artifactRef" },
+        "assetBundleSetSha256": {
+          "oneOf": [
+            { "$ref": "#/$defs/sha256" },
+            { "type": "null" }
+          ]
+        },
+        "behavior": {
+          "oneOf": [
+            { "$ref": "#/$defs/artifactRef" },
+            { "type": "null" }
+          ]
+        },
         "timelines": {
           "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/artifactRef" }
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/timelineRef" }
         },
-        "clientRuntime": { "$ref": "#/$defs/clientRuntimeRef" }
-      }
+        "clientRuntime": { "$ref": "#/$defs/clientRuntimeRef" },
+        "timing": { "$ref": "#/$defs/timingProvenance" }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "selectedAssetBundles": { "maxItems": 0 },
+                "assetBundleSetSha256": { "type": "null" }
+              }
+            },
+            {
+              "properties": {
+                "selectedAssetBundles": { "minItems": 1 },
+                "assetBundleSetSha256": { "$ref": "#/$defs/sha256" }
+              }
+            }
+          ]
+        }
+      ]
     },
     "compatibility": {
       "type": "object",
@@ -119,7 +150,8 @@
         },
         "evidenceWarnings": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/controlledCode" }
         }
       }
     },
@@ -132,7 +164,8 @@
         "status": { "const": "ready" },
         "warnings": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/controlledCode" }
         }
       }
     }
@@ -170,6 +203,80 @@
       "if": {
         "properties": {
           "compatibility": {
+            "properties": {
+              "runtimeRelation": {
+                "enum": ["current_runtime_match", "historical_runtime_match"]
+              }
+            },
+            "required": ["runtimeRelation"]
+          }
+        },
+        "required": ["compatibility"]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "clientRuntime": { "$ref": "#/$defs/resolvedClientRuntimeRef" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "compatibility": {
+            "properties": { "tier": { "const": "static_exact" } },
+            "required": ["tier"]
+          }
+        },
+        "required": ["compatibility"]
+      },
+      "then": {
+        "properties": {
+          "compatibility": {
+            "properties": {
+              "evidenceWarnings": { "minItems": 1 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "compatibility": {
+            "properties": {
+              "tier": {
+                "enum": [
+                  "behavior_exact",
+                  "asset_exact_runtime_current",
+                  "historical_runtime_exact"
+                ]
+              }
+            },
+            "required": ["tier"]
+          }
+        },
+        "required": ["compatibility"]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "selectedAssetBundles": { "minItems": 1 },
+              "assetBundleSetSha256": { "$ref": "#/$defs/sha256" },
+              "behavior": { "$ref": "#/$defs/artifactRef" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "compatibility": {
             "type": "object",
             "properties": {
               "tier": { "const": "asset_exact_runtime_current" }
@@ -187,13 +294,17 @@
             }
           },
           "provenance": {
+            "$ref": "#/$defs/runtimeExactProvenance",
             "properties": {
               "clientRuntime": {
                 "properties": {
                   "buildUid": { "$ref": "#/$defs/uuid" },
-                  "localBuildLabel": { "type": "string", "minLength": 1 },
+                  "localBuildLabel": { "$ref": "#/$defs/controlledCode" },
                   "sha256": { "$ref": "#/$defs/sha256" }
                 }
+              },
+              "timing": {
+                "$ref": "#/$defs/runtimeExactTiming"
               }
             }
           }
@@ -221,13 +332,17 @@
             }
           },
           "provenance": {
+            "$ref": "#/$defs/runtimeExactProvenance",
             "properties": {
               "clientRuntime": {
                 "properties": {
                   "buildUid": { "$ref": "#/$defs/uuid" },
-                  "localBuildLabel": { "type": "string", "minLength": 1 },
+                  "localBuildLabel": { "$ref": "#/$defs/controlledCode" },
                   "sha256": { "$ref": "#/$defs/sha256" }
                 }
+              },
+              "timing": {
+                "$ref": "#/$defs/runtimeExactTiming"
               }
             }
           }
@@ -245,8 +360,82 @@
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
+    "controlledCode": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]{0,63}$"
+    },
     "elementCode": {
       "enum": ["fire", "water", "wind", "electric", "iron"]
+    },
+    "staticRelations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parts", "skills"],
+      "properties": {
+        "parts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/partRelation" }
+        },
+        "skills": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/skillRelation" }
+        }
+      }
+    },
+    "partRelation": {
+      "description": "Source-ID-free part relation. typeCode is a normalized semantic code, never a copied source enum.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "partUid",
+        "ordinal",
+        "typeCode",
+        "damageHpRatio",
+        "hpRatio",
+        "defenceRatio",
+        "energyResistRatio",
+        "metalResistRatio",
+        "bioResistRatio",
+        "attackRatio",
+        "isMainPart",
+        "isDamageable",
+        "isHpVisible",
+        "linkedPartUid"
+      ],
+      "properties": {
+        "partUid": { "$ref": "#/$defs/uuid" },
+        "ordinal": { "type": "integer", "minimum": 0 },
+        "typeCode": { "$ref": "#/$defs/controlledCode" },
+        "damageHpRatio": { "type": "integer", "minimum": 0 },
+        "hpRatio": { "type": "integer", "minimum": 0 },
+        "defenceRatio": { "type": "integer", "minimum": 0 },
+        "energyResistRatio": { "type": "integer", "minimum": 0 },
+        "metalResistRatio": { "type": "integer", "minimum": 0 },
+        "bioResistRatio": { "type": "integer", "minimum": 0 },
+        "attackRatio": { "type": "integer", "minimum": 0 },
+        "isMainPart": { "type": "boolean" },
+        "isDamageable": { "type": "boolean" },
+        "isHpVisible": { "type": "boolean" },
+        "linkedPartUid": {
+          "oneOf": [
+            { "$ref": "#/$defs/uuid" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "skillRelation": {
+      "description": "Source-ID-free identity for one ordered monster-skill slot. Phase 1C preserves slot occupancy and order, not normalized skill-definition identity or runtime semantics.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["skillUid", "ordinal", "roleCode"],
+      "properties": {
+        "skillUid": { "$ref": "#/$defs/uuid" },
+        "ordinal": { "type": "integer", "minimum": 0 },
+        "roleCode": { "$ref": "#/$defs/controlledCode" }
+      }
     },
     "artifactRef": {
       "type": "object",
@@ -282,6 +471,426 @@
         }
       }
     },
+    "clockBasis": {
+      "enum": ["behavior_tick", "render_frame", "fixed_update", "wall_clock"]
+    },
+    "timelineRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactUid", "sha256", "clockBases"],
+      "properties": {
+        "artifactUid": { "$ref": "#/$defs/uuid" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "clockBases": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/clockBasis" }
+        }
+      }
+    },
+    "clockBasisEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "resolution", "evidenceArtifacts", "reasonCode"],
+      "properties": {
+        "basis": { "$ref": "#/$defs/clockBasis" },
+        "resolution": {
+          "enum": ["unresolved", "static_analysis", "runtime_trace"]
+        },
+        "evidenceArtifacts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/artifactRef" }
+        },
+        "reasonCode": {
+          "oneOf": [
+            { "$ref": "#/$defs/controlledCode" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "resolution": { "const": "unresolved" },
+            "evidenceArtifacts": { "maxItems": 0 },
+            "reasonCode": { "$ref": "#/$defs/controlledCode" }
+          }
+        },
+        {
+          "properties": {
+            "resolution": { "enum": ["static_analysis", "runtime_trace"] },
+            "evidenceArtifacts": { "minItems": 1 },
+            "reasonCode": { "type": "null" }
+          }
+        }
+      ]
+    },
+    "schedulerEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolution", "relatedClockBases", "evidenceArtifacts", "reasonCode"],
+      "properties": {
+        "resolution": {
+          "enum": ["unresolved", "static_analysis", "runtime_trace"]
+        },
+        "relatedClockBases": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/clockBasis" }
+        },
+        "evidenceArtifacts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/artifactRef" }
+        },
+        "reasonCode": {
+          "oneOf": [
+            { "$ref": "#/$defs/controlledCode" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "resolution": { "const": "unresolved" },
+            "evidenceArtifacts": { "maxItems": 0 },
+            "reasonCode": { "$ref": "#/$defs/controlledCode" }
+          }
+        },
+        {
+          "properties": {
+            "resolution": { "enum": ["static_analysis", "runtime_trace"] },
+            "evidenceArtifacts": { "minItems": 1 },
+            "reasonCode": { "type": "null" }
+          }
+        }
+      ]
+    },
+    "timingProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clockBases", "scheduler"],
+      "properties": {
+        "clockBases": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/clockBasisEvidence" },
+          "allOf": [
+            {
+              "contains": {
+                "properties": { "basis": { "const": "behavior_tick" } },
+                "required": ["basis"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": { "basis": { "const": "render_frame" } },
+                "required": ["basis"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": { "basis": { "const": "fixed_update" } },
+                "required": ["basis"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": { "basis": { "const": "wall_clock" } },
+                "required": ["basis"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        },
+        "scheduler": { "$ref": "#/$defs/schedulerEvidence" }
+      }
+    },
+    "runtimeExactTiming": {
+      "type": "object",
+      "required": ["clockBases", "scheduler"],
+      "properties": {
+        "scheduler": {
+          "properties": {
+            "resolution": {
+              "enum": ["static_analysis", "runtime_trace"]
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "scheduler": {
+                "properties": {
+                  "relatedClockBases": {
+                    "contains": { "const": "behavior_tick" }
+                  }
+                },
+                "required": ["relatedClockBases"]
+              }
+            },
+            "required": ["scheduler"]
+          },
+          "then": {
+            "properties": {
+              "clockBases": {
+                "contains": {
+                  "properties": {
+                    "basis": { "const": "behavior_tick" },
+                    "resolution": { "enum": ["static_analysis", "runtime_trace"] }
+                  },
+                  "required": ["basis", "resolution"]
+                },
+                "minContains": 1,
+                "maxContains": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "scheduler": {
+                "properties": {
+                  "relatedClockBases": {
+                    "contains": { "const": "render_frame" }
+                  }
+                },
+                "required": ["relatedClockBases"]
+              }
+            },
+            "required": ["scheduler"]
+          },
+          "then": {
+            "properties": {
+              "clockBases": {
+                "contains": {
+                  "properties": {
+                    "basis": { "const": "render_frame" },
+                    "resolution": { "enum": ["static_analysis", "runtime_trace"] }
+                  },
+                  "required": ["basis", "resolution"]
+                },
+                "minContains": 1,
+                "maxContains": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "scheduler": {
+                "properties": {
+                  "relatedClockBases": {
+                    "contains": { "const": "fixed_update" }
+                  }
+                },
+                "required": ["relatedClockBases"]
+              }
+            },
+            "required": ["scheduler"]
+          },
+          "then": {
+            "properties": {
+              "clockBases": {
+                "contains": {
+                  "properties": {
+                    "basis": { "const": "fixed_update" },
+                    "resolution": { "enum": ["static_analysis", "runtime_trace"] }
+                  },
+                  "required": ["basis", "resolution"]
+                },
+                "minContains": 1,
+                "maxContains": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "scheduler": {
+                "properties": {
+                  "relatedClockBases": {
+                    "contains": { "const": "wall_clock" }
+                  }
+                },
+                "required": ["relatedClockBases"]
+              }
+            },
+            "required": ["scheduler"]
+          },
+          "then": {
+            "properties": {
+              "clockBases": {
+                "contains": {
+                  "properties": {
+                    "basis": { "const": "wall_clock" },
+                    "resolution": { "enum": ["static_analysis", "runtime_trace"] }
+                  },
+                  "required": ["basis", "resolution"]
+                },
+                "minContains": 1,
+                "maxContains": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "runtimeExactProvenance": {
+      "type": "object",
+      "required": ["timelines", "timing"],
+      "properties": {
+        "timing": { "$ref": "#/$defs/runtimeExactTiming" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "timelines": {
+                "contains": {
+                  "properties": {
+                    "clockBases": {
+                      "contains": { "const": "behavior_tick" }
+                    }
+                  },
+                  "required": ["clockBases"]
+                }
+              }
+            },
+            "required": ["timelines"]
+          },
+          "then": {
+            "properties": {
+              "timing": {
+                "properties": {
+                  "scheduler": {
+                    "properties": {
+                      "relatedClockBases": {
+                        "contains": { "const": "behavior_tick" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "timelines": {
+                "contains": {
+                  "properties": {
+                    "clockBases": {
+                      "contains": { "const": "render_frame" }
+                    }
+                  },
+                  "required": ["clockBases"]
+                }
+              }
+            },
+            "required": ["timelines"]
+          },
+          "then": {
+            "properties": {
+              "timing": {
+                "properties": {
+                  "scheduler": {
+                    "properties": {
+                      "relatedClockBases": {
+                        "contains": { "const": "render_frame" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "timelines": {
+                "contains": {
+                  "properties": {
+                    "clockBases": {
+                      "contains": { "const": "fixed_update" }
+                    }
+                  },
+                  "required": ["clockBases"]
+                }
+              }
+            },
+            "required": ["timelines"]
+          },
+          "then": {
+            "properties": {
+              "timing": {
+                "properties": {
+                  "scheduler": {
+                    "properties": {
+                      "relatedClockBases": {
+                        "contains": { "const": "fixed_update" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "timelines": {
+                "contains": {
+                  "properties": {
+                    "clockBases": {
+                      "contains": { "const": "wall_clock" }
+                    }
+                  },
+                  "required": ["clockBases"]
+                }
+              }
+            },
+            "required": ["timelines"]
+          },
+          "then": {
+            "properties": {
+              "timing": {
+                "properties": {
+                  "scheduler": {
+                    "properties": {
+                      "relatedClockBases": {
+                        "contains": { "const": "wall_clock" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
     "clientRuntimeRef": {
       "type": "object",
       "additionalProperties": false,
@@ -304,6 +913,25 @@
             { "type": "null" }
           ]
         }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "buildUid": { "type": "null" },
+            "localBuildLabel": { "type": "null" },
+            "sha256": { "type": "null" }
+          }
+        },
+        { "$ref": "#/$defs/resolvedClientRuntimeRef" }
+      ]
+    },
+    "resolvedClientRuntimeRef": {
+      "type": "object",
+      "required": ["buildUid", "localBuildLabel", "sha256"],
+      "properties": {
+        "buildUid": { "$ref": "#/$defs/uuid" },
+        "localBuildLabel": { "$ref": "#/$defs/controlledCode" },
+        "sha256": { "$ref": "#/$defs/sha256" }
       }
     }
   }

@@ -30,43 +30,63 @@
 - ledger 완료와 catalog publish를 한 PostgreSQL transaction으로 묶었습니다.
 - 실제 설치본에 전체 캐릭터 StaticData가 없음을 확인했으며, 보관된 과거 pack과 현재 config의 혼합 입력은 검증 전용으로만 취급합니다.
 
-## 3. Phase 1C — Challenge snapshot importer
+## 3. Phase 1C — Challenge snapshot importer — 완료
 
-구현 순서는 다음과 같습니다.
+- manager→Challenge preset→wave group→wave→target/spawn monster의 authoritative chain과 element/weakness를 최신 StaticData에서 해소합니다.
+- 정규화한 파츠 관계와 스킬 슬롯 개수·순서는 자체 UUID/ordinal로 `RaidSnapshot v2`에 저장합니다. 스킬 정의 identity와 효과 semantics 정규화는 후속 단계입니다.
+- 호환성 tier가 요구하는 증거만 강제합니다. `static_exact`은 미해소 상위 근거를 warning으로 공개하고, `behavior_exact`부터 behavior와 선택 bundle을 요구하며, runtime-exact tier는 runtime·scheduler·관련 clock 근거까지 요구합니다.
+- V0003 migration은 import ledger 완료와 immutable snapshot 게시를 한 transaction으로 처리합니다.
+- 합성 fixture/CI, canonical hash, rollback 및 source-ID-free receipt를 검증했습니다.
+- 최신 실제 StaticData는 원본을 변경하지 않는 local smoke로 읽었으며, 정책상 시즌 `7, 13, 26, 29, 34, 40` 여섯 개만 publish 대상임을 확인했습니다.
 
-1. 시즌 40 사치스러운 거미
-2. 시즌 7 울트라
-3. 시즌 13 인디빌리아
-4. 시즌 26 프로비던스
-5. 시즌 29 마더웨일 전격 변종
-6. 시즌 34 앨트루이아
+현재 증거 상한:
 
-각 시즌마다 manager→Challenge preset→wave→monster→spot behavior의 authoritative chain, element/weakness, parts, behavior, timeline, selected bundle, runtime hash를 검증합니다. 시즌 14·39와 미해소 후보는 publish하지 않고 diagnostic으로 남깁니다.
+| 시즌 | 최대 tier | 보존하는 결손 근거 |
+|---:|---|---|
+| 7, 13, 26, 29, 34 | `static_exact` | behavior bundle byte 미확보: `behavior_unresolved` |
+| 40 | `behavior_exact` | timeline partial: `timeline_unresolved`; runtime 미평가: `runtime_not_evaluated` |
 
-완료 기준: 여섯 시즌만 `RaidSnapshot v2`로 publish되고, 같은 입력의 canonical hash가 항상 동일해야 합니다.
+완료 기준 충족: 여섯 시즌만 publish하며 같은 입력의 canonical hash는 결정적입니다. 여기서 완료는 importer, V0003 원자적 publish, 합성 CI와 실제 read-only smoke의 완료를 뜻합니다. 원본 client 실행, 완전한 timeline, 현재 runtime exact 또는 역사 runtime exact를 뜻하지 않습니다.
 
-## 4. Phase 2A — 캐릭터 build write API
+## 4. Phase 1D — 전투 보조 catalog
+
+- equipment, cube, collection/favorite, console, OL option을 자체 definition/version으로 publish한다.
+- 9개 console 좌표와 level별 stat 기여를 정규화한다.
+- profile editor가 선택할 수 있는 source-ID-free reference를 제공한다.
+
+완료 기준: profile write가 raw ID나 추측값 없이 모든 전투 보조 항목을 자체 UID로 해소할 수 있어야 합니다.
+
+## 5. Phase 2A — account/profile/build write
 
 - 합성 local account/session을 구현한다.
+- synchro와 console level/EXP를 `AccountCombatStateRevision`으로 구현한다.
 - 자유 character level과 immutable build revision을 구현한다.
 - T10/+5 네 부위, 큐브 장착·해제 및 자유 레벨, 스킬 10/10/10을 구현한다.
 - OL 4×3 line의 exact decimal 추가·교체·삭제를 구현한다.
 - 소장품·애장품 max/default와 N/A를 구현한다.
 - 5인 squad revision을 구현한다.
+- credential-bearing raw에서 허용된 전투 필드만 읽는 offline sanitizer를 구현한다.
+- Save, Save As, local account apply diff를 loopback API와 별도 editor에 구현한다.
+- 사용자가 별도로 갱신한 최신 raw를 네트워크 없이 다시 읽는 refresh command를 구현한다.
 
 완료 기준: 모든 write가 새 revision을 만들고 과거 전투 결과의 참조가 변하지 않아야 합니다.
 
-## 5. Phase 2B — Challenge session backend
+## 6. Phase 2B — execution profile과 Challenge session backend
 
 - 단일 active supported season을 선택한다.
 - 일반 1~7단계는 `lastClearLevel=7` 해금 상태만 제공한다.
 - Challenge begin, squad binding, result, trace 저장 계약을 구현한다.
 - unsupported season과 runtime mismatch를 fail closed 처리한다.
+- target FPS/fixed delta/time scale, graphics와 combat-control profile을 session에 고정한다.
+- graphics/FPS/VSync/resolution과 PC `UsePcAimSync`, 조준 보조·조건부 강도, 감도, `MaxPerShotCorrect`를 필수 입력으로 검증한다.
+- auto combat과 auto burst는 optional로 두고 수동 전투 readiness와 분리한다.
+- 원본 ESC UI의 client-local 누적 damage 경로를 보존하고 관측 snapshot과 현재 setting revision을 저장한다. mid-battle 변경은 요청 frame과 effective resume frame을 구분해 execution segment로 기록한다.
+- 요청 설정과 실제 frame-time telemetry를 분리해 기록한다.
 - harness로 API/DB 계약만 자동 검증한다.
 
 완료 기준: 지원 snapshot과 ready squad만 session을 시작할 수 있고 결과가 정확한 snapshot/build revision을 참조해야 합니다.
 
-## 6. Phase 3 — Original client gate 재감사
+## 7. Phase 3 — Original client gate 재감사
 
 - 권리자가 지원·승인한 local/test route의 존재를 재확인한다.
 - 합성 session과 공식 outbound zero를 입증한다.
@@ -74,7 +94,7 @@
 
 gate가 열리지 않으면 adapter는 blocked이고 최종 인수 조건은 미달입니다. 자체 UI나 harness로 대체하지 않습니다.
 
-## 7. Phase 4 — 실제 전투 검증
+## 8. Phase 4 — 실제 전투 검증
 
 - 원본 UI의 캐릭터 상태와 squad 표시를 검증한다.
 - 여섯 Challenge의 scene, behavior, animation, QTE, parts를 실제 runtime에서 검증한다.
@@ -87,4 +107,4 @@ Union Raid는 위 흐름이 안정화되고 사용자가 다시 범위를 확장
 
 ## 바로 다음 작업
 
-다음 구현 commit은 **Phase 1C Challenge snapshot importer**입니다. 시즌 40부터 authoritative chain과 selected behavior/timeline/bundle/runtime provenance를 자체 RaidSnapshot으로 정규화합니다.
+다음 구현 commit은 **Phase 1D 전투 보조 catalog**입니다. equipment, cube, collection/favorite, console, OL option을 source-ID-free definition/version으로 게시해 Phase 2 profile write가 추측값 없이 참조할 수 있게 합니다.

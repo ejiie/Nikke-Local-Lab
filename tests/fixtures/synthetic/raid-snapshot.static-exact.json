@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 2,
+  "raidSnapshotUid": "20000000-0000-4000-8000-000000000001",
+  "datasetSnapshotUid": "20000000-0000-4000-8000-000000000002",
+  "challengeEncounterUid": "20000000-0000-4000-8000-000000000003",
+  "bossVariantUid": "20000000-0000-4000-8000-000000000004",
+  "compatibilityMapUid": "20000000-0000-4000-8000-000000000005",
+  "seasonNumber": 7,
+  "mode": "challenge",
+  "challengeCompatibility": {
+    "difficultyType": 2,
+    "waveOrder": 8
+  },
+  "admission": {
+    "policyId": "challenge-boss-support/v1",
+    "rule": "electric_weak_to_iron",
+    "bossElement": "electric",
+    "weaknessCode": "iron",
+    "status": "supported"
+  },
+  "staticRelations": {
+    "parts": [
+      {
+        "partUid": "20000000-0000-4000-8000-000000000021",
+        "ordinal": 0,
+        "typeCode": "core",
+        "damageHpRatio": 10000,
+        "hpRatio": 10000,
+        "defenceRatio": 10000,
+        "energyResistRatio": 10000,
+        "metalResistRatio": 10000,
+        "bioResistRatio": 10000,
+        "attackRatio": 10000,
+        "isMainPart": true,
+        "isDamageable": true,
+        "isHpVisible": true,
+        "linkedPartUid": null
+      }
+    ],
+    "skills": [
+      {
+        "skillUid": "20000000-0000-4000-8000-000000000031",
+        "ordinal": 0,
+        "roleCode": "active"
+      }
+    ]
+  },
+  "provenance": {
+    "staticData": {
+      "artifactUid": "20000000-0000-4000-8000-000000000011",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "selectedAssetBundles": [],
+    "assetBundleSetSha256": null,
+    "behavior": null,
+    "timelines": [],
+    "clientRuntime": {
+      "buildUid": null,
+      "localBuildLabel": null,
+      "sha256": null
+    },
+    "timing": {
+      "clockBases": [
+        {
+          "basis": "behavior_tick",
+          "resolution": "unresolved",
+          "evidenceArtifacts": [],
+          "reasonCode": "behavior_tick_not_evaluated"
+        },
+        {
+          "basis": "fixed_update",
+          "resolution": "unresolved",
+          "evidenceArtifacts": [],
+          "reasonCode": "fixed_update_not_evaluated"
+        },
+        {
+          "basis": "render_frame",
+          "resolution": "unresolved",
+          "evidenceArtifacts": [],
+          "reasonCode": "render_frame_not_evaluated"
+        },
+        {
+          "basis": "wall_clock",
+          "resolution": "unresolved",
+          "evidenceArtifacts": [],
+          "reasonCode": "wall_clock_not_evaluated"
+        }
+      ],
+      "scheduler": {
+        "resolution": "unresolved",
+        "relatedClockBases": [
+          "behavior_tick",
+          "fixed_update",
+          "render_frame",
+          "wall_clock"
+        ],
+        "evidenceArtifacts": [],
+        "reasonCode": "scheduler_not_evaluated"
+      }
+    }
+  },
+  "compatibility": {
+    "tier": "static_exact",
+    "runtimeRelation": "not_evaluated",
+    "evidenceWarnings": [
+      "behavior_unresolved"
+    ]
+  },
+  "readiness": {
+    "status": "ready",
+    "warnings": []
+  }
+}
