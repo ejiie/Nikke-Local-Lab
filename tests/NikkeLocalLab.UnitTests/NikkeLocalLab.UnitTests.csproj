@@ -12,6 +12,7 @@
     <ProjectReference Include="..\..\src\NikkeLocalLab.Application\NikkeLocalLab.Application.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Configuration\NikkeLocalLab.Configuration.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Identity\NikkeLocalLab.Identity.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Import.CharacterCatalog\NikkeLocalLab.Import.CharacterCatalog.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Import.Sources\NikkeLocalLab.Import.Sources.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Persistence.PostgreSql\NikkeLocalLab.Persistence.PostgreSql.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Provenance\NikkeLocalLab.Provenance.csproj" />

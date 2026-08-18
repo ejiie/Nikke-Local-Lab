@@ -15,10 +15,13 @@
 
     alias_fingerprint = HMAC-SHA256(
       LOCAL_ID_SECRET,
-      source_namespace + NUL + entity_kind + NUL + raw_source_identifier
+      domain_tag + length_prefixed(source_namespace, entity_kind, source_identifier)
     )
 
 - 단순 SHA-256은 작은 숫자 ID 공간을 추측할 수 있어 사용하지 않습니다.
+- 문자열은 strict UTF-8로 인코딩하고 각 조각을 big-endian 길이로 구분해 tuple ambiguity를 거부합니다.
+- HMAC fingerprint는 entity UID가 아닙니다. private alias registry가 무작위 lab UUID에 연결합니다.
+- secret 자체 대신 domain-separated key-check digest와 encoder version만 고정하며 불일치 시 import를 중단합니다.
 - API 역할은 alias 테이블을 읽을 수 없습니다.
 - staging 원본 식별자는 import 트랜잭션 종료 후 폐기합니다.
 - 원본 season, preset, wave, monster, spot, asset 식별자는 Git 비추적 compatibility map 또는 ephemeral staging에만 존재합니다.
@@ -33,6 +36,7 @@ identity와 내용을 분리합니다.
 - `entity_version`: 불변 내용 버전
 - `dataset_snapshot`: 한 번의 데이터 입력 집합
 - `snapshot_entity`: snapshot에서 사용된 entity version
-- `source_artifact`: 원천 파일 hash와 extractor version
+- `source_artifact`: 원천 파일 bytes의 hash와 길이
+- `import_run`: extractor identity/version, semantic options와 request/output hash
 
 검증을 통과한 snapshot만 publish하며, API는 published snapshot만 기본 조회합니다.

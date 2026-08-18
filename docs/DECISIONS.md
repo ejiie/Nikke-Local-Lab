@@ -29,8 +29,12 @@
 - source path, file name, raw ID, decoded payload, exception text는 import ledger schema에 두지 않는다.
 - dataset snapshot은 경로가 없는 canonical source manifest hash로 식별하고, 동일 입력은 기존 snapshot을 재사용한다.
 - PostgreSQL은 loopback 연결만 허용하며 migration history는 embedded SQL checksum으로 잠근다.
+- source alias HMAC fingerprint는 entity UID로 재사용하지 않고 private registry에서 무작위 lab UUID에 연결한다.
+- 캐릭터 catalog의 ledger 완료와 snapshot publish는 한 PostgreSQL transaction에서 원자적으로 처리한다.
+- 캐릭터 subtype과 sd.bin runtime cap을 함께 사용해 호감도 최대값을 해소한다.
+- 현재 설치본만으로 전체 캐릭터 StaticData를 구성할 수 없으므로 보관된 pack과의 혼합 입력은 검증 전용이며 current-authoritative로 게시하지 않는다.
 
-## Phase 0을 막지 않는 미정사항
+## 남은 미정사항
 
 - 돌파 최대가 일반 한계돌파와 코어 강화 중 어디까지를 뜻하는지에 대한 데이터별 해소 규칙
 - 기업 일치 장비를 기본으로 적용할지

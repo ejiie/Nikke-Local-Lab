@@ -13,7 +13,7 @@
 
 완료 기준: 합성 source fixture를 import해 자체 UUID snapshot을 만들고, source path·원본 ID·복호물이 DB API와 Git에 나타나지 않아야 합니다.
 
-## 2. Phase 1B — 캐릭터 catalog importer
+## 2. Phase 1B — 캐릭터 catalog importer — 완료
 
 - CharacterDefinition과 snapshot version을 import한다.
 - 돌파·코어, 호감도, 장비, 큐브, 스킬, 소장품·애장품 applicability를 정규화한다.
@@ -21,6 +21,14 @@
 - authoritative maximum을 `combat-max/v1` factory가 해소할 수 있게 만든다.
 
 완료 기준: 합성 캐릭터와 실제 local snapshot을 같은 domain contract로 검증하되 실제 데이터는 Git 밖에 남아야 합니다.
+
+구현 결과:
+
+- CharacterDefinition/version과 combat-max/v1 도메인 계약을 구현했습니다.
+- StaticData와 sd.bin을 같은 immutable dataset으로 관찰하는 strict reader를 구현했습니다.
+- source alias는 private HMAC registry로 격리하고 공개 entity/version에는 lab UUID만 사용합니다.
+- ledger 완료와 catalog publish를 한 PostgreSQL transaction으로 묶었습니다.
+- 실제 설치본에 전체 캐릭터 StaticData가 없음을 확인했으며, 보관된 과거 pack과 현재 config의 혼합 입력은 검증 전용으로만 취급합니다.
 
 ## 3. Phase 1C — Challenge snapshot importer
 
@@ -79,4 +87,4 @@ Union Raid는 위 흐름이 안정화되고 사용자가 다시 범위를 확장
 
 ## 바로 다음 작업
 
-다음 구현 commit은 **Phase 1B 캐릭터 catalog importer의 schema와 합성 CharacterDefinition import**입니다. 실제 local snapshot import는 합성 경로와 누출 검사가 먼저 통과한 뒤 활성화합니다.
+다음 구현 commit은 **Phase 1C Challenge snapshot importer**입니다. 시즌 40부터 authoritative chain과 selected behavior/timeline/bundle/runtime provenance를 자체 RaidSnapshot으로 정규화합니다.

@@ -17,7 +17,7 @@
     Phase 0 schema/fixture check
               |
               v
-    Phase 1A Windows build/unit check
+    Phase 1B Windows build/unit check
               |
               +---- PostgreSQL integration check
               |
@@ -62,7 +62,7 @@ push 이후에는 Actions run이 PR과 merge를 담당합니다. 실패 시 원�
 
     pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode working -AllowRemote
     pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
-    pwsh -NoProfile -File scripts/verify-phase1a.ps1
+    pwsh -NoProfile -File scripts/verify-phase1b.ps1
     pwsh -NoProfile -File scripts/verify-actions-contract.ps1
 
 GitHub 저장소 설정 변경이나 workflow 수정 후에는 실제 synthetic branch로 end-to-end push→PR→merge를 다시 검증합니다.

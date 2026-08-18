@@ -31,16 +31,27 @@ public sealed class PostgreSqlImportLedger : IImportLedger
   public Task<ImportReceipt> RecordCompletedAsync(
       CompletedImportAttempt attempt,
       CancellationToken cancellationToken = default) =>
-      RecordAsync(attempt, null, cancellationToken);
+      RecordAsync(attempt, null, null, cancellationToken);
 
   public Task<ImportReceipt> RecordFailedAsync(
       FailedImportAttempt attempt,
       CancellationToken cancellationToken = default) =>
-      RecordAsync(null, attempt, cancellationToken);
+      RecordAsync(null, attempt, null, cancellationToken);
+
+  internal Task<ImportReceipt> RecordCompletedAtomicallyAsync(
+      CompletedImportAttempt attempt,
+      Func<PostgreSqlCompletedImportContext, CancellationToken, Task> projectionWriter,
+      CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(attempt);
+    ArgumentNullException.ThrowIfNull(projectionWriter);
+    return RecordAsync(attempt, null, projectionWriter, cancellationToken);
+  }
 
   private async Task<ImportReceipt> RecordAsync(
       CompletedImportAttempt? completed,
       FailedImportAttempt? failed,
+      Func<PostgreSqlCompletedImportContext, CancellationToken, Task>? projectionWriter,
       CancellationToken cancellationToken)
   {
     if ((completed is null) == (failed is null))
@@ -138,6 +149,19 @@ public sealed class PostgreSqlImportLedger : IImportLedger
         diagnostics,
         finishedAt,
         cancellationToken).ConfigureAwait(false);
+
+    if (completed is not null && projectionWriter is not null)
+    {
+      await projectionWriter(
+          new PostgreSqlCompletedImportContext(
+              connection,
+              transaction,
+              storedSnapshot.Id,
+              storedSnapshot.Uid,
+              runId,
+              priorSucceededRun is not null),
+          cancellationToken).ConfigureAwait(false);
+    }
 
     await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -486,3 +510,11 @@ public sealed class PostgreSqlImportLedger : IImportLedger
 
   private sealed record StoredSucceededRun(long Id, Sha256Digest OutputManifestSha256);
 }
+
+internal sealed record PostgreSqlCompletedImportContext(
+    NpgsqlConnection Connection,
+    NpgsqlTransaction Transaction,
+    long DatasetSnapshotId,
+    EntityUid DatasetSnapshotUid,
+    long ImportRunId,
+    bool IsReusedImport);

@@ -1,4 +1,6 @@
 using NikkeLocalLab.Configuration;
+using NikkeLocalLab.Import.CharacterCatalog;
+using NikkeLocalLab.Import.Sources;
 using NikkeLocalLab.Persistence.PostgreSql;
 
 return await ImportCli.RunAsync(args).ConfigureAwait(false);
@@ -43,6 +45,16 @@ internal static class ImportCli
           }
 
           return 0;
+        case "character-catalog-inspect":
+          return await CharacterCatalogCli.InspectAsync(
+              configuration,
+              repositoryRoot,
+              options).ConfigureAwait(false);
+        case "character-catalog-import":
+          return await CharacterCatalogCli.ImportAsync(
+              configuration,
+              repositoryRoot,
+              options).ConfigureAwait(false);
         default:
           return Fail("command_not_supported");
       }
@@ -56,6 +68,18 @@ internal static class ImportCli
       return Fail(exception.Code);
     }
     catch (MigrationIntegrityException exception)
+    {
+      return Fail(exception.Code);
+    }
+    catch (SourceBoundaryException exception)
+    {
+      return Fail(exception.Code);
+    }
+    catch (CharacterCatalogSourceException exception)
+    {
+      return Fail(exception.Code);
+    }
+    catch (CharacterCatalogIntegrityException exception)
     {
       return Fail(exception.Code);
     }

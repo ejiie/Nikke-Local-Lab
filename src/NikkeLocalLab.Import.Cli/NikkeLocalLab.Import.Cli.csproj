@@ -3,7 +3,13 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\NikkeLocalLab.Application\NikkeLocalLab.Application.csproj" />
     <ProjectReference Include="..\NikkeLocalLab.Configuration\NikkeLocalLab.Configuration.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Domain.Character\NikkeLocalLab.Domain.Character.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Identity\NikkeLocalLab.Identity.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Import.CharacterCatalog\NikkeLocalLab.Import.CharacterCatalog.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Import.Sources\NikkeLocalLab.Import.Sources.csproj" />
     <ProjectReference Include="..\NikkeLocalLab.Persistence.PostgreSql\NikkeLocalLab.Persistence.PostgreSql.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Provenance\NikkeLocalLab.Provenance.csproj" />
   </ItemGroup>
 </Project>

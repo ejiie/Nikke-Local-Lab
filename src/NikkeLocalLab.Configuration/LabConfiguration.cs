@@ -187,7 +187,8 @@ public sealed record LabConfigDocument
 public sealed record ResolvedLabConfiguration(
     string GameRoot,
     string RuntimeRoot,
-    string DatabaseConnectionStringEnvironmentVariable);
+    string DatabaseConnectionStringEnvironmentVariable,
+    string IdentitySecretEnvironmentVariable);
 
 public interface ILabEnvironment
 {
@@ -263,7 +264,8 @@ public static class LabConfigurationLoader
     return new ResolvedLabConfiguration(
         gameRoot,
         runtimeRoot,
-        document.Database.ConnectionStringEnvironmentVariable);
+        document.Database.ConnectionStringEnvironmentVariable,
+        document.Identity.HmacSecretEnvironmentVariable);
   }
 
   private static string ResolveDefaultRuntimeRoot(ILabEnvironment environment)

@@ -39,12 +39,18 @@ public static class ImportDiagnosticCatalog
 {
   private static readonly HashSet<string> StageCodes = new(StringComparer.Ordinal)
     {
+        "catalog",
         "extract",
         "source"
     };
 
   private static readonly HashSet<string> DiagnosticCodes = new(StringComparer.Ordinal)
     {
+        "character_progression_unresolved",
+        "character_skill_unresolved",
+        "character_variant_conflict",
+        "character_weapon_unresolved",
+        "cube_maximum_unresolved",
         "fixture_kind_invalid",
         "source_changed_during_import",
         "synthetic_parse_failed"
