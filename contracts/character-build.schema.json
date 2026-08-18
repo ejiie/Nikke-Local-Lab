@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:character-build:v1",
+  "title": "CharacterBuildRevision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "buildUid",
+    "revisionUid",
+    "revisionNumber",
+    "datasetSnapshotUid",
+    "characterUid",
+    "defaultPolicy",
+    "validationMode",
+    "state",
+    "readiness"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "buildUid": { "type": "string", "format": "uuid" },
+    "revisionUid": { "type": "string", "format": "uuid" },
+    "revisionNumber": { "type": "integer", "minimum": 1 },
+    "datasetSnapshotUid": { "type": "string", "format": "uuid" },
+    "characterUid": { "type": "string", "format": "uuid" },
+    "defaultPolicy": { "const": "combat-max/v1" },
+    "validationMode": { "enum": ["research", "game_legal"] },
+    "state": { "$ref": "#/$defs/buildState" },
+    "readiness": { "$ref": "#/$defs/readiness" }
+  },
+  "$defs": {
+    "nullableNonNegativeInteger": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "resolvedMaximum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "resolved", "value"],
+      "properties": {
+        "policy": { "enum": ["max_supported", "max_for_character", "explicit", "unresolved"] },
+        "resolved": { "type": "boolean" },
+        "value": { "$ref": "#/$defs/nullableNonNegativeInteger" }
+      }
+    },
+    "limitBreak": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "resolved", "stage", "coreLevel"],
+      "properties": {
+        "policy": { "enum": ["max_supported", "explicit", "unresolved"] },
+        "resolved": { "type": "boolean" },
+        "stage": { "$ref": "#/$defs/nullableNonNegativeInteger" },
+        "coreLevel": { "$ref": "#/$defs/nullableNonNegativeInteger" }
+      }
+    },
+    "overloadLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lineIndex", "optionType", "exactValue", "unit"],
+      "properties": {
+        "lineIndex": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "optionType": { "type": "string", "minLength": 1 },
+        "exactValue": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        },
+        "unit": { "type": "string", "minLength": 1 }
+      }
+    },
+    "equipment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slot",
+        "tier",
+        "enhancementLevel",
+        "manufacturerMatched",
+        "overloadLines"
+      ],
+      "properties": {
+        "slot": { "enum": ["head", "torso", "arms", "legs"] },
+        "tier": { "type": "integer", "minimum": 1 },
+        "enhancementLevel": { "$ref": "#/$defs/nullableNonNegativeInteger" },
+        "manufacturerMatched": { "type": ["boolean", "null"] },
+        "overloadLines": {
+          "type": "array",
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/overloadLine" }
+        }
+      }
+    },
+    "itemProgress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applicability", "policy", "resolved", "level"],
+      "properties": {
+        "applicability": { "enum": ["applicable", "not_applicable", "unresolved"] },
+        "policy": { "enum": ["max_available", "explicit", "not_applicable", "unresolved"] },
+        "resolved": { "type": "boolean" },
+        "level": { "$ref": "#/$defs/nullableNonNegativeInteger" }
+      }
+    },
+    "buildState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "characterLevelPolicy",
+        "characterLevel",
+        "limitBreak",
+        "bond",
+        "equipment",
+        "cube",
+        "skills",
+        "collectionItem",
+        "favoriteItem"
+      ],
+      "properties": {
+        "characterLevelPolicy": { "enum": ["explicit", "max_available", "unresolved"] },
+        "characterLevel": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "limitBreak": { "$ref": "#/$defs/limitBreak" },
+        "bond": { "$ref": "#/$defs/resolvedMaximum" },
+        "equipment": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/equipment" }
+        },
+        "cube": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cubeUid", "level"],
+          "properties": {
+            "cubeUid": { "type": ["string", "null"], "format": "uuid" },
+            "level": { "type": "integer", "minimum": 1, "maximum": 15 }
+          }
+        },
+        "skills": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["skill1", "skill2", "burst"],
+          "properties": {
+            "skill1": { "type": "integer", "minimum": 1, "maximum": 10 },
+            "skill2": { "type": "integer", "minimum": 1, "maximum": 10 },
+            "burst": { "type": "integer", "minimum": 1, "maximum": 10 }
+          }
+        },
+        "collectionItem": { "$ref": "#/$defs/itemProgress" },
+        "favoriteItem": { "$ref": "#/$defs/itemProgress" }
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "warnings"],
+      "properties": {
+        "status": { "enum": ["ready", "incomplete", "invalid"] },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

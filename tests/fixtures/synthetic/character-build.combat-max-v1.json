@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "buildUid": "00000000-0000-4000-8000-000000000101",
+  "revisionUid": "00000000-0000-4000-8000-000000000102",
+  "revisionNumber": 1,
+  "datasetSnapshotUid": "00000000-0000-4000-8000-000000000103",
+  "characterUid": "00000000-0000-4000-8000-000000000104",
+  "defaultPolicy": "combat-max/v1",
+  "validationMode": "research",
+  "state": {
+    "characterLevelPolicy": "unresolved",
+    "characterLevel": null,
+    "limitBreak": {
+      "policy": "max_supported",
+      "resolved": true,
+      "stage": 9,
+      "coreLevel": 9
+    },
+    "bond": {
+      "policy": "max_for_character",
+      "resolved": true,
+      "value": 99
+    },
+    "equipment": [
+      {
+        "slot": "head",
+        "tier": 10,
+        "enhancementLevel": null,
+        "manufacturerMatched": null,
+        "overloadLines": [
+          {
+            "lineIndex": 1,
+            "optionType": "synthetic_attack_modifier",
+            "exactValue": "123.4567",
+            "unit": "synthetic_percent"
+          }
+        ]
+      },
+      {
+        "slot": "torso",
+        "tier": 10,
+        "enhancementLevel": null,
+        "manufacturerMatched": null,
+        "overloadLines": []
+      },
+      {
+        "slot": "arms",
+        "tier": 10,
+        "enhancementLevel": null,
+        "manufacturerMatched": null,
+        "overloadLines": []
+      },
+      {
+        "slot": "legs",
+        "tier": 10,
+        "enhancementLevel": null,
+        "manufacturerMatched": null,
+        "overloadLines": []
+      }
+    ],
+    "cube": {
+      "cubeUid": null,
+      "level": 15
+    },
+    "skills": {
+      "skill1": 10,
+      "skill2": 10,
+      "burst": 10
+    },
+    "collectionItem": {
+      "applicability": "applicable",
+      "policy": "max_available",
+      "resolved": true,
+      "level": 9
+    },
+    "favoriteItem": {
+      "applicability": "not_applicable",
+      "policy": "not_applicable",
+      "resolved": true,
+      "level": null
+    }
+  },
+  "readiness": {
+    "status": "incomplete",
+    "warnings": [
+      "character_level_unresolved",
+      "equipment_enhancement_level_unresolved",
+      "manufacturer_match_unresolved",
+      "cube_selection_unresolved"
+    ]
+  }
+}
