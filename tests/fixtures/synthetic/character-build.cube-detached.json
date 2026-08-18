@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "buildUid": "00000000-0000-4000-8000-000000000101",
-  "revisionUid": "00000000-0000-4000-8000-000000000102",
-  "revisionNumber": 1,
+  "revisionUid": "00000000-0000-4000-8000-000000000105",
+  "revisionNumber": 2,
   "datasetSnapshotUid": "00000000-0000-4000-8000-000000000103",
   "characterUid": "00000000-0000-4000-8000-000000000104",
   "defaultPolicy": "combat-max/v1",
@@ -63,9 +63,9 @@
       }
     ],
     "cube": {
-      "equipped": true,
-      "cubeUid": "00000000-0000-4000-8000-000000000121",
-      "level": 15
+      "equipped": false,
+      "cubeUid": null,
+      "level": null
     },
     "skills": {
       "skill1": 10,

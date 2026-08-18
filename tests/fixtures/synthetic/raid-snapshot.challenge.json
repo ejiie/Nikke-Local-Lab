@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "raidSnapshotUid": "10000000-0000-4000-8000-000000000001",
+  "datasetSnapshotUid": "10000000-0000-4000-8000-000000000002",
+  "challengeEncounterUid": "10000000-0000-4000-8000-000000000003",
+  "bossVariantUid": "10000000-0000-4000-8000-000000000004",
+  "compatibilityMapUid": "10000000-0000-4000-8000-000000000005",
+  "seasonNumber": 999,
+  "mode": "challenge",
+  "challengeCompatibility": {
+    "difficultyType": 2,
+    "waveOrder": 8
+  },
+  "normalStageUnlockStub": {
+    "implemented": false,
+    "lastClearLevel": 7
+  },
+  "provenance": {
+    "staticData": {
+      "artifactUid": "10000000-0000-4000-8000-000000000011",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "selectedAssetBundles": [
+      {
+        "artifactUid": "10000000-0000-4000-8000-000000000012",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "roles": [
+          "model",
+          "animation"
+        ]
+      },
+      {
+        "artifactUid": "10000000-0000-4000-8000-000000000013",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "roles": [
+          "behavior",
+          "timeline"
+        ]
+      }
+    ],
+    "assetBundleSetSha256": "1a886cd7ef02d09cea034689e09d98571345ba5d614fb0ff05ef8e10bfb043e8",
+    "behavior": {
+      "artifactUid": "10000000-0000-4000-8000-000000000014",
+      "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "timelines": [
+      {
+        "artifactUid": "10000000-0000-4000-8000-000000000015",
+        "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    ],
+    "clientRuntime": {
+      "buildUid": "10000000-0000-4000-8000-000000000016",
+      "localBuildLabel": "synthetic-runtime-1",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  },
+  "compatibility": {
+    "tier": "asset_exact_runtime_current",
+    "runtimeRelation": "current_runtime_match",
+    "evidenceWarnings": []
+  },
+  "execution": {
+    "enabled": false,
+    "blockReasons": [
+      "lab_harness_not_implemented"
+    ]
+  },
+  "readiness": {
+    "status": "ready",
+    "warnings": []
+  }
+}

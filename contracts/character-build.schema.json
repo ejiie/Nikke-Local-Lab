@@ -18,41 +18,133 @@
   ],
   "properties": {
     "schemaVersion": { "const": 1 },
-    "buildUid": { "type": "string", "format": "uuid" },
-    "revisionUid": { "type": "string", "format": "uuid" },
+    "buildUid": { "$ref": "#/$defs/uuid" },
+    "revisionUid": { "$ref": "#/$defs/uuid" },
     "revisionNumber": { "type": "integer", "minimum": 1 },
-    "datasetSnapshotUid": { "type": "string", "format": "uuid" },
-    "characterUid": { "type": "string", "format": "uuid" },
+    "datasetSnapshotUid": { "$ref": "#/$defs/uuid" },
+    "characterUid": { "$ref": "#/$defs/uuid" },
     "defaultPolicy": { "const": "combat-max/v1" },
     "validationMode": { "enum": ["research", "game_legal"] },
     "state": { "$ref": "#/$defs/buildState" },
     "readiness": { "$ref": "#/$defs/readiness" }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "readiness": {
+            "type": "object",
+            "properties": { "status": { "const": "ready" } },
+            "required": ["status"]
+          }
+        },
+        "required": ["readiness"]
+      },
+      "then": {
+        "properties": {
+          "state": {
+            "type": "object",
+            "properties": {
+              "characterLevelPolicy": { "not": { "const": "unresolved" } },
+              "characterLevel": { "type": "integer", "minimum": 1 },
+              "limitBreak": {
+                "type": "object",
+                "properties": { "resolved": { "const": true } }
+              },
+              "bond": {
+                "type": "object",
+                "properties": { "resolved": { "const": true } }
+              },
+              "equipment": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "equipmentDefinitionUid": { "$ref": "#/$defs/uuid" },
+                    "enhancementLevel": { "type": "integer", "minimum": 0 },
+                    "manufacturerMatched": { "type": "boolean" }
+                  }
+                }
+              },
+              "collectionItem": {
+                "type": "object",
+                "properties": {
+                  "applicability": { "not": { "const": "unresolved" } },
+                  "resolved": { "const": true }
+                }
+              },
+              "favoriteItem": {
+                "type": "object",
+                "properties": {
+                  "applicability": { "not": { "const": "unresolved" } },
+                  "resolved": { "const": true }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
     "nullableNonNegativeInteger": {
       "type": ["integer", "null"],
       "minimum": 0
     },
     "resolvedMaximum": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["policy", "resolved", "value"],
-      "properties": {
-        "policy": { "enum": ["max_supported", "max_for_character", "explicit", "unresolved"] },
-        "resolved": { "type": "boolean" },
-        "value": { "$ref": "#/$defs/nullableNonNegativeInteger" }
-      }
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["policy", "resolved", "value"],
+          "properties": {
+            "policy": { "const": "unresolved" },
+            "resolved": { "const": false },
+            "value": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["policy", "resolved", "value"],
+          "properties": {
+            "policy": { "enum": ["max_supported", "max_for_character", "explicit"] },
+            "resolved": { "const": true },
+            "value": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
     },
     "limitBreak": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["policy", "resolved", "stage", "coreLevel"],
-      "properties": {
-        "policy": { "enum": ["max_supported", "explicit", "unresolved"] },
-        "resolved": { "type": "boolean" },
-        "stage": { "$ref": "#/$defs/nullableNonNegativeInteger" },
-        "coreLevel": { "$ref": "#/$defs/nullableNonNegativeInteger" }
-      }
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["policy", "resolved", "stage", "coreLevel"],
+          "properties": {
+            "policy": { "const": "unresolved" },
+            "resolved": { "const": false },
+            "stage": { "type": "null" },
+            "coreLevel": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["policy", "resolved", "stage", "coreLevel"],
+          "properties": {
+            "policy": { "enum": ["max_supported", "explicit"] },
+            "resolved": { "const": true },
+            "stage": { "type": "integer", "minimum": 0 },
+            "coreLevel": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
     },
     "overloadLine": {
       "type": "object",
@@ -73,6 +165,7 @@
       "additionalProperties": false,
       "required": [
         "slot",
+        "equipmentDefinitionUid",
         "tier",
         "enhancementLevel",
         "manufacturerMatched",
@@ -80,8 +173,18 @@
       ],
       "properties": {
         "slot": { "enum": ["head", "torso", "arms", "legs"] },
-        "tier": { "type": "integer", "minimum": 1 },
-        "enhancementLevel": { "$ref": "#/$defs/nullableNonNegativeInteger" },
+        "equipmentDefinitionUid": {
+          "oneOf": [
+            { "$ref": "#/$defs/uuid" },
+            { "type": "null" }
+          ]
+        },
+        "tier": { "type": "integer", "minimum": 1, "default": 10 },
+        "enhancementLevel": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "default": 5
+        },
         "manufacturerMatched": { "type": ["boolean", "null"] },
         "overloadLines": {
           "type": "array",
@@ -90,16 +193,73 @@
         }
       }
     },
+    "cube": {
+      "oneOf": [
+        {
+          "title": "UnequippedCube",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["equipped", "cubeUid", "level"],
+          "properties": {
+            "equipped": { "const": false },
+            "cubeUid": { "type": "null" },
+            "level": { "type": "null" }
+          }
+        },
+        {
+          "title": "EquippedCube",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["equipped", "cubeUid", "level"],
+          "properties": {
+            "equipped": { "const": true },
+            "cubeUid": { "$ref": "#/$defs/uuid" },
+            "level": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 15,
+              "default": 15
+            }
+          }
+        }
+      ]
+    },
     "itemProgress": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["applicability", "policy", "resolved", "level"],
-      "properties": {
-        "applicability": { "enum": ["applicable", "not_applicable", "unresolved"] },
-        "policy": { "enum": ["max_available", "explicit", "not_applicable", "unresolved"] },
-        "resolved": { "type": "boolean" },
-        "level": { "$ref": "#/$defs/nullableNonNegativeInteger" }
-      }
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["applicability", "policy", "resolved", "level"],
+          "properties": {
+            "applicability": { "const": "not_applicable" },
+            "policy": { "const": "not_applicable" },
+            "resolved": { "const": true },
+            "level": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["applicability", "policy", "resolved", "level"],
+          "properties": {
+            "applicability": { "const": "unresolved" },
+            "policy": { "const": "unresolved" },
+            "resolved": { "const": false },
+            "level": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["applicability", "policy", "resolved", "level"],
+          "properties": {
+            "applicability": { "const": "applicable" },
+            "policy": { "enum": ["max_available", "explicit"] },
+            "resolved": { "const": true },
+            "level": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
     },
     "buildState": {
       "type": "object",
@@ -127,17 +287,47 @@
           "type": "array",
           "minItems": 4,
           "maxItems": 4,
-          "items": { "$ref": "#/$defs/equipment" }
+          "items": { "$ref": "#/$defs/equipment" },
+          "allOf": [
+            {
+              "contains": {
+                "type": "object",
+                "required": ["slot"],
+                "properties": { "slot": { "const": "head" } }
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "required": ["slot"],
+                "properties": { "slot": { "const": "torso" } }
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "required": ["slot"],
+                "properties": { "slot": { "const": "arms" } }
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "required": ["slot"],
+                "properties": { "slot": { "const": "legs" } }
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
         },
-        "cube": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["cubeUid", "level"],
-          "properties": {
-            "cubeUid": { "type": ["string", "null"], "format": "uuid" },
-            "level": { "type": "integer", "minimum": 1, "maximum": 15 }
-          }
-        },
+        "cube": { "$ref": "#/$defs/cube" },
         "skills": {
           "type": "object",
           "additionalProperties": false,
@@ -150,7 +340,27 @@
         },
         "collectionItem": { "$ref": "#/$defs/itemProgress" },
         "favoriteItem": { "$ref": "#/$defs/itemProgress" }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "characterLevelPolicy": { "const": "unresolved" }
+            },
+            "required": ["characterLevelPolicy"]
+          },
+          "then": {
+            "properties": {
+              "characterLevel": { "type": "null" }
+            }
+          },
+          "else": {
+            "properties": {
+              "characterLevel": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      ]
     },
     "readiness": {
       "type": "object",
@@ -162,7 +372,18 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "ready" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": { "warnings": { "maxItems": 0 } }
+          }
+        }
+      ]
     }
   }
 }

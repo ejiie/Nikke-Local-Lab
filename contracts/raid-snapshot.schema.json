@@ -1,0 +1,315 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:raid-snapshot:v1",
+  "title": "SoloRaidChallengeSnapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "raidSnapshotUid",
+    "datasetSnapshotUid",
+    "challengeEncounterUid",
+    "bossVariantUid",
+    "compatibilityMapUid",
+    "seasonNumber",
+    "mode",
+    "challengeCompatibility",
+    "normalStageUnlockStub",
+    "provenance",
+    "compatibility",
+    "execution",
+    "readiness"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "raidSnapshotUid": { "$ref": "#/$defs/uuid" },
+    "datasetSnapshotUid": { "$ref": "#/$defs/uuid" },
+    "challengeEncounterUid": { "$ref": "#/$defs/uuid" },
+    "bossVariantUid": { "$ref": "#/$defs/uuid" },
+    "compatibilityMapUid": {
+      "description": "Own UUID for a Git-ignored local compatibility map; never a source content identifier.",
+      "oneOf": [
+        { "$ref": "#/$defs/uuid" },
+        { "type": "null" }
+      ]
+    },
+    "seasonNumber": {
+      "description": "User-facing season ordinal, not a source table primary key.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "mode": { "const": "challenge" },
+    "challengeCompatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["difficultyType", "waveOrder"],
+      "properties": {
+        "difficultyType": { "const": 2 },
+        "waveOrder": { "const": 8 }
+      }
+    },
+    "normalStageUnlockStub": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["implemented", "lastClearLevel"],
+      "properties": {
+        "implemented": { "const": false },
+        "lastClearLevel": { "const": 7 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "staticData",
+        "selectedAssetBundles",
+        "assetBundleSetSha256",
+        "behavior",
+        "timelines",
+        "clientRuntime"
+      ],
+      "properties": {
+        "staticData": { "$ref": "#/$defs/artifactRef" },
+        "selectedAssetBundles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/assetBundleRef" }
+        },
+        "assetBundleSetSha256": { "$ref": "#/$defs/sha256" },
+        "behavior": { "$ref": "#/$defs/artifactRef" },
+        "timelines": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/artifactRef" }
+        },
+        "clientRuntime": { "$ref": "#/$defs/clientRuntimeRef" }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier", "runtimeRelation", "evidenceWarnings"],
+      "properties": {
+        "tier": {
+          "enum": [
+            "static_exact",
+            "behavior_exact",
+            "asset_exact_runtime_current",
+            "historical_runtime_exact"
+          ]
+        },
+        "runtimeRelation": {
+          "enum": [
+            "not_evaluated",
+            "current_runtime_match",
+            "historical_runtime_match"
+          ]
+        },
+        "evidenceWarnings": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "execution": {
+      "description": "Execution readiness for the lab-owned harness only; this never authorizes the original retail client.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "blockReasons"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "blockReasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "warnings"],
+      "properties": {
+        "status": { "enum": ["ready", "incomplete", "invalid"] },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "compatibility": {
+            "type": "object",
+            "properties": {
+              "tier": { "const": "asset_exact_runtime_current" }
+            },
+            "required": ["tier"]
+          }
+        },
+        "required": ["compatibility"]
+      },
+      "then": {
+        "properties": {
+          "compatibility": {
+            "properties": {
+              "runtimeRelation": { "const": "current_runtime_match" }
+            }
+          },
+          "provenance": {
+            "properties": {
+              "clientRuntime": {
+                "properties": {
+                  "buildUid": { "$ref": "#/$defs/uuid" },
+                  "localBuildLabel": { "type": "string", "minLength": 1 },
+                  "sha256": { "$ref": "#/$defs/sha256" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "compatibility": {
+            "type": "object",
+            "properties": {
+              "tier": { "const": "historical_runtime_exact" }
+            },
+            "required": ["tier"]
+          }
+        },
+        "required": ["compatibility"]
+      },
+      "then": {
+        "properties": {
+          "compatibility": {
+            "properties": {
+              "runtimeRelation": { "const": "historical_runtime_match" }
+            }
+          },
+          "provenance": {
+            "properties": {
+              "clientRuntime": {
+                "properties": {
+                  "buildUid": { "$ref": "#/$defs/uuid" },
+                  "localBuildLabel": { "type": "string", "minLength": 1 },
+                  "sha256": { "$ref": "#/$defs/sha256" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "execution": {
+            "type": "object",
+            "properties": { "enabled": { "const": true } },
+            "required": ["enabled"]
+          }
+        },
+        "required": ["execution"]
+      },
+      "then": {
+        "properties": {
+          "execution": {
+            "properties": {
+              "blockReasons": { "maxItems": 0 }
+            }
+          },
+          "readiness": {
+            "properties": {
+              "status": { "const": "ready" }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "execution": {
+            "properties": {
+              "blockReasons": { "minItems": 1 }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactUid", "sha256"],
+      "properties": {
+        "artifactUid": { "$ref": "#/$defs/uuid" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "assetBundleRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactUid", "sha256", "roles"],
+      "properties": {
+        "artifactUid": { "$ref": "#/$defs/uuid" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "stage",
+              "model",
+              "behavior",
+              "timeline",
+              "animation",
+              "audio",
+              "other"
+            ]
+          }
+        }
+      }
+    },
+    "clientRuntimeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["buildUid", "localBuildLabel", "sha256"],
+      "properties": {
+        "buildUid": {
+          "oneOf": [
+            { "$ref": "#/$defs/uuid" },
+            { "type": "null" }
+          ]
+        },
+        "localBuildLabel": {
+          "description": "Local lab alias, not a copied source filename or official build identifier.",
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "sha256": {
+          "oneOf": [
+            { "$ref": "#/$defs/sha256" },
+            { "type": "null" }
+          ]
+        }
+      }
+    }
+  }
+}

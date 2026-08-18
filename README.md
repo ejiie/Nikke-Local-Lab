@@ -1,24 +1,28 @@
 # Nikke Local Lab
 
-개인 로컬 환경에서 NIKKE 전투 데이터를 보관하고 재현 가능한 캐릭터 빌드로 검증하기 위한 독립 실험 프로젝트입니다.
+개인 로컬 환경에서 NIKKE 전투 데이터를 보관하고, 재현 가능한 캐릭터 빌드와 Solo Raid Challenge snapshot으로 검증하기 위한 독립 실험 프로젝트입니다.
 
-현재 단계는 **Phase 0: 저장소·계약·데이터 경계 고정**입니다. 아직 서버, 데이터베이스, 공식 클라이언트 호환 계층은 구현하지 않습니다.
+현재 단계는 **Phase 0: 저장소·계약·데이터·실행 경계 고정**입니다. 캐릭터 빌드와 Challenge raid snapshot 계약은 정의하지만 서버, 데이터베이스, 원본 리테일 클라이언트 호환 계층은 아직 구현하지 않습니다.
 
 ## 현재 확정 범위
 
 - 캐릭터 정적 정의와 수정 가능한 전투 빌드를 분리합니다.
 - 빌드는 불변 revision으로 저장하며 전투 결과가 정확한 revision을 참조합니다.
-- 기본 프리셋은 `combat-max/v1`입니다.
-- 원본 게임 ID는 import staging에서만 해석하고 도메인/API에는 자체 ID만 사용합니다.
-- `C:\NIKKE`와 모든 원본·복호·파생 게임 데이터는 읽기 전용 로컬 입력이며 Git에 넣지 않습니다.
+- 기본 프리셋은 `combat-max/v1`이며 캐릭터 레벨은 명시적으로 자유 설정합니다.
+- 장비 기본값은 전 부위 Tier 10, 강화 Level 5입니다.
+- 큐브는 자유롭게 장착·해제하며, 장착 시 기본 Level 15입니다. 큐브 종류는 사용자가 선택하기 전까지 추측하지 않습니다.
+- Solo Raid는 Challenge만 모델링합니다. 일반 1~7단계는 해금 상태 stub일 뿐 플레이할 수 없습니다.
+- Raid snapshot은 정적 데이터, behavior, timeline, asset bundle, client runtime의 근거와 호환성 등급을 함께 고정합니다.
+- 원본 게임 ID는 import staging 또는 Git 비추적 compatibility map에서만 해석하고 도메인/API에는 자체 ID만 사용합니다.
+- `C:\NIKKE`의 원본은 읽기 전용입니다. 복호·파생 데이터는 Git 외부 런타임 경계에서만 저장하며 Git에 넣지 않습니다.
 
-세부 범위는 [docs/SCOPE.md](docs/SCOPE.md), 데이터 경계는 [docs/DATA_POLICY.md](docs/DATA_POLICY.md), 빌드 계약은 [docs/DOMAIN.md](docs/DOMAIN.md)를 참고합니다.
+원본 리테일 클라이언트 연결은 현재 **차단 상태**입니다. 공식적으로 지원되는 로컬/테스트 경로 또는 서면 허가가 확인되기 전에는 endpoint/auth 변조, 공식 로그인·토큰 재사용, 주입·후킹, 안티치트 우회를 사용하지 않습니다.
+
+세부 범위는 [docs/SCOPE.md](docs/SCOPE.md), 실행 게이트는 [docs/FEASIBILITY_GATES.md](docs/FEASIBILITY_GATES.md), 빌드 계약은 [docs/DOMAIN.md](docs/DOMAIN.md), Challenge 계약은 [docs/RAID_DOMAIN.md](docs/RAID_DOMAIN.md)를 참고합니다.
 
 ## 저장소 정책 확인
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-repository.ps1 -Mode working
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-phase0-contract.ps1
-```
+    pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode working
+    pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
 
-정책 검사는 실제 Git 추적 대상과 합성 fixture를 검사합니다. `.gitignore`만 믿지 않습니다.
+계약 검사는 Draft 2020-12 schema 지원을 위해 PowerShell 7.4 이상이 필요합니다. 정책 검사는 실제 Git 추적 대상과 합성 fixture를 검사하며 `.gitignore`만 믿지 않습니다.
