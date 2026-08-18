@@ -30,4 +30,4 @@
 - Solo Raid는 Challenge만 지원하고 `challenge-boss-support/v1` admission policy를 통과한 보스만 publish합니다.
 - 일반 1~7단계와 Union Raid 전투 세션을 만들지 않습니다.
 - 변경은 `agent/**` branch에 commit하고 Actions가 검증·PR·squash merge하도록 합니다.
-- 작업 전후 repository, Phase 0, Actions contract 검사를 모두 실행합니다.
+- 작업 전후 repository, Phase 0, Phase 1A, Actions contract 검사를 모두 실행합니다.

@@ -1,6 +1,6 @@
 # Architecture direction
 
-최종 실행 경로는 원본 UI와 실제 전투 runtime이 local backend를 사용하는 구조입니다. Phase 0에서는 경계만 고정하고 구현은 다음 단계부터 시작합니다.
+최종 실행 경로는 원본 UI와 실제 전투 runtime이 local backend를 사용하는 구조입니다. Phase 1A에서는 아래 경로의 import/provenance/persistence 기반만 구현했습니다.
 
     C:\NIKKE (read-only)
             |
@@ -28,16 +28,22 @@
 
 lab-owned harness는 importer, API, revision, admission, 결과 계약을 검증하는 sidecar입니다. 최종 사용자 실행 경로나 원본 전투 검증의 대체물이 아닙니다.
 
-## 예정 모듈
+## 구현된 Phase 1A 모듈
+
+- `Identity`: 자체 UUID와 HMAC source identity 경계
+- `Provenance`: source/dataset/extractor/request canonical hash
+- `Application`: path-free import coordinator와 ledger port
+- `Configuration`: fail-closed config와 runtime root
+- `Import.Sources`: 읽기 전용 source capability
+- `Persistence.PostgreSql`: migration과 import ledger
+- `Import.Cli`: config-check/init/migrate 진입점
+
+## 후속 예정 모듈
 
 - `Import.Formats`: MemoryPack/NKDB/UnityFS 등 범용 reader
-- `Import.Sources`: 로컬 게임 경로 read-only adapter
-- `Provenance`: snapshot, hash, diff, import 상태
-- `Identity`: 자체 ID와 비공개 source alias 경계
 - `Domain.Character`: 캐릭터 정의와 빌드 revision 계약
 - `Domain.Raid`: Challenge encounter, admission policy, RaidSnapshot, 활성 시즌
 - `Compatibility`: tier 평가와 Git 비추적 mapping adapter
-- `Persistence`: 자체 ID와 versioned schema
 - `Api`: 조회·write API
 - `Challenge.Session`: Challenge-only entry와 결과 수집
 - `Harness`: 프로젝트 소유 contract/integration test client

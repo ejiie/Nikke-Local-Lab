@@ -2,16 +2,14 @@
 
 최종 목표는 허용된 원본 NIKKE UI와 실제 전투 runtime이 local backend에 연결되어 지원 Challenge를 실행하는 것입니다. 다음 작업은 이 목표에 직접 필요한 순서만 포함합니다.
 
-## 1. Phase 1A — 프로젝트 골격과 import ledger
+## 1. Phase 1A — 프로젝트 골격과 import ledger — 완료
 
-가장 먼저 구현합니다.
-
-- .NET 8 solution과 모듈 경계를 생성한다.
-- PostgreSQL migration runner와 local configuration loader를 만든다.
-- `%LOCALAPPDATA%\NikkeLocalLab` runtime root를 초기화한다.
-- `source_artifact`, `dataset_snapshot`, `import_run`, `import_diagnostic` 기본 schema를 만든다.
-- `C:\NIKKE` read-only guard와 repository 밖 staging 경계를 테스트한다.
-- source hash, extractor version, import result를 재현 가능하게 기록한다.
+- .NET 8 solution과 모듈 경계를 생성했습니다.
+- PostgreSQL migration runner와 local configuration loader를 구현했습니다.
+- `%LOCALAPPDATA%\NikkeLocalLab` runtime root 경계를 초기화합니다.
+- `source_artifact`, `dataset_snapshot`, membership, `import_run`, `import_diagnostic` schema를 구현했습니다.
+- source read-only capability와 repository 밖 runtime/staging 경계를 테스트합니다.
+- source, dataset, extractor, request, output hash의 canonical 규칙을 구현했습니다.
 
 완료 기준: 합성 source fixture를 import해 자체 UUID snapshot을 만들고, source path·원본 ID·복호물이 DB API와 Git에 나타나지 않아야 합니다.
 
@@ -81,4 +79,4 @@ Union Raid는 위 흐름이 안정화되고 사용자가 다시 범위를 확장
 
 ## 바로 다음 작업
 
-다음 구현 commit은 **Phase 1A 프로젝트 골격 + import ledger schema + read-only source guard**입니다.
+다음 구현 commit은 **Phase 1B 캐릭터 catalog importer의 schema와 합성 CharacterDefinition import**입니다. 실제 local snapshot import는 합성 경로와 누출 검사가 먼저 통과한 뒤 활성화합니다.

@@ -30,10 +30,13 @@
       cache\
       logs\
       secrets\
+      staging\
 
 `C:\NIKKE`는 read-only source입니다. 소스 파일을 수정·교체하거나 저장소 안으로 shadow copy하지 않습니다. 향후 재현성용 local vault가 필요하면 content-addressed copy를 저장소 밖에 만들고 원본 hash와 접근 정책을 기록합니다.
 
 복호물, compatibility map, 런타임 DB, cache와 log는 모두 Git 외부에 둡니다. 저장소 fixture에는 자체 UUID와 합성 hash만 사용합니다.
+
+Phase 1A의 `database\` 디렉터리는 경계만 초기화하며 PostgreSQL cluster나 dump를 자동 생성하지 않습니다. `staging\`은 import 실행 중 임시 데이터용이며 source 또는 repository와 겹칠 수 없습니다. 후속 importer는 성공·실패·취소 후 staging을 비워야 합니다.
 
 ## Private source remote 경계
 

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NikkeLocalLab.Configuration\NikkeLocalLab.Configuration.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Persistence.PostgreSql\NikkeLocalLab.Persistence.PostgreSql.csproj" />
+  </ItemGroup>
+</Project>

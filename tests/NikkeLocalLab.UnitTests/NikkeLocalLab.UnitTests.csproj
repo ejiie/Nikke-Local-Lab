@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Application\NikkeLocalLab.Application.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Configuration\NikkeLocalLab.Configuration.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Identity\NikkeLocalLab.Identity.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Import.Sources\NikkeLocalLab.Import.Sources.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Persistence.PostgreSql\NikkeLocalLab.Persistence.PostgreSql.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Provenance\NikkeLocalLab.Provenance.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\fixtures\synthetic\import-source.phase1a.json" Link="Fixtures\import-source.phase1a.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\config\appsettings.example.json" Link="Fixtures\appsettings.example.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
