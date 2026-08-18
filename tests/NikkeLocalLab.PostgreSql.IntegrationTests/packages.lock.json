@@ -138,6 +138,13 @@
           "NikkeLocalLab.Provenance": "[1.0.0, )"
         }
       },
+      "nikkelocallab.domain.combatsupport": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
       "nikkelocallab.domain.raid": {
         "type": "Project",
         "dependencies": {
@@ -161,6 +168,7 @@
         "dependencies": {
           "NikkeLocalLab.Application": "[1.0.0, )",
           "NikkeLocalLab.Domain.Character": "[1.0.0, )",
+          "NikkeLocalLab.Domain.CombatSupport": "[1.0.0, )",
           "NikkeLocalLab.Domain.Raid": "[1.0.0, )",
           "NikkeLocalLab.Identity": "[1.0.0, )",
           "NikkeLocalLab.Provenance": "[1.0.0, )",

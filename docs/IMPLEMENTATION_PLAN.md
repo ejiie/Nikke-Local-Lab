@@ -24,12 +24,12 @@
 
 ## Phase 2 — local backend와 캐릭터 write
 
-Phase 2 전에 Phase 1D에서 equipment, cube, collection/favorite, console, OL option의 선택 가능한 자체 definition catalog를 완성합니다. 이 catalog는 `V0004__combat_support_catalog.sql`을 소유합니다.
+Phase 2 전에 Phase 1D에서 Tier 9·10 equipment, cube, collection/favorite, console, OL option의 선택 가능한 자체 definition catalog를 완성했습니다. 이 catalog는 `V0004__combat_support_catalog.sql`을 소유합니다. Tier 1~8은 현재 account 이관·전투 검증 범위에 없으므로 게시하지 않습니다.
 
 - PostgreSQL migration과 자체 합성 account/session을 구현한다.
 - synchro와 console level/EXP의 불변 account combat state revision을 구현한다.
 - 캐릭터 build 생성·조회·부분 수정·revision 전환 API를 구현한다.
-- 자유 레벨, T10/+5, 큐브 장착·해제/Lv15, 10/10/10, OL exact write, 소장품·애장품 적용 여부를 검증한다.
+- 자유 레벨, 미장착 또는 T9/T10/+0~5, 큐브 장착·해제/Lv15, 10/10/10, OL exact write, 소장품·애장품 적용 여부를 검증한다.
 - 5인 squad revision과 단일 active Challenge snapshot을 구현한다.
 - 일반 1~7단계는 전투 없이 Challenge 해금 상태만 제공한다.
 - Challenge session begin/result 계약과 재현용 trace 저장을 구현한다.

@@ -48,30 +48,38 @@
 
 완료 기준 충족: 여섯 시즌만 publish하며 같은 입력의 canonical hash는 결정적입니다. 여기서 완료는 importer, V0003 원자적 publish, 합성 CI와 실제 read-only smoke의 완료를 뜻합니다. 원본 client 실행, 완전한 timeline, 현재 runtime exact 또는 역사 runtime exact를 뜻하지 않습니다.
 
-## 4. Phase 1D — 전투 보조 catalog
+## 4. Phase 1D — 전투 보조 catalog — 완료
 
-- equipment, cube, collection/favorite, console, OL option을 자체 definition/version으로 publish한다.
-- 9개 console 좌표와 level별 stat 기여를 정규화한다.
+- Tier 9·10 장비 24개, cube 17종, collection 12종, favorite 21종, console 9종과 OL option 9종을 자체 definition/version으로 publish한다.
+- 9개 console 좌표별 source-derived 연속 Level 범위와 level당 flat stat 기여를 정규화한다.
+- OL 15개 이산 값과 확률 band를 보존하고, 근거가 없는 동일 옵션 중복 정책만 `unresolved`로 분리한다.
+- V0004 migration은 import ledger 완료와 immutable catalog publish를 한 transaction으로 처리한다.
 - profile editor가 선택할 수 있는 source-ID-free reference를 제공한다.
+- cube·collection·favorite의 item/level 선택은 ready이지만 별도 skill-definition catalog는 아직 없으므로 skill effect semantics는 명시적으로 unresolved다.
 
 완료 기준: profile write가 raw ID나 추측값 없이 모든 전투 보조 항목을 자체 UID로 해소할 수 있어야 합니다.
 
-## 5. Phase 2A — account/profile/build write
+## 5. Phase 2A1 — account/profile/build revision
 
 - 합성 local account/session을 구현한다.
 - synchro와 console level/EXP를 `AccountCombatStateRevision`으로 구현한다.
 - 자유 character level과 immutable build revision을 구현한다.
-- T10/+5 네 부위, 큐브 장착·해제 및 자유 레벨, 스킬 10/10/10을 구현한다.
+- 미장착 또는 Tier 9·10/+0~5 네 부위, 큐브 장착·해제 및 자유 레벨, 스킬 10/10/10을 구현한다.
 - OL 4×3 line의 exact decimal 추가·교체·삭제를 구현한다.
 - 소장품·애장품 max/default와 N/A를 구현한다.
 - 5인 squad revision을 구현한다.
+
+완료 기준: 모든 write가 새 revision을 만들고 과거 전투 결과의 참조가 변하지 않아야 합니다. 최신 계정 JSON은 필드 coverage와 local acceptance에 사용하되 raw ID·개인값을 fixture나 Git에 넣지 않습니다.
+
+## 6. Phase 2A2 — offline import와 profile editor
+
 - credential-bearing raw에서 허용된 전투 필드만 읽는 offline sanitizer를 구현한다.
 - Save, Save As, local account apply diff를 loopback API와 별도 editor에 구현한다.
 - 사용자가 별도로 갱신한 최신 raw를 네트워크 없이 다시 읽는 refresh command를 구현한다.
 
-완료 기준: 모든 write가 새 revision을 만들고 과거 전투 결과의 참조가 변하지 않아야 합니다.
+완료 기준: raw의 장착 상태와 OL `(slot, line, type, value, unit)`가 source-ID-free draft로 무손실 변환되고, 재가져오기가 local edit를 자동 덮어쓰지 않아야 합니다. Local Lab은 외부 crawler를 실행하지 않습니다.
 
-## 6. Phase 2B — execution profile과 Challenge session backend
+## 7. Phase 2B — execution profile과 Challenge session backend
 
 - 단일 active supported season을 선택한다.
 - 일반 1~7단계는 `lastClearLevel=7` 해금 상태만 제공한다.
@@ -86,7 +94,9 @@
 
 완료 기준: 지원 snapshot과 ready squad만 session을 시작할 수 있고 결과가 정확한 snapshot/build revision을 참조해야 합니다.
 
-## 7. Phase 3 — Original client gate 재감사
+계정 JSON은 roster/build/console seed에 사용합니다. 그래픽 품질, FPS, VSync, 해상도, 마우스 동기화, 조준 보정과 ESC 누적 damage/segment는 JSON에 없으므로 별도 runtime setting adapter와 실제 실행 관측이 필요합니다.
+
+## 8. Phase 3 — Original client gate 재감사
 
 - 권리자가 지원·승인한 local/test route의 존재를 재확인한다.
 - 합성 session과 공식 outbound zero를 입증한다.
@@ -94,7 +104,7 @@
 
 gate가 열리지 않으면 adapter는 blocked이고 최종 인수 조건은 미달입니다. 자체 UI나 harness로 대체하지 않습니다.
 
-## 8. Phase 4 — 실제 전투 검증
+## 9. Phase 4 — 실제 전투 검증
 
 - 원본 UI의 캐릭터 상태와 squad 표시를 검증한다.
 - 여섯 Challenge의 scene, behavior, animation, QTE, parts를 실제 runtime에서 검증한다.
@@ -107,4 +117,4 @@ Union Raid는 위 흐름이 안정화되고 사용자가 다시 범위를 확장
 
 ## 바로 다음 작업
 
-다음 구현 commit은 **Phase 1D 전투 보조 catalog**입니다. equipment, cube, collection/favorite, console, OL option을 source-ID-free definition/version으로 게시해 Phase 2 profile write가 추측값 없이 참조할 수 있게 합니다.
+다음 구현 commit은 **Phase 2A1 account/profile/build revision**입니다. 최신 계정 capture에서 확인한 실제 필드 shape를 source-free 합성 fixture로 재현하고, 자체 UUID 기반 account state와 immutable build/squad revision을 구현합니다.
