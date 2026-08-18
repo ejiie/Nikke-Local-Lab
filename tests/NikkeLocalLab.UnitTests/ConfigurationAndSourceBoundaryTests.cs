@@ -125,6 +125,8 @@ public sealed class ConfigurationAndSourceBoundaryTests
   [InlineData("../outside")]
   [InlineData(".\\inside")]
   [InlineData("C:\\outside")]
+  [InlineData("/outside")]
+  [InlineData("\\outside")]
   [InlineData("file:stream")]
   [InlineData("\\\\server\\share\\file")]
   public void SourceRelativePathRejectsUnsafeForms(string value)

@@ -12,6 +12,7 @@ public readonly record struct SourceRelativePath
   public static SourceRelativePath Parse(string? value)
   {
     if (string.IsNullOrWhiteSpace(value) ||
+        value[0] is '/' or '\\' ||
         Path.IsPathRooted(value) ||
         Path.IsPathFullyQualified(value) ||
         value.Contains(':'))
