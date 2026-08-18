@@ -42,8 +42,8 @@ Assert-Contains $Workflow '(?m)^\s*group:\s*agent-publish-main\s*$' "Agent workf
 Assert-Contains $Workflow 'needs:\s*\[validate,\s*postgres\]' "Publish job must depend on Windows and PostgreSQL validation."
 Assert-Contains $Workflow 'verify-repository\.ps1\s+-Mode\s+tracked\s+-AllowRemote' "Workflow must enforce the repository boundary with explicit remote allowance."
 Assert-Contains $Workflow 'verify-phase0-contract\.ps1' "Workflow must run Phase 0 contract checks."
-Assert-Contains $Workflow 'verify-phase1b\.ps1' "Workflow must run Phase 1B build and test checks."
-Assert-Contains $Workflow 'verify-phase1b\.ps1\s+-Integration' "Workflow must run live PostgreSQL integration checks."
+Assert-Contains $Workflow 'verify-phase1c\.ps1' "Workflow must run Phase 1C build and test checks."
+Assert-Contains $Workflow 'verify-phase1c\.ps1\s+-Integration' "Workflow must run live PostgreSQL integration checks."
 Assert-Contains $Workflow 'verify-actions-contract\.ps1' "Workflow must validate its own automation contract."
 Assert-Contains $Workflow 'gh\s+pr\s+create' "Workflow must create or reuse a pull request."
 Assert-Contains $Workflow 'gh\s+pr\s+merge' "Workflow must merge through the pull request."
@@ -67,6 +67,7 @@ Assert-NotContains $Workflow 'secrets\.' "Automation must not depend on a PAT or
 Assert-NotContains $Workflow '--admin' "Automation must not bypass branch protection."
 Assert-NotContains $Workflow 'curl\s+.*github\.com' "Automation must use the scoped GitHub CLI token, not custom credential transport."
 Assert-NotContains $Workflow 'character-catalog-(inspect|import)' "Actions must never read an actual local character source."
+Assert-NotContains $Workflow 'raid-catalog-(inspect|import)' "Actions must never read an actual local raid source."
 Assert-NotContains $Workflow 'NIKKE_LAB_ID_SECRET' "Actions must not receive a local identity secret."
 Assert-NotContains $Workflow 'upload-artifact' "Actions must not upload import outputs or source-derived artifacts."
 
@@ -86,7 +87,7 @@ Assert-NotContains $PublishBlock 'actions/checkout' "Write-enabled publish job m
 Assert-Contains $Hook '(?m)^set -eu\s*$' "Pre-commit hook must stop on the first failed check."
 Assert-Contains $Hook 'verify-repository\.ps1.*-AllowRemote' "Pre-commit hook must verify the repository boundary."
 Assert-Contains $Hook 'verify-phase0-contract\.ps1' "Pre-commit hook must verify Phase 0 contracts."
-Assert-Contains $Hook 'verify-phase1b\.ps1' "Pre-commit hook must verify Phase 1B locally."
+Assert-Contains $Hook 'verify-phase1c\.ps1' "Pre-commit hook must verify Phase 1C locally."
 Assert-Contains $Hook 'verify-actions-contract\.ps1' "Pre-commit hook must verify Actions automation."
 
 Write-Output "GitHub Actions owner-only validate/PR/merge contract passed."

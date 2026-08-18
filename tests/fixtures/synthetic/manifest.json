@@ -3,5 +3,12 @@
   "source": "hand-authored",
   "containsGameContent": false,
   "containsRealAccountData": false,
+  "fixtures": [
+    "character-build.combat-max-v1.json",
+    "character-build.cube-detached.json",
+    "import-source.phase1a.json",
+    "raid-snapshot.challenge.json",
+    "raid-snapshot.static-exact.json"
+  ],
   "note": "All names, identifiers, and values in this directory are deliberately synthetic."
 }

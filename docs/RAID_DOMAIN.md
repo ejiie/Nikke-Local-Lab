@@ -43,27 +43,30 @@ Challenge 해금 선행조건 호환이 필요할 때 local session state에서 
 
 ## RaidSnapshot
 
-`RaidSnapshot` v2는 지원 정책을 통과하고 publish 준비가 끝난 특정 시즌 Challenge를 재현하기 위한 불변 증거 묶음입니다. 미해소·불완전·무효 후보는 별도 import diagnostic으로 남기며 이 schema로 직렬화하지 않습니다.
+`RaidSnapshot` v2는 지원 정책을 통과하고 선언한 호환성 tier의 publish 준비가 끝난 특정 시즌 Challenge를 위한 불변 증거 묶음입니다. 어떤 근거가 필수인지는 tier에 따라 다릅니다. 정적 근거만 완결된 후보도 결손을 warning으로 공개하면 `static_exact` snapshot으로 게시할 수 있습니다. 지원 정책이나 선언한 tier의 필수 근거를 충족하지 못한 후보는 별도 import diagnostic으로 남기며 이 schema로 직렬화하지 않습니다.
 
 - 자체 `raid_snapshot_uid`
 - 자체 `challenge_encounter_uid`, `boss_variant_uid`, `dataset_snapshot_uid`
-- Git 비추적 local map을 가리키는 자체 `compatibility_map_uid`
+- dataset snapshot에 결박된 source-free compatibility binding marker의 자체 `compatibility_map_uid`
 - 사용자-facing `season_number`
 - `challenge-boss-support/v1` admission rule과 정규화 속성/약점
 - 정적 데이터 artifact UID와 SHA-256
-- 선택 asset bundle artifact UID, 역할, SHA-256과 set hash
-- behavior와 timeline artifact UID 및 SHA-256
-- client runtime build UID, local label, SHA-256
+- 자체 part UID, 정규화 part type/비율/flag/link로 표현한 파츠 관계
+- 자체 skill-slot UID와 ordinal로 표현한 스킬 슬롯 점유·순서. Phase 1C는 스킬 정의 identity나 runtime semantics까지 정규화했다고 주장하지 않습니다.
+- tier에 따라 선택 asset bundle artifact UID, 역할, SHA-256과 set hash
+- tier에 따라 behavior와 timeline artifact UID 및 SHA-256
+- tier에 따라 client runtime build UID, local label, SHA-256
+- behavior tick, render frame, fixed update, wall clock 및 scheduler의 resolved/unresolved 근거
 - compatibility tier와 runtime relation
 - provenance readiness와 warning
 
 원본 content ID, 파일명, 설치 경로는 snapshot JSON과 API에 포함하지 않습니다.
 
-published snapshot은 `readiness.status=ready`이고 non-null `compatibility_map_uid`를 가져야 합니다. admission의 정규화 속성·약점은 authoritative import 결과이며, JSON이 자기 주장만으로 원천 관계를 증명한다고 보지 않습니다. importer가 map과 source artifact hash를 교차검증한 뒤에만 publish합니다.
+published snapshot은 `readiness.status=ready`이고 non-null `compatibility_map_uid`를 가져야 합니다. 이 UID는 현재 원본 ID가 들어 있는 map 파일을 가리키지 않고, 정확한 dataset snapshot과 compatibility contract를 결박하는 source-free marker입니다. 여기서 ready는 **선언한 tier의 데이터·provenance를 게시할 준비가 됐다**는 뜻이지, 원본 client에서 전투를 실행할 수 있거나 더 높은 tier가 해소됐다는 뜻이 아닙니다. admission의 정규화 속성·약점은 authoritative import 결과이며, JSON이 자기 주장만으로 원천 관계를 증명한다고 보지 않습니다. 원본 client adapter에 필요한 raw mapping은 gate 해제 뒤 정확한 dataset에서 Git 밖으로 재생성하고 별도 검증해야 합니다.
 
 `localBuildLabel`은 lab DB 안에서만 쓰는 별칭이며 원본 build 식별자나 파일명을 복사하는 필드가 아닙니다.
 
-`asset_bundle_set_sha256`은 선택 bundle SHA-256을 소문자로 정규화하고 중복 제거·사전식 정렬한 뒤, LF(`\n`) 하나로 연결한 UTF-8 byte열의 SHA-256입니다. 마지막 LF는 붙이지 않습니다. importer와 validator는 저장값을 재계산합니다.
+선택 bundle이 없으면 `selected_asset_bundles`는 비어 있고 `asset_bundle_set_sha256`은 null입니다. bundle이 하나 이상이면 set hash도 반드시 존재합니다. `asset_bundle_set_sha256`은 선택 bundle SHA-256을 소문자로 정규화하고 중복 제거·사전식 정렬한 뒤, LF(`\n`) 하나로 연결한 UTF-8 byte열의 SHA-256입니다. 마지막 LF는 붙이지 않습니다. importer와 validator는 저장값을 재계산합니다.
 
 ## 활성 시즌
 
@@ -75,12 +78,34 @@ published snapshot은 `readiness.status=ready`이고 non-null `compatibility_map
 
 | tier | 보장하는 범위 | 보장하지 않는 것 |
 |---|---|---|
-| `static_exact` | 보스, 속성, 파츠, 스킬 등 정적 관계가 snapshot과 일치 | behavior와 timing |
+| `static_exact` | 보스, 속성, 파츠와 스킬 슬롯 개수·순서가 snapshot과 일치 | 스킬 정의/효과 semantics, behavior와 timing |
 | `behavior_exact` | 정적 관계와 behavior graph/task 연결이 일치 | runtime scheduler와 animation callback의 완전 일치 |
 | `asset_exact_runtime_current` | 선택 asset과 현재 runtime build/hash 및 검증된 scheduler 의미가 일치 | 해당 시즌 당시 역사 runtime과의 동일성 |
 | `historical_runtime_exact` | 해당 시즌 당시 runtime, 관련 asset, behavior, timing 근거가 함께 고정 | 근거에 포함되지 않은 플랫폼·build |
 
 과거 asset을 현재 runtime에서 실행한 결과는 `historical_runtime_exact`가 아닙니다.
+
+Tier별 publish invariant는 다음과 같습니다.
+
+- `static_exact`: static artifact, 정규화 파츠, 스킬 슬롯 개수·순서만으로 게시할 수 있습니다. 스킬 정의/효과 semantics, behavior, bundle, timeline, runtime, timing/scheduler는 이 tier가 보장하지 않으며 `compatibility.evidenceWarnings`에 미해소 상위 근거를 반드시 기록합니다.
+- `behavior_exact`: `static_exact` 범위에 더해 behavior artifact와 하나 이상의 선택 bundle 및 canonical bundle set hash가 필요합니다. timeline과 runtime은 아직 partial/unresolved일 수 있습니다.
+- `asset_exact_runtime_current`: behavior/bundle에 더해 현재 runtime match, 완전한 runtime reference, resolved scheduler와 scheduler가 참조하는 모든 clock basis 근거가 필요합니다.
+- `historical_runtime_exact`: 같은 runtime/timing 완결성을 해당 시즌의 역사 runtime match 근거로 입증해야 합니다.
+
+## 최신 StaticData의 Phase 1C publish 결과
+
+Phase 1C actual smoke는 최신 StaticData를 read-only로 읽어 정책을 다시 계산했습니다. publish 대상과 현재 증거 상한은 다음과 같습니다.
+
+| 시즌 | 보스 | publish tier | 근거와 제한 |
+|---:|---|---|---|
+| 7 | 울트라 | `static_exact` | 정적 chain/관계 해소. behavior bundle byte 미확보로 `behavior_unresolved` warning |
+| 13 | 인디빌리아 | `static_exact` | 정적 chain/관계 해소. behavior bundle byte 미확보로 `behavior_unresolved` warning |
+| 26 | 프로비던스 | `static_exact` | 정적 chain/관계 해소. behavior bundle byte 미확보로 `behavior_unresolved` warning |
+| 29 | 마더웨일 전격 변종 | `static_exact` | 정적 chain/관계 해소. behavior bundle byte 미확보로 `behavior_unresolved` warning |
+| 34 | 앨트루이아 | `static_exact` | 정적 chain/관계 해소. behavior bundle byte 미확보로 `behavior_unresolved` warning |
+| 40 | 사치스러운 거미 | `behavior_exact` | behavior와 선택 NAPS bundle 근거 확보. timeline은 partial(`timeline_unresolved`), runtime은 미평가(`runtime_not_evaluated`) |
+
+따라서 시즌 40도 `asset_exact_runtime_current`나 `historical_runtime_exact`로 올리지 않습니다. 합성 fixture가 상위 tier의 schema와 persistence invariant를 시험하더라도 실제 시즌에 대한 증거 주장으로 해석하지 않습니다.
 
 호환성 tier와 원본 client 실행 가능 여부는 별개입니다. 원본 리테일 클라이언트 연결은 동적 `OriginalClientGate`가 통제합니다.
 

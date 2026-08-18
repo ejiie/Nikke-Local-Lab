@@ -22,7 +22,7 @@
 - Union Raid는 비활성 확장 지점이다.
 - 원본 리테일 클라이언트 연결은 `docs/FEASIBILITY_GATES.md`가 해제될 때까지 blocked다.
 - raid 호환성 tier는 `static_exact`, `behavior_exact`, `asset_exact_runtime_current`, `historical_runtime_exact` 네 단계다.
-- published raid snapshot 계약은 v2이며 `ready` 상태와 non-null compatibility map을 강제한다. 불완전 후보는 import diagnostic으로 분리한다.
+- published raid snapshot 계약은 v2이며 `ready` 상태와 non-null dataset-scoped compatibility binding marker를 강제한다. raw client mapping은 이 단계에서 materialize하지 않으며 불완전 후보는 import diagnostic으로 분리한다.
 - 현재 시즌 목록은 dataset에서 정책으로 파생한 문서화 결과이지 config에 고정된 두 번째 allowlist가 아니다.
 - 공개 제재가 보이지 않는다는 정황은 permission 또는 gate 해제 근거로 사용하지 않는다.
 - Phase 1A source 보호는 importer capability 수준의 read-only 보장이다. OS 전체 쓰기 방지로 표현하지 않는다.
@@ -33,6 +33,19 @@
 - 캐릭터 catalog의 ledger 완료와 snapshot publish는 한 PostgreSQL transaction에서 원자적으로 처리한다.
 - 캐릭터 subtype과 sd.bin runtime cap을 함께 사용해 호감도 최대값을 해소한다.
 - 현재 설치본만으로 전체 캐릭터 StaticData를 구성할 수 없으므로 보관된 pack과의 혼합 입력은 검증 전용이며 current-authoritative로 게시하지 않는다.
+- synchro와 9개 Recycler Room console은 캐릭터 build가 아니라 불변 `AccountCombatStateRevision`이 소유한다.
+- 그래픽·FPS와 전투 조작 설정은 `RaidSnapshot`이나 character build에 넣지 않고 별도 execution/control profile revision으로 저장한다.
+- target FPS, fixed delta, time scale, multiplayer override와 `MaxPerShotCorrect`가 unresolved인 전투는 golden 비교 대상으로 승격하지 않는다.
+- graphics quality, FPS, VSync와 resolution/display mode는 필수 execution profile 입력이다. exact client field가 없는 render scale·shadow는 근거 확보 전 필수화하지 않는다.
+- PC의 `UsePcAimSync`, 조준 보조·조건부 강도, 감도와 `MaxPerShotCorrect`는 필수 combat control 입력이며 auto combat·auto burst는 선택 기능이다.
+- 요청 설정만 유효한 상태는 launch-ready일 수 있지만 effective read-back과 frame telemetry가 일치해야 golden-ready가 된다.
+- 전투 중 필수 설정이 바뀌면 변경 frame을 경계로 새 execution segment와 profile revision을 기록한다.
+- 미장착 cube·collection 전체 inventory와 OL lock/reset history는 전투 프로필 범위 밖이다.
+- 공식 장비 instance UID는 import하지 않는다. 필요한 경우 Local Lab이 자체 UID를 발급한다.
+- 기존 credential-bearing raw profile은 네트워크 없이 호스트에서 읽고 allowlist field만 메모리 정규화한다. crawler와 authenticated replay는 Local Lab에 이식하지 않는다.
+- 사용자가 수동 실행하는 `getFromBlaLink.py`는 외부 raw producer로 유지하고 Local Lab은 최신 raw의 offline refresh만 수행한다. 중복 판정에는 credential-bearing raw hash가 아니라 sanitized payload canonical hash를 사용한다.
+- 별도 profile editor는 PostgreSQL 직접 편집기가 아니라 loopback API command client로 만든다.
+- `Save`와 `Save As`는 합성 local account revision만 수정하며 공식 계정이나 게임 파일에 write하지 않는다.
 
 ## 남은 미정사항
 
@@ -40,7 +53,7 @@
 - 기업 일치 장비를 기본으로 적용할지
 - Tier 10과 오버로드 장비 상태의 정확한 관계
 - 소장품·애장품의 단계/레벨 표현과 스킬 변형 모델
-- 콘솔, 리사이클 룸 등 추가 전투 스탯 축
+- client graphics/control setting의 authoritative local capture 위치와 적용 경로
 - 각 지원 시즌의 runtime exact 증거 확보 범위
 - 원본 client gate를 충족할 수 있는 권리자 지원 interface의 존재 여부
 

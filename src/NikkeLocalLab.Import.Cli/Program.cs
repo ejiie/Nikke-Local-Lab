@@ -1,5 +1,6 @@
 using NikkeLocalLab.Configuration;
 using NikkeLocalLab.Import.CharacterCatalog;
+using NikkeLocalLab.Import.RaidCatalog;
 using NikkeLocalLab.Import.Sources;
 using NikkeLocalLab.Persistence.PostgreSql;
 
@@ -55,6 +56,16 @@ internal static class ImportCli
               configuration,
               repositoryRoot,
               options).ConfigureAwait(false);
+        case "raid-catalog-inspect":
+          return await RaidCatalogCli.InspectAsync(
+              configuration,
+              repositoryRoot,
+              options).ConfigureAwait(false);
+        case "raid-catalog-import":
+          return await RaidCatalogCli.ImportAsync(
+              configuration,
+              repositoryRoot,
+              options).ConfigureAwait(false);
         default:
           return Fail("command_not_supported");
       }
@@ -80,6 +91,14 @@ internal static class ImportCli
       return Fail(exception.Code);
     }
     catch (CharacterCatalogIntegrityException exception)
+    {
+      return Fail(exception.Code);
+    }
+    catch (ChallengeRaidCatalogSourceException exception)
+    {
+      return Fail(exception.Code);
+    }
+    catch (RaidSnapshotIntegrityException exception)
     {
       return Fail(exception.Code);
     }

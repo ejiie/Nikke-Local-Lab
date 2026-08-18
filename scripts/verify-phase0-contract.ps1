@@ -111,6 +111,8 @@ $ConfigPath = Join-Path $RepositoryRoot "config/appsettings.example.json"
 $EquippedFixturePath = Join-Path $RepositoryRoot "tests/fixtures/synthetic/character-build.combat-max-v1.json"
 $DetachedFixturePath = Join-Path $RepositoryRoot "tests/fixtures/synthetic/character-build.cube-detached.json"
 $RaidFixturePath = Join-Path $RepositoryRoot "tests/fixtures/synthetic/raid-snapshot.challenge.json"
+$StaticRaidFixturePath = Join-Path $RepositoryRoot "tests/fixtures/synthetic/raid-snapshot.static-exact.json"
+$SyntheticManifestPath = Join-Path $RepositoryRoot "tests/fixtures/synthetic/manifest.json"
 $CharacterSchemaPath = Join-Path $RepositoryRoot "contracts/character-build.schema.json"
 $RaidSchemaPath = Join-Path $RepositoryRoot "contracts/raid-snapshot.schema.json"
 
@@ -119,6 +121,9 @@ $EquippedFixture = Get-Content -Raw -LiteralPath $EquippedFixturePath | ConvertF
 $DetachedFixture = Get-Content -Raw -LiteralPath $DetachedFixturePath | ConvertFrom-Json
 $RaidFixtureText = Get-Content -Raw -LiteralPath $RaidFixturePath
 $RaidFixture = $RaidFixtureText | ConvertFrom-Json
+$StaticRaidFixtureText = Get-Content -Raw -LiteralPath $StaticRaidFixturePath
+$StaticRaidFixture = $StaticRaidFixtureText | ConvertFrom-Json
+$SyntheticManifest = Get-Content -Raw -LiteralPath $SyntheticManifestPath | ConvertFrom-Json
 Get-Content -Raw -LiteralPath $CharacterSchemaPath | ConvertFrom-Json | Out-Null
 Get-Content -Raw -LiteralPath $RaidSchemaPath | ConvertFrom-Json | Out-Null
 
@@ -127,6 +132,8 @@ Assert-True ($null -ne (Get-Command Test-Json -ErrorAction SilentlyContinue)) "T
 Assert-True (Test-Json -LiteralPath $EquippedFixturePath -SchemaFile $CharacterSchemaPath) "Equipped character fixture does not satisfy its JSON Schema."
 Assert-True (Test-Json -LiteralPath $DetachedFixturePath -SchemaFile $CharacterSchemaPath) "Detached character fixture does not satisfy its JSON Schema."
 Assert-True (Test-Json -LiteralPath $RaidFixturePath -SchemaFile $RaidSchemaPath) "Challenge raid fixture does not satisfy its JSON Schema."
+Assert-True (Test-Json -LiteralPath $StaticRaidFixturePath -SchemaFile $RaidSchemaPath) "Static-exact raid fixture does not satisfy its JSON Schema."
+Assert-True (@($SyntheticManifest.fixtures) -contains "raid-snapshot.static-exact.json") "Static-exact raid fixture must be registered in the synthetic manifest."
 
 $InvalidCubeFixtureText = [regex]::Replace(
     (Get-Content -Raw -LiteralPath $DetachedFixturePath),
@@ -144,6 +151,19 @@ $InvalidRuntimeTierText = $RaidFixtureText.Replace(
     '"runtimeRelation": "not_evaluated"'
 )
 Assert-True (-not (Test-Json -Json $InvalidRuntimeTierText -SchemaFile $RaidSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject a current-runtime tier without a current runtime match."
+$StaticWithoutEvidenceWarning = $StaticRaidFixtureText | ConvertFrom-Json
+$StaticWithoutEvidenceWarning.compatibility.evidenceWarnings = @()
+$StaticWithoutEvidenceWarningText = $StaticWithoutEvidenceWarning | ConvertTo-Json -Depth 100
+Assert-True (-not (Test-Json -Json $StaticWithoutEvidenceWarningText -SchemaFile $RaidSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject static_exact when unresolved higher-tier evidence is hidden."
+$StaticPromotedToBehaviorExact = $StaticRaidFixtureText | ConvertFrom-Json
+$StaticPromotedToBehaviorExact.compatibility.tier = "behavior_exact"
+$StaticPromotedToBehaviorExactText = $StaticPromotedToBehaviorExact | ConvertTo-Json -Depth 100
+Assert-True (-not (Test-Json -Json $StaticPromotedToBehaviorExactText -SchemaFile $RaidSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject behavior_exact without behavior and selected bundle evidence."
+$StaticPromotedToRuntimeExact = $StaticRaidFixtureText | ConvertFrom-Json
+$StaticPromotedToRuntimeExact.compatibility.tier = "asset_exact_runtime_current"
+$StaticPromotedToRuntimeExact.compatibility.runtimeRelation = "current_runtime_match"
+$StaticPromotedToRuntimeExactText = $StaticPromotedToRuntimeExact | ConvertTo-Json -Depth 100
+Assert-True (-not (Test-Json -Json $StaticPromotedToRuntimeExactText -SchemaFile $RaidSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject runtime-exact promotion without behavior, bundle, runtime, and scheduler evidence."
 
 $Defaults = $Config.characterBuildDefaults
 Assert-True ($Defaults.policyId -eq "combat-max/v1") "Default policy must be combat-max/v1."
@@ -239,6 +259,33 @@ $IncompleteFixture.readiness.status = "incomplete"
 $IncompleteFixtureText = $IncompleteFixture | ConvertTo-Json -Depth 100
 Assert-True (-not (Test-Json -Json $IncompleteFixtureText -SchemaFile $RaidSchemaPath -ErrorAction SilentlyContinue)) "Published RaidSnapshot must reject incomplete candidates."
 
+Assert-True ($StaticRaidFixture.mode -eq "challenge") "Static-exact fixture must remain Challenge-only."
+Assert-True ($StaticRaidFixture.schemaVersion -eq 2) "Static-exact fixture must use RaidSnapshot v2."
+Assert-True ($StaticRaidFixture.seasonNumber -eq 7) "Static-exact fixture must exercise an Electric/Iron admitted season."
+Assert-True ($StaticRaidFixture.compatibility.tier -eq "static_exact") "Static fixture tier mismatch."
+Assert-True ($StaticRaidFixture.compatibility.runtimeRelation -eq "not_evaluated") "Static fixture runtime must remain unevaluated."
+Assert-True ((@($StaticRaidFixture.compatibility.evidenceWarnings) -join ",") -eq "behavior_unresolved") "Static fixture must disclose unresolved behavior evidence."
+Assert-True ($StaticRaidFixture.readiness.status -eq "ready") "Static-exact evidence may be publish-ready for its declared tier."
+Assert-True (@($StaticRaidFixture.readiness.warnings).Count -eq 0) "Static evidence warning belongs to compatibility, not readiness."
+Assert-True (@($StaticRaidFixture.provenance.selectedAssetBundles).Count -eq 0) "Static-exact fixture must exercise an empty selected bundle set."
+Assert-True ($null -eq $StaticRaidFixture.provenance.assetBundleSetSha256) "An empty selected bundle set must have a null set hash."
+Assert-True ($null -eq $StaticRaidFixture.provenance.behavior) "Static-exact fixture must exercise unresolved behavior evidence."
+Assert-True (@($StaticRaidFixture.provenance.timelines).Count -eq 0) "Static-exact fixture must exercise an empty timeline set."
+Assert-True (($null -eq $StaticRaidFixture.provenance.clientRuntime.buildUid) -and
+    ($null -eq $StaticRaidFixture.provenance.clientRuntime.localBuildLabel) -and
+    ($null -eq $StaticRaidFixture.provenance.clientRuntime.sha256)) "Static-exact fixture must exercise unresolved client runtime evidence."
+Assert-True (@($StaticRaidFixture.provenance.timing.clockBases).Count -eq 4) "Static-exact fixture must represent all four clock bases."
+Assert-True (@($StaticRaidFixture.provenance.timing.clockBases | Where-Object { $_.resolution -ne "unresolved" }).Count -eq 0) "Static-exact clock bases must remain unresolved in this fixture."
+Assert-True ($StaticRaidFixture.provenance.timing.scheduler.resolution -eq "unresolved") "Static-exact scheduler must remain unresolved in this fixture."
+Assert-True (@($StaticRaidFixture.staticRelations.parts).Count -ge 1) "Static-exact fixture must retain normalized part relations."
+Assert-True (@($StaticRaidFixture.staticRelations.skills).Count -ge 1) "Static-exact fixture must retain normalized skill relations."
+foreach ($Part in @($StaticRaidFixture.staticRelations.parts)) {
+    Assert-True (Test-Uuid $Part.partUid) "Static part relation must use an own UUID."
+}
+foreach ($Skill in @($StaticRaidFixture.staticRelations.skills)) {
+    Assert-True (Test-Uuid $Skill.skillUid) "Static skill relation must use an own UUID."
+}
+
 Assert-True (Test-Uuid $RaidFixture.raidSnapshotUid) "Raid snapshot must use an own UUID."
 Assert-True (Test-Uuid $RaidFixture.challengeEncounterUid) "Challenge encounter must use an own UUID."
 Assert-True (Test-Uuid $RaidFixture.bossVariantUid) "Boss variant must use an own UUID."
@@ -279,5 +326,6 @@ Assert-True ($RaidFixture.readiness.status -eq "ready") "Synthetic raid evidence
 
 $ForbiddenRaidKeys = '(?i)"(monster(_?id)?|spot(_?ai)?|preset(_?id)?|wave(_?id)?|asset(path|_?id)|source(path|_?id)|file(name)?)"\s*:'
 Assert-True ($RaidFixtureText -notmatch $ForbiddenRaidKeys) "Raid fixture exposes a forbidden raw source key."
+Assert-True ($StaticRaidFixtureText -notmatch $ForbiddenRaidKeys) "Static-exact raid fixture exposes a forbidden raw source key."
 
 Write-Output "Phase 0 character-build and restricted Challenge raid contracts passed."

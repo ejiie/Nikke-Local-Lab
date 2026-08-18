@@ -1,6 +1,6 @@
 # Architecture direction
 
-최종 실행 경로는 원본 UI와 실제 전투 runtime이 local backend를 사용하는 구조입니다. Phase 1B에서는 아래 경로 중 캐릭터 import/domain/catalog publish까지 구현했습니다.
+최종 실행 경로는 원본 UI와 실제 전투 runtime이 local backend를 사용하는 구조입니다. Phase 1C에서는 아래 경로 중 캐릭터 catalog와 Challenge RaidSnapshot import/domain/catalog publish까지 구현했습니다.
 
     C:\NIKKE (read-only)
             |
@@ -28,7 +28,7 @@
 
 lab-owned harness는 importer, API, revision, admission, 결과 계약을 검증하는 sidecar입니다. 최종 사용자 실행 경로나 원본 전투 검증의 대체물이 아닙니다.
 
-## 구현된 Phase 1B 모듈
+## 구현된 Phase 1C 모듈
 
 - `Identity`: 자체 UUID와 HMAC source identity 경계
 - `Provenance`: source/dataset/extractor/request canonical hash
@@ -37,16 +37,17 @@ lab-owned harness는 importer, API, revision, admission, 결과 계약을 검증
 - `Import.Sources`: 읽기 전용 source capability
 - `Domain.Character`: immutable 캐릭터 정의·버전과 combat-max/v1
 - `Import.CharacterCatalog`: strict StaticData/sd.bin reader와 정규화
-- `Persistence.PostgreSql`: import ledger와 원자적 character catalog publish
-- `Import.Cli`: config-check/init/migrate 및 character catalog inspect/import 진입점
+- `Domain.Raid`: Challenge admission policy, 정적 파츠와 ordered monster-skill slot 관계, evidence tier, RaidSnapshot v2
+- `Import.RaidCatalog`: strict Challenge FK chain과 typed behavior/bundle/timing evidence reader
+- `Persistence.PostgreSql`: import ledger와 원자적 character/Challenge raid catalog publish
+- `Import.Cli`: config-check/init/migrate 및 character/Challenge raid catalog inspect/import 진입점
 
 ## 후속 예정 모듈
 
-- `Import.Formats`: Challenge에 필요한 NKDB/UnityFS reader
-- `Domain.Raid`: Challenge encounter, admission policy, RaidSnapshot, 활성 시즌
+- `Import.Formats`: 후속 전투 실행에 필요한 추가 NKDB/UnityFS reader
+- `Challenge.Session`: 활성 Challenge 선택, 진입, 결과와 실행 segment 기록
 - `Compatibility`: tier 평가와 Git 비추적 mapping adapter
 - `Api`: 조회·write API
-- `Challenge.Session`: Challenge-only entry와 결과 수집
 - `Harness`: 프로젝트 소유 contract/integration test client
 - `OriginalClientCompatibilityAdapter`: gate 통과 후에만 활성화되는 원본 client 경계
 
@@ -76,3 +77,21 @@ gate가 모두 해제된 경우에만 활성화합니다. domain, importer, pers
 gate가 해제되지 않으면 개발 가능한 계층은 계속 검증하되 제품의 최종 인수 상태는 `blocked`로 남습니다.
 
 기존 `Nikke-Dmg-Simulator` 엔진과 직접 결합하지 않습니다. 필요한 정적 분석 결과는 출처 hash를 가진 import 입력으로만 다루고, 실행 엔진을 완제품 대체물로 사용하지 않습니다.
+
+## Profile and execution lane
+
+    credential-bearing legacy raw
+              |
+      offline allowlist sanitizer
+              |
+        source-ID-free draft
+              v
+    AccountCombatStateRevision + CharacterBuildRevision
+              |
+       loopback command API
+              |
+       standalone profile editor
+
+legacy crawler와 로그인/replay 코드는 이 경로에 포함하지 않습니다. editor는 DB를 직접 수정하지 않으며 Save/Save As마다 새 revision을 만듭니다.
+
+실행 시에는 `RaidSnapshot`, account state, squad/build, runtime execution profile과 combat control profile을 함께 고정합니다. target FPS와 실제 frame pacing은 다른 값이며 전투 telemetry가 실제 render frame·behavior tick·wall-clock을 별도로 기록합니다.

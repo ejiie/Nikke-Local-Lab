@@ -8,12 +8,13 @@
 4. `docs/FEASIBILITY_GATES.md`
 5. `docs/DOMAIN.md`
 6. `docs/RAID_DOMAIN.md`
-7. `docs/IDENTITY.md`
-8. `docs/DECISIONS.md`
-9. `docs/IMPLEMENTATION_PLAN.md`
-10. `docs/NEXT_STEPS.md`
-11. `docs/GITHUB_AUTOMATION.md`
-12. `docs/ARCHITECTURE.md`
+7. `docs/PROFILE_EXECUTION_DOMAIN.md`
+8. `docs/IDENTITY.md`
+9. `docs/DECISIONS.md`
+10. `docs/IMPLEMENTATION_PLAN.md`
+11. `docs/NEXT_STEPS.md`
+12. `docs/GITHUB_AUTOMATION.md`
+13. `docs/ARCHITECTURE.md`
 
 ## 불변 규칙
 
@@ -30,4 +31,4 @@
 - Solo Raid는 Challenge만 지원하고 `challenge-boss-support/v1` admission policy를 통과한 보스만 publish합니다.
 - 일반 1~7단계와 Union Raid 전투 세션을 만들지 않습니다.
 - 변경은 `agent/**` branch에 commit하고 Actions가 검증·PR·squash merge하도록 합니다.
-- 작업 전후 repository, Phase 0, Phase 1A, Actions contract 검사를 모두 실행합니다.
+- 작업 전후 repository, Phase 0, 현재 구현 단계(최소 Phase 1C), Actions contract 검사를 모두 실행합니다.

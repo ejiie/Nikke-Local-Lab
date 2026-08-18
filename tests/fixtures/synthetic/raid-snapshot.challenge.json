@@ -18,6 +18,54 @@
     "weaknessCode": "fire",
     "status": "supported"
   },
+  "staticRelations": {
+    "parts": [
+      {
+        "partUid": "10000000-0000-4000-8000-000000000021",
+        "ordinal": 0,
+        "typeCode": "core",
+        "damageHpRatio": 10000,
+        "hpRatio": 10000,
+        "defenceRatio": 10000,
+        "energyResistRatio": 10000,
+        "metalResistRatio": 10000,
+        "bioResistRatio": 10000,
+        "attackRatio": 10000,
+        "isMainPart": true,
+        "isDamageable": true,
+        "isHpVisible": true,
+        "linkedPartUid": "10000000-0000-4000-8000-000000000022"
+      },
+      {
+        "partUid": "10000000-0000-4000-8000-000000000022",
+        "ordinal": 1,
+        "typeCode": "weapon",
+        "damageHpRatio": 5000,
+        "hpRatio": 2500,
+        "defenceRatio": 10000,
+        "energyResistRatio": 10000,
+        "metalResistRatio": 10000,
+        "bioResistRatio": 10000,
+        "attackRatio": 10000,
+        "isMainPart": false,
+        "isDamageable": true,
+        "isHpVisible": true,
+        "linkedPartUid": "10000000-0000-4000-8000-000000000021"
+      }
+    ],
+    "skills": [
+      {
+        "skillUid": "10000000-0000-4000-8000-000000000031",
+        "ordinal": 0,
+        "roleCode": "active"
+      },
+      {
+        "skillUid": "10000000-0000-4000-8000-000000000032",
+        "ordinal": 1,
+        "roleCode": "passive"
+      }
+    ]
+  },
   "provenance": {
     "staticData": {
       "artifactUid": "10000000-0000-4000-8000-000000000011",
@@ -28,8 +76,8 @@
         "artifactUid": "10000000-0000-4000-8000-000000000012",
         "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "roles": [
-          "model",
-          "animation"
+          "animation",
+          "model"
         ]
       },
       {
@@ -49,13 +97,89 @@
     "timelines": [
       {
         "artifactUid": "10000000-0000-4000-8000-000000000015",
-        "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "clockBases": [
+          "behavior_tick",
+          "render_frame"
+        ]
+      },
+      {
+        "artifactUid": "10000000-0000-4000-8000-000000000016",
+        "sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+        "clockBases": [
+          "fixed_update",
+          "wall_clock"
+        ]
       }
     ],
     "clientRuntime": {
-      "buildUid": "10000000-0000-4000-8000-000000000016",
+      "buildUid": "10000000-0000-4000-8000-000000000017",
       "localBuildLabel": "synthetic-runtime-1",
-      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+      "sha256": "7777777777777777777777777777777777777777777777777777777777777777"
+    },
+    "timing": {
+      "clockBases": [
+        {
+          "basis": "behavior_tick",
+          "resolution": "runtime_trace",
+          "evidenceArtifacts": [
+            {
+              "artifactUid": "10000000-0000-4000-8000-000000000041",
+              "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+            }
+          ],
+          "reasonCode": null
+        },
+        {
+          "basis": "fixed_update",
+          "resolution": "runtime_trace",
+          "evidenceArtifacts": [
+            {
+              "artifactUid": "10000000-0000-4000-8000-000000000043",
+              "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "reasonCode": null
+        },
+        {
+          "basis": "render_frame",
+          "resolution": "runtime_trace",
+          "evidenceArtifacts": [
+            {
+              "artifactUid": "10000000-0000-4000-8000-000000000042",
+              "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+            }
+          ],
+          "reasonCode": null
+        },
+        {
+          "basis": "wall_clock",
+          "resolution": "runtime_trace",
+          "evidenceArtifacts": [
+            {
+              "artifactUid": "10000000-0000-4000-8000-000000000044",
+              "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+            }
+          ],
+          "reasonCode": null
+        }
+      ],
+      "scheduler": {
+        "resolution": "runtime_trace",
+        "relatedClockBases": [
+          "behavior_tick",
+          "fixed_update",
+          "render_frame",
+          "wall_clock"
+        ],
+        "evidenceArtifacts": [
+          {
+            "artifactUid": "10000000-0000-4000-8000-000000000045",
+            "sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ],
+        "reasonCode": null
+      }
     }
   },
   "compatibility": {
