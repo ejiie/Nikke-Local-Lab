@@ -66,6 +66,8 @@ public sealed record CharacterBuildDefaultOptions
 
   public required string LimitBreak { get; init; }
 
+  public required string CoreLevel { get; init; }
+
   public required string Bond { get; init; }
 
   public required int EquipmentTier { get; init; }
@@ -84,9 +86,7 @@ public sealed record CharacterBuildDefaultOptions
 
   public required string OverloadValidationMode { get; init; }
 
-  public required string CollectionItem { get; init; }
-
-  public required string FavoriteItem { get; init; }
+  public required string CollectibleSelection { get; init; }
 }
 
 public sealed record SoloRaidSupportRuleOptions
@@ -343,6 +343,7 @@ public static class LabConfigurationLoader
         !string.Equals(options.PolicyId, "combat-max/v1", StringComparison.Ordinal) ||
         !string.Equals(options.CharacterLevel, "explicit_required", StringComparison.Ordinal) ||
         !string.Equals(options.LimitBreak, "max_supported", StringComparison.Ordinal) ||
+        !string.Equals(options.CoreLevel, "max_if_applicable", StringComparison.Ordinal) ||
         !string.Equals(options.Bond, "max_for_character", StringComparison.Ordinal) ||
         options.EquipmentTier != 10 ||
         options.EquipmentEnhancementLevel != 5 ||
@@ -354,8 +355,10 @@ public static class LabConfigurationLoader
         options.SkillLevels.Skill2 != 10 ||
         options.SkillLevels.Burst != 10 ||
         !string.Equals(options.OverloadValidationMode, "research", StringComparison.Ordinal) ||
-        !string.Equals(options.CollectionItem, "max_if_applicable", StringComparison.Ordinal) ||
-        !string.Equals(options.FavoriteItem, "max_if_applicable", StringComparison.Ordinal))
+        !string.Equals(
+            options.CollectibleSelection,
+            "favorite_max_if_applicable_else_highest_rarity_collection_max",
+            StringComparison.Ordinal))
     {
       throw new LabConfigurationException("character_build_defaults_invalid");
     }

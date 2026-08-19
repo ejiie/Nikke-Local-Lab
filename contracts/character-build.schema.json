@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:nikke-local-lab:character-build:v1",
+  "$id": "urn:nikke-local-lab:character-build:v2",
   "title": "CharacterBuildRevision",
   "type": "object",
   "additionalProperties": false,
@@ -9,80 +9,43 @@
     "buildUid",
     "revisionUid",
     "revisionNumber",
-    "datasetSnapshotUid",
-    "characterUid",
-    "defaultPolicy",
+    "previousRevisionUid",
+    "datasetBinding",
+    "materializationPolicy",
     "validationMode",
+    "characterDefinition",
     "state",
     "readiness"
   ],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "buildUid": { "$ref": "#/$defs/uuid" },
     "revisionUid": { "$ref": "#/$defs/uuid" },
     "revisionNumber": { "type": "integer", "minimum": 1 },
-    "datasetSnapshotUid": { "$ref": "#/$defs/uuid" },
-    "characterUid": { "$ref": "#/$defs/uuid" },
-    "defaultPolicy": { "const": "combat-max/v1" },
-    "validationMode": { "enum": ["research", "game_legal"] },
+    "previousRevisionUid": {
+      "oneOf": [
+        { "$ref": "#/$defs/uuid" },
+        { "type": "null" }
+      ]
+    },
+    "datasetBinding": { "$ref": "#/$defs/datasetBinding" },
+    "materializationPolicy": { "enum": ["combat-max/v1", "explicit/v1"] },
+    "validationMode": { "enum": ["research", "game-legal"] },
+    "characterDefinition": { "$ref": "#/$defs/characterDefinitionReference" },
     "state": { "$ref": "#/$defs/buildState" },
-    "readiness": { "$ref": "#/$defs/readiness" }
+    "readiness": { "$ref": "#/$defs/buildReadiness" }
   },
   "allOf": [
     {
       "if": {
-        "properties": {
-          "readiness": {
-            "type": "object",
-            "properties": { "status": { "const": "ready" } },
-            "required": ["status"]
-          }
-        },
-        "required": ["readiness"]
+        "properties": { "revisionNumber": { "const": 1 } },
+        "required": ["revisionNumber"]
       },
       "then": {
-        "properties": {
-          "state": {
-            "type": "object",
-            "properties": {
-              "characterLevelPolicy": { "not": { "const": "unresolved" } },
-              "characterLevel": { "type": "integer", "minimum": 1 },
-              "limitBreak": {
-                "type": "object",
-                "properties": { "resolved": { "const": true } }
-              },
-              "bond": {
-                "type": "object",
-                "properties": { "resolved": { "const": true } }
-              },
-              "equipment": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "equipmentDefinitionUid": { "$ref": "#/$defs/uuid" },
-                    "enhancementLevel": { "type": "integer", "minimum": 0 },
-                    "manufacturerMatched": { "type": "boolean" }
-                  }
-                }
-              },
-              "collectionItem": {
-                "type": "object",
-                "properties": {
-                  "applicability": { "not": { "const": "unresolved" } },
-                  "resolved": { "const": true }
-                }
-              },
-              "favoriteItem": {
-                "type": "object",
-                "properties": {
-                  "applicability": { "not": { "const": "unresolved" } },
-                  "resolved": { "const": true }
-                }
-              }
-            }
-          }
-        }
+        "properties": { "previousRevisionUid": { "type": "null" } }
+      },
+      "else": {
+        "properties": { "previousRevisionUid": { "$ref": "#/$defs/uuid" } }
       }
     }
   ],
@@ -92,171 +55,479 @@
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
     },
-    "nullableNonNegativeInteger": {
-      "type": ["integer", "null"],
-      "minimum": 0
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     },
-    "resolvedMaximum": {
+    "controlledCode": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]{0,63}$"
+    },
+    "catalogBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalogSnapshotUid", "datasetSnapshotUid", "catalogManifestSha256"],
+      "properties": {
+        "catalogSnapshotUid": { "$ref": "#/$defs/uuid" },
+        "datasetSnapshotUid": { "$ref": "#/$defs/uuid" },
+        "catalogManifestSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "datasetBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["characterCatalog", "combatSupportCatalog"],
+      "properties": {
+        "characterCatalog": { "$ref": "#/$defs/catalogBinding" },
+        "combatSupportCatalog": { "$ref": "#/$defs/catalogBinding" }
+      }
+    },
+    "characterDefinitionReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["characterUid", "definitionVersionUid", "datasetSnapshotUid", "contentSha256"],
+      "properties": {
+        "characterUid": { "$ref": "#/$defs/uuid" },
+        "definitionVersionUid": { "$ref": "#/$defs/uuid" },
+        "datasetSnapshotUid": { "$ref": "#/$defs/uuid" },
+        "contentSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "supportDefinitionReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["definitionUid", "definitionVersionUid", "datasetSnapshotUid", "kind", "contentSha256"],
+      "properties": {
+        "definitionUid": { "$ref": "#/$defs/uuid" },
+        "definitionVersionUid": { "$ref": "#/$defs/uuid" },
+        "datasetSnapshotUid": { "$ref": "#/$defs/uuid" },
+        "kind": {
+          "enum": [
+            "equipment",
+            "harmony-cube",
+            "generic-collection",
+            "favorite",
+            "console",
+            "overload-option"
+          ]
+        },
+        "contentSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "equipmentDefinitionReference": {
+      "allOf": [
+        { "$ref": "#/$defs/supportDefinitionReference" },
+        { "properties": { "kind": { "const": "equipment" } } }
+      ]
+    },
+    "cubeDefinitionReference": {
+      "allOf": [
+        { "$ref": "#/$defs/supportDefinitionReference" },
+        { "properties": { "kind": { "const": "harmony-cube" } } }
+      ]
+    },
+    "favoriteDefinitionReference": {
+      "allOf": [
+        { "$ref": "#/$defs/supportDefinitionReference" },
+        { "properties": { "kind": { "const": "favorite" } } }
+      ]
+    },
+    "genericCollectionDefinitionReference": {
+      "allOf": [
+        { "$ref": "#/$defs/supportDefinitionReference" },
+        { "properties": { "kind": { "const": "generic-collection" } } }
+      ]
+    },
+    "overloadDefinitionReference": {
+      "allOf": [
+        { "$ref": "#/$defs/supportDefinitionReference" },
+        { "properties": { "kind": { "const": "overload-option" } } }
+      ]
+    },
+    "readyNonNegativeIntegerFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "value"],
+      "properties": {
+        "status": { "const": "ready" },
+        "value": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "readyPositiveIntegerFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "value"],
+      "properties": {
+        "status": { "const": "ready" },
+        "value": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "unresolvedFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "value", "reasonCode"],
+      "properties": {
+        "status": { "const": "unresolved" },
+        "value": { "type": "null" },
+        "reasonCode": { "$ref": "#/$defs/controlledCode" }
+      }
+    },
+    "notApplicableFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "value"],
+      "properties": {
+        "status": { "const": "not_applicable" },
+        "value": { "type": "null" }
+      }
+    },
+    "requiredNonNegativeIntegerFact": {
+      "oneOf": [
+        { "$ref": "#/$defs/readyNonNegativeIntegerFact" },
+        { "$ref": "#/$defs/unresolvedFact" }
+      ]
+    },
+    "requiredPositiveIntegerFact": {
+      "oneOf": [
+        { "$ref": "#/$defs/readyPositiveIntegerFact" },
+        { "$ref": "#/$defs/unresolvedFact" }
+      ]
+    },
+    "optionalNonNegativeIntegerFact": {
+      "oneOf": [
+        { "$ref": "#/$defs/readyNonNegativeIntegerFact" },
+        { "$ref": "#/$defs/unresolvedFact" },
+        { "$ref": "#/$defs/notApplicableFact" }
+      ]
+    },
+    "skillFact": {
       "oneOf": [
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["policy", "resolved", "value"],
+          "required": ["status", "value"],
           "properties": {
-            "policy": { "const": "unresolved" },
-            "resolved": { "const": false },
-            "value": { "type": "null" }
+            "status": { "const": "ready" },
+            "value": { "type": "integer", "minimum": 1, "maximum": 10 }
           }
         },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["policy", "resolved", "value"],
-          "properties": {
-            "policy": { "enum": ["max_supported", "max_for_character", "explicit"] },
-            "resolved": { "const": true },
-            "value": { "type": "integer", "minimum": 0 }
-          }
-        }
+        { "$ref": "#/$defs/unresolvedFact" }
       ]
     },
-    "limitBreak": {
+    "equipmentTierFact": {
       "oneOf": [
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["policy", "resolved", "stage", "coreLevel"],
+          "required": ["status", "value"],
           "properties": {
-            "policy": { "const": "unresolved" },
-            "resolved": { "const": false },
-            "stage": { "type": "null" },
-            "coreLevel": { "type": "null" }
+            "status": { "const": "ready" },
+            "value": { "enum": [9, 10] }
           }
         },
+        { "$ref": "#/$defs/unresolvedFact" }
+      ]
+    },
+    "equipmentEnhancementFact": {
+      "oneOf": [
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["policy", "resolved", "stage", "coreLevel"],
+          "required": ["status", "value"],
           "properties": {
-            "policy": { "enum": ["max_supported", "explicit"] },
-            "resolved": { "const": true },
-            "stage": { "type": "integer", "minimum": 0 },
-            "coreLevel": { "type": "integer", "minimum": 0 }
+            "status": { "const": "ready" },
+            "value": { "type": "integer", "minimum": 0, "maximum": 5 }
           }
-        }
+        },
+        { "$ref": "#/$defs/unresolvedFact" }
       ]
+    },
+    "requiredBooleanFact": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value"],
+          "properties": {
+            "status": { "const": "ready" },
+            "value": { "type": "boolean" }
+          }
+        },
+        { "$ref": "#/$defs/unresolvedFact" }
+      ]
+    },
+    "optionTypeFact": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value"],
+          "properties": {
+            "status": { "const": "ready" },
+            "value": {
+              "enum": [
+                "attack",
+                "defence",
+                "maximum-ammunition",
+                "critical-rate",
+                "critical-damage",
+                "charge-damage",
+                "charge-speed",
+                "elemental-damage",
+                "hit-rate"
+              ]
+            }
+          }
+        },
+        { "$ref": "#/$defs/unresolvedFact" }
+      ]
+    },
+    "valueUnitFact": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value"],
+          "properties": {
+            "status": { "const": "ready" },
+            "value": { "enum": ["absolute", "ratio", "percent", "count"] }
+          }
+        },
+        { "$ref": "#/$defs/unresolvedFact" }
+      ]
+    },
+    "exactValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unscaledValue", "decimalScale"],
+      "properties": {
+        "unscaledValue": { "type": "integer" },
+        "decimalScale": { "type": "integer", "minimum": 0, "maximum": 9 }
+      }
     },
     "overloadLine": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["lineIndex", "optionType", "exactValue", "unit"],
+      "required": ["lineIndex", "optionDefinition", "optionType", "unit", "applicationValue"],
       "properties": {
         "lineIndex": { "type": "integer", "minimum": 1, "maximum": 3 },
-        "optionType": { "type": "string", "minLength": 1 },
-        "exactValue": {
-          "type": "string",
-          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
-        },
-        "unit": { "type": "string", "minLength": 1 }
+        "optionDefinition": { "$ref": "#/$defs/overloadDefinitionReference" },
+        "optionType": { "$ref": "#/$defs/optionTypeFact" },
+        "unit": { "$ref": "#/$defs/valueUnitFact" },
+        "applicationValue": { "$ref": "#/$defs/exactValue" }
       }
     },
-    "equipment": {
+    "overloadLines": {
+      "type": "array",
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/overloadLine" },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "required": ["lineIndex"],
+            "properties": { "lineIndex": { "const": 1 } }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": ["lineIndex"],
+            "properties": { "lineIndex": { "const": 2 } }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": ["lineIndex"],
+            "properties": { "lineIndex": { "const": 3 } }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      ]
+    },
+    "attachedEquipment": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "equipmentSlotUid",
         "slot",
-        "equipmentDefinitionUid",
+        "attachment",
+        "definition",
         "tier",
         "enhancementLevel",
-        "manufacturerMatched",
+        "manufacturerMatch",
         "overloadLines"
       ],
       "properties": {
+        "equipmentSlotUid": { "$ref": "#/$defs/uuid" },
         "slot": { "enum": ["head", "torso", "arms", "legs"] },
-        "equipmentDefinitionUid": {
-          "oneOf": [
-            { "$ref": "#/$defs/uuid" },
-            { "type": "null" }
-          ]
-        },
-        "tier": { "type": "integer", "minimum": 1, "default": 10 },
-        "enhancementLevel": {
-          "type": ["integer", "null"],
-          "minimum": 0,
-          "default": 5
-        },
-        "manufacturerMatched": { "type": ["boolean", "null"] },
-        "overloadLines": {
-          "type": "array",
-          "maxItems": 3,
-          "items": { "$ref": "#/$defs/overloadLine" }
-        }
+        "attachment": { "const": "attached" },
+        "definition": { "$ref": "#/$defs/equipmentDefinitionReference" },
+        "tier": { "$ref": "#/$defs/equipmentTierFact" },
+        "enhancementLevel": { "$ref": "#/$defs/equipmentEnhancementFact" },
+        "manufacturerMatch": { "$ref": "#/$defs/requiredBooleanFact" },
+        "overloadLines": { "$ref": "#/$defs/overloadLines" }
       }
+    },
+    "detachedEquipment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "equipmentSlotUid",
+        "slot",
+        "attachment",
+        "definition",
+        "tier",
+        "enhancementLevel",
+        "manufacturerMatch",
+        "overloadLines"
+      ],
+      "properties": {
+        "equipmentSlotUid": { "$ref": "#/$defs/uuid" },
+        "slot": { "enum": ["head", "torso", "arms", "legs"] },
+        "attachment": { "const": "detached" },
+        "definition": { "type": "null" },
+        "tier": { "$ref": "#/$defs/notApplicableFact" },
+        "enhancementLevel": { "$ref": "#/$defs/notApplicableFact" },
+        "manufacturerMatch": { "$ref": "#/$defs/notApplicableFact" },
+        "overloadLines": { "type": "array", "maxItems": 0 }
+      }
+    },
+    "unresolvedEquipment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "equipmentSlotUid",
+        "slot",
+        "attachment",
+        "definition",
+        "tier",
+        "enhancementLevel",
+        "manufacturerMatch",
+        "overloadLines",
+        "reasonCode"
+      ],
+      "properties": {
+        "equipmentSlotUid": { "$ref": "#/$defs/uuid" },
+        "slot": { "enum": ["head", "torso", "arms", "legs"] },
+        "attachment": { "const": "unresolved" },
+        "definition": { "type": "null" },
+        "tier": { "$ref": "#/$defs/unresolvedFact" },
+        "enhancementLevel": { "$ref": "#/$defs/unresolvedFact" },
+        "manufacturerMatch": { "$ref": "#/$defs/unresolvedFact" },
+        "overloadLines": { "type": "array", "maxItems": 0 },
+        "reasonCode": { "$ref": "#/$defs/controlledCode" }
+      }
+    },
+    "equipment": {
+      "oneOf": [
+        { "$ref": "#/$defs/attachedEquipment" },
+        { "$ref": "#/$defs/detachedEquipment" },
+        { "$ref": "#/$defs/unresolvedEquipment" }
+      ]
+    },
+    "cubeLevelFact": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value"],
+          "properties": {
+            "status": { "const": "ready" },
+            "value": { "type": "integer", "minimum": 1, "maximum": 15 }
+          }
+        },
+        { "$ref": "#/$defs/unresolvedFact" }
+      ]
     },
     "cube": {
       "oneOf": [
         {
-          "title": "UnequippedCube",
           "type": "object",
           "additionalProperties": false,
-          "required": ["equipped", "cubeUid", "level"],
+          "required": ["attachment", "definition", "level"],
           "properties": {
-            "equipped": { "const": false },
-            "cubeUid": { "type": "null" },
-            "level": { "type": "null" }
+            "attachment": { "const": "attached" },
+            "definition": { "$ref": "#/$defs/cubeDefinitionReference" },
+            "level": { "$ref": "#/$defs/cubeLevelFact" }
           }
         },
         {
-          "title": "EquippedCube",
           "type": "object",
           "additionalProperties": false,
-          "required": ["equipped", "cubeUid", "level"],
+          "required": ["attachment", "definition", "level"],
           "properties": {
-            "equipped": { "const": true },
-            "cubeUid": { "$ref": "#/$defs/uuid" },
-            "level": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 15,
-              "default": 15
-            }
+            "attachment": { "const": "detached" },
+            "definition": { "type": "null" },
+            "level": { "$ref": "#/$defs/notApplicableFact" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["attachment", "definition", "level", "reasonCode"],
+          "properties": {
+            "attachment": { "const": "unresolved" },
+            "definition": { "type": "null" },
+            "level": { "$ref": "#/$defs/unresolvedFact" },
+            "reasonCode": { "$ref": "#/$defs/controlledCode" }
           }
         }
       ]
     },
-    "itemProgress": {
+    "collectibleLevelFact": {
+      "oneOf": [
+        { "$ref": "#/$defs/readyNonNegativeIntegerFact" },
+        { "$ref": "#/$defs/unresolvedFact" }
+      ]
+    },
+    "collectible": {
       "oneOf": [
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["applicability", "policy", "resolved", "level"],
+          "required": ["kind", "definition", "level"],
           "properties": {
-            "applicability": { "const": "not_applicable" },
-            "policy": { "const": "not_applicable" },
-            "resolved": { "const": true },
-            "level": { "type": "null" }
+            "kind": { "const": "favorite" },
+            "definition": { "$ref": "#/$defs/favoriteDefinitionReference" },
+            "level": { "$ref": "#/$defs/collectibleLevelFact" }
           }
         },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["applicability", "policy", "resolved", "level"],
+          "required": ["kind", "definition", "level"],
           "properties": {
-            "applicability": { "const": "unresolved" },
-            "policy": { "const": "unresolved" },
-            "resolved": { "const": false },
-            "level": { "type": "null" }
+            "kind": { "const": "generic-collection" },
+            "definition": { "$ref": "#/$defs/genericCollectionDefinitionReference" },
+            "level": { "$ref": "#/$defs/collectibleLevelFact" }
           }
         },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["applicability", "policy", "resolved", "level"],
+          "required": ["kind", "definition", "level"],
           "properties": {
-            "applicability": { "const": "applicable" },
-            "policy": { "enum": ["max_available", "explicit"] },
-            "resolved": { "const": true },
-            "level": { "type": "integer", "minimum": 0 }
+            "kind": { "enum": ["detached", "not-applicable"] },
+            "definition": { "type": "null" },
+            "level": { "$ref": "#/$defs/notApplicableFact" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "definition", "level", "reasonCode"],
+          "properties": {
+            "kind": { "const": "unresolved" },
+            "definition": { "type": "null" },
+            "level": { "$ref": "#/$defs/unresolvedFact" },
+            "reasonCode": { "$ref": "#/$defs/controlledCode" }
           }
         }
       ]
@@ -264,25 +535,29 @@
     "buildState": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "characterLevelPolicy",
-        "characterLevel",
-        "limitBreak",
-        "bond",
-        "equipment",
-        "cube",
-        "skills",
-        "collectionItem",
-        "favoriteItem"
-      ],
+      "required": ["investment", "skills", "equipment", "cube", "collectible"],
       "properties": {
-        "characterLevelPolicy": { "enum": ["explicit", "max_available", "unresolved"] },
-        "characterLevel": {
-          "type": ["integer", "null"],
-          "minimum": 1
+        "investment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["characterLevel", "limitBreak", "coreLevel", "bondLevel"],
+          "properties": {
+            "characterLevel": { "$ref": "#/$defs/requiredPositiveIntegerFact" },
+            "limitBreak": { "$ref": "#/$defs/requiredNonNegativeIntegerFact" },
+            "coreLevel": { "$ref": "#/$defs/optionalNonNegativeIntegerFact" },
+            "bondLevel": { "$ref": "#/$defs/requiredNonNegativeIntegerFact" }
+          }
         },
-        "limitBreak": { "$ref": "#/$defs/limitBreak" },
-        "bond": { "$ref": "#/$defs/resolvedMaximum" },
+        "skills": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["skill1", "skill2", "burst"],
+          "properties": {
+            "skill1": { "$ref": "#/$defs/skillFact" },
+            "skill2": { "$ref": "#/$defs/skillFact" },
+            "burst": { "$ref": "#/$defs/skillFact" }
+          }
+        },
         "equipment": {
           "type": "array",
           "minItems": 4,
@@ -328,49 +603,28 @@
           ]
         },
         "cube": { "$ref": "#/$defs/cube" },
-        "skills": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["skill1", "skill2", "burst"],
-          "properties": {
-            "skill1": { "type": "integer", "minimum": 1, "maximum": 10 },
-            "skill2": { "type": "integer", "minimum": 1, "maximum": 10 },
-            "burst": { "type": "integer", "minimum": 1, "maximum": 10 }
-          }
-        },
-        "collectionItem": { "$ref": "#/$defs/itemProgress" },
-        "favoriteItem": { "$ref": "#/$defs/itemProgress" }
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "characterLevelPolicy": { "const": "unresolved" }
-            },
-            "required": ["characterLevelPolicy"]
-          },
-          "then": {
-            "properties": {
-              "characterLevel": { "type": "null" }
-            }
-          },
-          "else": {
-            "properties": {
-              "characterLevel": { "type": "integer", "minimum": 1 }
-            }
-          }
-        }
-      ]
+        "collectible": { "$ref": "#/$defs/collectible" }
+      }
     },
-    "readiness": {
+    "validationIssue": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "warnings"],
+      "required": ["kind", "fieldCode", "reasonCode"],
       "properties": {
-        "status": { "enum": ["ready", "incomplete", "invalid"] },
-        "warnings": {
+        "kind": { "enum": ["unresolved", "invalid"] },
+        "fieldCode": { "$ref": "#/$defs/controlledCode" },
+        "reasonCode": { "$ref": "#/$defs/controlledCode" }
+      }
+    },
+    "validationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "issues"],
+      "properties": {
+        "status": { "enum": ["ready", "unresolved", "invalid"] },
+        "issues": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": { "$ref": "#/$defs/validationIssue" }
         }
       },
       "allOf": [
@@ -380,10 +634,55 @@
             "required": ["status"]
           },
           "then": {
-            "properties": { "warnings": { "maxItems": 0 } }
+            "properties": { "issues": { "maxItems": 0 } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "status": { "const": "unresolved" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "issues": {
+                "minItems": 1,
+                "contains": {
+                  "type": "object",
+                  "required": ["kind"],
+                  "properties": { "kind": { "const": "unresolved" } }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "status": { "const": "invalid" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "issues": {
+                "minItems": 1,
+                "contains": {
+                  "type": "object",
+                  "required": ["kind"],
+                  "properties": { "kind": { "const": "invalid" } }
+                }
+              }
+            }
           }
         }
       ]
+    },
+    "buildReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selection", "combatSemantics"],
+      "properties": {
+        "selection": { "$ref": "#/$defs/validationResult" },
+        "combatSemantics": { "$ref": "#/$defs/validationResult" }
+      }
     }
   }
 }

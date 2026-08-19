@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\NikkeLocalLab.Domain.Character\NikkeLocalLab.Domain.Character.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Domain.CombatSupport\NikkeLocalLab.Domain.CombatSupport.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Identity\NikkeLocalLab.Identity.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Provenance\NikkeLocalLab.Provenance.csproj" />
+  </ItemGroup>
+</Project>

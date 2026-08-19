@@ -49,10 +49,16 @@
 - 사용자가 수동 실행하는 `getFromBlaLink.py`는 외부 raw producer로 유지하고 Local Lab은 최신 raw의 offline refresh만 수행한다. 중복 판정에는 credential-bearing raw hash가 아니라 sanitized payload canonical hash를 사용한다.
 - 별도 profile editor는 PostgreSQL 직접 편집기가 아니라 loopback API command client로 만든다.
 - `Save`와 `Save As`는 합성 local account revision만 수정하며 공식 계정이나 게임 파일에 write하지 않는다.
+- profile revision은 character catalog와 combat-support catalog를 각각 `(catalog snapshot UID, dataset snapshot UID, manifest hash)`로 고정한다. 두 catalog가 같은 dataset을 사용한다고 가정하지 않는다.
+- `combat-max/v1` profile 해소기는 Phase 1B character facts와 Phase 1D의 Tier 9·10 definition grid를 명시적으로 결합한다. Phase 1B의 unresolved equipment placeholder를 전투 장비로 재사용하지 않는다.
+- `combat-max/v1`의 core는 적용 가능한 snapshot 최대값으로 해소하고, 기업 일치 여부는 사용자가 선택하거나 근거가 있을 때까지 `unresolved`로 둔다.
+- collection/favorite 기본 선택은 적용 가능한 전용 favorite가 정확히 하나면 그 최대값을, 아니면 무기와 일치하는 최고 rarity generic collection의 최대값을 사용한다. 둘을 동시에 적용하지 않는다.
+- OL line은 장비별 고정 좌표 `1..3`의 sparse subset이다. 중간 빈 line을 보존하며 삭제 시 뒤 line을 당기지 않는다.
+- console EXP는 nullable 숫자가 아니라 `ready|unresolved|not_applicable` fact로 저장한다. level이 있어도 EXP가 유실되면 full-fidelity readiness만 미완료다.
+- roster level과 detail level은 별도 observation이다. 의미가 확정되기 전에는 하나의 character level로 자동 병합하지 않는다.
 
 ## 남은 미정사항
 
-- 돌파 최대가 일반 한계돌파와 코어 강화 중 어디까지를 뜻하는지에 대한 데이터별 해소 규칙
 - 기업 일치 장비를 기본으로 적용할지
 - Tier 10과 오버로드 장비 상태의 정확한 관계
 - 소장품·애장품의 단계/레벨 표현과 스킬 변형 모델

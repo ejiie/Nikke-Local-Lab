@@ -59,17 +59,19 @@
 
 완료 기준: profile write가 raw ID나 추측값 없이 모든 전투 보조 항목을 자체 UID로 해소할 수 있어야 합니다.
 
-## 5. Phase 2A1 — account/profile/build revision
+## 5. Phase 2A1 — account/profile/build revision — 완료
 
-- 합성 local account/session을 구현한다.
-- synchro와 console level/EXP를 `AccountCombatStateRevision`으로 구현한다.
-- 자유 character level과 immutable build revision을 구현한다.
-- 미장착 또는 Tier 9·10/+0~5 네 부위, 큐브 장착·해제 및 자유 레벨, 스킬 10/10/10을 구현한다.
-- OL 4×3 line의 exact decimal 추가·교체·삭제를 구현한다.
-- 소장품·애장품 max/default와 N/A를 구현한다.
-- 5인 squad revision을 구현한다.
+- 합성 local account/session을 구현했습니다.
+- synchro와 console level/EXP fact를 `AccountCombatStateRevision`으로 구현했습니다.
+- 자유 character level과 immutable build revision을 구현했습니다.
+- 미장착 또는 Tier 9·10/+0~5 네 부위, cube 장착·해제 및 자유 level, skill state를 구현했습니다.
+- OL 4×3 고정 좌표의 sparse exact decimal 추가·교체·삭제를 구현했습니다.
+- 배타적인 collection/favorite 선택과 N/A/unresolved 상태를 구현했습니다.
+- 선택적인 5인 squad revision과 draft/combat readiness 분리를 구현했습니다.
+- V0005는 CAS Save, idempotent operation, revision lineage, immutable child graph와 local session lifecycle을 원자적으로 저장합니다.
+- 선택된 definition은 알려졌지만 enhancement/cube/collectible level만 결손인 일반 draft도 field-level `unresolved` reason과 함께 무손실 왕복합니다.
 
-완료 기준: 모든 write가 새 revision을 만들고 과거 전투 결과의 참조가 변하지 않아야 합니다. 최신 계정 JSON은 필드 coverage와 local acceptance에 사용하되 raw ID·개인값을 fixture나 Git에 넣지 않습니다.
+완료 결과: 현재 content가 달라진 write만 다음 revision을 만들고, 동일 content는 기존 revision과 최초 provenance를 재사용하며 과거 전투 결과의 참조가 변하지 않습니다. 최신 계정 JSON은 필드 coverage와 local acceptance에만 사용했고 raw ID·개인값을 fixture나 Git에 넣지 않았습니다.
 
 ## 6. Phase 2A2 — offline import와 profile editor
 
@@ -117,4 +119,4 @@ Union Raid는 위 흐름이 안정화되고 사용자가 다시 범위를 확장
 
 ## 바로 다음 작업
 
-다음 구현 commit은 **Phase 2A1 account/profile/build revision**입니다. 최신 계정 capture에서 확인한 실제 필드 shape를 source-free 합성 fixture로 재현하고, 자체 UUID 기반 account state와 immutable build/squad revision을 구현합니다.
+다음 구현 단계는 **Phase 2A2 offline sanitizer와 profile editor/API**입니다. 최신 raw의 allowlist field를 source-free imported draft로 변환하되 Local Lab이 crawler나 공식 로그인/API replay를 실행하지 않도록 유지합니다.

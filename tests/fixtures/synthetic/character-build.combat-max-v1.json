@@ -1,92 +1,271 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "buildUid": "00000000-0000-4000-8000-000000000101",
   "revisionUid": "00000000-0000-4000-8000-000000000102",
   "revisionNumber": 1,
-  "datasetSnapshotUid": "00000000-0000-4000-8000-000000000103",
-  "characterUid": "00000000-0000-4000-8000-000000000104",
-  "defaultPolicy": "combat-max/v1",
-  "validationMode": "research",
-  "state": {
-    "characterLevelPolicy": "explicit",
-    "characterLevel": 400,
-    "limitBreak": {
-      "policy": "max_supported",
-      "resolved": true,
-      "stage": 9,
-      "coreLevel": 9
+  "previousRevisionUid": null,
+  "datasetBinding": {
+    "characterCatalog": {
+      "catalogSnapshotUid": "00000000-0000-4000-8000-000000000201",
+      "datasetSnapshotUid": "00000000-0000-4000-8000-000000000202",
+      "catalogManifestSha256": "1111111111111111111111111111111111111111111111111111111111111111"
     },
-    "bond": {
-      "policy": "max_for_character",
-      "resolved": true,
-      "value": 99
+    "combatSupportCatalog": {
+      "catalogSnapshotUid": "00000000-0000-4000-8000-000000000203",
+      "datasetSnapshotUid": "00000000-0000-4000-8000-000000000204",
+      "catalogManifestSha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  },
+  "materializationPolicy": "combat-max/v1",
+  "validationMode": "research",
+  "characterDefinition": {
+    "characterUid": "00000000-0000-4000-8000-000000000104",
+    "definitionVersionUid": "00000000-0000-4000-8000-000000000205",
+    "datasetSnapshotUid": "00000000-0000-4000-8000-000000000202",
+    "contentSha256": "3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "state": {
+    "investment": {
+      "characterLevel": {
+        "status": "ready",
+        "value": 400
+      },
+      "limitBreak": {
+        "status": "ready",
+        "value": 3
+      },
+      "coreLevel": {
+        "status": "ready",
+        "value": 7
+      },
+      "bondLevel": {
+        "status": "ready",
+        "value": 40
+      }
+    },
+    "skills": {
+      "skill1": {
+        "status": "ready",
+        "value": 10
+      },
+      "skill2": {
+        "status": "ready",
+        "value": 10
+      },
+      "burst": {
+        "status": "ready",
+        "value": 10
+      }
     },
     "equipment": [
       {
+        "equipmentSlotUid": "00000000-0000-4000-8000-000000000111",
         "slot": "head",
-        "equipmentDefinitionUid": "00000000-0000-4000-8000-000000000111",
-        "tier": 10,
-        "enhancementLevel": 5,
-        "manufacturerMatched": true,
+        "attachment": "attached",
+        "definition": {
+          "definitionUid": "00000000-0000-4000-8000-000000000301",
+          "definitionVersionUid": "00000000-0000-4000-8000-000000000401",
+          "datasetSnapshotUid": "00000000-0000-4000-8000-000000000204",
+          "kind": "equipment",
+          "contentSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+        },
+        "tier": {
+          "status": "ready",
+          "value": 10
+        },
+        "enhancementLevel": {
+          "status": "ready",
+          "value": 5
+        },
+        "manufacturerMatch": {
+          "status": "unresolved",
+          "value": null,
+          "reasonCode": "manufacturer_match_unselected"
+        },
         "overloadLines": [
           {
             "lineIndex": 1,
-            "optionType": "synthetic_attack_modifier",
-            "exactValue": "123.4567",
-            "unit": "synthetic_percent"
+            "optionDefinition": {
+              "definitionUid": "00000000-0000-4000-8000-000000000311",
+              "definitionVersionUid": "00000000-0000-4000-8000-000000000411",
+              "datasetSnapshotUid": "00000000-0000-4000-8000-000000000204",
+              "kind": "overload-option",
+              "contentSha256": "8888888888888888888888888888888888888888888888888888888888888888"
+            },
+            "optionType": {
+              "status": "ready",
+              "value": "attack"
+            },
+            "unit": {
+              "status": "ready",
+              "value": "percent"
+            },
+            "applicationValue": {
+              "unscaledValue": 1234567,
+              "decimalScale": 4
+            }
+          },
+          {
+            "lineIndex": 3,
+            "optionDefinition": {
+              "definitionUid": "00000000-0000-4000-8000-000000000313",
+              "definitionVersionUid": "00000000-0000-4000-8000-000000000413",
+              "datasetSnapshotUid": "00000000-0000-4000-8000-000000000204",
+              "kind": "overload-option",
+              "contentSha256": "9999999999999999999999999999999999999999999999999999999999999999"
+            },
+            "optionType": {
+              "status": "ready",
+              "value": "maximum-ammunition"
+            },
+            "unit": {
+              "status": "ready",
+              "value": "percent"
+            },
+            "applicationValue": {
+              "unscaledValue": 755,
+              "decimalScale": 2
+            }
           }
         ]
       },
       {
+        "equipmentSlotUid": "00000000-0000-4000-8000-000000000112",
         "slot": "torso",
-        "equipmentDefinitionUid": "00000000-0000-4000-8000-000000000112",
-        "tier": 10,
-        "enhancementLevel": 5,
-        "manufacturerMatched": true,
+        "attachment": "attached",
+        "definition": {
+          "definitionUid": "00000000-0000-4000-8000-000000000302",
+          "definitionVersionUid": "00000000-0000-4000-8000-000000000402",
+          "datasetSnapshotUid": "00000000-0000-4000-8000-000000000204",
+          "kind": "equipment",
+          "contentSha256": "5555555555555555555555555555555555555555555555555555555555555555"
+        },
+        "tier": {
+          "status": "ready",
+          "value": 10
+        },
+        "enhancementLevel": {
+          "status": "ready",
+          "value": 5
+        },
+        "manufacturerMatch": {
+          "status": "unresolved",
+          "value": null,
+          "reasonCode": "manufacturer_match_unselected"
+        },
         "overloadLines": []
       },
       {
+        "equipmentSlotUid": "00000000-0000-4000-8000-000000000113",
         "slot": "arms",
-        "equipmentDefinitionUid": "00000000-0000-4000-8000-000000000113",
-        "tier": 10,
-        "enhancementLevel": 5,
-        "manufacturerMatched": true,
+        "attachment": "attached",
+        "definition": {
+          "definitionUid": "00000000-0000-4000-8000-000000000303",
+          "definitionVersionUid": "00000000-0000-4000-8000-000000000403",
+          "datasetSnapshotUid": "00000000-0000-4000-8000-000000000204",
+          "kind": "equipment",
+          "contentSha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "tier": {
+          "status": "ready",
+          "value": 10
+        },
+        "enhancementLevel": {
+          "status": "ready",
+          "value": 5
+        },
+        "manufacturerMatch": {
+          "status": "unresolved",
+          "value": null,
+          "reasonCode": "manufacturer_match_unselected"
+        },
         "overloadLines": []
       },
       {
+        "equipmentSlotUid": "00000000-0000-4000-8000-000000000114",
         "slot": "legs",
-        "equipmentDefinitionUid": "00000000-0000-4000-8000-000000000114",
-        "tier": 10,
-        "enhancementLevel": 5,
-        "manufacturerMatched": true,
+        "attachment": "attached",
+        "definition": {
+          "definitionUid": "00000000-0000-4000-8000-000000000304",
+          "definitionVersionUid": "00000000-0000-4000-8000-000000000404",
+          "datasetSnapshotUid": "00000000-0000-4000-8000-000000000204",
+          "kind": "equipment",
+          "contentSha256": "7777777777777777777777777777777777777777777777777777777777777777"
+        },
+        "tier": {
+          "status": "ready",
+          "value": 10
+        },
+        "enhancementLevel": {
+          "status": "ready",
+          "value": 5
+        },
+        "manufacturerMatch": {
+          "status": "unresolved",
+          "value": null,
+          "reasonCode": "manufacturer_match_unselected"
+        },
         "overloadLines": []
       }
     ],
     "cube": {
-      "equipped": true,
-      "cubeUid": "00000000-0000-4000-8000-000000000121",
-      "level": 15
+      "attachment": "detached",
+      "definition": null,
+      "level": {
+        "status": "not_applicable",
+        "value": null
+      }
     },
-    "skills": {
-      "skill1": 10,
-      "skill2": 10,
-      "burst": 10
-    },
-    "collectionItem": {
-      "applicability": "applicable",
-      "policy": "max_available",
-      "resolved": true,
-      "level": 9
-    },
-    "favoriteItem": {
-      "applicability": "applicable",
-      "policy": "max_available",
-      "resolved": true,
-      "level": 9
+    "collectible": {
+      "kind": "favorite",
+      "definition": {
+        "definitionUid": "00000000-0000-4000-8000-000000000331",
+        "definitionVersionUid": "00000000-0000-4000-8000-000000000431",
+        "datasetSnapshotUid": "00000000-0000-4000-8000-000000000204",
+        "kind": "favorite",
+        "contentSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "level": {
+        "status": "ready",
+        "value": 3
+      }
     }
   },
   "readiness": {
-    "status": "ready",
-    "warnings": []
+    "selection": {
+      "status": "unresolved",
+      "issues": [
+        {
+          "kind": "unresolved",
+          "fieldCode": "equipment_head_manufacturer_match",
+          "reasonCode": "manufacturer_match_unselected"
+        },
+        {
+          "kind": "unresolved",
+          "fieldCode": "equipment_torso_manufacturer_match",
+          "reasonCode": "manufacturer_match_unselected"
+        },
+        {
+          "kind": "unresolved",
+          "fieldCode": "equipment_arms_manufacturer_match",
+          "reasonCode": "manufacturer_match_unselected"
+        },
+        {
+          "kind": "unresolved",
+          "fieldCode": "equipment_legs_manufacturer_match",
+          "reasonCode": "manufacturer_match_unselected"
+        }
+      ]
+    },
+    "combatSemantics": {
+      "status": "unresolved",
+      "issues": [
+        {
+          "kind": "unresolved",
+          "fieldCode": "collectible_combat_semantics",
+          "reasonCode": "skill_definition_catalog_not_imported"
+        }
+      ]
+    }
   }
 }

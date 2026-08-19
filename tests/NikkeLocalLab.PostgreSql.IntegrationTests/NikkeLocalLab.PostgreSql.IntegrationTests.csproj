@@ -12,6 +12,7 @@
     <ProjectReference Include="..\..\src\NikkeLocalLab.Application\NikkeLocalLab.Application.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.Character\NikkeLocalLab.Domain.Character.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.CombatSupport\NikkeLocalLab.Domain.CombatSupport.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.Profile\NikkeLocalLab.Domain.Profile.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.Raid\NikkeLocalLab.Domain.Raid.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Identity\NikkeLocalLab.Identity.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Import.Sources\NikkeLocalLab.Import.Sources.csproj" />
