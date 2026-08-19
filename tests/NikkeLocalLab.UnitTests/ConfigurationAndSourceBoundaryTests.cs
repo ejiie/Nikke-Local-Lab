@@ -257,6 +257,7 @@ public sealed class ConfigurationAndSourceBoundaryTests
         policyId = "combat-max/v1",
         characterLevel = "explicit_required",
         limitBreak = "max_supported",
+        coreLevel = "max_if_applicable",
         bond = "max_for_character",
         equipmentTier = 10,
         equipmentEnhancementLevel = 5,
@@ -271,8 +272,7 @@ public sealed class ConfigurationAndSourceBoundaryTests
           burst = 10
         },
         overloadValidationMode = "research",
-        collectionItem = "max_if_applicable",
-        favoriteItem = "max_if_applicable"
+        collectibleSelection = "favorite_max_if_applicable_else_highest_rarity_collection_max"
       },
       soloRaid = new
       {

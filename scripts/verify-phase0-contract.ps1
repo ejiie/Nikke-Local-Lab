@@ -35,58 +35,124 @@ function Get-TextSha256 {
     }
 }
 
+function Assert-ControlledCode {
+    param(
+        [object]$Value,
+        [string]$Message
+    )
+    Assert-True (($Value -is [string]) -and ($Value -match '^[a-z][a-z0-9._-]{0,63}$')) $Message
+}
+
+function Assert-ReadyIntegerFact {
+    param(
+        [object]$Fact,
+        [int]$Expected,
+        [string]$Message
+    )
+    Assert-True ($Fact.status -eq "ready") "$Message status mismatch."
+    Assert-True ((($Fact.value -is [int]) -or ($Fact.value -is [long])) -and ($Fact.value -eq $Expected)) "$Message value mismatch."
+}
+
+function Assert-SupportReference {
+    param(
+        [object]$Reference,
+        [string]$ExpectedKind,
+        [string]$ExpectedDatasetUid,
+        [string]$Message
+    )
+    Assert-True (Test-Uuid $Reference.definitionUid) "$Message definition UID mismatch."
+    Assert-True (Test-Uuid $Reference.definitionVersionUid) "$Message version UID mismatch."
+    Assert-True ($Reference.datasetSnapshotUid -eq $ExpectedDatasetUid) "$Message dataset binding mismatch."
+    Assert-True ($Reference.kind -eq $ExpectedKind) "$Message kind mismatch."
+    Assert-Sha256 $Reference.contentSha256 "$Message content hash mismatch."
+}
+
 function Assert-CharacterFixture {
     param(
         [object]$Fixture,
-        [bool]$ExpectCubeEquipped
+        [string]$ExpectedCollectibleKind
     )
 
-    Assert-True ($Fixture.defaultPolicy -eq "combat-max/v1") "Synthetic fixture policy mismatch."
+    Assert-True ($Fixture.schemaVersion -eq 2) "Synthetic character fixture must use schema v2."
+    Assert-True (Test-Uuid $Fixture.buildUid) "Synthetic build must use a UUID."
+    Assert-True (Test-Uuid $Fixture.revisionUid) "Synthetic build revision must use a UUID."
+    Assert-True ($Fixture.materializationPolicy -eq "combat-max/v1") "Synthetic fixture materialization policy mismatch."
     Assert-True ($Fixture.validationMode -eq "research") "Synthetic fixture must exercise research write mode."
-    Assert-True ($Fixture.state.characterLevelPolicy -eq "explicit") "Character level must use explicit policy."
-    Assert-True (($Fixture.state.characterLevel -is [int]) -or ($Fixture.state.characterLevel -is [long])) "Character level must be an integer."
-    Assert-True ($Fixture.state.characterLevel -ge 1) "Character level must be positive."
-    Assert-True ($Fixture.state.limitBreak.policy -eq "max_supported") "Synthetic limit-break policy mismatch."
-    Assert-True ($Fixture.state.limitBreak.resolved -eq $true) "Synthetic limit break must be resolved."
-    Assert-True ($Fixture.state.bond.policy -eq "max_for_character") "Synthetic bond policy mismatch."
-    Assert-True ($Fixture.state.bond.resolved -eq $true) "Synthetic bond must be resolved."
-    Assert-True ($Fixture.state.equipment.Count -eq 4) "Synthetic fixture must contain four equipment slots."
 
+    $CharacterCatalog = $Fixture.datasetBinding.characterCatalog
+    $SupportCatalog = $Fixture.datasetBinding.combatSupportCatalog
+    foreach ($Binding in @($CharacterCatalog, $SupportCatalog)) {
+        Assert-True (Test-Uuid $Binding.catalogSnapshotUid) "Catalog binding must use a synthetic snapshot UUID."
+        Assert-True (Test-Uuid $Binding.datasetSnapshotUid) "Catalog binding must use a synthetic dataset UUID."
+        Assert-Sha256 $Binding.catalogManifestSha256 "Catalog binding manifest hash mismatch."
+    }
+    Assert-True ($CharacterCatalog.catalogSnapshotUid -ne $SupportCatalog.catalogSnapshotUid) "Character and support catalogs must be independently pinned."
+    Assert-True ($CharacterCatalog.datasetSnapshotUid -ne $SupportCatalog.datasetSnapshotUid) "Character and support datasets must not be assumed equal."
+
+    Assert-True (Test-Uuid $Fixture.characterDefinition.characterUid) "Character reference must use a synthetic UUID."
+    Assert-True (Test-Uuid $Fixture.characterDefinition.definitionVersionUid) "Character version must use a synthetic UUID."
+    Assert-True ($Fixture.characterDefinition.datasetSnapshotUid -eq $CharacterCatalog.datasetSnapshotUid) "Character reference must bind to the selected character dataset."
+    Assert-Sha256 $Fixture.characterDefinition.contentSha256 "Character definition hash mismatch."
+
+    Assert-ReadyIntegerFact $Fixture.state.investment.characterLevel 400 "Character level"
+    Assert-ReadyIntegerFact $Fixture.state.investment.limitBreak 3 "Limit break"
+    Assert-ReadyIntegerFact $Fixture.state.investment.coreLevel 7 "Core level"
+    Assert-ReadyIntegerFact $Fixture.state.investment.bondLevel 40 "Bond level"
+    Assert-ReadyIntegerFact $Fixture.state.skills.skill1 10 "Skill 1"
+    Assert-ReadyIntegerFact $Fixture.state.skills.skill2 10 "Skill 2"
+    Assert-ReadyIntegerFact $Fixture.state.skills.burst 10 "Burst"
+
+    Assert-True ($Fixture.state.equipment.Count -eq 4) "Synthetic fixture must contain four equipment slots."
     $ExpectedSlots = @("arms", "head", "legs", "torso")
     $ActualSlots = @($Fixture.state.equipment | ForEach-Object { $_.slot } | Sort-Object -Unique)
     Assert-True (($ActualSlots -join ",") -eq ($ExpectedSlots -join ",")) "Equipment slots must be unique and complete."
+    $EquipmentSlotUids = @($Fixture.state.equipment | ForEach-Object { $_.equipmentSlotUid })
+    Assert-True (($EquipmentSlotUids | Sort-Object -Unique).Count -eq 4) "Equipment slot UUIDs must be unique."
 
     foreach ($Equipment in $Fixture.state.equipment) {
-        Assert-True (Test-Uuid $Equipment.equipmentDefinitionUid) "Equipment definition must use a synthetic UUID."
-        Assert-True ($Equipment.tier -eq 10) "Every equipment slot must default to Tier 10."
-        Assert-True ($Equipment.enhancementLevel -eq 5) "Every equipment slot must default to enhancement Level 5."
+        Assert-True (Test-Uuid $Equipment.equipmentSlotUid) "Equipment slot must use a local synthetic UUID."
+        Assert-True ($Equipment.attachment -eq "attached") "Synthetic default equipment must be attached."
+        Assert-SupportReference $Equipment.definition "equipment" $SupportCatalog.datasetSnapshotUid "Equipment definition"
+        Assert-ReadyIntegerFact $Equipment.tier 10 "Equipment tier"
+        Assert-ReadyIntegerFact $Equipment.enhancementLevel 5 "Equipment enhancement"
+        Assert-True ($Equipment.manufacturerMatch.status -eq "unresolved") "Manufacturer match must remain unresolved."
+        Assert-True ($null -eq $Equipment.manufacturerMatch.value) "Unresolved manufacturer match cannot carry a value."
+        Assert-ControlledCode $Equipment.manufacturerMatch.reasonCode "Manufacturer issue must be a controlled code."
         Assert-True ($Equipment.overloadLines.Count -le 3) "An equipment slot cannot contain more than three overload lines."
         $LineIndexes = @($Equipment.overloadLines | ForEach-Object { $_.lineIndex })
         Assert-True (($LineIndexes | Sort-Object -Unique).Count -eq $LineIndexes.Count) "Overload line indexes must be unique within a slot."
+        Assert-True (($LineIndexes -join ",") -eq (($LineIndexes | Sort-Object) -join ",")) "Overload lines must remain in fixed-coordinate order."
         foreach ($Line in $Equipment.overloadLines) {
-            Assert-True ($Line.exactValue -is [string]) "Overload exactValue must round-trip as a string."
-            Assert-True ($Line.exactValue -match '^-?(0|[1-9][0-9]*)(\.[0-9]+)?$') "Overload exactValue is not an exact decimal string."
+            Assert-True ($Line.lineIndex -in 1, 2, 3) "Overload line index must be in 1..3."
+            Assert-SupportReference $Line.optionDefinition "overload-option" $SupportCatalog.datasetSnapshotUid "OL option definition"
+            Assert-True ($Line.optionType.status -eq "ready") "Synthetic OL option type must be ready."
+            Assert-True ($Line.unit.status -eq "ready") "Synthetic OL unit must be ready."
+            Assert-True (($Line.applicationValue.unscaledValue -is [int]) -or ($Line.applicationValue.unscaledValue -is [long])) "OL unscaled value must be an integer."
+            Assert-True (($Line.applicationValue.decimalScale -is [int]) -or ($Line.applicationValue.decimalScale -is [long])) "OL decimal scale must be an integer."
+            Assert-True ($Line.applicationValue.decimalScale -in 0..9) "OL decimal scale must be in 0..9."
         }
     }
 
-    Assert-True ($Fixture.state.cube.equipped -eq $ExpectCubeEquipped) "Synthetic cube equipped state mismatch."
-    if ($ExpectCubeEquipped) {
-        Assert-True (Test-Uuid $Fixture.state.cube.cubeUid) "Equipped cube must use a synthetic UUID."
-        Assert-True ($Fixture.state.cube.level -eq 15) "Equipped synthetic cube must default to Level 15."
-    } else {
-        Assert-True ($null -eq $Fixture.state.cube.cubeUid) "Detached cube UID must be null."
-        Assert-True ($null -eq $Fixture.state.cube.level) "Detached cube level must be null."
-    }
+    $HeadLineIndexes = @($Fixture.state.equipment | Where-Object slot -eq "head" | ForEach-Object { $_.overloadLines.lineIndex })
+    Assert-True (($HeadLineIndexes -join ",") -eq "1,3") "Synthetic fixture must preserve sparse OL coordinates {1,3}."
 
-    Assert-True ($Fixture.state.skills.skill1 -eq 10) "Synthetic Skill 1 mismatch."
-    Assert-True ($Fixture.state.skills.skill2 -eq 10) "Synthetic Skill 2 mismatch."
-    Assert-True ($Fixture.state.skills.burst -eq 10) "Synthetic Burst mismatch."
-    Assert-True ($Fixture.state.collectionItem.policy -eq "max_available") "Synthetic collection item must use max_available."
-    Assert-True ($Fixture.state.favoriteItem.applicability -eq "applicable") "Synthetic favorite item must be applicable."
-    Assert-True ($Fixture.state.favoriteItem.policy -eq "max_available") "Synthetic favorite item must default to max_available."
-    Assert-True ($Fixture.state.favoriteItem.resolved -eq $true) "Synthetic favorite item must be resolved."
-    Assert-True ($Fixture.readiness.status -eq "ready") "Resolved synthetic combat inputs must be ready."
-    Assert-True (@($Fixture.readiness.warnings).Count -eq 0) "Ready character fixture cannot contain warnings."
+    Assert-True ($Fixture.state.cube.attachment -eq "detached") "combat-max/v1 must leave the cube detached until an explicit selection is made."
+    Assert-True ($null -eq $Fixture.state.cube.definition) "Detached cube definition must be null."
+    Assert-True (($Fixture.state.cube.level.status -eq "not_applicable") -and ($null -eq $Fixture.state.cube.level.value)) "Detached cube level must be not_applicable."
+
+    Assert-True ($Fixture.state.collectible.kind -eq $ExpectedCollectibleKind) "Synthetic collectible kind mismatch."
+    Assert-SupportReference $Fixture.state.collectible.definition $ExpectedCollectibleKind $SupportCatalog.datasetSnapshotUid "Collectible definition"
+    Assert-True ($Fixture.state.collectible.level.status -eq "ready") "Selected collectible level must be ready."
+
+    foreach ($Result in @($Fixture.readiness.selection, $Fixture.readiness.combatSemantics)) {
+        Assert-True ($Result.status -eq "unresolved") "Synthetic unresolved evidence must not be labeled ready."
+        Assert-True (@($Result.issues).Count -ge 1) "Unresolved readiness must expose controlled issues."
+        foreach ($Issue in @($Result.issues)) {
+            Assert-True ($Issue.kind -in "unresolved", "invalid") "Unknown readiness issue kind."
+            Assert-ControlledCode $Issue.fieldCode "Readiness field must be a source-free controlled code."
+            Assert-ControlledCode $Issue.reasonCode "Readiness reason must be a source-free controlled code."
+        }
+    }
 }
 
 function New-RaidVariantJson {
@@ -108,7 +174,7 @@ function New-RaidVariantJson {
 $ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $ScriptDirectory ".."))
 $ConfigPath = Join-Path $RepositoryRoot "config/appsettings.example.json"
-$EquippedFixturePath = Join-Path $RepositoryRoot "tests/fixtures/synthetic/character-build.combat-max-v1.json"
+$CombatMaxFixturePath = Join-Path $RepositoryRoot "tests/fixtures/synthetic/character-build.combat-max-v1.json"
 $DetachedFixturePath = Join-Path $RepositoryRoot "tests/fixtures/synthetic/character-build.cube-detached.json"
 $RaidFixturePath = Join-Path $RepositoryRoot "tests/fixtures/synthetic/raid-snapshot.challenge.json"
 $StaticRaidFixturePath = Join-Path $RepositoryRoot "tests/fixtures/synthetic/raid-snapshot.static-exact.json"
@@ -117,7 +183,7 @@ $CharacterSchemaPath = Join-Path $RepositoryRoot "contracts/character-build.sche
 $RaidSchemaPath = Join-Path $RepositoryRoot "contracts/raid-snapshot.schema.json"
 
 $Config = Get-Content -Raw -LiteralPath $ConfigPath | ConvertFrom-Json
-$EquippedFixture = Get-Content -Raw -LiteralPath $EquippedFixturePath | ConvertFrom-Json
+$CombatMaxFixture = Get-Content -Raw -LiteralPath $CombatMaxFixturePath | ConvertFrom-Json
 $DetachedFixture = Get-Content -Raw -LiteralPath $DetachedFixturePath | ConvertFrom-Json
 $RaidFixtureText = Get-Content -Raw -LiteralPath $RaidFixturePath
 $RaidFixture = $RaidFixtureText | ConvertFrom-Json
@@ -129,19 +195,111 @@ Get-Content -Raw -LiteralPath $RaidSchemaPath | ConvertFrom-Json | Out-Null
 
 Assert-True ($PSVersionTable.PSVersion -ge [Version]"7.4") "Phase 0 schema validation requires PowerShell 7.4 or later (pwsh)."
 Assert-True ($null -ne (Get-Command Test-Json -ErrorAction SilentlyContinue)) "Test-Json is required for Draft 2020-12 validation."
-Assert-True (Test-Json -LiteralPath $EquippedFixturePath -SchemaFile $CharacterSchemaPath) "Equipped character fixture does not satisfy its JSON Schema."
+Assert-True (Test-Json -LiteralPath $CombatMaxFixturePath -SchemaFile $CharacterSchemaPath) "Combat-max character fixture does not satisfy its JSON Schema."
 Assert-True (Test-Json -LiteralPath $DetachedFixturePath -SchemaFile $CharacterSchemaPath) "Detached character fixture does not satisfy its JSON Schema."
 Assert-True (Test-Json -LiteralPath $RaidFixturePath -SchemaFile $RaidSchemaPath) "Challenge raid fixture does not satisfy its JSON Schema."
 Assert-True (Test-Json -LiteralPath $StaticRaidFixturePath -SchemaFile $RaidSchemaPath) "Static-exact raid fixture does not satisfy its JSON Schema."
 Assert-True (@($SyntheticManifest.fixtures) -contains "raid-snapshot.static-exact.json") "Static-exact raid fixture must be registered in the synthetic manifest."
 
-$InvalidCubeFixtureText = [regex]::Replace(
-    (Get-Content -Raw -LiteralPath $DetachedFixturePath),
-    '("cubeUid": null,\s*"level": )null',
-    { param($Match) $Match.Groups[1].Value + "15" }
-)
-Assert-True (-not (Test-Json -Json $InvalidCubeFixtureText -SchemaFile $CharacterSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject a detached cube with a non-null level."
-$InvalidUuidFixtureText = (Get-Content -Raw -LiteralPath $EquippedFixturePath).Replace(
+$ExplicitPolicyFixture = (Get-Content -Raw -LiteralPath $DetachedFixturePath) | ConvertFrom-Json
+$ExplicitPolicyFixture.materializationPolicy = "explicit/v1"
+$ExplicitPolicyFixture.state.cube = [pscustomobject]@{
+    attachment = "attached"
+    definition = [pscustomobject]@{
+        definitionUid = "00000000-0000-4000-8000-000000000321"
+        definitionVersionUid = "00000000-0000-4000-8000-000000000421"
+        datasetSnapshotUid = $ExplicitPolicyFixture.datasetBinding.combatSupportCatalog.datasetSnapshotUid
+        kind = "harmony-cube"
+        contentSha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+    level = [pscustomobject]@{ status = "ready"; value = 15 }
+}
+$ExplicitPolicyFixtureText = $ExplicitPolicyFixture | ConvertTo-Json -Depth 100
+Assert-True (Test-Json -Json $ExplicitPolicyFixtureText -SchemaFile $CharacterSchemaPath) "Schema must accept an explicit/v1 fixture with an attached cube."
+Assert-SupportReference $ExplicitPolicyFixture.state.cube.definition "harmony-cube" $ExplicitPolicyFixture.datasetBinding.combatSupportCatalog.datasetSnapshotUid "Explicit cube definition"
+Assert-ReadyIntegerFact $ExplicitPolicyFixture.state.cube.level 15 "Explicit cube level"
+
+$InvalidSimultaneousCollectible = (Get-Content -Raw -LiteralPath $CombatMaxFixturePath) | ConvertFrom-Json
+$InvalidSimultaneousCollectible.state | Add-Member -NotePropertyName collectionItem -NotePropertyValue ([pscustomobject]@{
+    kind = "generic-collection"
+})
+$InvalidSimultaneousCollectibleText = $InvalidSimultaneousCollectible | ConvertTo-Json -Depth 100
+Assert-True (-not (Test-Json -Json $InvalidSimultaneousCollectibleText -SchemaFile $CharacterSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject simultaneous legacy collection/favorite paths."
+
+$InvalidDuplicateOlLine = (Get-Content -Raw -LiteralPath $CombatMaxFixturePath) | ConvertFrom-Json
+$InvalidDuplicateOlLine.state.equipment[0].overloadLines[1].lineIndex = 1
+$InvalidDuplicateOlLineText = $InvalidDuplicateOlLine | ConvertTo-Json -Depth 100
+Assert-True (-not (Test-Json -Json $InvalidDuplicateOlLineText -SchemaFile $CharacterSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject duplicate OL line coordinates."
+
+$InvalidOutOfRangeOlLine = (Get-Content -Raw -LiteralPath $CombatMaxFixturePath) | ConvertFrom-Json
+$InvalidOutOfRangeOlLine.state.equipment[0].overloadLines[1].lineIndex = 4
+$InvalidOutOfRangeOlLineText = $InvalidOutOfRangeOlLine | ConvertTo-Json -Depth 100
+Assert-True (-not (Test-Json -Json $InvalidOutOfRangeOlLineText -SchemaFile $CharacterSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject OL line coordinates outside 1..3."
+
+$InvalidDetachedCube = (Get-Content -Raw -LiteralPath $DetachedFixturePath) | ConvertFrom-Json
+$InvalidDetachedCube.state.cube.level = [pscustomobject]@{ status = "ready"; value = 15 }
+$InvalidDetachedCubeText = $InvalidDetachedCube | ConvertTo-Json -Depth 100
+Assert-True (-not (Test-Json -Json $InvalidDetachedCubeText -SchemaFile $CharacterSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject a detached cube carrying an equipped level."
+
+$InvalidUnresolvedCube = $ExplicitPolicyFixtureText | ConvertFrom-Json
+$InvalidUnresolvedCube.state.cube.attachment = "unresolved"
+$InvalidUnresolvedCubeText = $InvalidUnresolvedCube | ConvertTo-Json -Depth 100
+Assert-True (-not (Test-Json -Json $InvalidUnresolvedCubeText -SchemaFile $CharacterSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject an unresolved cube carrying an attached definition and level."
+
+$ValidUnresolvedCube = (Get-Content -Raw -LiteralPath $CombatMaxFixturePath) | ConvertFrom-Json
+$ValidUnresolvedCube.state.cube = [pscustomobject]@{
+    attachment = "unresolved"
+    definition = $null
+    level = [pscustomobject]@{
+        status = "unresolved"
+        value = $null
+        reasonCode = "cube_selection_unresolved"
+    }
+    reasonCode = "cube_selection_unresolved"
+}
+$ValidUnresolvedCubeText = $ValidUnresolvedCube | ConvertTo-Json -Depth 100
+Assert-True (Test-Json -Json $ValidUnresolvedCubeText -SchemaFile $CharacterSchemaPath) "Schema must accept a well-formed unresolved cube."
+
+$ValidDetachedEquipment = (Get-Content -Raw -LiteralPath $CombatMaxFixturePath) | ConvertFrom-Json
+$ValidDetachedEquipment.state.equipment[2] = [pscustomobject]@{
+    equipmentSlotUid = "00000000-0000-4000-8000-000000000113"
+    slot = "arms"
+    attachment = "detached"
+    definition = $null
+    tier = [pscustomobject]@{ status = "not_applicable"; value = $null }
+    enhancementLevel = [pscustomobject]@{ status = "not_applicable"; value = $null }
+    manufacturerMatch = [pscustomobject]@{ status = "not_applicable"; value = $null }
+    overloadLines = @()
+}
+$ValidDetachedEquipmentText = $ValidDetachedEquipment | ConvertTo-Json -Depth 100
+Assert-True (Test-Json -Json $ValidDetachedEquipmentText -SchemaFile $CharacterSchemaPath) "Schema must accept a well-formed detached equipment slot."
+
+$ValidUnresolvedEquipment = (Get-Content -Raw -LiteralPath $CombatMaxFixturePath) | ConvertFrom-Json
+$UnresolvedEquipmentFact = [pscustomobject]@{
+    status = "unresolved"
+    value = $null
+    reasonCode = "equipment_selection_unresolved"
+}
+$ValidUnresolvedEquipment.state.equipment[3] = [pscustomobject]@{
+    equipmentSlotUid = "00000000-0000-4000-8000-000000000114"
+    slot = "legs"
+    attachment = "unresolved"
+    definition = $null
+    tier = $UnresolvedEquipmentFact
+    enhancementLevel = $UnresolvedEquipmentFact
+    manufacturerMatch = $UnresolvedEquipmentFact
+    overloadLines = @()
+    reasonCode = "equipment_selection_unresolved"
+}
+$ValidUnresolvedEquipmentText = $ValidUnresolvedEquipment | ConvertTo-Json -Depth 100
+Assert-True (Test-Json -Json $ValidUnresolvedEquipmentText -SchemaFile $CharacterSchemaPath) "Schema must accept a well-formed unresolved equipment slot."
+
+$InvalidIssueCode = (Get-Content -Raw -LiteralPath $CombatMaxFixturePath) | ConvertFrom-Json
+$InvalidIssueCode.readiness.selection.issues[0].reasonCode = "not controlled/value"
+$InvalidIssueCodeText = $InvalidIssueCode | ConvertTo-Json -Depth 100
+Assert-True (-not (Test-Json -Json $InvalidIssueCodeText -SchemaFile $CharacterSchemaPath -ErrorAction SilentlyContinue)) "Schema must reject non-controlled readiness text."
+
+$InvalidUuidFixtureText = (Get-Content -Raw -LiteralPath $CombatMaxFixturePath).Replace(
     "00000000-0000-4000-8000-000000000101",
     "not-a-canonical-uuid"
 )
@@ -169,6 +327,7 @@ $Defaults = $Config.characterBuildDefaults
 Assert-True ($Defaults.policyId -eq "combat-max/v1") "Default policy must be combat-max/v1."
 Assert-True ($Defaults.characterLevel -eq "explicit_required") "Character level must require an explicit value."
 Assert-True ($Defaults.limitBreak -eq "max_supported") "Limit break must default to max_supported."
+Assert-True ($Defaults.coreLevel -eq "max_if_applicable") "Core level must default to max_if_applicable."
 Assert-True ($Defaults.bond -eq "max_for_character") "Bond must default to max_for_character."
 Assert-True ($Defaults.equipmentTier -eq 10) "Equipment must default to Tier 10."
 Assert-True ($Defaults.equipmentEnhancementLevel -eq 5) "Equipment enhancement level must default to 5."
@@ -179,8 +338,7 @@ Assert-True ($Defaults.skillLevels.skill1 -eq 10) "Skill 1 must default to Level
 Assert-True ($Defaults.skillLevels.skill2 -eq 10) "Skill 2 must default to Level 10."
 Assert-True ($Defaults.skillLevels.burst -eq 10) "Burst must default to Level 10."
 Assert-True ($Defaults.overloadValidationMode -eq "research") "Overload must default to research write mode."
-Assert-True ($Defaults.collectionItem -eq "max_if_applicable") "Collection item policy mismatch."
-Assert-True ($Defaults.favoriteItem -eq "max_if_applicable") "Favorite item policy mismatch."
+Assert-True ($Defaults.collectibleSelection -eq "favorite_max_if_applicable_else_highest_rarity_collection_max") "Collectible selection policy mismatch."
 
 Assert-True ($Config.network.allowOfficialOutbound -eq $false) "Official outbound must be disabled."
 Assert-True ($Config.network.localAuthenticationRequiredForLan -eq $true) "LAN must require local authentication."
@@ -193,11 +351,15 @@ Assert-True ($Config.originalClientCompatibility.allowEndpointMutation -eq $fals
 Assert-True ($Config.originalClientCompatibility.allowAuthBypass -eq $false) "Auth bypass must remain disabled."
 Assert-True ($Config.originalClientCompatibility.allowAntiCheatBypass -eq $false) "Anti-cheat bypass must remain disabled."
 
-Assert-CharacterFixture $EquippedFixture $true
-Assert-CharacterFixture $DetachedFixture $false
-Assert-True ($EquippedFixture.buildUid -eq $DetachedFixture.buildUid) "Cube detach must create a new revision of the same build."
-Assert-True ($EquippedFixture.revisionUid -ne $DetachedFixture.revisionUid) "Build revisions must use distinct UUIDs."
-Assert-True ($DetachedFixture.revisionNumber -eq ($EquippedFixture.revisionNumber + 1)) "Cube detach revision number must increment."
+Assert-CharacterFixture $CombatMaxFixture "favorite"
+Assert-CharacterFixture $DetachedFixture "generic-collection"
+Assert-True ($CombatMaxFixture.buildUid -eq $DetachedFixture.buildUid) "A local edit must create a new revision of the same build."
+Assert-True ($CombatMaxFixture.revisionUid -ne $DetachedFixture.revisionUid) "Build revisions must use distinct UUIDs."
+Assert-True ($DetachedFixture.revisionNumber -eq ($CombatMaxFixture.revisionNumber + 1)) "A local edit must increment the revision number."
+Assert-True ($null -eq $CombatMaxFixture.previousRevisionUid) "Revision one cannot name a predecessor."
+Assert-True ($DetachedFixture.previousRevisionUid -eq $CombatMaxFixture.revisionUid) "A later revision must name its exact predecessor."
+Assert-True (($CombatMaxFixture.datasetBinding | ConvertTo-Json -Depth 10 -Compress) -eq
+    ($DetachedFixture.datasetBinding | ConvertTo-Json -Depth 10 -Compress)) "A local edit must retain the exact dual-catalog binding."
 
 $SoloRaid = $Config.soloRaid
 Assert-True ($SoloRaid.enabled -eq $true) "Solo Raid must be enabled."

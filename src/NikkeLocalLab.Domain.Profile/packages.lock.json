@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net8.0": {
+      "nikkelocallab.domain.character": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
+      "nikkelocallab.domain.combatsupport": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
+      "nikkelocallab.identity": {
+        "type": "Project"
+      },
+      "nikkelocallab.provenance": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )"
+        }
+      }
+    }
+  }
+}

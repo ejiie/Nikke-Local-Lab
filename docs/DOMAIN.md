@@ -48,14 +48,15 @@
 
 ## 오버로드 write
 
-오버로드는 장비 부위별 ordered line으로 저장합니다.
+오버로드는 장비 부위별 고정 좌표 line으로 저장합니다.
 
     (equipment_slot, line_index, option_type, exact_value, unit)
 
 - 줄 추가·교체·삭제를 지원합니다.
+- `line_index`는 `1..3`의 unique sparse subset이며 `{1, 3}`처럼 중간 빈 line을 보존합니다. 삭제할 때 뒤 line을 앞으로 당기지 않습니다.
 - `exact_value`는 부동소수점이 아니라 decimal 문자열 또는 정수 스케일로 왕복합니다.
 - `research` 모드는 연구용 자유 입력을 허용합니다.
-- 향후 `game_legal` 모드에서 공식 타입·범위·중복 규칙을 별도로 검증합니다.
+- `game-legal` 모드는 catalog가 입증한 타입·line applicability·15개 이산 값을 검증합니다. 정적 근거가 없는 same-kind 중복 정책은 추측으로 거부하지 않습니다.
 - 자유 입력이라도 타입과 단위가 불명확한 값은 warning을 남깁니다.
 
 ## 상태 표현
@@ -68,3 +69,5 @@
 `unresolved`와 `not_applicable`을 숫자 0으로 치환하지 않습니다.
 
 `readiness`는 저장된 주장값을 그대로 신뢰하지 않고 revision state와 dataset 규칙에서 다시 계산합니다.
+
+Phase 2A1의 실제 account/build/squad 저장 계약과 이중 catalog binding은 [PHASE2A1.md](PHASE2A1.md)를 따릅니다.

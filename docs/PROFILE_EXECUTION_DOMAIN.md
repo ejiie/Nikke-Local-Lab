@@ -24,6 +24,12 @@ Local Lab이 발급한 무작위 자체 UID만 사용합니다. 실제 계정 UI
 
 console을 각 `CharacterBuildRevision`에 복제하지 않습니다. 한 전투는 사용한 account combat state revision을 명시적으로 참조합니다.
 
+profile은 character catalog와 combat-support catalog를 각각 catalog snapshot UID, 해당 dataset snapshot UID와 manifest hash로 고정합니다. 두 catalog가 같은 dataset에서 왔다고 가정하지 않으며, build와 console 참조는 선택한 catalog의 정확한 definition version member로 해소합니다.
+
+일반 편집·offline sanitized import·rebase의 부분 관측은 알려진 definition 선택과 미해결 level을 분리합니다. equipment, cube 또는 collectible definition이 확인됐으면 그 자체 UUID/version을 유지하고 enhancement/level fact만 controlled reason과 함께 `unresolved`로 저장합니다. 이는 선택 전체가 미해결인 상태와 다르며 readiness만 낮춥니다. 반대로 `combat-max/v1`은 최대값 근거가 없으면 definition을 추측하지 않고 선택 전체를 `unresolved`로 둡니다.
+
+일반 Domain 호출자는 exact membership evidence를 만들 수 없습니다. trusted PostgreSQL store가 catalog snapshot과 dataset/manifest, version membership FK 및 content hash를 검증한 뒤에만 내부 evidence를 발급합니다. 각 account state/build/squad/profile revision은 자신의 origin(`UserEdit`, `CombatMaxV1`, `OfflineSanitizedImport`, `Rebase`), UTC materialization 시각과 predecessor를 기록하며, 동일 aggregate의 정확한 predecessor와 revision `+1`은 Save transaction/V0005가 강제합니다. mixed explicit/combat-max profile에서도 origin은 profile 전역으로 합치지 않고 build별로 보존합니다. 동일 current content의 반복 Save는 기존 revision과 그 최초 provenance를 재사용하며 origin 또는 시각만 metadata-only로 덮어쓰지 않습니다.
+
 ### ProfileTemplateRevision
 
 캐릭터 build revision 집합과 account combat state revision을 묶는 불변 템플릿입니다. portable export는 원본 ID 대신 정확한 catalog manifest와 normalized content hash로 항목을 해소합니다. 다른 dataset에 적용하려면 명시적인 rebase가 필요합니다.
@@ -94,6 +100,8 @@ console definition은 Phase 1D 전투 보조 catalog가 source에서 정규화�
 
 console level의 stat 기여는 definition version에서 해소하고 전투 시 account combat state revision과 캐릭터 build를 결합합니다. 사용자 프로필에서 console 값이 결손되거나 progress EXP가 유실된 경우 level을 추측하지 않고 `unresolved` 또는 부분 관측으로 남깁니다.
 
+`game-legal` 검증에서는 level 상한뿐 아니라 선택한 console level 좌표의 `minimum_synchro_level`도 account synchro와 대조합니다. Level 0은 source row가 없는 명시적 no-contribution 상태입니다. EXP는 nullable 숫자가 아니라 관측 상태를 가진 fact로 보존합니다.
+
 ## Offline legacy profile import
 
 `Nikke-Dmg-Simulator/Database/processed`의 기존 파일은 네트워크 없이 읽는 legacy source로만 취급합니다. Local Lab이 공식 로그인, API replay 또는 재수집을 수행하지 않습니다. 파일 경로, 파일명, 실제 계정 UID와 원본 ID는 ledger, API, diagnostic, export에 남기지 않습니다.
@@ -150,6 +158,8 @@ console level의 stat 기여는 definition version에서 해소하고 전투 시
 
 raw capture에도 graphics/FPS/control setting은 없습니다. 이는 별도 execution/control capture에서 가져옵니다. roster와 detail의 두 level 의미도 authoritative mapping 전에는 병합하지 않고 각각의 observation으로 보존합니다.
 
+OL은 장비별 line `1..3`의 sparse 좌표로 보존합니다. `{1, 3}`처럼 중간 빈 line을 허용하고, line 삭제로 다른 좌표를 재번호화하지 않습니다.
+
 미장착 cube·collection의 공식 계정 보유 inventory와 OL lock/reset history는 전투 프로필 범위 밖이며 import completeness 조건이 아닙니다. 현재 장착 상태와 OL의 부위·줄·exact 값만 보존합니다. 다만 editor가 자유롭게 장착할 수 있도록 게임 데이터에서 정규화한 전체 equipment/cube/collection/favorite **definition catalog**는 필요합니다. 이는 사용자가 실제로 보유한 inventory를 복제한다는 뜻이 아닙니다.
 
 공식 장비 instance UID도 요구하지 않습니다. Character build는 네 slot의 definition과 상태를 직접 소유할 수 있습니다. 향후 client compatibility가 instance reference를 요구할 때만 Local Lab이 자체 무작위 equipment instance UID를 발급하며, 원본 계정의 inventory identity를 복사하지 않습니다.
@@ -188,8 +198,8 @@ raw capture에도 graphics/FPS/control setting은 없습니다. 이는 별도 ex
 
 1. Phase 1C — Challenge snapshot importer와 `V0003__raid_snapshot.sql`
 2. Phase 1D — Tier 9·10 equipment, cube, collection/favorite, console, OL option 전투 보조 catalog와 `V0004__combat_support_catalog.sql` — 완료
-3. Phase 2A1 — local account, account combat state, character build/profile revision과 `V0005__local_account_profile.sql`
+3. Phase 2A1 — local account, account combat state, character build/profile revision과 `V0005__local_account_profile.sql` — 완료
 4. Phase 2A2 — offline legacy importer, export, loopback API와 별도 editor
 5. Phase 2B — runtime/control profile, Challenge session과 `V0006__battle_execution_context.sql`
 
-Phase 1D까지 병합한 뒤 Phase 2A1의 profile persistence를 시작하고, Phase 2A2에서 credential-bearing raw를 offline sanitizer로 연결합니다. 최신 raw는 계정/build seed일 뿐 graphics/control/ESC runtime 관측을 대체하지 않습니다.
+Phase 2A1의 단위 및 live PostgreSQL gate를 통과한 자체 UUID profile persistence 위에 다음 Phase 2A2의 credential-bearing raw offline sanitizer를 연결합니다. 최신 raw는 계정/build seed일 뿐 graphics/control/ESC runtime 관측을 대체하지 않습니다.

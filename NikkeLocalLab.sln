@@ -42,6 +42,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.Import.Combat
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.CombatSupport.UnitTests", "tests\NikkeLocalLab.CombatSupport.UnitTests\NikkeLocalLab.CombatSupport.UnitTests.csproj", "{B229F6C2-5726-4FB4-BDE5-C70FA225ECB1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.Domain.Profile", "src\NikkeLocalLab.Domain.Profile\NikkeLocalLab.Domain.Profile.csproj", "{2A1D0001-1111-4A11-8111-000000000001}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.Profile.UnitTests", "tests\NikkeLocalLab.Profile.UnitTests\NikkeLocalLab.Profile.UnitTests.csproj", "{2A1D0002-2222-4A22-8222-000000000002}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -120,6 +124,14 @@ Global
 		{B229F6C2-5726-4FB4-BDE5-C70FA225ECB1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B229F6C2-5726-4FB4-BDE5-C70FA225ECB1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B229F6C2-5726-4FB4-BDE5-C70FA225ECB1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2A1D0001-1111-4A11-8111-000000000001}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2A1D0001-1111-4A11-8111-000000000001}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2A1D0001-1111-4A11-8111-000000000001}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2A1D0001-1111-4A11-8111-000000000001}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2A1D0002-2222-4A22-8222-000000000002}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2A1D0002-2222-4A22-8222-000000000002}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2A1D0002-2222-4A22-8222-000000000002}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2A1D0002-2222-4A22-8222-000000000002}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{A44F68A9-CA78-4E50-A1DE-3B4D879A50A4} = {564CEF02-228F-4E20-8F7F-1A51C7212496}
@@ -131,5 +143,7 @@ Global
 		{BC741476-4447-4AF2-BCFF-A8DCCED18A56} = {564CEF02-228F-4E20-8F7F-1A51C7212496}
 		{525B49B2-A008-4FCB-AAF8-1E0B23157801} = {564CEF02-228F-4E20-8F7F-1A51C7212496}
 		{B229F6C2-5726-4FB4-BDE5-C70FA225ECB1} = {B135A626-D084-4D30-828D-FD0D4B78F84F}
+		{2A1D0001-1111-4A11-8111-000000000001} = {564CEF02-228F-4E20-8F7F-1A51C7212496}
+		{2A1D0002-2222-4A22-8222-000000000002} = {B135A626-D084-4D30-828D-FD0D4B78F84F}
 	EndGlobalSection
 EndGlobal

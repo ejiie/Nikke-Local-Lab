@@ -26,16 +26,18 @@
 
 Phase 2 전에 Phase 1D에서 Tier 9·10 equipment, cube, collection/favorite, console, OL option의 선택 가능한 자체 definition catalog를 완성했습니다. 이 catalog는 `V0004__combat_support_catalog.sql`을 소유합니다. Tier 1~8은 현재 account 이관·전투 검증 범위에 없으므로 게시하지 않습니다.
 
-- PostgreSQL migration과 자체 합성 account/session을 구현한다.
-- synchro와 console level/EXP의 불변 account combat state revision을 구현한다.
-- 캐릭터 build 생성·조회·부분 수정·revision 전환 API를 구현한다.
+완료된 Phase 2A1은 자체 UUID local account/session, account combat state, character build, squad와 profile template의 불변 revision 및 `V0005__local_account_profile.sql`을 포함합니다. character와 combat-support catalog binding은 서로 독립적으로 고정하며 current profile 전환은 optimistic CAS transaction으로만 수행합니다. 단위 및 live PostgreSQL verifier를 모두 통과했습니다.
+
+- (2A1 완료) PostgreSQL migration과 자체 합성 account/session을 구현한다.
+- (2A1 완료) synchro와 console level/EXP의 불변 account combat state revision을 구현한다.
+- (2A1 완료) 캐릭터 build 생성·조회·부분 수정과 revision 전환용 저장 command/store 계약을 구현한다.
 - 자유 레벨, 미장착 또는 T9/T10/+0~5, 큐브 장착·해제/Lv15, 10/10/10, OL exact write, 소장품·애장품 적용 여부를 검증한다.
-- 5인 squad revision과 단일 active Challenge snapshot을 구현한다.
-- 일반 1~7단계는 전투 없이 Challenge 해금 상태만 제공한다.
-- Challenge session begin/result 계약과 재현용 trace 저장을 구현한다.
-- credential-bearing legacy raw는 offline sanitizer로만 읽고, allowlist field를 source-ID-free profile draft로 변환한다.
-- 별도 관리 UI는 loopback API를 통해 Save, Save As와 적용 diff를 수행한다.
-- runtime execution profile과 combat control profile을 전투 결과에 고정하고 requested/effective 값을 분리한다.
+- (2A1 완료) 5인 squad revision을 구현한다.
+- (2B 예정) 단일 active Challenge snapshot과 일반 1~7단계 Challenge 해금 상태를 구현한다.
+- (2B 예정) Challenge session begin/result 계약과 재현용 trace 저장을 구현한다.
+- (2A2 예정) credential-bearing legacy raw는 offline sanitizer로만 읽고, allowlist field를 source-ID-free profile draft로 변환한다.
+- (2A2 예정) 별도 관리 UI는 loopback API를 통해 Save, Save As와 적용 diff를 수행한다.
+- (2B 예정) runtime execution profile과 combat control profile을 전투 결과에 고정하고 requested/effective 값을 분리한다.
 
 lab-owned harness는 이 단계에서 API·계약·DB를 자동 검증하는 test client로만 사용합니다.
 

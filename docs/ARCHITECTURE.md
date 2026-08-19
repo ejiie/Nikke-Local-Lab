@@ -1,6 +1,6 @@
 # Architecture direction
 
-최종 실행 경로는 원본 UI와 실제 전투 runtime이 local backend를 사용하는 구조입니다. Phase 1D에서는 아래 경로 중 캐릭터·전투 보조 catalog와 Challenge RaidSnapshot import/domain/catalog publish까지 구현했습니다.
+최종 실행 경로는 원본 UI와 실제 전투 runtime이 local backend를 사용하는 구조입니다. Phase 2A1에서 정적 catalog와 Challenge RaidSnapshot 위에 자체 local account/profile revision 저장을 추가했고, 단위 및 live PostgreSQL gate로 검증했습니다.
 
     C:\NIKKE (read-only)
             |
@@ -18,6 +18,9 @@
                                v
                           PostgreSQL
                                |
+                    account/build/squad/profile
+                      immutable revision store
+                               |
                          local backend
                          /           \
                         v             v
@@ -29,7 +32,7 @@
 
 lab-owned harness는 importer, API, revision, admission, 결과 계약을 검증하는 sidecar입니다. 최종 사용자 실행 경로나 원본 전투 검증의 대체물이 아닙니다.
 
-## 구현된 Phase 1D 모듈
+## Phase 2A1 완료 모듈
 
 - `Identity`: 자체 UUID와 HMAC source identity 경계
 - `Provenance`: source/dataset/extractor/request canonical hash
@@ -42,7 +45,8 @@ lab-owned harness는 importer, API, revision, admission, 결과 계약을 검증
 - `Import.CombatSupportCatalog`: strict StaticData reader와 source-ID-free 전투 보조 candidate
 - `Domain.Raid`: Challenge admission policy, 정적 파츠와 ordered monster-skill slot 관계, evidence tier, RaidSnapshot v2
 - `Import.RaidCatalog`: strict Challenge FK chain과 typed behavior/bundle/timing evidence reader
-- `Persistence.PostgreSql`: import ledger와 원자적 character/combat-support/Challenge raid catalog publish
+- `Domain.Profile`: 자체 local account/session, account combat state, character build, squad와 profile template revision
+- `Persistence.PostgreSql`: import ledger, 세 catalog publish와 V0005 profile CAS/revision persistence
 - `Import.Cli`: config-check/init/migrate 및 세 catalog inspect/import 진입점
 
 ## 후속 예정 모듈
@@ -96,5 +100,7 @@ gate가 해제되지 않으면 개발 가능한 계층은 계속 검증하되 �
        standalone profile editor
 
 legacy crawler와 로그인/replay 코드는 이 경로에 포함하지 않습니다. editor는 DB를 직접 수정하지 않으며 Save/Save As마다 새 revision을 만듭니다.
+
+현재 구현된 2A1 경계는 `AccountCombatStateRevision + CharacterBuildRevision + SquadRevision + ProfileTemplateRevision`입니다. credential-bearing raw sanitizer, loopback API와 editor는 2A2에서 이 저장 계약을 사용합니다.
 
 실행 시에는 `RaidSnapshot`, account state, squad/build, runtime execution profile과 combat control profile을 함께 고정합니다. target FPS와 실제 frame pacing은 다른 값이며 전투 telemetry가 실제 render frame·behavior tick·wall-clock을 별도로 기록합니다.
