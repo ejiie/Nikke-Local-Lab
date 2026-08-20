@@ -6,7 +6,7 @@
 
 ## 현재 상태
 
-**Phase 2A1·Phase 2A2와 Phase 2B source-free private-server backend/harness를 완료했고, 다음 구현 단계는 Phase 3 original-client adapter**입니다. strict importer, 관리 API/editor, V0006 기반을 유지하며 V0007 boot/lobby/Solo Raid 서비스까지 단위 및 live PostgreSQL gate로 검증했습니다.
+**Phase 2A1·Phase 2A2와 Phase 2B source-free private-server backend/harness를 완료했고, Phase 3은 3A~3E 수직 단계로 분할했습니다.** 3A evidence audit는 완료했지만 승인 route/build/outbound 증거가 없어 현재 verdict는 `blocked_insufficient_evidence`입니다. strict importer, 관리 API/editor, V0006 기반을 유지하며 V0007 boot/lobby/Solo Raid 서비스까지 단위 및 live PostgreSQL gate로 검증했습니다.
 
 - Phase 1A: import ledger, read-only source와 identity/provenance 경계
 - Phase 1B: immutable character catalog
@@ -16,9 +16,9 @@
 - Phase 2A2: strict offline profile ingress, source-free draft/editor candidate, 관리 API/editor, lobby·wallet·feature·roster·squad·inventory projection과 V0006
 - Phase 2B(완료): synthetic boot/session/context, 6-season directory, KST 05:00 daily state, runtime/control revision과 1~5팀 Challenge run/result를 위한 V0007·loopback API·harness
 
-완료된 V0001~V0006은 방향 수정 뒤에도 그대로 재사용합니다. Phase 2B는 V0007 additive schema로만 확장합니다. 이 backend/harness gate 다음 단계는 승인된 original-client adapter인 Phase 3이며, 실제 플레이와 damage/HUD/result 검증은 Phase 4입니다.
+완료된 V0001~V0006은 방향 수정 뒤에도 그대로 재사용합니다. Phase 2B는 V0007 additive schema로만 확장합니다. 승인 증거가 준비되면 Phase 3B transport부터 3C boot/session, 3D lobby/season, 3E Challenge handoff를 순서대로 진행하며, 실제 플레이와 damage/HUD/result 검증은 Phase 4입니다.
 
-완료된 2A2 기반은 [docs/PHASE2A2.md](docs/PHASE2A2.md), 완료된 Phase 2B 계약과 검증 gate는 [docs/PHASE2B.md](docs/PHASE2B.md)를 따릅니다.
+완료된 2A2 기반은 [docs/PHASE2A2.md](docs/PHASE2A2.md), 완료된 Phase 2B 계약은 [docs/PHASE2B.md](docs/PHASE2B.md), Phase 3 분할과 현재 no-go 판정은 [docs/PHASE3.md](docs/PHASE3.md)와 [docs/PHASE3A.md](docs/PHASE3A.md)를 따릅니다.
 
 ## 제품 UI
 
@@ -69,7 +69,7 @@ Challenge unlock UI state와 run admission은 다른 개념입니다. `challenge
 
 - 원본 client가 전투 simulation, damage 계산·표기, HUD, animation과 result rendering의 권위입니다.
 - Phase 2B backend는 `lab_harness_observation/v1`만 수락하고 계산하지 않은 팀별 관측값과 합계 정합성을 저장합니다. 이 receipt는 original-client damage 증거가 아닙니다.
-- 최종 damage 권위는 계속 `original_client_runtime`이며 `originalRuntimeObservationStatus=blocked_by_gate`입니다. Phase 3 adapter가 실제 client observation을 별도 versioned provenance로 매핑하기 전에 harness receipt를 이름만 바꿔 승격하지 않습니다.
+- 최종 damage 권위는 계속 `original_client_runtime`이며 `originalRuntimeObservationStatus=blocked_by_gate`입니다. Phase 4 observation adapter가 실제 client observation을 별도 versioned provenance로 매핑하기 전에 harness receipt를 이름만 바꿔 승격하지 않습니다.
 - RaidSnapshot `ready`는 선언한 evidence tier의 publish readiness입니다. 원본 runtime exact를 뜻하지 않습니다.
 - 현재 시즌 7·13·26·29·34는 `static_exact`, 시즌 40은 `behavior_exact` 상한입니다.
 - 실제 일치는 Phase 4에서 `(client build, season, raid snapshot)`별로 사용자가 플레이하고 검증합니다.
@@ -87,7 +87,8 @@ Challenge unlock UI state와 run admission은 다른 개념입니다. `challenge
 
 - Phase 2A2: strict raw/canonical codec, source-free CLI, sanitized draft와 별도 editor candidate, typed rebase/override, explicit new-account create, lobby presentation, wallet, feature manifest, lossless equipped-combat inventory projection과 loopback editor/API
 - Phase 2B(완료): boot/lobby service, permanent season directory, selected season, 05:00 KST daily state, runtime/control profile, 1~5팀 Challenge run/result와 lab-owned harness
-- Phase 3: 승인된 original-client wire/presentation adapter와 선언 UI
+- Phase 3A(감사 완료/blocked): 승인 route·exact build·synthetic session·outbound-zero evidence gate
+- Phase 3B~3E: 승인된 transport, boot/session, lobby/season presentation과 Challenge handoff
 - Phase 4: 원본 client 실제 플레이와 telemetry/result 검증
 
 세부 계획은 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md), 바로 다음 작업은 [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md)를 참고합니다.
@@ -106,6 +107,7 @@ Challenge unlock UI state와 run admission은 다른 개념입니다. `challenge
     pwsh -NoProfile -File scripts/verify-phase2a1.ps1
     pwsh -NoProfile -File scripts/verify-phase2a2.ps1
     pwsh -NoProfile -File scripts/verify-phase2b.ps1
+    pwsh -NoProfile -File scripts/verify-phase3a.ps1
     pwsh -NoProfile -File scripts/verify-actions-contract.ps1
 
-PostgreSQL 통합 검사는 폐기 가능한 `nikke_local_lab_test` DB에서 loopback `NIKKE_LAB_TEST_DB`와 reviewed reset token을 설정한 뒤 `scripts/verify-phase2b.ps1 -Integration`으로 실행합니다. 이 script는 Phase 2A2 gate를 먼저 실행하고 Phase 2B domain/API unit과 V0001~V0007 live PostgreSQL integration project를 추가로 검증합니다. 실제 게임 source, private profile, original client와 asset은 Git이나 CI에 넣지 않습니다.
+Phase 3A 계약만 빠르게 반복할 때는 `scripts/verify-phase3a.ps1 -ContractOnly`를 사용합니다. branch 완료 전에는 option 없이 실행해 완료된 Phase 2B baseline도 함께 확인합니다. PostgreSQL 통합 검사는 폐기 가능한 `nikke_local_lab_test` DB에서 loopback `NIKKE_LAB_TEST_DB`와 reviewed reset token을 설정한 뒤 `scripts/verify-phase2b.ps1 -Integration`으로 실행합니다. 실제 게임 source, private profile, original client와 asset은 Git이나 CI에 넣지 않습니다.

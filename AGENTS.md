@@ -20,6 +20,8 @@
 16. `docs/PHASE2A1.md`
 17. `docs/PHASE2A2.md`
 18. `docs/PHASE2B.md`
+19. `docs/PHASE3.md`
+20. `docs/PHASE3A.md`
 
 ## 불변 규칙
 
@@ -27,7 +29,7 @@
 - 제품은 원본 client에 일부 기능만 공급하는 제한된 local private server이며 별도 게임 UI나 simulator runtime이 아닙니다.
 - lab-owned harness는 계약·데이터 검사용 보조 도구이며 최종 인수 조건을 대체하지 않습니다.
 - 공식 로그인, 계정 토큰, 패킷 가로채기, 게임 프로세스 주입, 안티치트 우회를 사용하지 않습니다.
-- 원본 리테일 클라이언트 연결은 `docs/FEASIBILITY_GATES.md`의 조건을 모두 충족하기 전까지 차단합니다.
+- 원본 리테일 클라이언트 연결은 계속 차단합니다. 승인된 local/test client도 Phase 3A가 `ready_for_phase3b`가 되기 전에는 실행·연결하지 않습니다.
 - 원본·복호물·번들·이미지·음성·DB·실계정 데이터는 커밋하지 않습니다.
 - private GitHub remote에는 source, 계약, migration, 직접 만든 합성 fixture만 push합니다.
 - 원본 게임 ID를 도메인 PK/FK, API, 로그에 노출하지 않습니다.
@@ -41,4 +43,4 @@
 - Phase 2B는 `lab_harness_observation/v1`만 수락하며 최종 damage/HUD/result 권위는 `original_client_runtime`에 남습니다. harness receipt를 original-runtime 증거로 승격하지 않습니다.
 - private-server access token 서명 key는 process-local입니다. 같은 process의 같은 Open operation replay만 exact token byte를 재사용하고, restart 뒤에는 영속 session/context/time을 복원해도 token은 재서명될 수 있습니다.
 - 변경은 `agent/**` branch에 commit하고 Actions가 검증·PR·squash merge하도록 합니다.
-- 작업 전후 repository, Phase 0, 완료된 Phase 2A1·Phase 2A2·Phase 2B와 Actions contract 검사를 모두 실행합니다. Phase 2B 완료 이력은 `scripts/verify-phase2b.ps1`의 단위 및 live PostgreSQL integration gate가 모두 통과한 revision을 기준으로 합니다. 이 gate는 original-client adapter/UI/runtime 인수를 대체하지 않습니다.
+- 작업 전후 repository, Phase 0, 완료된 Phase 2A1·Phase 2A2·Phase 2B, 현재 Phase 3A contract와 Actions contract 검사를 모두 실행합니다. Phase 2B 완료 이력은 `scripts/verify-phase2b.ps1`의 단위 및 live PostgreSQL integration gate가 모두 통과한 revision을 기준으로 합니다. `scripts/verify-phase3a.ps1`은 source-free evidence shape와 blocked verdict를 검증하며 original-client adapter/UI/runtime 인수를 대체하지 않습니다.

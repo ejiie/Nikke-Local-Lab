@@ -72,11 +72,17 @@ Phase 2B는 다음 모듈을 구현했고 단위 및 live PostgreSQL gate로 검
 - `Admin.Api`: 여섯 축 operational policy와 runtime/control profile의 authenticated preview/save/activation 경계
 - `PrivateServer.UnitTests`, `PrivateServer.Api.UnitTests`, PostgreSQL integration harness: backend 계약 검증
 
-## Phase 2B 후속 예정 모듈
+## Phase 3 후속 경계
 
 - `Import.Formats`: 후속 전투 실행에 필요한 추가 NKDB/UnityFS reader
-- `Compatibility`: tier 평가와 Git 비추적 mapping adapter
-- `OriginalClientCompatibilityAdapter`: gate 통과 후에만 활성화되는 wire/presentation client 경계
+- `CompatibilityEvidence`: 3A source-free verdict와 Git 밖 local evidence attestation 경계
+- `OriginalClientTransport`: 3B exact-build preflight, supported selector와 handshake
+- `OriginalClientBootAdapter`: 3C boot/session/account bootstrap projection
+- `OriginalClientPresentationAdapter`: 3D lobby와 explicit season selection binding
+- `OriginalClientChallengeAdapter`: 3E main/ready/open/first-team handoff
+- `OriginalClientBattleObservationAdapter`: Phase 4 observation, regroup/next-team, close/result와 telemetry boundary
+
+현재 3A verdict는 `blocked_insufficient_evidence`이며 위 runtime module은 생성·활성화하지 않습니다. shared adapter contract는 한 writer가 소유하고 각 수직 슬라이스는 별도 branch, 각 batch는 focused commit으로 닫습니다.
 
 ## 데이터와 실행 상태 분리
 
@@ -111,7 +117,7 @@ gate가 해제되지 않으면 개발 가능한 계층은 계속 검증하되 �
 
 ## Phase 2B backend/harness 경계
 
-Private-server API의 boot 응답은 현재 관측 계약 `lab_harness_observation/v1`, 최종 damage 권위 `original_client_runtime`, 원본 runtime 관측 상태 `blocked_by_gate`를 별도 필드로 보존합니다. Phase 2B backend는 harness damage를 계산하지 않고 exact decimal receipt와 팀별 합계만 검산합니다. Phase 3에서도 이 receipt를 이름만 바꿔 original-runtime 증거로 승격하지 않고 실제 client observation mapping을 새 versioned provenance로 추가해야 합니다.
+Private-server API의 boot 응답은 현재 관측 계약 `lab_harness_observation/v1`, 최종 damage 권위 `original_client_runtime`, 원본 runtime 관측 상태 `blocked_by_gate`를 별도 필드로 보존합니다. Phase 2B backend는 harness damage를 계산하지 않고 exact decimal receipt와 팀별 합계만 검산합니다. Phase 4 `OriginalClientBattleObservationAdapter`는 이 receipt를 이름만 바꿔 승격하지 않고 실제 client observation mapping을 새 versioned provenance로 추가해야 합니다.
 
 `challenge-operational-policy/unresolved/v1`은 checked-in 기본이며 Challenge unlock을 닫지 않고 새 run admission만 fail closed합니다. 빈 DB의 초기 configured policy는 현재 raid day에 활성화할 수 있지만, 이후 admin 전환은 다음 KST 05:00 raid day에만 효력이 발생합니다. client context는 선택 season과 exact profile/lobby/wallet/feature/squad revision set을 고정하고, runtime/control head는 run open에서 다시 대조한 뒤 run에 고정합니다.
 

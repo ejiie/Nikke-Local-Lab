@@ -107,7 +107,7 @@ checked-in 기본은 여섯 축이 모두 `unresolved`인 `challenge-operational
 - 팀별 damage와 누적 damage, 사용 revision, telemetry와 warning 보존
 - mock battle 지원 여부와 local ranking/result projection을 별도 capability로 versioning
 
-원본 damage는 client runtime의 권위값입니다. Phase 2B backend는 original wire integer를 가정하지 않고 lab harness가 전달한 canonical nonnegative decimal receipt와 동일 run의 팀별 합계만 검증·저장합니다. boot는 `finalDamageAuthority=original_client_runtime`과 `originalRuntimeObservationStatus=blocked_by_gate`를 별도로 보존하며, Phase 3 adapter 전에 harness receipt를 original-runtime 증거로 승격하지 않습니다.
+원본 damage는 client runtime의 권위값입니다. Phase 2B backend는 original wire integer를 가정하지 않고 lab harness가 전달한 canonical nonnegative decimal receipt와 동일 run의 팀별 합계만 검증·저장합니다. boot는 `finalDamageAuthority=original_client_runtime`과 `originalRuntimeObservationStatus=blocked_by_gate`를 별도로 보존하며, Phase 4 observation adapter 전에 harness receipt를 original-runtime 증거로 승격하지 않습니다.
 
 ### 완료 조건
 
@@ -121,35 +121,64 @@ private-server access token 서명 key는 process-local입니다. 같은 API pro
 
 ## Phase 3 — 승인된 original-client adapter와 선언 UI
 
-### 3A. Compatibility gate
+Phase 3은 [PHASE3.md](PHASE3.md)의 다섯 수직 단계로 진행합니다. 각 단계는 독립적인 진입·종료 조건과 stop verdict를 가지며, 앞 단계가 막히면 뒤 단계 구현으로 우회하지 않습니다.
 
-- 지원·승인된 local/test client route 또는 권리자가 제공한 개발·테스트 client 확인
-- 공식 credential 없는 synthetic local session
-- 공식 server와 telemetry outbound zero
-- exact client build/hash와 adapter contract 고정
-- endpoint/auth 변조, 주입·후킹, launcher/보호 기능 우회 없음
+### 3A. 승인 경로 증거와 실행 가능성 감사
 
-### 3B. Wire와 presentation adapter
+- 권리자가 지원·승인한 local/test route, 허용 scope와 supported selector evidence 확인
+- exact client executable/content-set closure와 adapter contract 요구사항 고정
+- synthetic-session-only 및 official outbound-zero 검증 가능성 평가
+- approved presentation variant 존재 여부를 capability로 확인
+- source-free evidence matrix와 `ready_for_phase3b|blocked_insufficient_evidence` 판정
 
+현재 감사는 완료했고 판정은 `blocked_insufficient_evidence`입니다. checked-in original-client compatibility는 계속 disabled/blocked입니다. 상세 근거와 재개 조건은 [PHASE3A.md](PHASE3A.md)를 따릅니다.
+
+### 3B. 승인된 local transport와 handshake
+
+- supported selector/interface로 Local Lab handshake 도달
+- exact build/content mismatch의 pre-connect fail-closed
+- official identity/session material 없이 synthetic local session만 사용
+- client/launcher/child process를 포함한 official server·telemetry outbound zero 재현
 - lab-owned UID와 client-local content reference의 Git 비추적 compatibility binding
-- private-server bootstrap/profile/raid state를 원본 client wire shape에 투영
-- 고정 lobby widget 숨김·재배치 capability 확인
-- 좌측 multi-season folder, 영구 시즌 표시와 Quick Battle 제거
+
+### 3C. Boot와 synthetic session 수직 슬라이스
+
+- original loading에서 private-server boot/open/connect까지 연결
+- exact application build, capability와 bootstrap revision set 고정
+- profile, wallet, roster, squad와 inventory subset wire projection
+- lost-response replay, expiry와 process-restart 재서명 경계 유지
+
+### 3D. Lobby와 season presentation 수직 슬라이스
+
+- 고정 lobby widget 숨김·재배치를 위한 approved presentation variant
+- 좌측 multi-season folder와 시즌 `7, 13, 26, 29, 34, 40`
+- 명시적 한-season 선택, permanent 표시와 Quick Battle 제거/disabled
 - Recruit click feedback 후 navigation 차단
-- 원본 classic Solo Raid main/ready/battle/regroup/result view 연결
+- 오류·timeout·빈 응답을 UI 구현으로 취급하지 않음
 
-서버 응답만으로 고정 prefab을 재배치할 수 있다고 가정하지 않습니다. 승인된 UI override/variant 경로가 없으면 exact lobby 요구는 `blocked`입니다.
+서버 응답만으로 고정 prefab을 재배치할 수 있다고 가정하지 않습니다. 승인된 UI override/variant 경로가 없으면 3D는 `blocked`입니다.
 
-### 3C. End-to-end gate
+### 3E. Challenge admission과 battle handoff
 
-- 실행부터 로비까지 공식 outbound 없이 도달
-- 선언한 profile/wallet와 keep/remove/replace UI 일치
-- season 선택 뒤 원본 Solo Raid 화면 진입
-- 원본 battle runtime과 결과 화면 복귀
+- 선택 시즌의 original Solo Raid main/ready 연결
+- exact run open과 첫 squad enter
+- context/snapshot/squad/build/runtime/control revision pinning
+- Normal/Quick Battle controlled unsupported 유지
+- original battle runtime 직전 handoff 경계까지 도달
 
-client build/hash가 바뀌면 route, presentation과 runtime compatibility를 모두 재평가합니다.
+실제 battle/HUD/damage, regroup, result/local-record 일치는 Phase 4가 소유합니다. client build/content closure가 바뀌면 3A를 다시 열고 route, presentation과 runtime compatibility를 모두 재평가합니다.
 
 ## Phase 4 — 사용자 실플레이 및 원본 runtime 검증
+
+Phase 4는 검증만 하는 수동 checklist가 아닙니다. 승인된 actual-play 환경 안에서 다음 client-observation adapter 경계를 먼저 구현하고 같은 수직 흐름에서 검증합니다.
+
+- harness와 구분되는 새 versioned original-runtime observation provenance/contract
+- 원본 `StatisticsContext`/result observation을 해당 계약으로 변환하는 adapter
+- exact client build, context, snapshot, squad/build와 runtime/control revision 결박
+- observation accept → regroup → next-team → close/result wire와 interruption replay
+- ESC/frame telemetry와 execution-segment boundary 수신·보존
+
+그 뒤 다음 actual-play acceptance를 수행합니다.
 
 - 실행·로딩·로컬 접속·로비를 실제로 확인합니다.
 - 니케·스쿼드·인벤토리와 Recruit no-op을 확인합니다.

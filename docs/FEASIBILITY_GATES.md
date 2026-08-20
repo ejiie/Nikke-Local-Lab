@@ -10,6 +10,8 @@
 - `isolated_local_compatibility_route`: not_evaluated/conditional
 - `lobby_presentation_variant`: not_evaluated/conditional
 
+Phase 3A source-free evidence audit의 현재 verdict는 `blocked_insufficient_evidence`입니다. 이는 backend 실패가 아니라 승인 route/build/outbound 증거가 없을 때 의도한 stop 상태입니다. 세부 assessment와 재개 조건은 [PHASE3A.md](PHASE3A.md)를 따릅니다.
+
 Phase 0~2B의 domain, importer, private-server API와 harness 검증은 이 gate와 독립적으로 진행할 수 있습니다. Phase 2B source-free backend/harness는 최종 단위/live PostgreSQL gate를 통과해 완료했습니다. gate가 막힌 상태에서 harness나 별도 UI를 최종 제품으로 선언하지 않습니다.
 
 Phase 2B boot의 `resultObservationContractId=lab_harness_observation/v1`, `finalDamageAuthority=original_client_runtime`, `originalRuntimeObservationStatus=blocked_by_gate`는 의도적으로 분리됩니다. harness receipt는 backend state/persistence 계약 증거일 뿐 Gate B·D의 original-client observation이 아닙니다.
@@ -27,6 +29,8 @@ Phase 2B boot의 `resultObservationContractId=lab_harness_observation/v1`, `fina
 
 한 조건이라도 충족하지 못하면 adapter는 fail closed입니다. 사용자 의도나 제3자 사례만으로 이 gate를 통과했다고 보지 않습니다.
 
+3A는 위 권한·route·build 증거가 존재하는지 client 실행 없이 판정합니다. `ready_for_phase3b`가 된 뒤에만 3B의 승인된 격리 환경에서 selector/handshake와 outbound zero를 실제로 재검증할 수 있습니다. 이 제한된 평가 연결은 최종 제품 활성화와 다릅니다.
+
 ## Gate B — client wire contract
 
 private-server state가 원본 client 화면을 정상 구동하려면 다음이 입증돼야 합니다.
@@ -34,11 +38,13 @@ private-server state가 원본 client 화면을 정상 구동하려면 다음이
 - boot/loading/local-session bootstrap에 필요한 request/response contract
 - profile, wallet, roster, squad와 inventory subset projection
 - Solo Raid season directory selection과 classic Solo Raid state projection
-- Challenge open/enter/regroup/result state machine
-- original-client observed damage/result receipt
+- Challenge open과 first-team enter
+- original-client observation receipt, regroup, next-team, close/result state machine
 - unsupported route의 controlled no-op/not-supported 처리
 
 wire adapter는 lab-owned UID와 client-local content reference를 Git 비추적 compatibility binding에서 변환합니다. 이 transient compatibility value를 domain PK/FK, public API, log와 fixture에 노출하지 않습니다.
+
+Gate B는 한 단계에서 끝나지 않습니다. 3B가 handshake, 3C가 boot/session과 account bootstrap, 3D가 directory/selection, 3E가 Challenge open/first-team enter를 검증합니다. original-client observation receipt, regroup, next-team, close/result adapter와 실제 observed damage/result는 Phase 4가 구현·검증합니다.
 
 ## Gate C — lobby presentation variant
 
@@ -53,6 +59,8 @@ wire adapter는 lab-owned UID와 client-local content reference를 Git 비추적
 
 서버에 빈 payload를 보내 발생한 오류·timeout·빈 화면은 UI 구현으로 인정하지 않습니다. 승인된 presentation path가 없으면 private-server backend가 완성돼도 exact lobby 요구는 blocked입니다.
 
+3A에서는 approved presentation capability의 존재만 판정하고, 3D에서 exact build에 결박된 variant를 구현·검증합니다.
+
 ## Gate D — original battle runtime integrity
 
 - 원본 battle scene, Spot behavior, animation, QTE, parts와 HUD가 로드됩니다.
@@ -60,6 +68,8 @@ wire adapter는 lab-owned UID와 client-local content reference를 Git 비추적
 - runtime execution/control profile의 requested/effective 값과 frame telemetry가 일치합니다.
 - result가 exact raid/account/squad/build/client revision을 참조합니다.
 - client build/hash가 바뀌면 route, presentation과 runtime compatibility를 모두 재평가합니다.
+
+Gate D는 Phase 4 사용자 실플레이와 original-runtime observation이 소유합니다. 3E의 battle handoff 성공만으로 Gate D를 통과했다고 표시하지 않습니다.
 
 ## 현재 evidence 상태
 
@@ -69,6 +79,7 @@ wire adapter는 lab-owned UID와 client-local content reference를 Git 비추적
 | Normal clear/Challenge unlock contract | backend_complete | `lastClearLevel=7`, Challenge 기본 open, Normal run unsupported 검증 |
 | permanent season/no Quick Battle/05:00 KST | backend_complete | six-member directory·no-expiry·KST day state 검증 |
 | Phase 2B damage observation | harness_only | `lab_harness_observation/v1`; 최종 권위는 original runtime으로 blocked |
+| Phase 3A evidence assessment | blocked_insufficient_evidence | source-free schema/fixture와 no-go matrix 완료; 승인 route/build/outbound evidence 없음 |
 | stock retail backend selector | blocked | 지원 switch 미확인 |
 | isolated local compatibility client | conditional | 승인된 route/build 증거 필요 |
 | multi-season lobby variant | conditional | client presentation capability 필요 |
@@ -77,7 +88,7 @@ wire adapter는 lab-owned UID와 client-local content reference를 Git 비추적
 
 ## 완료 판정
 
-Phase 3은 Gate A~D를 모두 통과해야 합니다. Phase 4 완료는 다시 `(client build, season, raid snapshot)`별 실제 플레이 증거가 필요합니다. gate가 열리지 않으면 Phase 1·2 결과는 보존하지만 최종 제품 상태는 `blocked`입니다.
+Phase 3은 [PHASE3.md](PHASE3.md)의 3A~3E 종료 조건을 순서대로 통과해야 합니다. Gate A는 3A/3B, Gate B의 handshake~Challenge first-team enter는 3B~3E, Gate C는 3A/3D가 담당합니다. Gate B의 observation/regroup/next-team/close/result와 Gate D는 Phase 4에서 adapter 구현과 `(client build, season, raid snapshot)`별 실제 플레이 증거로 통과합니다. 어느 gate든 열리지 않으면 Phase 1·2 결과는 보존하지만 최종 제품 상태는 `blocked`입니다.
 
 Phase 2B operational policy의 checked-in 기본은 여섯 축 미해소이며 Challenge unlock을 유지하고 새 run만 fail closed합니다. configured initial policy는 빈 DB의 현재 raid day에 활성화할 수 있지만 이후 admin 전환은 다음 raid day로만 예약합니다. 이 backend policy readiness와 Gate A~D는 별개입니다.
 

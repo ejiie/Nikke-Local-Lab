@@ -139,7 +139,7 @@ Mock Battle은 Quick Battle과 다른 operational-policy 축입니다. configure
 | Normal clear stub과 Challenge unlock | authoritative | 기존 unlock UI에 투영 |
 | daily reset 05:00 KST | authoritative | 남은 횟수 표시 |
 | season end 없음 | authoritative | timer 숨김 또는 `상시` 표시 |
-| Challenge attempt, used characters, boss HP/누적 damage | Phase 2B에서 harness receipt·persistent aggregate를 검증; Phase 3 후 client observation은 별도 provenance로 수락 | 기존 Solo Raid 화면과 전투에 투영하고 damage를 산출 |
+| Challenge attempt, used characters, boss HP/누적 damage | Phase 2B에서 harness receipt·persistent aggregate를 검증; Phase 4 observation adapter가 client observation을 별도 provenance로 수락 | 기존 Solo Raid 화면과 전투에 투영하고 damage를 산출 |
 | 전투 simulation, damage 계산·표기, animation과 HUD | damage를 계산하지 않고 result/trace만 수신·보존 | authoritative runtime |
 | 고정 lobby widget 제거·재배치 | feature state 제공 | approved UI variant |
 | Recruit no-op | capability를 unsupported로 선언 | click 후 page transition 차단 |
@@ -149,8 +149,9 @@ Mock Battle은 Quick Battle과 다른 operational-policy 축입니다. configure
 원본 client 안에 이미 있는 Solo Raid view와 서버 상태를 연결하는 작업, 그리고 로비 season folder/UI 정리는 서로 다른 gate입니다.
 
 1. Phase 2B는 원본 client 없이 private-server state machine과 API를 `lab_harness_observation/v1`로 검증했고 최종 단위/live PostgreSQL gate를 통과했습니다.
-2. Phase 3은 지원·승인된 client route와 UI variant capability를 각각 검증합니다.
-3. Phase 4는 원본 client에서 로비, profile projection, Challenge 진입, 실제 전투와 결과를 사용자가 직접 검증합니다.
+2. Phase 3A는 client 실행 없이 승인 route/build/outbound 증거와 UI variant capability를 감사합니다. 현재 verdict는 `blocked_insufficient_evidence`입니다.
+3. 3B는 transport/handshake, 3C는 boot/session/account projection, 3D는 lobby/season presentation, 3E는 Challenge ready/open/first-team handoff를 각각 검증합니다.
+4. Phase 4는 원본 client에서 실제 battle/HUD/damage, regroup/result와 runtime integrity를 사용자가 직접 검증합니다.
 
 지원·승인된 client route 또는 UI variant가 없으면 서버 개발 결과를 보존하되 최종 제품 상태는 `blocked`입니다.
 

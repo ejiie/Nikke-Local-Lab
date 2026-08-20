@@ -1,6 +1,6 @@
 # Next steps
 
-최종 목표는 원본 NIKKE client가 제한된 Local Lab private server에 접속하여 선언된 로비와 지원 Solo Raid Challenge를 원본 UI·asset·전투 runtime으로 실행하는 것입니다. Phase 2B source-free backend/harness는 완료했고, 바로 다음 단계는 Phase 3 original-client adapter입니다. 자세한 제품 계약은 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md), 단계별 계약은 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)를 따릅니다.
+최종 목표는 원본 NIKKE client가 제한된 Local Lab private server에 접속하여 선언된 로비와 지원 Solo Raid Challenge를 원본 UI·asset·전투 runtime으로 실행하는 것입니다. Phase 2B source-free backend/harness는 완료했고 Phase 3은 3A~3E의 작은 수직 단계로 분할했습니다. 바로 다음 판정은 3A evidence audit이며 현재 `blocked_insufficient_evidence`입니다. 자세한 제품 계약은 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md), 단계별 계약은 [PHASE3.md](PHASE3.md)와 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)를 따릅니다.
 
 ## 완료 기반
 
@@ -134,33 +134,36 @@ checked-in 기본은 여섯 축이 모두 미해소인 `challenge-operational-po
 - 최대 다섯 팀과 팀 간 중복 금지, result revision pinning이 검증됩니다.
 - harness green은 original-client 완료로 표시하지 않습니다.
 
-Phase 2B result transport는 `lab_harness_observation/v1`입니다. backend는 damage를 계산하지 않고 exact 팀별 receipt와 누적 합계만 검산합니다. boot의 최종 권위는 `original_client_runtime`, 관측 상태는 `blocked_by_gate`로 남으며 Phase 3 adapter 전에 이 harness receipt를 original-runtime 증거로 승격하지 않습니다.
+Phase 2B result transport는 `lab_harness_observation/v1`입니다. backend는 damage를 계산하지 않고 exact 팀별 receipt와 누적 합계만 검산합니다. boot의 최종 권위는 `original_client_runtime`, 관측 상태는 `blocked_by_gate`로 남으며 Phase 4 observation adapter 전에 이 harness receipt를 original-runtime 증거로 승격하지 않습니다.
 
 private-server access token은 process-local signing key를 사용합니다. 같은 process의 같은 Open operation replay는 exact token byte를 재사용하지만, restart 후에는 영속 session/context/time을 복원하더라도 새 process key로 재서명할 수 있습니다.
 
-## 다음 1 — Phase 3 original-client gate와 adapter
+## 다음 1 — Phase 3A evidence gate 해소
 
-### Gate
+3A source-free 감사와 기계 검증 계약은 완료했습니다. 현재 저장소에는 다음 증거가 없으므로 3B 이후는 시작하지 않습니다.
 
-- 지원·승인된 local/test client route
-- 공식 credential 없는 synthetic session
-- 공식 server/telemetry outbound zero
-- exact client build/hash 고정
-- endpoint/auth 변조, 주입·후킹, launcher/보호 기능 우회 없음
+- 권리자가 지원·승인한 local/test route와 current scope
+- exact approved client executable/content-set closure
+- supported selector/interface와 boot handshake contract
+- synthetic-session-only enforcement plan
+- client/launcher/child process 전체를 포함한 outbound-isolation verification plan
 
-### Adapter
+이 다섯 항목이 저장소 밖 local evidence vault에서 검토되어 assessment가 `ready_for_phase3b`가 되면 다음 작은 batch로 진행합니다. 실제 synthetic-session enforcement와 outbound-zero 관측은 3B가 소유합니다. approved lobby presentation variant는 `ready_for_phase3b` 조건이 아니지만 3D를 시작하기 전에는 별도로 확인해야 합니다.
 
-- Git 비추적 client compatibility/presentation binding
-- private-server state를 client wire shape에 투영
-- 고정 lobby widget 제거·재배치
-- 좌측 multi-season folder
-- permanent season 표시, Quick Battle 제거와 Recruit no-op
-- 원본 classic Solo Raid main/ready/battle/regroup/result 연결
+1. **3B transport/handshake** — exact build preflight, supported selector, isolated outbound-zero
+2. **3C boot/session** — loading, boot/open/connect, account bootstrap
+3. **3D lobby/season** — keep/remove/replace UI, six-season folder, explicit selection, permanent/no Quick/Recruit no-op
+4. **3E Challenge handoff** — main/ready, run open, first-team enter, original runtime 직전 경계
 
-서버 feature flag와 승인된 client UI variant의 역할을 화면 요소별로 증명합니다. exact lobby variant가 없으면 그 요구는 blocked입니다.
+현재 3B~3E 견적은 `N/A (blocked)`입니다. 승인·stable build·supported wire·approved UI variant가 모두 제공된 경우의 조건부 합계는 안정화 포함 `14~27시간`이며, 각 구현 batch는 최대 `2~4시간`과 한 commit으로 닫습니다. 자세한 판정과 시간 단축 규칙은 [PHASE3A.md](PHASE3A.md)를 따릅니다.
+
+서버 feature flag와 승인된 client UI variant의 역할을 화면 요소별로 증명합니다. exact lobby variant가 없으면 3D는 blocked입니다.
 
 ## 다음 2 — Phase 4 사용자 실플레이 검증
 
+- 별도 versioned original-runtime observation provenance/contract와 adapter
+- exact build/context/snapshot/squad/build/runtime/control pinning
+- observation → regroup → next-team → close/result wire와 ESC/frame telemetry
 - 실행 → 로딩 → 로컬 접속 → 로비
 - profile/재화와 lobby keep/remove/replace 명세
 - 니케·스쿼드·인벤토리, Recruit no-op

@@ -220,7 +220,7 @@ OL은 장비별 line `1..3`의 sparse 좌표로 보존합니다. `{1, 3}`처럼 
 3. Phase 2A1 — local account, account combat state, character build/profile revision과 `V0005__local_account_profile.sql` — 완료
 4. Phase 2A2 — offline sanitizer/import, Save As, loopback API/editor와 lobby/profile/wallet/inventory read model
 5. Phase 2B — private-server boot/lobby, permanent season directory, KST daily state, runtime/control profile와 1~5팀 Challenge run
-6. Phase 3 — 승인된 original-client wire/presentation adapter
+6. Phase 3A~3E — 승인 증거 감사, transport, boot/session, lobby/season presentation과 Challenge handoff
 7. Phase 4 — 사용자 실플레이와 original-runtime telemetry/result 검증
 
 Phase 2A1의 단위 및 live PostgreSQL gate를 통과한 자체 UUID profile persistence 위에 후속 aggregate를 additive migration으로 연결합니다. V0001~V0005를 수정하지 않습니다. 최신 raw는 account/build seed일 뿐 lobby presentation, synthetic wallet, graphics/control/ESC runtime 관측을 대체하지 않습니다.

@@ -25,7 +25,7 @@
 
 gate가 열리면 승인된 원본 client가 최종 실행 경로가 되고 harness는 계속 자동 테스트에만 사용됩니다. gate가 열리지 않으면 최종 인수 상태는 `blocked`입니다.
 
-stock retail client를 임의로 private server에 연결하는 경로와 승인된 isolated local/test compatibility client는 같은 것이 아닙니다. 전자는 계속 제외합니다. 후자는 `FEASIBILITY_GATES.md`의 route, wire, presentation, outbound와 runtime integrity gate를 모두 통과한 경우에만 활성화합니다.
+stock retail client를 임의로 private server에 연결하는 경로와 승인된 isolated local/test compatibility client는 같은 것이 아닙니다. 전자는 계속 제외합니다. 후자는 Phase 3A에서 권한·route/build 증거가 `ready_for_phase3b`로 판정된 뒤에만 승인 범위의 격리 평가 연결을 시작할 수 있습니다. 제품 활성화는 wire, presentation, outbound와 runtime integrity gate를 모두 통과한 뒤에만 허용합니다.
 
 승인된 presentation variant가 고정 lobby widget 제거·재배치, multi-season folder, permanent season 표시와 controlled no-op을 소유할 수 있습니다. 원본 asset이나 patch output은 Git에 넣지 않으며 빈 응답, protocol 오류, memory patch 또는 hooking을 UI 제어 수단으로 사용하지 않습니다.
 

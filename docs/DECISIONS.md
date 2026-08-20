@@ -29,6 +29,7 @@
 - 로비의 기존 홍보·상점·social widget은 제거하고, 좌측에는 Solo Raid season folder를 둔다. 하단 니케·스쿼드·로비·인벤토리·대원모집은 유지하되 대원모집은 controlled no-op이다.
 - Union Raid는 비활성 확장 지점이다.
 - 원본 리테일 클라이언트 연결은 `docs/FEASIBILITY_GATES.md`가 해제될 때까지 blocked다.
+- Phase 3은 3A evidence audit, 3B transport, 3C boot/session, 3D lobby/season presentation, 3E Challenge handoff로 분할한다. 3A의 blocked verdict도 정상 종료이며 뒤 단계를 시작하지 않는다.
 - raid 호환성 tier는 `static_exact`, `behavior_exact`, `asset_exact_runtime_current`, `historical_runtime_exact` 네 단계다.
 - published raid snapshot 계약은 v2이며 `ready` 상태와 non-null dataset-scoped compatibility binding marker를 강제한다. raw client mapping은 이 단계에서 materialize하지 않으며 불완전 후보는 import diagnostic으로 분리한다.
 - 현재 시즌 목록은 dataset에서 정책으로 파생한 문서화 결과이지 config에 고정된 두 번째 allowlist가 아니다.

@@ -40,4 +40,4 @@ checked-in `challenge-operational-policy/unresolved/v1`은 Challenge unlock proj
 
 Phase 2B는 `lab_harness_observation/v1`만 수락하고 damage를 계산하지 않습니다. 최종 권위는 `original_client_runtime`이지만 현재 원본 runtime observation은 `blocked_by_gate`입니다. 같은 process의 같은 Open operation replay는 exact token byte를 재사용하지만 restart 간 token byte 동일성은 보장하지 않습니다.
 
-후속 제품 모듈은 Phase 3 wire/presentation `OriginalClientCompatibilityAdapter`입니다. 원본 client adapter는 최종 목표에 필수지만 현재 disabled이며 harness와 editor는 이를 대체하지 않습니다.
+후속 제품 경계는 Phase 3B transport, 3C boot/session, 3D lobby/season presentation과 3E Challenge handoff로 분리한 `OriginalClientCompatibilityAdapter`입니다. 3A evidence audit verdict가 `blocked_insufficient_evidence`이므로 adapter는 현재 disabled이며 harness와 editor는 이를 대체하지 않습니다.

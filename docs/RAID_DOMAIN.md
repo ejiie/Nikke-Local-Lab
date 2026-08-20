@@ -137,4 +137,4 @@ Phase 1C actual smoke는 최신 StaticData를 read-only로 읽어 정책을 다�
 
 Phase 2B 결과는 `lab_harness_observation/v1`만 수락하며 사용한 snapshot, profile/squad/build, runtime/control revision과 validation warning을 함께 보존합니다. 이 값은 backend 상태기계와 저장 계약을 검증하는 합성 관측이지 original-client damage 증거가 아닙니다.
 
-Phase 3 adapter gate를 통과한 뒤에는 원본 client의 `StatisticsContext`가 계산·표시한 damage가 실제 실행 결과의 권위입니다. backend는 그 관측을 별도 simulator 값으로 바꿔 화면에 공급하지 않고, 별도 versioned provenance로 session identity와 함께 수신·검증·보존해야 합니다. Phase 2B harness receipt를 `original_runtime`으로 이름만 바꿔 승격해서는 안 됩니다.
+Phase 3 handoff gate를 통과한 뒤 Phase 4에서 원본 client의 `StatisticsContext`가 계산·표시한 damage가 실제 실행 결과의 권위입니다. backend는 그 관측을 별도 simulator 값으로 바꿔 화면에 공급하지 않고, 별도 versioned observation adapter/provenance로 exact session identity와 함께 수신·검증·보존해야 합니다. Phase 2B harness receipt를 `original_runtime`으로 이름만 바꿔 승격해서는 안 됩니다.

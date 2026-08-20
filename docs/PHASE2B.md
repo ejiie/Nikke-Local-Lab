@@ -109,7 +109,7 @@ open
 
 전투 damage는 backend나 `Nikke-Dmg-Simulator`가 계산하지 않습니다. Phase 2B에서는 source code와 크기가 아직 확정되지 않은 original wire integer를 가장하지 않고 `nonnegative_integer_decimal/v1` canonical digit string으로 lab observation을 운반합니다. 저장소는 exact nonnegative integer와 checked cumulative sum을 보존합니다. 현재 78자리 damage와 receipt당 64개 segment 제한은 DB/메모리 자원 경계를 위한 lab transport 상한이며 게임 수치 상한을 주장하지 않습니다.
 
-각 team segment는 observation source, accepted damage, profile/squad/build/snapshot/runtime/control revision, 시작·종료 instant, telemetry digest와 controlled warning을 보존합니다. backend가 계산하는 값은 동일 run 안의 accepted team damage 합계뿐이며, 이는 combat simulation이 아니라 receipt 정합성 검산입니다. Phase 3 adapter가 실제 client observation을 이 계약에 매핑하기 전에는 `original_runtime` 증거로 승격하지 않습니다.
+각 team segment는 observation source, accepted damage, profile/squad/build/snapshot/runtime/control revision, 시작·종료 instant, telemetry digest와 controlled warning을 보존합니다. backend가 계산하는 값은 동일 run 안의 accepted team damage 합계뿐이며, 이는 combat simulation이 아니라 receipt 정합성 검산입니다. Phase 4 observation adapter가 실제 client observation을 별도 versioned contract로 매핑하기 전에는 `original_runtime` 증거로 승격하지 않습니다.
 
 ## PostgreSQL
 
@@ -139,7 +139,7 @@ Phase 2B API는 loopback 전용 lab-owned contract입니다. strict JSON, exact 
 
 동일 `operationUid`의 Open replay는 같은 API process lifetime 안에서 최초 session/context/issued/expires와 HMAC token을 exact 재사용합니다. process restart 뒤에도 persisted session/context/time은 복원하지만 process-local signing key가 바뀌면 token은 재서명될 수 있으며, restart 간 token byte 동일성과 durable signing key는 Phase 2B 범위 밖입니다. 이 token은 original-client 인증 packet이 아니며 공식 credential을 사용하지 않습니다.
 
-boot는 `resultObservationContractId=lab_harness_observation/v1`, `finalDamageAuthority=original_client_runtime`, `originalRuntimeObservationStatus=blocked_by_gate`를 서로 다른 필드로 제공합니다. 즉 harness receipt의 출처와 최종 대미지 권위를 혼동하지 않으며 Phase 3 gate 전에 original-runtime 관측을 주장하지 않습니다.
+boot는 `resultObservationContractId=lab_harness_observation/v1`, `finalDamageAuthority=original_client_runtime`, `originalRuntimeObservationStatus=blocked_by_gate`를 서로 다른 필드로 제공합니다. 즉 harness receipt의 출처와 최종 대미지 권위를 혼동하지 않으며 Phase 4 observation adapter/actual-play gate 전에 original-runtime 관측을 주장하지 않습니다.
 
 지원 surface:
 

@@ -61,4 +61,4 @@
 - 실제 게임 데이터 import 또는 원본 자산 복사
 - 기존 대미지 시뮬레이터를 최종 전투 runtime으로 사용
 
-Phase 0의 "하지 않는 것"은 해당 단계의 범위입니다. 이후 Phase 2에서는 local private server를 구현하고, Phase 3 gate가 열린 뒤에만 승인된 original-client adapter와 lobby UI variant를 연결합니다.
+Phase 0의 "하지 않는 것"은 해당 단계의 범위입니다. 이후 Phase 2에서는 local private server를 구현합니다. Phase 3A는 client 연결 없이 승인 증거를 먼저 감사하고, `ready_for_phase3b` 뒤에만 승인 범위의 transport 평가를 시작합니다. lobby UI variant 연결은 별도 3D presentation gate를 통과해야 합니다.
