@@ -38,7 +38,7 @@ Challenge 해금 선행조건 호환이 필요할 때 local session state에서 
     lastClearLevel = 7
     challengeUnlocked = true
 
-이 상태는 `RaidSnapshot`의 불변 provenance가 아니므로 snapshot에 저장하지 않습니다. 일반 단계의 raid session, battle entry, result, reward를 만들 권한도 없습니다. 원본 client gate가 해제되기 전에는 이 값을 원본 client에 전달하지 않으며 공식 계정·서비스 진행도 우회에 사용하지 않습니다.
+이 상태는 `RaidSnapshot`의 불변 provenance가 아니므로 snapshot에 저장하지 않습니다. 일반 단계의 raid session, battle entry, result, reward를 만들 권한도 없습니다. Phase 3A-R의 disposable local compatibility 경계 밖에서는 이 값을 원본 client에 전달하지 않으며 공식 계정·서비스 진행도 우회에 사용하지 않습니다.
 
 Normal I~VII가 이미 clear된 compatibility state이므로 Quick Battle은 지원하지 않습니다. quick-battle availability, request, reward와 persistence를 만들지 않으며 client projection은 관련 button을 숨기거나 controlled unavailable로 처리합니다.
 
@@ -65,7 +65,7 @@ Normal I~VII가 이미 clear된 compatibility state이므로 Quick Battle은 지
 
 원본 content ID, 파일명, 설치 경로는 snapshot JSON과 API에 포함하지 않습니다.
 
-published snapshot은 `readiness.status=ready`이고 non-null `compatibility_map_uid`를 가져야 합니다. 이 UID는 현재 원본 ID가 들어 있는 map 파일을 가리키지 않고, 정확한 dataset snapshot과 compatibility contract를 결박하는 source-free marker입니다. 여기서 ready는 **선언한 tier의 데이터·provenance를 게시할 준비가 됐다**는 뜻이지, 원본 client에서 전투를 실행할 수 있거나 더 높은 tier가 해소됐다는 뜻이 아닙니다. admission의 정규화 속성·약점은 authoritative import 결과이며, JSON이 자기 주장만으로 원천 관계를 증명한다고 보지 않습니다. 원본 client adapter에 필요한 raw mapping은 gate 해제 뒤 정확한 dataset에서 Git 밖으로 재생성하고 별도 검증해야 합니다.
+published snapshot은 `readiness.status=ready`이고 non-null `compatibility_map_uid`를 가져야 합니다. 이 UID는 현재 원본 ID가 들어 있는 map 파일을 가리키지 않고, 정확한 dataset snapshot과 compatibility contract를 결박하는 source-free marker입니다. 여기서 ready는 **선언한 tier의 데이터·provenance를 게시할 준비가 됐다**는 뜻이지, 원본 client에서 전투를 실행할 수 있거나 더 높은 tier가 해소됐다는 뜻이 아닙니다. admission의 정규화 속성·약점은 authoritative import 결과이며, JSON이 자기 주장만으로 원천 관계를 증명한다고 보지 않습니다. 원본 client adapter에 필요한 raw mapping은 [Phase 3A-R](PHASE3AR.md)의 exact-build disposable 경계에서 정확한 dataset으로 Git 밖에서 재생성하고 별도 검증해야 합니다.
 
 `localBuildLabel`은 lab DB 안에서만 쓰는 별칭이며 원본 build 식별자나 파일명을 복사하는 필드가 아닙니다.
 
@@ -73,11 +73,11 @@ published snapshot은 `readiness.status=ready`이고 non-null `compatibility_map
 
 ## 시즌 directory와 선택된 실행 시즌
 
-`AvailableRaidSeasonDirectory`는 모든 published 지원 `RaidSnapshot`의 source-free user-facing season number, boss display metadata와 readiness를 나열합니다. 이 목록은 lobby의 Solo Raid folder가 소비하며 여러 시즌을 동시에 포함합니다.
+`AvailableRaidSeasonDirectory`는 모든 published 지원 `RaidSnapshot`의 source-free user-facing season number, boss display metadata와 readiness를 나열합니다. 이 목록은 Local Lab admin/sidecar season selector가 소비하며 여러 시즌을 동시에 포함합니다. 향후 in-client Solo Raid folder가 채택되면 같은 directory를 projection source로 사용할 수 있지만, folder 자체는 첫 시즌 26 proof의 선행조건이나 확정 기능이 아닙니다.
 
 `SelectedRaidSeason`은 account/session별로 사용자가 directory에서 선택해 현재 클래식 Solo Raid 화면과 다음 session에 투영할 단 하나의 published `RaidSnapshot`을 가리키는 가변 포인터입니다. snapshot과 directory member는 불변이며 선택 변경만 새 실행 context를 나타냅니다. Phase 2A2 config 계약의 canonical invariant는 `oneSelectedSeasonPerClientContext=true`이고, Phase 2B가 이 포인터와 선택 상태를 실제 service에 구현했습니다.
 
-지원 정책을 통과하지 못한 snapshot은 directory나 선택 포인터의 대상이 될 수 없습니다. v1 directory는 review된 시즌 7·13·26·29·34·40으로 고정하며 새 admission candidate를 자동 노출하지 않습니다. 새 시즌은 evidence review와 directory contract version 변경 뒤에만 추가합니다. 모든 member는 `SeasonAvailability=permanent`, `seasonEndsAt=null`인 영구 local content이며 종료·만료 job이 없습니다. 원본 UI가 역사 시즌 browser를 제공한다고 가정하지 않고, lobby season folder는 승인된 client UI variant가 소유합니다.
+지원 정책을 통과하지 못한 snapshot은 directory나 선택 포인터의 대상이 될 수 없습니다. v1 directory는 review된 시즌 7·13·26·29·34·40으로 고정하며 새 admission candidate를 자동 노출하지 않습니다. 새 시즌은 evidence review와 directory contract version 변경 뒤에만 추가합니다. 모든 member는 `SeasonAvailability=permanent`, `seasonEndsAt=null`인 영구 local content이며 종료·만료 job이 없습니다. 원본 UI가 역사 시즌 browser를 제공한다고 가정하지 않습니다. 첫 Phase 3 spike는 sidecar에서 시즌 26을 명시적으로 선택하고 그 하나만 원본 클래식 Solo Raid 화면에 투영하며, custom multi-season lobby UI는 그 경로가 검증된 뒤 별도 결정합니다.
 
 ## 일일 Challenge 상태
 
@@ -127,7 +127,9 @@ Phase 1C actual smoke는 최신 StaticData를 read-only로 읽어 정책을 다�
 
 따라서 시즌 40도 `asset_exact_runtime_current`나 `historical_runtime_exact`로 올리지 않습니다. 합성 fixture가 상위 tier의 schema와 persistence invariant를 시험하더라도 실제 시즌에 대한 증거 주장으로 해석하지 않습니다.
 
-호환성 tier와 원본 client 실행 가능 여부는 별개입니다. 원본 리테일 클라이언트 연결은 동적 `OriginalClientGate`가 통제합니다.
+Phase 3B-0의 시즌 26 focused diagnostic은 위 published tier와 별개입니다. Behavior/timeline artifact는 prior local reference archive에서 생성했고 target의 시즌 26 monster-skill row `15/15` exact decode와 complete monster-parts entry byte equality로 equivalence를 검증했습니다. 이를 통해 behavior node `917`개, active cast site `109`개와 current behavior/asset root를 해소했지만 해당 artifact는 `promotion_eligible=false`입니다. 그러므로 시즌 26의 published RaidSnapshot은 계속 `static_exact`이고 기존 snapshot/V0003/canonical hash를 변경하지 않습니다. 3B-0의 실행 준비 verdict와 absolute timing blocker는 [PHASE3B0.md](PHASE3B0.md)를 따릅니다.
+
+호환성 tier와 원본 client 실행 가능 여부는 별개입니다. 원본 client 연결은 동적 `OriginalClientGate`와 [Phase 3A-R](PHASE3AR.md)의 disposable local-experiment 상태가 통제합니다. 문서상의 `ready_for_local_compatibility_spike`도 runtime-exact tier를 뜻하지 않습니다.
 
 ## 전투 결과
 
@@ -137,4 +139,4 @@ Phase 1C actual smoke는 최신 StaticData를 read-only로 읽어 정책을 다�
 
 Phase 2B 결과는 `lab_harness_observation/v1`만 수락하며 사용한 snapshot, profile/squad/build, runtime/control revision과 validation warning을 함께 보존합니다. 이 값은 backend 상태기계와 저장 계약을 검증하는 합성 관측이지 original-client damage 증거가 아닙니다.
 
-Phase 3 handoff gate를 통과한 뒤 Phase 4에서 원본 client의 `StatisticsContext`가 계산·표시한 damage가 실제 실행 결과의 권위입니다. backend는 그 관측을 별도 simulator 값으로 바꿔 화면에 공급하지 않고, 별도 versioned observation adapter/provenance로 exact session identity와 함께 수신·검증·보존해야 합니다. Phase 2B harness receipt를 `original_runtime`으로 이름만 바꿔 승격해서는 안 됩니다.
+Phase 3B-2의 시즌 26 classic Solo Raid handoff 뒤, Phase 3C/3D의 최소 one-team adapter가 원본 client의 `StatisticsContext`/result damage를 별도 versioned provenance와 exact session identity로 수신·검증·보존합니다. backend는 그 관측을 simulator 값으로 바꿔 화면에 공급하지 않습니다. Phase 4는 같은 계약을 1~5팀, regroup/recovery와 full telemetry parity로 확장합니다. Museum buff가 적용된 result와 Phase 2B harness receipt를 `original_runtime`으로 이름만 바꿔 승격해서는 안 됩니다.

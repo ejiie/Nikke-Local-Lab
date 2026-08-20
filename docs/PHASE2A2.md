@@ -4,7 +4,7 @@
 
 Phase 2A2는 원본 게임 UI가 아니라 Local Lab을 관리하는 sidecar 계층입니다. credential-bearing raw capture에서 허용된 전투 관측만 오프라인으로 정규화하고, 자체 UID만 포함한 immutable draft를 명시적 preview/diff/write 흐름으로 Phase 2A1의 profile revision에 연결합니다. 같은 단계에서 로비에 필요한 synthetic presentation, wallet, feature capability와 제한된 roster/squad/inventory read model을 제공합니다.
 
-이 단계의 완료는 original-client wire/UI 연결이나 실제 전투 검증을 뜻하지 않습니다. boot/lobby와 영구 Solo Raid service는 Phase 2B, 승인된 adapter는 Phase 3, 실제 플레이와 원본 damage/HUD/result 검증은 Phase 4 범위입니다.
+이 단계의 완료는 original-client wire/UI 연결이나 실제 전투 검증을 뜻하지 않습니다. boot/lobby와 영구 Solo Raid service는 Phase 2B, operator-authorized compatibility와 시즌 26 one-team live proof/observation sealing은 Phase 3, 1~5팀 actual-play와 full runtime parity는 Phase 4 범위입니다.
 
 ## 입력 경계와 운영 진입점
 
@@ -137,7 +137,7 @@ V0001~V0005를 수정하지 않고 V0006 additive migration으로 다음 aggrega
 - `ClientFeatureManifest`: route별 `supported|hidden|visible_no_op|not_supported`
 - `SanitizedProfileDraft`, `ProfileEditCandidate`, diff, application intent와 completed application ledger
 
-프로필 아이콘·프레임·배경은 원본 asset을 복사한 값이 아니라 lab-owned selection UID입니다. Phase 3의 승인된 adapter가 client-local asset reference로 변환하기 전에는 `presentation_binding_unresolved`일 수 있습니다.
+프로필 아이콘·프레임·배경은 원본 asset을 복사한 값이 아니라 lab-owned selection UID입니다. Phase 3의 build-pinned local compatibility adapter가 client-local asset reference로 변환하기 전에는 `presentation_binding_unresolved`일 수 있습니다.
 
 신규 profile 생성과 lobby/wallet/feature initialization은 별도 명시적 command입니다. bootstrap query가 값을 조용히 생성하거나 임의 default를 선택하지 않습니다. initialization은 exact current profile과 published feature manifest를 조건으로 lobby와 wallet revision 1을 한 번 생성하고, operation replay만 idempotent하게 허용합니다.
 

@@ -63,9 +63,9 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
 
-      - name: Verify Phase 3A evidence contract and completed baseline
+      - name: Verify Phase 3B-1 selected-manager contract and completed baseline
         shell: pwsh
-        run: pwsh -NoProfile -File scripts/verify-phase3a.ps1
+        run: pwsh -NoProfile -File scripts/verify-phase3b1.ps1
 
       - name: Verify Actions automation contract
         shell: pwsh

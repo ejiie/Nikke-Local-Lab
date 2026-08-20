@@ -4,7 +4,7 @@
 
 제한된 Local Lab private server가 원본 NIKKE client에 투영할 합성 local account, 캐릭터 빌드, lobby 상태와 Solo Raid Challenge 실행 context를 관리합니다. 별도 관리 도구는 이 값을 편집하는 sidecar일 뿐 원본 게임 UI가 아닙니다.
 
-이 기능은 Local Lab PostgreSQL과 loopback API만 수정합니다. 공식 계정, `C:\NIKKE`, BlaBla, 공식 API·서버로 write하지 않습니다. 원본 UI에 반영하는 경로는 `FEASIBILITY_GATES.md`가 해제된 경우에만 별도 adapter가 담당합니다.
+이 기능은 Local Lab PostgreSQL과 loopback API만 수정합니다. 공식 계정, `C:\NIKKE`, BlaBla, 공식 API·서버로 write하지 않습니다. 원본 UI에 반영하는 경로는 [FEASIBILITY_GATES.md](FEASIBILITY_GATES.md)와 [PHASE3AR.md](PHASE3AR.md)의 disposable local-experiment 조건을 통과한 별도 adapter가 담당합니다. 첫 target은 시즌 26 원본 클래식 Solo Raid Challenge이며 Museum 경로는 사용하지 않습니다.
 
 ## 개체 경계
 
@@ -220,7 +220,9 @@ OL은 장비별 line `1..3`의 sparse 좌표로 보존합니다. `{1, 3}`처럼 
 3. Phase 2A1 — local account, account combat state, character build/profile revision과 `V0005__local_account_profile.sql` — 완료
 4. Phase 2A2 — offline sanitizer/import, Save As, loopback API/editor와 lobby/profile/wallet/inventory read model
 5. Phase 2B — private-server boot/lobby, permanent season directory, KST daily state, runtime/control profile와 1~5팀 Challenge run
-6. Phase 3A~3E — 승인 증거 감사, transport, boot/session, lobby/season presentation과 Challenge handoff
-7. Phase 4 — 사용자 실플레이와 original-runtime telemetry/result 검증
+6. Phase 3A/3A-R — 역사적 승인 증거 감사와 operator-authorized local rebaseline
+7. Phase 3B-0/1/2 — 시즌 26 closure, classic selected-manager와 isolated live proof
+8. Phase 3C/3D/3E — Local Lab shadow bridge, 시즌 26 end-to-end sealing과 후속 시즌 확장
+9. Phase 4 — 1~5팀 사용자 실플레이, regroup/recovery와 original-runtime telemetry/result parity
 
 Phase 2A1의 단위 및 live PostgreSQL gate를 통과한 자체 UUID profile persistence 위에 후속 aggregate를 additive migration으로 연결합니다. V0001~V0005를 수정하지 않습니다. 최신 raw는 account/build seed일 뿐 lobby presentation, synthetic wallet, graphics/control/ESC runtime 관측을 대체하지 않습니다.

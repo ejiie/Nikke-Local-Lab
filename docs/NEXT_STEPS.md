@@ -1,6 +1,8 @@
 # Next steps
 
-최종 목표는 원본 NIKKE client가 제한된 Local Lab private server에 접속하여 선언된 로비와 지원 Solo Raid Challenge를 원본 UI·asset·전투 runtime으로 실행하는 것입니다. Phase 2B source-free backend/harness는 완료했고 Phase 3은 3A~3E의 작은 수직 단계로 분할했습니다. 바로 다음 판정은 3A evidence audit이며 현재 `blocked_insufficient_evidence`입니다. 자세한 제품 계약은 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md), 단계별 계약은 [PHASE3.md](PHASE3.md)와 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)를 따릅니다.
+최종 목표는 원본 NIKKE client가 제한된 Local Lab private server에 접속하여 지원 Solo Raid Challenge를 원본 UI·asset·전투 runtime으로 실행하는 것입니다. Phase 2B source-free backend/harness, Phase 3B-0 시즌 26 static/runtime closure와 Phase 3B-1 selected-manager patch를 완료했습니다. approval-first Phase 3A의 `blocked_insufficient_evidence`는 역사 기록으로 보존하지만 현행 기술 작업을 차단하지 않습니다. 현재 verdict는 `ready_for_isolated_season26_reference_run`입니다.
+
+바로 다음 기술 목표는 **client build `150.6.9`에서 시즌 26의 원본 클래식 `SoloRaid` Challenge를 단일 팀으로 실행하는 것**입니다. 공식 별도 모드인 `SoloRaidMuseum`은 결과에 영향을 주는 전용 버프가 있으므로 고려·fallback·acceptance 대상에서 제외합니다. 자세한 rebaseline은 [PHASE3AR.md](PHASE3AR.md), selected-manager 완료 결과는 [PHASE3B1.md](PHASE3B1.md), 제품 계약은 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md), 전체 단계는 [PHASE3.md](PHASE3.md)와 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)를 따릅니다.
 
 ## 완료 기반
 
@@ -134,46 +136,96 @@ checked-in 기본은 여섯 축이 모두 미해소인 `challenge-operational-po
 - 최대 다섯 팀과 팀 간 중복 금지, result revision pinning이 검증됩니다.
 - harness green은 original-client 완료로 표시하지 않습니다.
 
-Phase 2B result transport는 `lab_harness_observation/v1`입니다. backend는 damage를 계산하지 않고 exact 팀별 receipt와 누적 합계만 검산합니다. boot의 최종 권위는 `original_client_runtime`, 관측 상태는 `blocked_by_gate`로 남으며 Phase 4 observation adapter 전에 이 harness receipt를 original-runtime 증거로 승격하지 않습니다.
+Phase 2B result transport는 `lab_harness_observation/v1`입니다. backend는 damage를 계산하지 않고 exact 팀별 receipt와 누적 합계만 검산합니다. boot의 최종 권위는 `original_client_runtime`, 관측 상태는 `blocked_by_gate`로 남으며 Phase 3C/3D의 최소 one-team observation adapter가 실제 client mapping을 봉인하기 전에 이 harness receipt를 original-runtime 증거로 승격하지 않습니다.
 
 private-server access token은 process-local signing key를 사용합니다. 같은 process의 같은 Open operation replay는 exact token byte를 재사용하지만, restart 후에는 영속 session/context/time을 복원하더라도 새 process key로 재서명할 수 있습니다.
 
-## 다음 1 — Phase 3A evidence gate 해소
+## 완료 — 3A-R 문서·정책 rebaseline
 
-3A source-free 감사와 기계 검증 계약은 완료했습니다. 현재 저장소에는 다음 증거가 없으므로 3B 이후는 시작하지 않습니다.
+상태: 문서·정책 재기준화 완료 / `ready_for_local_compatibility_spike`. 실제 compatibility 실행은 아직 시작하지 않았습니다. 문서 작업 실적은 약 `1.5~2.5시간`입니다.
 
-- 권리자가 지원·승인한 local/test route와 current scope
-- exact approved client executable/content-set closure
-- supported selector/interface와 boot handshake contract
-- synthetic-session-only enforcement plan
-- client/launcher/child process 전체를 포함한 outbound-isolation verification plan
+- Phase 3A의 `blocked_insufficient_evidence`를 당시 approval-first 정책의 역사적 결과로 보존
+- 공개 upstream을 권리자 승인 증거로 표현하지 않으면서 operator-authorized local-only lane을 별도로 정의
+- EpinelPS reviewed commit `28b2f5413a0a1e3521a11ae162f91851335c8b40`, AGPL 외부 process 경계와 client `150.6.9` 고정
+- snapshot 가능한 disposable VM/별도 OS, dummy local account, `127.0.0.1` exact bind, 전 process tree non-loopback block와 backup/rollback 계약 정렬
+- classic `SoloRaid` only, Museum 제외와 시즌 26 first proof를 전 문서에 반영
 
-이 다섯 항목이 저장소 밖 local evidence vault에서 검토되어 assessment가 `ready_for_phase3b`가 되면 다음 작은 batch로 진행합니다. 실제 synthetic-session enforcement와 outbound-zero 관측은 3B가 소유합니다. approved lobby presentation variant는 `ready_for_phase3b` 조건이 아니지만 3D를 시작하기 전에는 별도로 확인해야 합니다.
+이 단계가 끝나도 client compatibility가 입증된 것은 아닙니다.
 
-1. **3B transport/handshake** — exact build preflight, supported selector, isolated outbound-zero
-2. **3C boot/session** — loading, boot/open/connect, account bootstrap
-3. **3D lobby/season** — keep/remove/replace UI, six-season folder, explicit selection, permanent/no Quick/Recruit no-op
-4. **3E Challenge handoff** — main/ready, run open, first-team enter, original runtime 직전 경계
+## 완료 — 3B-0 시즌 26 static/runtime closure
 
-현재 3B~3E 견적은 `N/A (blocked)`입니다. 승인·stable build·supported wire·approved UI variant가 모두 제공된 경우의 조건부 합계는 안정화 포함 `14~27시간`이며, 각 구현 batch는 최대 `2~4시간`과 한 commit으로 닫습니다. 자세한 판정과 시간 단축 규칙은 [PHASE3A.md](PHASE3A.md)를 따릅니다.
+상태: `ready_for_selected_manager_patch_with_timing_analysis_blocker`
 
-서버 feature flag와 승인된 client UI variant의 역할을 화면 요소별로 증명합니다. exact lobby variant가 없으면 3D는 blocked입니다.
+다음 exact chain을 client 실행 전에 닫았습니다.
 
-## 다음 2 — Phase 4 사용자 실플레이 검증
+```text
+season 26 manager
+  -> preset
+  -> Challenge wave
+  -> monster/stat
+  -> client-loadable asset/content
+```
 
-- 별도 versioned original-runtime observation provenance/contract와 adapter
+Static/content 축은 `ready_for_selected_manager_patch`입니다. pinned upstream pack과 인접 local reference pack의 필수 entry `7/7`, selected season row `6/6`를 exact하게 대조했고, manager → Challenge preset → wave → 단일 boss/model/stat → current behavior/asset root를 닫았습니다. Focused behavior/timeline artifact 자체는 prior local reference archive에서 생성했으며, target의 시즌 26 monster-skill row `15/15` exact decode와 complete monster-parts entry byte equality로 equivalence를 검증했습니다. 최신 manager, 다른 시즌과 Museum fallback은 사용하지 않았습니다.
+
+시즌 26에는 패턴 순서가 있지만 고정된 한 줄 script는 아닙니다. exact behavior graph는 node `917`개와 active cast site `109`개를 가지며 조건·random selector·파츠 상태에 따라 분기합니다. active skill type `14`개 중 `7`개가 exact Timeline marker를 가지며 AttackMarker는 `9`개입니다. event timing `7`개와 client `150.6.9` native scheduler contract가 미해소이므로 absolute frame/ms timing 분석만 blocked입니다. focused evidence는 `promotion_eligible=false`이므로 Phase 1C의 published 시즌 26 `static_exact` tier를 올리지 않습니다. 상세와 공개 영상 trace의 구분은 [PHASE3B0.md](PHASE3B0.md)를 따릅니다.
+
+## 완료 — 3B-1 external selected-manager patch와 focused test
+
+상태는 **완료 / `ready_for_isolated_season26_reference_run`**입니다.
+
+통합 external commit은 `92a6ca228aeb580988907b96189b2857dff2c62d`입니다.
+
+EpinelPS classic Solo Raid의 max/latest-manager 선택 동작을 account별 explicit selection으로 바꿨습니다. Baseline 감사값 `19/6/9/4`를 보존하고 최종 policy를 `7 selected Challenge / 10 controlled unsupported / 2 manager-independent`로 고정했습니다. Listener 시작 전에 startup binding으로 synthetic account의 target을 write-once 저장하고, JsonDb restart 복원과 immutable active-run pin을 구현했습니다.
+
+`B1a baseline/characterization -> B1x dispatch isolation -> B1b resolver/persistence -> B1c route wiring -> B1d adversarial tests -> B1e source-free receipt`를 모두 완료했습니다. Wire `Trial`은 classic Challenge 경로로 유지하고 Museum·Normal·Practice·FastBattle/Quick은 범위 밖입니다. Release rebuild 오류 `0`, focused test `63/63`이며 상세 receipt는 [PHASE3B1.md](PHASE3B1.md)를 따릅니다.
+
+## 다음 1 — isolated season 26 live proof
+
+예상 `2~4시간`입니다.
+
+```text
+disposable launch
+  -> synthetic local login
+  -> lobby
+  -> original classic Solo Raid
+  -> season 26 Challenge ready
+  -> one squad battle
+  -> original client result
+```
+
+primary 설치본과 공식 계정을 사용하지 않습니다. snapshot 가능한 disposable VM/별도 OS에서만 system hosts와 root CA를 바꿉니다. client-local native compatibility 변경은 before hash, backup과 rollback manifest를 먼저 만들고, client, launcher, EpinelPS/server와 관련 child process 전체의 non-loopback 통신을 차단·관측합니다. 모든 local service는 `127.0.0.1`에만 bind합니다.
+
+첫 exit gate는 **Museum 버프 없이 시즌 26 클래식 Challenge 전투가 시작되고 client result를 반환하는 것**입니다. 3A-R을 시작할 때의 총견적 `6.5~12.5시간`은 역사적 초기값이고, 3B-1 완료 뒤 현재 남은 3B-2 engineering estimate는 `2~4시간`입니다.
+
+## 이후 — shadow bridge와 확장
+
+3B live proof 뒤에만 진행하고 다시 견적합니다.
+
+1. 시즌 26 external façade ↔ Phase 2B shadow bridge: 초기 `3~6시간`
+2. 시즌 26 open/enter/observation/result end-to-end sealing: 초기 `4~7시간`
+3. 나머지 시즌 `7, 13, 29, 34, 40` 확장: 시즌 26 성공 뒤 시즌별 재견적
+4. 1~5팀, regroup/result/recovery와 runtime integrity: Phase 4에서 별도 재견적
+
+bridge는 먼저 read-compare/shadow mode로 시작합니다. Local Lab은 exact account/snapshot/squad/build/runtime/control identity와 durable run state를 보존하고, damage 계산의 권위는 원본 client에 둡니다. 한 시즌씩 별도 closure/proof batch로 닫으며 Museum을 fallback으로 사용하지 않습니다.
+
+## 이후 — Phase 4 1~5팀 actual-play와 runtime parity
+
+- Phase 3C/3D에서 봉인한 one-team original-runtime observation provenance/adapter의 1~5팀 확장
 - exact build/context/snapshot/squad/build/runtime/control pinning
 - observation → regroup → next-team → close/result wire와 ESC/frame telemetry
 - 실행 → 로딩 → 로컬 접속 → 로비
 - profile/재화와 lobby keep/remove/replace 명세
-- 니케·스쿼드·인벤토리, Recruit no-op
-- 여섯 시즌 선택과 Challenge 즉시 개방
-- season countdown/Quick Battle 부재
+- 니케·스쿼드·인벤토리 core projection
+- 각 지원 시즌의 클래식 Solo Raid 선택과 Challenge 즉시 개방
 - 1~5팀 전투, 사용 캐릭터 잠금과 재정비
 - 원본 HUD/ESC 누적 damage와 result
 - backend 팀별/누적 result 일치
 - 05:00 KST rollover
 - 시즌별 scene, behavior, QTE, part, animation과 timing
+- `SoloRaidMuseum` 및 Museum 전용 버프 미사용
+
+사용자가 custom presentation을 채택한 경우에만 Recruit no-op, season countdown/Quick Battle button 부재, widget 재배치와 six-season folder를 별도 acceptance로 추가합니다. 이 optional presentation의 부재는 core actual-play acceptance를 막지 않습니다.
 
 완료 판정은 전역 boolean이 아니라 `(client build, season, raid snapshot)`별 증거로 남깁니다.
 

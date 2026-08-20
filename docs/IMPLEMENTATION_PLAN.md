@@ -2,7 +2,7 @@
 
 최종 인수 조건은 **원본 NIKKE 클라이언트가 제한된 Local Lab private server에 접속하여 선언된 로비와 지원 Solo Raid Challenge를 원본 UI·asset·전투 runtime으로 실행하는 것**입니다. lab-owned harness, editor와 `Nikke-Dmg-Simulator`는 sidecar이며 최종 client를 대체하지 않습니다.
 
-제품 UI와 서비스 정책의 권위는 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md)입니다.
+제품 UI와 서비스 정책의 권위는 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md)입니다. Phase 3의 현행 operator-authorized local compatibility 정책은 [PHASE3AR.md](PHASE3AR.md), 완료된 시즌 26 static/runtime closure는 [PHASE3B0.md](PHASE3B0.md), 완료된 selected-manager patch와 receipt는 [PHASE3B1.md](PHASE3B1.md)가 소유합니다.
 
 ## Phase 0 — 계약과 경계 — 완료
 
@@ -107,7 +107,7 @@ checked-in 기본은 여섯 축이 모두 `unresolved`인 `challenge-operational
 - 팀별 damage와 누적 damage, 사용 revision, telemetry와 warning 보존
 - mock battle 지원 여부와 local ranking/result projection을 별도 capability로 versioning
 
-원본 damage는 client runtime의 권위값입니다. Phase 2B backend는 original wire integer를 가정하지 않고 lab harness가 전달한 canonical nonnegative decimal receipt와 동일 run의 팀별 합계만 검증·저장합니다. boot는 `finalDamageAuthority=original_client_runtime`과 `originalRuntimeObservationStatus=blocked_by_gate`를 별도로 보존하며, Phase 4 observation adapter 전에 harness receipt를 original-runtime 증거로 승격하지 않습니다.
+원본 damage는 client runtime의 권위값입니다. Phase 2B backend는 original wire integer를 가정하지 않고 lab harness가 전달한 canonical nonnegative decimal receipt와 동일 run의 팀별 합계만 검증·저장합니다. boot는 `finalDamageAuthority=original_client_runtime`과 `originalRuntimeObservationStatus=blocked_by_gate`를 별도로 보존하며, Phase 3C/3D의 최소 one-team observation adapter가 실제 client mapping을 봉인하기 전에 harness receipt를 original-runtime 증거로 승격하지 않습니다.
 
 ### 완료 조건
 
@@ -119,61 +119,105 @@ checked-in 기본은 여섯 축이 모두 `unresolved`인 `challenge-operational
 
 private-server access token 서명 key는 process-local입니다. 같은 API process의 같은 Open operation replay는 최초 token byte를 exact 재사용하지만, process restart 후에는 영속 session/context/issued/expires를 복원해도 token이 새 key로 재서명될 수 있습니다. durable signing key와 restart 간 token byte 동일성은 Phase 2B 범위가 아닙니다.
 
-## Phase 3 — 승인된 original-client adapter와 선언 UI
+## Phase 3 — operator-authorized original-client local compatibility
 
-Phase 3은 [PHASE3.md](PHASE3.md)의 다섯 수직 단계로 진행합니다. 각 단계는 독립적인 진입·종료 조건과 stop verdict를 가지며, 앞 단계가 막히면 뒤 단계 구현으로 우회하지 않습니다.
+Phase 3은 [PHASE3.md](PHASE3.md)의 작은 exit-gated 단계로 진행합니다. 과거 Phase 3A의 `blocked_insufficient_evidence`는 approval-first 정책의 역사 기록으로 보존하고, 운영자가 선택한 비배포·로컬 전용 compatibility lane은 [PHASE3AR.md](PHASE3AR.md)의 `ready_for_local_compatibility_spike`에서 시작합니다. 공개 upstream의 존재를 권리자 승인으로 주장하지 않습니다.
 
-### 3A. 승인 경로 증거와 실행 가능성 감사
+EpinelPS는 reviewed commit `28b2f5413a0a1e3521a11ae162f91851335c8b40`과 client build `150.6.9`에 고정한 외부 AGPL checkout/process입니다. source, generated protocol code, certificate, native binary와 patch output을 이 저장소에 편입하지 않습니다. Local Lab Phase 2B는 durable profile/run state로 보존하되, client compatibility proof 전에 bridge를 먼저 만들지 않습니다.
 
-- 권리자가 지원·승인한 local/test route, 허용 scope와 supported selector evidence 확인
-- exact client executable/content-set closure와 adapter contract 요구사항 고정
-- synthetic-session-only 및 official outbound-zero 검증 가능성 평가
-- approved presentation variant 존재 여부를 capability로 확인
-- source-free evidence matrix와 `ready_for_phase3b|blocked_insufficient_evidence` 판정
+### 3A. Approval-first evidence audit — 역사적 완료
 
-현재 감사는 완료했고 판정은 `blocked_insufficient_evidence`입니다. checked-in original-client compatibility는 계속 disabled/blocked입니다. 상세 근거와 재개 조건은 [PHASE3A.md](PHASE3A.md)를 따릅니다.
+- verdict `blocked_insufficient_evidence`와 당시 evidence matrix 보존
+- checked-in blocked fixture를 허위 `ready_for_phase3b`로 변경하지 않음
+- 현재 진행 조건으로 사용하지 않고 [PHASE3A.md](PHASE3A.md)의 역사 기록으로 유지
 
-### 3B. 승인된 local transport와 handshake
+### 3A-R. Local compatibility rebaseline
 
-- supported selector/interface로 Local Lab handshake 도달
-- exact build/content mismatch의 pre-connect fail-closed
-- official identity/session material 없이 synthetic local session만 사용
-- client/launcher/child process를 포함한 official server·telemetry outbound zero 재현
-- lab-owned UID와 client-local content reference의 Git 비추적 compatibility binding
+예상 `1.5~2.5시간`, 현행 verdict `ready_for_local_compatibility_spike`입니다.
 
-### 3C. Boot와 synthetic session 수직 슬라이스
+- external dependency URL/license/commit과 exact client build 고정
+- snapshot 가능한 disposable VM/별도 OS, local dummy account, `127.0.0.1` exact bind, 전 process tree non-loopback block와 rollback 경계
+- 원본 클래식 `SoloRaid` 전용과 `SoloRaidMuseum` 제외
+- 첫 proof를 시즌 26 하나로 제한
 
-- original loading에서 private-server boot/open/connect까지 연결
-- exact application build, capability와 bootstrap revision set 고정
-- profile, wallet, roster, squad와 inventory subset wire projection
-- lost-response replay, expiry와 process-restart 재서명 경계 유지
+문서와 정책을 정렬하는 단계이며 구현·실행 성공을 뜻하지 않습니다.
 
-### 3D. Lobby와 season presentation 수직 슬라이스
+### 3B-0. 시즌 26 static/runtime closure
 
-- 고정 lobby widget 숨김·재배치를 위한 approved presentation variant
-- 좌측 multi-season folder와 시즌 `7, 13, 26, 29, 34, 40`
-- 명시적 한-season 선택, permanent 표시와 Quick Battle 제거/disabled
-- Recruit click feedback 후 navigation 차단
-- 오류·timeout·빈 응답을 UI 구현으로 취급하지 않음
+상태: **완료 / `ready_for_selected_manager_patch_with_timing_analysis_blocker`**
 
-서버 응답만으로 고정 prefab을 재배치할 수 있다고 가정하지 않습니다. 승인된 UI override/variant 경로가 없으면 3D는 `blocked`입니다.
+- exact season 26 manager → preset → Challenge wave → single boss/model/stat → current behavior/asset root chain 확인
+- pinned upstream pack과 인접 local reference pack의 필수 entry `7/7` byte equality, selected season row `6/6` exact 확인
+- prior local reference archive에서 생성한 focused behavior/timeline artifact를 target의 시즌 26 monster-skill row `15/15` exact decode와 complete monster-parts entry byte equality로 equivalence 검증
+- behavior graph `917` nodes, active cast site `109`개 exact join과 conditional/random/part-aware 순서 보존
+- active skill type `14`개 중 exact Timeline marker skill `7`개, AttackMarker `9`개 확인
+- event timing `7`개와 client `150.6.9` native scheduler contract는 미해소이므로 absolute timing 분석만 blocked
+- latest manager fallback, 다른 시즌 대체 또는 Museum fallback을 사용하지 않음
+- focused artifact는 `promotion_eligible=false`이므로 Phase 1C의 published `static_exact` snapshot을 승격하지 않음
 
-### 3E. Challenge admission과 battle handoff
+Static/content 축은 `ready_for_selected_manager_patch`이며 timing blocker는 3B-1 또는 3B-2의 content admission을 차단하지 않습니다. 상세 결과와 플레이어용 패턴/공개 영상 trace의 구분은 [PHASE3B0.md](PHASE3B0.md)를 따릅니다.
 
-- 선택 시즌의 original Solo Raid main/ready 연결
-- exact run open과 첫 squad enter
-- context/snapshot/squad/build/runtime/control revision pinning
-- Normal/Quick Battle controlled unsupported 유지
-- original battle runtime 직전 handoff 경계까지 도달
+### 3B-1. Classic selected-manager patch와 test
 
-실제 battle/HUD/damage, regroup, result/local-record 일치는 Phase 4가 소유합니다. client build/content closure가 바뀌면 3A를 다시 열고 route, presentation과 runtime compatibility를 모두 재평가합니다.
+상태는 **완료 / `ready_for_isolated_season26_reference_run`**입니다.
 
-## Phase 4 — 사용자 실플레이 및 원본 runtime 검증
+통합 external commit은 `92a6ca228aeb580988907b96189b2857dff2c62d`입니다.
 
-Phase 4는 검증만 하는 수동 checklist가 아닙니다. 승인된 actual-play 환경 안에서 다음 client-observation adapter 경계를 먼저 구현하고 같은 수직 흐름에서 검증합니다.
+- legacy 감사 `19/6/9/4`를 보존하고 최종 policy `7 selected Challenge / 10 unsupported / 2 independent`를 검증
+- listener 시작 전 startup binding에서 synthetic account의 target을 canonical 재검산한 뒤 write-once 저장
+- account selection, active-run pin, JsonDb restart 복원과 per-request handler isolation을 분리해 구현
+- wire `Trial`은 classic Challenge로 허용하고 Museum·Normal·Practice·FastBattle은 controlled 범위 밖으로 유지
+- latest decoy, 두 account, missing/unknown/mismatch, run pin, restart와 Museum 호출 0을 focused test로 고정
+- Release rebuild 오류 `0`, focused test `63/63`, static fallback/Museum/raw-target guard `0`; receipt와 완료 경계는 [PHASE3B1.md](PHASE3B1.md)를 따름
 
-- harness와 구분되는 새 versioned original-runtime observation provenance/contract
-- 원본 `StatisticsContext`/result observation을 해당 계약으로 변환하는 adapter
+### 3B-2. Isolated live season 26 proof
+
+예상 `2~4시간`입니다.
+
+- primary 설치본과 분리된 snapshot 가능한 disposable VM/별도 OS 사용. 단순 디렉터리 복제본은 정적 검산에만 사용
+- synthetic local account만 사용하고 client, launcher, EpinelPS/server와 관련 child process 전체의 non-loopback 통신 차단·관측
+- 모든 local service의 `127.0.0.1` exact bind 확인
+- VM/OS hosts·root CA와 client-local native compatibility 변경의 before hash, backup과 rollback manifest 확보
+- 실행 → local login → lobby → **원본 classic Solo Raid** → season 26 Challenge ready → one-team battle → client result 검증
+
+종료 조건은 Museum 버프 없이 시즌 26 클래식 Challenge가 원본 전투 runtime에서 시작되고 client result를 반환하는 것입니다. Museum, 다른 시즌 또는 lab harness result는 통과 증거가 아닙니다.
+
+3B-1을 완료한 현재 남은 3B-2 조건부 engineering estimate는 `2~4시간`입니다. Disposable VM 준비와 사용자/client 가용 시간은 포함하지 않습니다.
+
+### 3C. Season 26 shadow bridge
+
+3B-2 뒤 재견적하며 초기 조건부 예상은 `3~6시간`입니다.
+
+- external façade와 Phase 2B 사이의 좁은 loopback mapping
+- exact local account, snapshot, squad/build/runtime/control revision shadow pinning
+- original client observation을 새 versioned provenance로 보존
+- 먼저 read-compare/shadow mode로 검증하고 durable authority 전환은 별도 exit gate로 수행
+
+### 3D. Season 26 end-to-end sealing
+
+3C 뒤 재견적하며 초기 조건부 예상은 `4~7시간`입니다.
+
+- open/enter/observation/close/result identity와 replay 결박
+- 재접속·중단·controlled abandon/recovery
+- original HUD/ESC damage와 Local Lab receipt 대조
+- classic selected-manager와 Museum 비호출 회귀 검사
+
+### 3E. 지원 시즌 확장
+
+시즌 26 성공 뒤 시즌별로 별도 재견적합니다.
+
+- 시즌 `7, 13, 29, 34, 40`을 각각 독립 closure/proof batch로 추가
+- 어떤 시즌도 Museum으로 대체하지 않음
+- custom lobby season folder는 compatibility proof의 선행조건이 아니며 별도 선택 기능으로 재평가
+
+최대 다섯 팀, character 재사용 금지, regroup/next-team/result와 runtime integrity 안정화는 Phase 4에서 수행합니다.
+
+## Phase 4 — 1~5팀 actual-play와 원본 runtime parity
+
+Phase 4는 검증만 하는 수동 checklist가 아닙니다. Phase 3C/3D에서 구현·봉인한 시즌 26 one-team client-observation contract를 재사용해 다음 multi-team/runtime 경계를 확장하고 같은 수직 흐름에서 검증합니다.
+
+- 기존 versioned original-runtime observation provenance/contract의 1~5팀 확장
+- 원본 `StatisticsContext`/result observation adapter의 regroup/next-team 확장
 - exact client build, context, snapshot, squad/build와 runtime/control revision 결박
 - observation accept → regroup → next-team → close/result wire와 interruption replay
 - ESC/frame telemetry와 execution-segment boundary 수신·보존
@@ -181,14 +225,17 @@ Phase 4는 검증만 하는 수동 checklist가 아닙니다. 승인된 actual-p
 그 뒤 다음 actual-play acceptance를 수행합니다.
 
 - 실행·로딩·로컬 접속·로비를 실제로 확인합니다.
-- 니케·스쿼드·인벤토리와 Recruit no-op을 확인합니다.
-- 여섯 시즌 선택, Normal I~VII clear, Challenge 즉시 개방, season timer/Quick Battle 부재를 확인합니다.
+- 니케·스쿼드·인벤토리의 core projection을 확인합니다.
+- 각 지원 시즌이 클래식 Solo Raid로 선택되고 Normal I~VII clear와 Challenge 즉시 개방이 유지되는지 확인합니다.
 - 1~5팀 순차 전투, 사용 캐릭터 잠금과 재정비를 확인합니다.
 - 원본 HUD/ESC damage, 팀별 result와 최종 누적 damage가 backend receipt와 일치하는지 확인합니다.
 - 05:00 KST daily rollover를 경계 전후로 확인합니다.
 - scene, behavior, QTE, part, animation과 timing을 `(client build, season, raid snapshot)`별로 증명합니다.
+- 모든 actual-play evidence에서 `SoloRaidMuseum`과 그 전용 버프가 사용되지 않았음을 확인합니다.
 
-현재 증거 상한은 시즌 7·13·26·29·34가 `static_exact`, 시즌 40이 `behavior_exact`입니다. Phase 4 실플레이 이전에 여섯 시즌 모두 실제 runtime과 100% 같다고 선언하지 않습니다.
+custom presentation을 사용자가 별도로 채택한 경우에만 Recruit no-op, season timer/Quick Battle button 부재, widget 제거·재배치와 six-season folder를 별도 acceptance로 검증합니다. 이 선택 기능의 부재는 위 core actual-play acceptance를 차단하지 않습니다.
+
+현재 published RaidSnapshot 증거 상한은 시즌 7·13·26·29·34가 `static_exact`, 시즌 40이 `behavior_exact`입니다. 3B-0 focused 시즌 26 behavior/timeline diagnostic은 `promotion_eligible=false`이므로 이 표를 바꾸지 않습니다. Phase 4 실플레이 이전에 여섯 시즌 모두 실제 runtime과 100% 같다고 선언하지 않습니다.
 
 ## 선택적 후속
 

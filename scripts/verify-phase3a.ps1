@@ -119,6 +119,7 @@ $SchemaPath = Join-Path $RepositoryRoot "contracts/original-client-compatibility
 $BlockedFixturePath = Join-Path $RepositoryRoot "tests/fixtures/synthetic/original-client-compatibility-gate.blocked.json"
 $Phase3PlanPath = Join-Path $RepositoryRoot "docs/PHASE3.md"
 $Phase3AAssessmentPath = Join-Path $RepositoryRoot "docs/PHASE3A.md"
+$Phase3RebaselinePath = Join-Path $RepositoryRoot "docs/PHASE3AR.md"
 $ImplementationPlanPath = Join-Path $RepositoryRoot "docs/IMPLEMENTATION_PLAN.md"
 $ConfigPath = Join-Path $RepositoryRoot "config/appsettings.example.json"
 
@@ -127,6 +128,7 @@ foreach ($requiredPath in @(
     $BlockedFixturePath,
     $Phase3PlanPath,
     $Phase3AAssessmentPath,
+    $Phase3RebaselinePath,
     $ImplementationPlanPath,
     $ConfigPath
 )) {
@@ -306,10 +308,14 @@ $Config = Get-Content -Raw -LiteralPath $ConfigPath | ConvertFrom-Json
 Assert-True ($Config.originalClientCompatibility.enabled -eq $false) "phase3a_adapter_must_remain_disabled"
 Assert-True ($Config.originalClientCompatibility.status -eq "blocked") "phase3a_runtime_status_must_remain_blocked"
 
-Assert-FileContains $Phase3PlanPath '(?m)^## 3A — 승인 경로 증거와 실행 가능성 감사$' "phase3a_plan_split_missing"
-Assert-FileContains $Phase3PlanPath '(?m)^## 3E — Challenge admission과 battle handoff$' "phase3e_plan_split_missing"
+Assert-FileContains $Phase3PlanPath '(?m)^## 3A — approval-first evidence audit — 역사적 완료$' "phase3a_historical_plan_missing"
+Assert-FileContains $Phase3PlanPath '(?m)^## 3B-0 — 시즌 26 static/runtime closure$' "phase3b0_plan_split_missing"
+Assert-FileContains $Phase3PlanPath '(?m)^## 3B-2 — isolated live season 26 proof$' "phase3b2_plan_split_missing"
 Assert-FileContains $Phase3AAssessmentPath 'blocked_insufficient_evidence' "phase3a_assessment_verdict_missing"
-Assert-FileContains $ImplementationPlanPath '(?m)^### 3D\. Lobby와 season presentation 수직 슬라이스$' "phase3d_implementation_split_missing"
+Assert-FileContains $Phase3RebaselinePath 'ready_for_local_compatibility_spike' "phase3ar_rebaseline_verdict_missing"
+Assert-FileContains $Phase3RebaselinePath '시즌 26' "phase3ar_season26_target_missing"
+Assert-FileContains $Phase3RebaselinePath 'SoloRaidMuseum' "phase3ar_museum_exclusion_missing"
+Assert-FileContains $ImplementationPlanPath '(?m)^### 3D\. Season 26 end-to-end sealing$' "phase3d_implementation_split_missing"
 
 $UnsafePathRejected = $false
 try {
@@ -383,4 +389,4 @@ if (-not [string]::IsNullOrWhiteSpace($LocalAssessmentPath)) {
 }
 
 $Mode = if ($ContractOnly) { "contract-only" } else { "full baseline and contract" }
-Write-Output "Phase 3A $Mode verification passed; checked-in verdict remains blocked_insufficient_evidence."
+Write-Output "Phase 3A $Mode verification passed; the checked-in v1 verdict remains blocked_insufficient_evidence and the 3A-R documentation records ready_for_local_compatibility_spike."

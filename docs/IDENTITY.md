@@ -28,7 +28,7 @@
 - 원본 ID가 바뀐 개체를 이름만으로 자동 병합하지 않습니다.
 - 병합 후보는 asset provenance와 관계 증거를 검수한 뒤 명시적으로 연결합니다.
 
-원본 client adapter의 wire 경계에서는 client가 자체 asset/localization을 찾기 위해 정확한 build-local reference가 일시적으로 필요할 수 있습니다. 이 변환은 Git 비추적 compatibility binding과 승인된 adapter 내부에만 존재하며 lab-owned entity UID의 의미를 바꾸지 않습니다. transient wire value를 domain PK/FK, public API, log, receipt 또는 portable export에 저장하지 않습니다.
+원본 client adapter의 wire 경계에서는 client가 자체 asset/localization을 찾기 위해 정확한 build-local reference가 일시적으로 필요할 수 있습니다. 이 변환은 Git 비추적 compatibility binding과 Phase 3A-R이 고정한 disposable local adapter 내부에만 존재하며 lab-owned entity UID의 의미를 바꾸지 않습니다. transient wire value를 domain PK/FK, public API, log, receipt 또는 portable export에 저장하지 않습니다.
 
 ## Versioning
 

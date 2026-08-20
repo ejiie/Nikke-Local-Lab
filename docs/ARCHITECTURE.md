@@ -27,13 +27,15 @@
                      Local Lab private server
                          /           \
                         v             v
-        lab-owned contract harness    OriginalClientCompatibilityAdapter
-              (test only)                  (disabled until gates pass)
+        lab-owned contract harness    future source-free bridge
+              (test only)                  (not implemented)
                                                |
-                                  presentation/wire adapter
+                                      pinned external
+                                      EpinelPS process
                                                |
                                                v
-                               original NIKKE UI + battle runtime
+                              disposable NIKKE client 150.6.9
+                              classic Solo Raid season 26 spike
 
 lab-owned harness는 importer, API, revision, admission, 결과 계약을 검증하는 sidecar입니다. 최종 사용자 실행 경로나 원본 전투 검증의 대체물이 아닙니다.
 
@@ -74,15 +76,16 @@ Phase 2B는 다음 모듈을 구현했고 단위 및 live PostgreSQL gate로 검
 
 ## Phase 3 후속 경계
 
-- `Import.Formats`: 후속 전투 실행에 필요한 추가 NKDB/UnityFS reader
-- `CompatibilityEvidence`: 3A source-free verdict와 Git 밖 local evidence attestation 경계
-- `OriginalClientTransport`: 3B exact-build preflight, supported selector와 handshake
-- `OriginalClientBootAdapter`: 3C boot/session/account bootstrap projection
-- `OriginalClientPresentationAdapter`: 3D lobby와 explicit season selection binding
-- `OriginalClientChallengeAdapter`: 3E main/ready/open/first-team handoff
-- `OriginalClientBattleObservationAdapter`: Phase 4 observation, regroup/next-team, close/result와 telemetry boundary
+- `CompatibilityEvidence/v1`: 승인 우선 정책으로 수행한 역사적 3A `blocked_insufficient_evidence` contract
+- `Phase3AR`: 공개 선행 구현을 기술 feasibility 근거로 사용하는 local compatibility 정책과 실행 경계
+- `Phase3B0Closure`: client `150.6.9`의 시즌 26 static/content closure와 별도 timing-analysis status — 완료
+- `ExternalCompatibilityRuntime`: reviewed commit `28b2f5413a0a1e3521a11ae162f91851335c8b40`에 고정한 별도 EpinelPS checkout/process
+- `ExternalSelectedManagerResolver`: account selection, active-run pin, per-request handler isolation과 final `7/10/2` route policy — external patch 완료
+- `ClassicSoloRaidSeason26Spike`: selected-manager 경로 완료; disposable reference run — 후속
+- `LocalCompatibilityBridge`: EpinelPS façade와 Phase 2B context/run을 연결할 후속 source-free loopback boundary
+- `OriginalClientBattleObservationAdapter`: 후속 original-runtime observation, regroup/next-team, close/result와 telemetry boundary
 
-현재 3A verdict는 `blocked_insufficient_evidence`이며 위 runtime module은 생성·활성화하지 않습니다. shared adapter contract는 한 writer가 소유하고 각 수직 슬라이스는 별도 branch, 각 batch는 focused commit으로 닫습니다.
+기존 3A verdict는 당시 정책에서 유효했던 역사적 결과입니다. 새 3A-R verdict는 `ready_for_local_compatibility_spike`이고, 후속 3B-0은 `ready_for_selected_manager_patch_with_timing_analysis_blocker`로 닫혔습니다. 3B-1 external patch와 focused test도 완료되어 현재 verdict는 `ready_for_isolated_season26_reference_run`입니다. 이는 위 bridge와 adapter 또는 client actual-play가 구현됐다는 뜻이 아닙니다. 현재 production composition은 계속 fail closed이며 각 단계는 하나의 observable transition과 focused commit으로 닫습니다. 정책과 pin은 [PHASE3AR.md](PHASE3AR.md), closure 상세는 [PHASE3B0.md](PHASE3B0.md), selected-manager receipt는 [PHASE3B1.md](PHASE3B1.md)를 따릅니다.
 
 ## 데이터와 실행 상태 분리
 
@@ -98,26 +101,26 @@ Phase 2B는 다음 모듈을 구현했고 단위 및 live PostgreSQL gate로 검
 
 이 분리로 gate 또는 구현 상태가 바뀌어도 과거 snapshot의 hash와 의미가 변하지 않습니다.
 
-## 원본 client gated lane
+## 원본 client local compatibility lane
 
-원본 client adapter는 최종 목표의 필수 경로이지만 현재는 disabled입니다.
+원본 client runtime은 최종 목표의 필수 경로지만 현재 tracked adapter는 disabled입니다. 3A-R은 공개 EpinelPS가 기술적으로 존재한다는 사실과 권리자의 승인·허가 주장을 분리하고, 프로젝트 소유자가 선택한 비배포 개인 로컬 spike만 다음 단계로 허용합니다.
 
-    original NIKKE client
-      --[supported and authorized local/test interface only]-->
-    wire + presentation compatibility adapter
-      --> Local Lab private server
+    snapshot-capable disposable VM/OS
+      └─ NIKKE client 150.6.9
+      <--> pinned external EpinelPS process
+      <--> future Local Lab source-free bridge
 
-gate가 모두 해제된 경우에만 활성화합니다. domain, importer, persistence는 adapter에 의존하지 않으며 adapter는 자체 ID와 client compatibility reference 변환, 그리고 승인된 UI variant의 presentation binding만 담당합니다. 공식 인증 protocol replay, 추측 auth, endpoint 변조, 프로세스 주입 또는 보호 기능 우회로 만들지 않습니다.
+기존 `C:\NIKKE`는 read-only source로 유지합니다. live client 연결은 snapshot 가능한 disposable VM/별도 OS에서만 수행하고, 단순 디렉터리 복제본은 정적 closure와 client-local 파일 검산에만 사용합니다. system hosts/root CA는 disposable VM/OS 밖에서 바꾸지 않습니다. EpinelPS code, generated protocol source, game data, certificate, patched native binary와 decoded cache를 Local Lab source tree에 vendor하지 않습니다. future bridge는 domain/importer/persistence와 단방향 경계를 유지하며 build-local reference를 Git 비추적 local binding 안에서만 변환해야 합니다.
 
-원본 client의 기존 Solo Raid 화면을 상태로 채우는 것과 lobby의 고정 widget을 제거·재배치하는 것은 다른 capability입니다. 기존 기능 flag가 처리할 수 없는 season folder, permanent 표시, Quick Battle 제거와 Recruit no-op은 승인된 presentation adapter가 없으면 blocked입니다.
+첫 spike는 시즌 26 프로비던스의 원본 시즌제 `SoloRaid` main/ready/Challenge/battle/result만 대상으로 합니다. `SoloRaidMuseum`은 공식 별도 콘텐츠의 buff가 결과에 영향을 주므로 fallback을 포함해 제외합니다. 시즌 26이 실행되지 않으면 route를 다른 시즌이나 Museum으로 바꾸지 않고 `runtime_blocked_season_26`으로 종료합니다.
 
-gate가 해제되지 않으면 개발 가능한 계층은 계속 검증하되 제품의 최종 인수 상태는 `blocked`로 남습니다.
+3B-0은 exact content chain과 conditional/random/part-aware behavior graph를 닫았지만 absolute timing과 client actual-play를 닫지 않았습니다. 3B-1은 Local Lab context가 아니라 외부 EpinelPS의 account-authoritative selection과 immutable active-run pin을 소유하며, listener 시작 전 account-specific startup binding을 요구합니다. Reference run 성공은 외부 compatibility route와 해당 한 시즌의 기술적 실행 증거일 뿐 Local Lab bridge, 여섯 시즌 지원, 원본-runtime observation adapter 또는 최종 제품 완료를 뜻하지 않습니다.
 
 기존 `Nikke-Dmg-Simulator`는 optional oracle/optimizer sidecar입니다. versioned source hash와 normalized exchange contract로만 결과를 주고받으며, 원본 client runtime의 전투·damage·HUD 권위를 대체하지 않습니다. sidecar 계산 readiness와 original-client execution readiness를 섞지 않습니다.
 
 ## Phase 2B backend/harness 경계
 
-Private-server API의 boot 응답은 현재 관측 계약 `lab_harness_observation/v1`, 최종 damage 권위 `original_client_runtime`, 원본 runtime 관측 상태 `blocked_by_gate`를 별도 필드로 보존합니다. Phase 2B backend는 harness damage를 계산하지 않고 exact decimal receipt와 팀별 합계만 검산합니다. Phase 4 `OriginalClientBattleObservationAdapter`는 이 receipt를 이름만 바꿔 승격하지 않고 실제 client observation mapping을 새 versioned provenance로 추가해야 합니다.
+Private-server API의 boot 응답은 현재 관측 계약 `lab_harness_observation/v1`, 최종 damage 권위 `original_client_runtime`, 원본 runtime 관측 상태 `blocked_by_gate`를 별도 필드로 보존합니다. Phase 2B backend는 harness damage를 계산하지 않고 exact decimal receipt와 팀별 합계만 검산합니다. Phase 3C/3D의 최소 one-team `OriginalClientBattleObservationAdapter`는 이 receipt를 이름만 바꿔 승격하지 않고 실제 client observation mapping을 새 versioned provenance로 추가해야 하며, Phase 4가 이를 1~5팀과 full telemetry/recovery로 확장합니다.
 
 `challenge-operational-policy/unresolved/v1`은 checked-in 기본이며 Challenge unlock을 닫지 않고 새 run admission만 fail closed합니다. 빈 DB의 초기 configured policy는 현재 raid day에 활성화할 수 있지만, 이후 admin 전환은 다음 KST 05:00 raid day에만 효력이 발생합니다. client context는 선택 season과 exact profile/lobby/wallet/feature/squad revision set을 고정하고, runtime/control head는 run open에서 다시 대조한 뒤 run에 고정합니다.
 

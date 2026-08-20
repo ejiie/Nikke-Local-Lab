@@ -113,6 +113,7 @@ foreach ($PathEntry in $Paths) {
             $RelativePath -match '^contracts/.+\.schema\.json$' -or
             $RelativePath -match '^config/.+\.example\.json$' -or
             $RelativePath -match '^tests/fixtures/synthetic/.+\.json$' -or
+            $RelativePath -match '^tests/fixtures/evidence/.+\.json$' -or
             $RelativePath -eq 'global.json' -or
             $RelativePath -match '(^|/)packages\.lock\.json$'
         )
@@ -173,6 +174,51 @@ if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
         $Manifest.containsGameContent -ne $false -or
         $Manifest.containsRealAccountData -ne $false) {
         Add-Failure "Synthetic fixture manifest does not satisfy the repository policy."
+    }
+}
+
+$EvidenceManifestPath = Join-Path $RepositoryRoot "tests/fixtures/evidence/manifest.json"
+if (-not (Test-Path -LiteralPath $EvidenceManifestPath -PathType Leaf)) {
+    Add-Failure "Source-free evidence fixture manifest is missing."
+} else {
+    try {
+        $EvidenceManifest = Get-Content -Raw -LiteralPath $EvidenceManifestPath | ConvertFrom-Json
+        if ($EvidenceManifest.classification -ne "source_free_evidence" -or
+            $EvidenceManifest.source -ne "local_read_only_measurement" -or
+            $EvidenceManifest.containsGameContent -ne $false -or
+            $EvidenceManifest.containsRealAccountData -ne $false -or
+            $EvidenceManifest.containsRawIdentifiers -ne $false -or
+            $EvidenceManifest.containsLocalPaths -ne $false) {
+            Add-Failure "Source-free evidence fixture manifest does not satisfy the repository policy."
+        }
+
+        $DeclaredEvidenceFixtures = @($EvidenceManifest.fixtures)
+        $CanonicalDeclaredEvidenceFixtures = @($DeclaredEvidenceFixtures | Sort-Object -CaseSensitive -Unique)
+        if (($DeclaredEvidenceFixtures -join "`n") -cne ($CanonicalDeclaredEvidenceFixtures -join "`n")) {
+            Add-Failure "Source-free evidence fixture manifest entries must be unique and ordinally sorted."
+        }
+
+        foreach ($FixtureName in $DeclaredEvidenceFixtures) {
+            if ($FixtureName -notmatch '^[a-z0-9][a-z0-9.-]{0,127}\.json$') {
+                Add-Failure "Invalid source-free evidence fixture name: $FixtureName"
+                continue
+            }
+
+            $EvidenceFixturePath = Join-Path (Split-Path -Parent $EvidenceManifestPath) $FixtureName
+            if (-not (Test-Path -LiteralPath $EvidenceFixturePath -PathType Leaf)) {
+                Add-Failure "Declared source-free evidence fixture is missing: $FixtureName"
+            }
+        }
+
+        $PresentEvidenceFixtures = @(Get-ChildItem -LiteralPath (Split-Path -Parent $EvidenceManifestPath) -File -Filter '*.json' |
+            Where-Object { $_.Name -ne 'manifest.json' } |
+            Select-Object -ExpandProperty Name |
+            Sort-Object -CaseSensitive)
+        if (($PresentEvidenceFixtures -join "`n") -cne ($CanonicalDeclaredEvidenceFixtures -join "`n")) {
+            Add-Failure "Source-free evidence fixtures and manifest entries differ."
+        }
+    } catch {
+        Add-Failure "Invalid source-free evidence fixture manifest: $($_.Exception.Message)"
     }
 }
 

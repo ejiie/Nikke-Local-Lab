@@ -40,4 +40,4 @@ checked-in `challenge-operational-policy/unresolved/v1`은 Challenge unlock proj
 
 Phase 2B는 `lab_harness_observation/v1`만 수락하고 damage를 계산하지 않습니다. 최종 권위는 `original_client_runtime`이지만 현재 원본 runtime observation은 `blocked_by_gate`입니다. 같은 process의 같은 Open operation replay는 exact token byte를 재사용하지만 restart 간 token byte 동일성은 보장하지 않습니다.
 
-후속 제품 경계는 Phase 3B transport, 3C boot/session, 3D lobby/season presentation과 3E Challenge handoff로 분리한 `OriginalClientCompatibilityAdapter`입니다. 3A evidence audit verdict가 `blocked_insufficient_evidence`이므로 adapter는 현재 disabled이며 harness와 editor는 이를 대체하지 않습니다.
+후속 제품 경계는 Phase 3A-R 재기준화, 3B-0 시즌 26 closure, 3B-1 classic selected-manager, 3B-2 isolated live proof, 3C shadow bridge, 3D end-to-end sealing, 3E 후속 시즌 확장과 Phase 4 multi-team/runtime parity로 분리합니다. 역사적 3A evidence audit verdict는 `blocked_insufficient_evidence`였지만, [3A-R](../docs/PHASE3AR.md)은 EpinelPS를 별도 process로 평가하는 `ready_for_local_compatibility_spike`를 기록했습니다. 문서 변경 시점의 adapter/config는 여전히 disabled이며 harness와 editor는 이를 대체하지 않습니다.
