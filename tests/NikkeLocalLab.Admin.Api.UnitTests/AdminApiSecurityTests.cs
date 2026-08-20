@@ -1,14 +1,46 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using NikkeLocalLab.Admin.Api;
+using NikkeLocalLab.Identity;
+using NikkeLocalLab.Provenance;
 
 namespace NikkeLocalLab.Admin.Api.UnitTests;
 
 [Collection("Admin API environment")]
 public sealed class AdminApiSecurityTests
 {
+  [Theory]
+  [InlineData("1")]
+  [InlineData("{}")]
+  [InlineData("[]")]
+  [InlineData("true")]
+  [InlineData("null")]
+  public void SourceFreeScalarConvertersRejectWrongJsonTokenKinds(string json)
+  {
+    var assembly = typeof(AdminApiHost).Assembly;
+    var uidConverter = (JsonConverter)Activator.CreateInstance(
+        assembly.GetType(
+            "NikkeLocalLab.Admin.Api.EntityUidJsonConverter",
+            throwOnError: true)!,
+        nonPublic: true)!;
+    var digestConverter = (JsonConverter)Activator.CreateInstance(
+        assembly.GetType(
+            "NikkeLocalLab.Admin.Api.Sha256DigestJsonConverter",
+            throwOnError: true)!,
+        nonPublic: true)!;
+
+    var uidOptions = new JsonSerializerOptions();
+    uidOptions.Converters.Add(uidConverter);
+    Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<EntityUid>(json, uidOptions));
+
+    var digestOptions = new JsonSerializerOptions();
+    digestOptions.Converters.Add(digestConverter);
+    Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Sha256Digest>(json, digestOptions));
+  }
+
   [Fact]
   public void ProductionCompositionFailsClosedWhenRequiredSecurityOrPersistenceIsMissing()
   {
@@ -30,6 +62,20 @@ public sealed class AdminApiSecurityTests
               BootstrapCodeSink = _ => { }
             }));
     Assert.Equal("profile_management_composition_missing", missingPersistence.Message);
+
+    var missingPrivateServerPersistence = Assert.Throws<InvalidOperationException>(() =>
+        AdminApiHost.Build(
+            [],
+            new AdminApiHostOptions
+            {
+              Port = 0,
+              BootstrapCodeSink = _ => { },
+              AllowUnavailableProfileManagementForTests = true,
+              RequirePrivateServerAdministration = true
+            }));
+    Assert.Equal(
+        "private_server_administration_composition_missing",
+        missingPrivateServerPersistence.Message);
   }
 
   [Fact]
@@ -472,6 +518,224 @@ public sealed class AdminApiSecurityTests
         ]);
     Assert.Equal(HttpStatusCode.ServiceUnavailable, exact.StatusCode);
     Assert.Equal("profile_management_not_configured", await ReadCodeAsync(exact));
+  }
+
+  [Fact]
+  public async Task ChallengePolicyAdminRequiresAllSixAxesAndStaysSeparateFromGameRoutes()
+  {
+    await using var fixture = await RunningApi.StartAsync();
+    var csrf = await fixture.GetCsrfAsync();
+
+    using var incomplete = new HttpRequestMessage(
+        HttpMethod.Post,
+        "/admin-api/v1/private-server/challenge-policy/preview");
+    incomplete.Headers.TryAddWithoutValidation("Origin", fixture.Origin);
+    incomplete.Headers.TryAddWithoutValidation("X-NLL-CSRF", csrf);
+    incomplete.Content = JsonContent.Create(new
+    {
+      policyUid = Guid.NewGuid(),
+      policyId = "challenge-operational-policy/operator/v1",
+      entryConsumptionPoint = "run_opened",
+      activeRunAtReset = "pin_opening_raid_day",
+      dailyCounterScope = "per_season",
+      mockBattleCapability = "unsupported",
+      localRankingCapability = "unsupported"
+    });
+    var incompleteResponse = await fixture.Client.SendAsync(incomplete);
+    Assert.Equal(HttpStatusCode.BadRequest, incompleteResponse.StatusCode);
+    Assert.Equal("challenge_policy_all_axes_required", await ReadCodeAsync(incompleteResponse));
+
+    using var complete = new HttpRequestMessage(
+        HttpMethod.Post,
+        "/admin-api/v1/private-server/challenge-policy/preview");
+    complete.Headers.TryAddWithoutValidation("Origin", fixture.Origin);
+    complete.Headers.TryAddWithoutValidation("X-NLL-CSRF", csrf);
+    complete.Content = JsonContent.Create(new
+    {
+      policyUid = Guid.NewGuid(),
+      policyId = "challenge-operational-policy/operator/v1",
+      dailyEntryLimit = 3,
+      entryConsumptionPoint = "run_opened",
+      activeRunAtReset = "pin_opening_raid_day",
+      dailyCounterScope = "per_season",
+      mockBattleCapability = "unsupported",
+      localRankingCapability = "unsupported"
+    });
+    var completeResponse = await fixture.Client.SendAsync(complete);
+    Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
+    var completeJson = await completeResponse.Content.ReadAsStringAsync();
+    Assert.Contains(
+        "\"resolutionStatusCode\":\"configured\"",
+        completeJson,
+        StringComparison.Ordinal);
+    Assert.Contains("\"mode\":\"next_raid_day\"", completeJson, StringComparison.Ordinal);
+
+    var unavailable = await fixture.Client.GetAsync(
+        "/admin-api/v1/private-server/challenge-policy/");
+    Assert.Equal(HttpStatusCode.ServiceUnavailable, unavailable.StatusCode);
+    Assert.Equal("private_server_not_configured", await ReadCodeAsync(unavailable));
+  }
+
+  [Fact]
+  public async Task ExecutionAndControlProfilesRequireExplicitSourceFreeFacts()
+  {
+    await using var fixture = await RunningApi.StartAsync();
+    var csrf = await fixture.GetCsrfAsync();
+    var accountUid = Guid.NewGuid();
+
+    static object ReadyInteger(int value) => new
+    {
+      statusCode = "ready",
+      value = (int?)value,
+      reasonCode = (string?)null
+    };
+    static object ReadyDecimal(decimal value) => new
+    {
+      statusCode = "ready",
+      value = (decimal?)value,
+      reasonCode = (string?)null
+    };
+    static object ReadyBoolean(bool value) => new
+    {
+      statusCode = "ready",
+      value = (bool?)value,
+      reasonCode = (string?)null
+    };
+    static object ReadyCode(string value) => new
+    {
+      statusCode = "ready",
+      valueCode = value,
+      reasonCode = (string?)null
+    };
+    static object NotApplicableDecimal() => new
+    {
+      statusCode = "not_applicable",
+      value = (decimal?)null,
+      reasonCode = (string?)null
+    };
+
+    var graphics = new[]
+    {
+      "anti_aliasing_enabled",
+      "anti_aliasing_step",
+      "battle_animation_physics_flags",
+      "battle_effect_quality",
+      "default_quality_level",
+      "graphic_option_mode",
+      "mesh_quality",
+      "post_process_flags",
+      "spine_resolution",
+      "texture_quality",
+      "volumetric_fog_quality"
+    }.Select(code => new { fieldCode = code, value = ReadyCode("operator_explicit") }).ToArray();
+    var runtimeContent = new
+    {
+      originalClientRuntimeBuild = new
+      {
+        statusCode = "unresolved",
+        buildUid = (string?)null,
+        buildSha256 = (string?)null,
+        unresolvedReasonCode = "phase3_adapter_gate_not_satisfied"
+      },
+      requested = new
+      {
+        scheduler = new
+        {
+          targetFrameRate = ReadyInteger(60),
+          fixedDeltaDenominator = ReadyInteger(60),
+          vsyncEnabled = ReadyBoolean(false),
+          multiplayerEnabled = ReadyBoolean(false),
+          timeScale = ReadyCode("normal_1x")
+        },
+        display = new
+        {
+          platform = ReadyCode("windows"),
+          displayMode = ReadyCode("windowed"),
+          width = ReadyInteger(1920),
+          height = ReadyInteger(1080),
+          refreshRateHz = ReadyDecimal(60m)
+        },
+        graphics
+      },
+      effectiveReadbackStatusCode = "not_observed",
+      effective = (object?)null
+    };
+
+    using var runtimePreview = new HttpRequestMessage(
+        HttpMethod.Post,
+        $"/admin-api/v1/private-server/accounts/{accountUid:D}" +
+        "/runtime-execution-profile/preview");
+    runtimePreview.Headers.TryAddWithoutValidation("Origin", fixture.Origin);
+    runtimePreview.Headers.TryAddWithoutValidation("X-NLL-CSRF", csrf);
+    runtimePreview.Content = JsonContent.Create(runtimeContent);
+    var runtimePreviewResponse = await fixture.Client.SendAsync(runtimePreview);
+    Assert.Equal(HttpStatusCode.OK, runtimePreviewResponse.StatusCode);
+    var runtimeJson = await runtimePreviewResponse.Content.ReadAsStringAsync();
+    Assert.Contains("\"isHarnessValidationReady\":true", runtimeJson, StringComparison.Ordinal);
+    Assert.Contains("\"isOriginalClientLaunchReady\":false", runtimeJson, StringComparison.Ordinal);
+    Assert.Contains("phase3_adapter_gate_not_satisfied", runtimeJson, StringComparison.Ordinal);
+
+    var combatContent = new
+    {
+      requested = new
+      {
+        aimSensitivity = ReadyDecimal(1m),
+        useAimAssistant = ReadyBoolean(false),
+        aimAssistantIntensity = NotApplicableDecimal(),
+        usePcAimSync = ReadyBoolean(false),
+        maxPerShotCorrect = ReadyBoolean(true),
+        autoCombat = ReadyBoolean(false),
+        autoBurst = ReadyBoolean(false)
+      },
+      effectiveReadbackStatusCode = "not_observed",
+      effective = (object?)null
+    };
+    using var combatPreview = new HttpRequestMessage(
+        HttpMethod.Post,
+        $"/admin-api/v1/private-server/accounts/{accountUid:D}" +
+        "/combat-control-profile/preview");
+    combatPreview.Headers.TryAddWithoutValidation("Origin", fixture.Origin);
+    combatPreview.Headers.TryAddWithoutValidation("X-NLL-CSRF", csrf);
+    combatPreview.Content = JsonContent.Create(combatContent);
+    var combatPreviewResponse = await fixture.Client.SendAsync(combatPreview);
+    Assert.Equal(HttpStatusCode.OK, combatPreviewResponse.StatusCode);
+    Assert.Contains(
+        "\"isManualBattleReady\":true",
+        await combatPreviewResponse.Content.ReadAsStringAsync(),
+        StringComparison.Ordinal);
+
+    using var incomplete = new HttpRequestMessage(
+        HttpMethod.Post,
+        $"/admin-api/v1/private-server/accounts/{accountUid:D}" +
+        "/combat-control-profile/preview");
+    incomplete.Headers.TryAddWithoutValidation("Origin", fixture.Origin);
+    incomplete.Headers.TryAddWithoutValidation("X-NLL-CSRF", csrf);
+    incomplete.Content = JsonContent.Create(new
+    {
+      requested = new { aimSensitivity = ReadyDecimal(1m) },
+      effectiveReadbackStatusCode = "not_observed",
+      effective = (object?)null
+    });
+    var incompleteResponse = await fixture.Client.SendAsync(incomplete);
+    Assert.Equal(HttpStatusCode.BadRequest, incompleteResponse.StatusCode);
+    Assert.Equal("combat_control_settings_required", await ReadCodeAsync(incompleteResponse));
+
+    using var save = new HttpRequestMessage(
+        HttpMethod.Put,
+        $"/admin-api/v1/private-server/accounts/{accountUid:D}" +
+        "/runtime-execution-profile");
+    save.Headers.TryAddWithoutValidation("Origin", fixture.Origin);
+    save.Headers.TryAddWithoutValidation("X-NLL-CSRF", csrf);
+    save.Headers.TryAddWithoutValidation("If-None-Match", "*");
+    save.Content = JsonContent.Create(new
+    {
+      operationUid = Guid.NewGuid(),
+      profileUid = Guid.NewGuid(),
+      content = runtimeContent
+    });
+    var saveResponse = await fixture.Client.SendAsync(save);
+    Assert.Equal(HttpStatusCode.ServiceUnavailable, saveResponse.StatusCode);
+    Assert.Equal("private_server_not_configured", await ReadCodeAsync(saveResponse));
   }
 
   private static async Task<string?> ReadCodeAsync(HttpResponseMessage response)

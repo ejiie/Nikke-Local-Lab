@@ -8,7 +8,7 @@ using Npgsql;
 
 namespace NikkeLocalLab.Persistence.PostgreSql;
 
-public sealed class PostgreSqlProfileManagementService : App.IProfileManagementService
+public sealed partial class PostgreSqlProfileManagementService : App.IProfileManagementService
 {
   private const string CandidateKind = "profile_edit_candidate/v1";
   private const string CandidateDiffContract = "profile_edit_diff.v1";

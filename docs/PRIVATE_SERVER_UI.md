@@ -4,7 +4,7 @@
 
 Nikke Local Lab의 최종 제품은 별도 게임 화면이나 독립 전투 시뮬레이터가 아닙니다. **원본 NIKKE 클라이언트가 제한된 로컬 사설 서버에 접속하고, 원본 전투 UI·asset·전투 runtime을 권위로 사용해 지원 기능만 실행하는 환경**입니다. 로비는 아래에 선언한 approved presentation variant를 사용하므로 retail lobby를 픽셀 단위로 그대로 보존한다는 뜻은 아닙니다.
 
-이 문서는 제품 목표의 규범 계약입니다. 완료된 Phase 2A2까지는 아직 boot/lobby/season/daily service나 original-client adapter가 없으며, 구현 순서는 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), 실행 가능성은 [FEASIBILITY_GATES.md](FEASIBILITY_GATES.md)를 따릅니다.
+이 문서는 제품 목표의 규범 계약입니다. Phase 2A2와 Phase 2B source-free boot/lobby/season/daily/Challenge backend·lab-owned harness는 완료했습니다. original-client wire/presentation adapter와 실제 전투 runtime 연계는 계속 blocked입니다. 구현 순서는 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), 실행 가능성은 [FEASIBILITY_GATES.md](FEASIBILITY_GATES.md)를 따릅니다.
 
     original NIKKE client
       - original lobby, character views and battle HUD
@@ -30,6 +30,8 @@ Nikke Local Lab의 최종 제품은 별도 게임 화면이나 독립 전투 시
     실행 -> 로딩 -> 로컬 접속 -> 메인 로비
 
 실제 client build가 별도의 launcher/resource 검사 화면을 요구하면 공식 outbound가 없는 승인된 offline/local-test route로 Gate A를 통과한 경우에만 그 화면을 유지합니다. Local Lab은 공식 계정 인증을 모방하지 않고 자체 local session만 발급합니다. 지원·승인된 client route가 확인되기 전에는 이 흐름을 원본 리테일 client에서 실행하지 않습니다.
+
+Phase 2B lab API의 access token은 process-local HMAC key로 서명합니다. 같은 process에서 같은 Open operation을 replay하면 최초 token byte를 재사용하지만, restart 뒤에는 영속 session/context/issued/expires를 복원해도 token이 재서명될 수 있습니다. 이 lab contract는 original-client 인증 packet을 모방하지 않습니다.
 
 ## 메인 로비
 
@@ -72,7 +74,7 @@ Nikke Local Lab의 최종 제품은 별도 게임 화면이나 독립 전투 시
     └─ 시즌 40 솔로레이드
        (사치스러운 거미)
 
-season number와 encounter identity는 published `RaidSnapshot`에 결박합니다. 보스 localized 표시명, icon과 lobby presentation은 snapshot이 현재 완전하게 소유하지 않으므로 Phase 3의 Git 비추적 client-presentation binding 또는 별도 lab-owned presentation version으로 해소합니다. 원본 ID를 public API에 노출하거나 이름만으로 snapshot을 연결하지 않습니다. directory에는 여러 시즌을 동시에 표시할 수 있지만, 클래식 Solo Raid 화면에 투영되는 실행 context는 사용자가 선택한 **한 시즌**입니다. canonical state는 account/session 소유 `SelectedRaidSeason`입니다. Phase 2A2 config 계약은 이미 `oneSelectedSeasonPerClientContext`로 이 의미를 선언하며, 실제 선택 state와 route 구현은 Phase 2B 범위입니다.
+season number와 encounter identity는 published `RaidSnapshot`에 결박합니다. 보스 localized 표시명, icon과 lobby presentation은 snapshot이 현재 완전하게 소유하지 않으므로 Phase 3의 Git 비추적 client-presentation binding 또는 별도 lab-owned presentation version으로 해소합니다. 원본 ID를 public API에 노출하거나 이름만으로 snapshot을 연결하지 않습니다. directory에는 여러 시즌을 동시에 표시할 수 있지만, 클래식 Solo Raid 화면에 투영되는 실행 context는 사용자가 선택한 **한 시즌**입니다. canonical state는 account/session 소유 `SelectedRaidSeason`입니다. Phase 2A2 config가 `oneSelectedSeasonPerClientContext`를 선언했고 Phase 2B service는 exact snapshot 선택·CAS history·context/run pinning을 구현하며, season 7이나 첫 ordinal을 기본으로 추측하지 않습니다.
 
 v1 published directory는 정확히 시즌 `7, 13, 26, 29, 34, 40`입니다. 새 dataset에서 admission candidate가 발견돼도 자동 노출하지 않으며 evidence review, catalog revision과 명시적 directory version 변경 뒤에만 추가합니다. 자세한 snapshot·선택 계약은 [RAID_DOMAIN.md](RAID_DOMAIN.md)를 따릅니다.
 
@@ -88,7 +90,7 @@ v1 published directory는 정확히 시즌 `7, 13, 26, 29, 34, 40`입니다. 새
                   -> regroup and next squad when applicable
                      -> result and local record
 
-Mock Battle은 아직 확정하지 않았습니다. Phase 2B capability가 지원으로 결정된 경우에만 ready page에 노출합니다.
+Mock Battle은 Quick Battle과 다른 operational-policy 축입니다. configured `unsupported`에서는 닫히고, `lab_owned_only`에서는 Phase 2B harness mock run만 daily quota를 우회하고 절대 소비하지 않는 계약으로 허용합니다. 이 backend capability만으로 원본 ready page의 button을 지원한다고 보지 않으며, Phase 3 presentation/wire 검증을 통과한 경우에만 UI에 노출합니다.
 
 원본 client에 존재하는 boss 정보, stage 정보, 편성, 전투 진입, 재정비, 결과, 보상과 ranking view는 가능한 범위에서 그대로 유지합니다. Local Lab이 지원하지 않는 live-service 기능은 아래 정책에 따라 명시적으로 닫습니다.
 
@@ -115,6 +117,8 @@ Mock Battle은 아직 확정하지 않았습니다. Phase 2B capability가 지�
 - reset local time은 매일 `05:00:00`입니다.
 - 서버는 각 instant를 KST calendar date와 reset boundary로 변환해 attempt counter를 계산합니다. process local timezone이나 단순 UTC date를 사용하지 않습니다.
 - reset은 Challenge 일일 attempt와 그 밖에 명시적으로 daily로 분류된 local state에만 적용합니다. profile/build, 최고 기록, 시즌 선택과 published snapshot은 변경하지 않습니다.
+- entry limit·소비 시점, active run의 reset 처리와 여섯 시즌 counter 공유 범위는 `ChallengeOperationalPolicy`가 모두 해소됐을 때만 입장에 사용합니다. checked-in `unresolved` 정책에서는 값을 추측하지 않고 새 run만 controlled unavailable로 둡니다.
+- 빈 DB의 초기 configured policy는 여섯 축을 모두 명시한 경우 현재 raid day에 효력을 가질 수 있습니다. 운영 중 admin 전환은 current activation revision CAS를 요구하고 다음 raid day로만 예약합니다.
 
 ### Quick Battle
 
@@ -135,8 +139,8 @@ Mock Battle은 아직 확정하지 않았습니다. Phase 2B capability가 지�
 | Normal clear stub과 Challenge unlock | authoritative | 기존 unlock UI에 투영 |
 | daily reset 05:00 KST | authoritative | 남은 횟수 표시 |
 | season end 없음 | authoritative | timer 숨김 또는 `상시` 표시 |
-| Challenge attempt, used characters, boss HP/누적 damage | client-observed damage receipt를 검증·수락한 뒤 persistent aggregate와 remaining HP의 권위 | 기존 Solo Raid 화면과 전투에 투영하고 damage를 산출 |
-| 전투 simulation, damage 계산·표기, animation과 HUD | 결과·trace를 수신·보존 | authoritative runtime |
+| Challenge attempt, used characters, boss HP/누적 damage | Phase 2B에서 harness receipt·persistent aggregate를 검증; Phase 3 후 client observation은 별도 provenance로 수락 | 기존 Solo Raid 화면과 전투에 투영하고 damage를 산출 |
+| 전투 simulation, damage 계산·표기, animation과 HUD | damage를 계산하지 않고 result/trace만 수신·보존 | authoritative runtime |
 | 고정 lobby widget 제거·재배치 | feature state 제공 | approved UI variant |
 | Recruit no-op | capability를 unsupported로 선언 | click 후 page transition 차단 |
 
@@ -144,7 +148,7 @@ Mock Battle은 아직 확정하지 않았습니다. Phase 2B capability가 지�
 
 원본 client 안에 이미 있는 Solo Raid view와 서버 상태를 연결하는 작업, 그리고 로비 season folder/UI 정리는 서로 다른 gate입니다.
 
-1. Phase 2B는 원본 client 없이도 private-server state machine과 API를 harness로 검증합니다.
+1. Phase 2B는 원본 client 없이 private-server state machine과 API를 `lab_harness_observation/v1`로 검증했고 최종 단위/live PostgreSQL gate를 통과했습니다.
 2. Phase 3은 지원·승인된 client route와 UI variant capability를 각각 검증합니다.
 3. Phase 4는 원본 client에서 로비, profile projection, Challenge 진입, 실제 전투와 결과를 사용자가 직접 검증합니다.
 

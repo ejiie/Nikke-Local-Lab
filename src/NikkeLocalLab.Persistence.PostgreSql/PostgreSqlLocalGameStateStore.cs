@@ -7,7 +7,7 @@ using NpgsqlTypes;
 
 namespace NikkeLocalLab.Persistence.PostgreSql;
 
-public sealed class PostgreSqlLocalGameStateStore
+public sealed partial class PostgreSqlLocalGameStateStore
 {
   private const long OperationLockSeed = 5_468_271_903_729_346_087;
   private const long ContentLockSeed = 5_468_271_903_729_346_088;

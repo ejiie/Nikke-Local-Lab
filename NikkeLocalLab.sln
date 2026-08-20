@@ -58,6 +58,16 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.ProfileImport
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.Admin.Api.UnitTests", "tests\NikkeLocalLab.Admin.Api.UnitTests\NikkeLocalLab.Admin.Api.UnitTests.csproj", "{2A2D0006-6666-4A66-8666-000000000006}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.Domain.PrivateServer", "src\NikkeLocalLab.Domain.PrivateServer\NikkeLocalLab.Domain.PrivateServer.csproj", "{2B000001-1111-4B11-8111-000000000001}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.Application.PrivateServer", "src\NikkeLocalLab.Application.PrivateServer\NikkeLocalLab.Application.PrivateServer.csproj", "{2B000002-2222-4B22-8222-000000000002}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.PrivateServer.Api", "src\NikkeLocalLab.PrivateServer.Api\NikkeLocalLab.PrivateServer.Api.csproj", "{2B000003-3333-4B33-8333-000000000003}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.PrivateServer.UnitTests", "tests\NikkeLocalLab.PrivateServer.UnitTests\NikkeLocalLab.PrivateServer.UnitTests.csproj", "{2B000004-4444-4B44-8444-000000000004}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NikkeLocalLab.PrivateServer.Api.UnitTests", "tests\NikkeLocalLab.PrivateServer.Api.UnitTests\NikkeLocalLab.PrivateServer.Api.UnitTests.csproj", "{2B000005-5555-4B55-8555-000000000005}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -168,6 +178,26 @@ Global
 		{2A2D0006-6666-4A66-8666-000000000006}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2A2D0006-6666-4A66-8666-000000000006}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2A2D0006-6666-4A66-8666-000000000006}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2B000001-1111-4B11-8111-000000000001}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B000001-1111-4B11-8111-000000000001}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B000001-1111-4B11-8111-000000000001}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B000001-1111-4B11-8111-000000000001}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2B000002-2222-4B22-8222-000000000002}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B000002-2222-4B22-8222-000000000002}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B000002-2222-4B22-8222-000000000002}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B000002-2222-4B22-8222-000000000002}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2B000003-3333-4B33-8333-000000000003}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B000003-3333-4B33-8333-000000000003}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B000003-3333-4B33-8333-000000000003}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B000003-3333-4B33-8333-000000000003}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2B000004-4444-4B44-8444-000000000004}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B000004-4444-4B44-8444-000000000004}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B000004-4444-4B44-8444-000000000004}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B000004-4444-4B44-8444-000000000004}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2B000005-5555-4B55-8555-000000000005}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B000005-5555-4B55-8555-000000000005}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B000005-5555-4B55-8555-000000000005}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B000005-5555-4B55-8555-000000000005}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{A44F68A9-CA78-4E50-A1DE-3B4D879A50A4} = {564CEF02-228F-4E20-8F7F-1A51C7212496}
@@ -187,5 +217,10 @@ Global
 		{2A2D0004-4444-4A44-8444-000000000004} = {564CEF02-228F-4E20-8F7F-1A51C7212496}
 		{2A2D0005-5555-4A55-8555-000000000005} = {B135A626-D084-4D30-828D-FD0D4B78F84F}
 		{2A2D0006-6666-4A66-8666-000000000006} = {B135A626-D084-4D30-828D-FD0D4B78F84F}
+		{2B000001-1111-4B11-8111-000000000001} = {564CEF02-228F-4E20-8F7F-1A51C7212496}
+		{2B000002-2222-4B22-8222-000000000002} = {564CEF02-228F-4E20-8F7F-1A51C7212496}
+		{2B000003-3333-4B33-8333-000000000003} = {564CEF02-228F-4E20-8F7F-1A51C7212496}
+		{2B000004-4444-4B44-8444-000000000004} = {B135A626-D084-4D30-828D-FD0D4B78F84F}
+		{2B000005-5555-4B55-8555-000000000005} = {B135A626-D084-4D30-828D-FD0D4B78F84F}
 	EndGlobalSection
 EndGlobal

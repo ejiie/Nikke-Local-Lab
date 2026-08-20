@@ -19,6 +19,7 @@
 15. `docs/PHASE1D.md`
 16. `docs/PHASE2A1.md`
 17. `docs/PHASE2A2.md`
+18. `docs/PHASE2B.md`
 
 ## 불변 규칙
 
@@ -36,5 +37,8 @@
 - Solo Raid는 Challenge만 지원하고 `challenge-boss-support/v1` admission policy를 통과한 보스만 publish합니다.
 - Normal I~VII는 기본 clear(`lastClearLevel=7`)이고 Challenge는 기본 개방합니다. Normal과 Union Raid 전투 세션을 만들지 않습니다.
 - 지원 시즌은 만료되지 않으며 Quick Battle을 구현하지 않습니다. daily state는 `Asia/Seoul`의 05:00에 초기화합니다.
+- Challenge unlock UI state와 run admission을 구분합니다. checked-in 기본 `challenge-operational-policy/unresolved/v1`에서도 Challenge는 open이지만 새 run은 fail closed하며, configured policy는 여섯 운영 축을 모두 명시한 새 non-reserved versioned ID를 사용해야 합니다. 초기 빈 DB policy는 현재 raid day에 효력을 가질 수 있고 이후 admin 전환은 다음 raid day로만 예약합니다.
+- Phase 2B는 `lab_harness_observation/v1`만 수락하며 최종 damage/HUD/result 권위는 `original_client_runtime`에 남습니다. harness receipt를 original-runtime 증거로 승격하지 않습니다.
+- private-server access token 서명 key는 process-local입니다. 같은 process의 같은 Open operation replay만 exact token byte를 재사용하고, restart 뒤에는 영속 session/context/time을 복원해도 token은 재서명될 수 있습니다.
 - 변경은 `agent/**` branch에 commit하고 Actions가 검증·PR·squash merge하도록 합니다.
-- 작업 전후 repository, Phase 0, 완료된 Phase 2A1·Phase 2A2와 Actions contract 검사를 모두 실행합니다. Phase 2A2 완료 이력은 `scripts/verify-phase2a2.ps1`의 단위 및 live PostgreSQL integration gate가 모두 통과한 revision에만 유지합니다.
+- 작업 전후 repository, Phase 0, 완료된 Phase 2A1·Phase 2A2·Phase 2B와 Actions contract 검사를 모두 실행합니다. Phase 2B 완료 이력은 `scripts/verify-phase2b.ps1`의 단위 및 live PostgreSQL integration gate가 모두 통과한 revision을 기준으로 합니다. 이 gate는 original-client adapter/UI/runtime 인수를 대체하지 않습니다.

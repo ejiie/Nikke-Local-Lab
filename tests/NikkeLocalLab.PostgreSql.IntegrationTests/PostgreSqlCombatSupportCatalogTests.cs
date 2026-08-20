@@ -26,7 +26,7 @@ public sealed class PostgreSqlCombatSupportCatalogTests
     var migrationReceipts = await Task.WhenAll(
         Enumerable.Range(0, 4)
             .Select(_ => new PostgreSqlMigrationRunner().MigrateAsync(dataSource)));
-    Assert.Equal(6, migrationReceipts.Sum());
+    Assert.Equal(7, migrationReceipts.Sum());
     Assert.Equal(0, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     var characterAlias = Alias("character", "favorite-owner");
@@ -684,6 +684,7 @@ public sealed class PostgreSqlCombatSupportCatalogTests
 
     await using var command = dataSource.CreateCommand(
         """
+        DROP SCHEMA IF EXISTS lab_private_server CASCADE;
         DROP SCHEMA IF EXISTS lab_local_game CASCADE;
         DROP SCHEMA IF EXISTS lab_profile CASCADE;
         DROP SCHEMA IF EXISTS lab_combat_support CASCADE;

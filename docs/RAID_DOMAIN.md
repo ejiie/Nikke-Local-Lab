@@ -75,7 +75,7 @@ published snapshot은 `readiness.status=ready`이고 non-null `compatibility_map
 
 `AvailableRaidSeasonDirectory`는 모든 published 지원 `RaidSnapshot`의 source-free user-facing season number, boss display metadata와 readiness를 나열합니다. 이 목록은 lobby의 Solo Raid folder가 소비하며 여러 시즌을 동시에 포함합니다.
 
-`SelectedRaidSeason`은 account/session별로 사용자가 directory에서 선택해 현재 클래식 Solo Raid 화면과 다음 session에 투영할 단 하나의 published `RaidSnapshot`을 가리키는 가변 포인터입니다. snapshot과 directory member는 불변이며 선택 변경만 새 실행 context를 나타냅니다. Phase 2A2 config 계약의 canonical invariant는 `oneSelectedSeasonPerClientContext=true`이고, Phase 2B가 이 포인터와 선택 상태를 실제 service에 구현합니다.
+`SelectedRaidSeason`은 account/session별로 사용자가 directory에서 선택해 현재 클래식 Solo Raid 화면과 다음 session에 투영할 단 하나의 published `RaidSnapshot`을 가리키는 가변 포인터입니다. snapshot과 directory member는 불변이며 선택 변경만 새 실행 context를 나타냅니다. Phase 2A2 config 계약의 canonical invariant는 `oneSelectedSeasonPerClientContext=true`이고, Phase 2B가 이 포인터와 선택 상태를 실제 service에 구현했습니다.
 
 지원 정책을 통과하지 못한 snapshot은 directory나 선택 포인터의 대상이 될 수 없습니다. v1 directory는 review된 시즌 7·13·26·29·34·40으로 고정하며 새 admission candidate를 자동 노출하지 않습니다. 새 시즌은 evidence review와 directory contract version 변경 뒤에만 추가합니다. 모든 member는 `SeasonAvailability=permanent`, `seasonEndsAt=null`인 영구 local content이며 종료·만료 job이 없습니다. 원본 UI가 역사 시즌 browser를 제공한다고 가정하지 않고, lobby season folder는 승인된 client UI variant가 소유합니다.
 
@@ -89,6 +89,8 @@ Challenge attempt state는 시즌 수명과 분리합니다.
 - 유지 대상: published snapshot, active-season 선택, profile/build, 최고 local record와 과거 result
 
 process timezone, UTC calendar date 또는 서버 시작 시각으로 daily boundary를 대신하지 않습니다. 해당 instant가 속한 KST reset window를 계산해 idempotent하게 새 daily state를 엽니다.
+
+daily entry limit, entry 소비 시점, active run이 05:00을 가로지를 때의 처리, 여섯 시즌 counter의 `per_season`/`shared_directory` 범위, Mock Battle과 local ranking은 하나의 immutable versioned `ChallengeOperationalPolicy`로 결박합니다. 어느 한 축이라도 `unresolved`이면 directory와 season 선택은 유지하되 새 Challenge run admission은 fail closed합니다. checked-in 기본 정책은 `challenge-operational-policy/unresolved/v1`이며 제품 동작값을 추측하지 않습니다.
 
 공식 global ranking, 공식 reward mail과 시즌 종료 정산은 범위 밖입니다. 결과 화면에 ranking을 투영할 경우 자체 local record contract만 사용합니다.
 
@@ -133,6 +135,6 @@ Phase 1C actual smoke는 최신 StaticData를 read-only로 읽어 정책을 다�
 
     (raid_snapshot_uid, dataset_snapshot_uid, squad_revision_uid[])
 
-결과에는 수락된 original-client observed damage뿐 아니라 사용한 compatibility tier와 validation warning을 함께 보존합니다.
+Phase 2B 결과는 `lab_harness_observation/v1`만 수락하며 사용한 snapshot, profile/squad/build, runtime/control revision과 validation warning을 함께 보존합니다. 이 값은 backend 상태기계와 저장 계약을 검증하는 합성 관측이지 original-client damage 증거가 아닙니다.
 
-원본 client의 `StatisticsContext`가 계산·표시한 damage가 실행 결과의 권위입니다. backend는 이를 별도 simulator 값으로 바꿔 화면에 공급하지 않고, session identity와 함께 수신·검증·보존합니다.
+Phase 3 adapter gate를 통과한 뒤에는 원본 client의 `StatisticsContext`가 계산·표시한 damage가 실제 실행 결과의 권위입니다. backend는 그 관측을 별도 simulator 값으로 바꿔 화면에 공급하지 않고, 별도 versioned provenance로 session identity와 함께 수신·검증·보존해야 합니다. Phase 2B harness receipt를 `original_runtime`으로 이름만 바꿔 승격해서는 안 됩니다.

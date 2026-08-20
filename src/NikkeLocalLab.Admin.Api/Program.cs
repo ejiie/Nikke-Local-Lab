@@ -20,17 +20,37 @@ internal static class AdminApiProgram
       RuntimeRootInitializer.Initialize(configuration, options["repository-root"]);
       var connectionString = PostgreSqlConnectionPolicy.ResolveFromEnvironment(
           configuration.DatabaseConnectionStringEnvironmentVariable);
-      await using var runtime = await PostgreSqlProfileManagementRuntime.CreateAsync(
+      var policyOptions = configuration.ChallengeOperationalPolicy;
+      var initialPolicy =
+          global::NikkeLocalLab.Domain.PrivateServer.ChallengeOperationalPolicy
+              .CreateFromControlledCodes(
+                  global::NikkeLocalLab.Identity.EntityUid.New(),
+                  policyOptions.PolicyId,
+                  policyOptions.ResolutionStatus,
+                  policyOptions.DailyEntryLimit,
+                  policyOptions.EntryConsumptionPoint,
+                  policyOptions.ActiveRunAtReset,
+                  policyOptions.DailyCounterScope,
+                  policyOptions.MockBattleCapability,
+                  policyOptions.LocalRankingCapability);
+      await using var profileRuntime = await PostgreSqlProfileManagementRuntime.CreateAsync(
           connectionString).ConfigureAwait(false);
+      await using var privateServerRuntime = await PostgreSqlPrivateServerRuntime.CreateAsync(
+          connectionString,
+          initialPolicy).ConfigureAwait(false);
 
       await using var app = AdminApiHost.Build(
           [],
           new AdminApiHostOptions
           {
-            Port = configuration.Port,
+            Port = configuration.AdminPort,
             BootstrapCodeSink = DeliverBootstrapCode,
+            RequirePrivateServerAdministration = true,
             ConfigureServices = services =>
-                services.AddSingleton(runtime.Service)
+            {
+              services.AddSingleton(profileRuntime.Service);
+              services.AddSingleton(privateServerRuntime.Service);
+            }
           });
       await app.RunAsync().ConfigureAwait(false);
       return 0;
@@ -48,6 +68,10 @@ internal static class AdminApiProgram
       return Fail(exception.Code);
     }
     catch (ProfileManagementException exception)
+    {
+      return Fail(exception.Code);
+    }
+    catch (NikkeLocalLab.Application.PrivateServer.PrivateServerApplicationException exception)
     {
       return Fail(exception.Code);
     }

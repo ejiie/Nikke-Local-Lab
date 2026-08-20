@@ -74,6 +74,8 @@ editor는 관리 sidecar이며 게임 UI를 대체하지 않습니다. Local Lab
 
 ## Phase 2B — private server boot, lobby와 영구 Solo Raid service
 
+상태: 완료. source-free backend/harness가 아래 계약을 구현했고 `scripts/verify-phase2b.ps1` 단위/live PostgreSQL gate를 모두 통과했습니다. Phase 2B는 original-client wire/presentation/runtime 인수를 포함하지 않습니다.
+
 ### 2B1. Boot와 lobby service
 
 - `실행 -> 로딩 -> 로컬 접속 -> 로비`를 위한 synthetic bootstrap/session 계약
@@ -94,24 +96,28 @@ editor는 관리 sidecar이며 게임 UI를 대체하지 않습니다. Local Lab
 
 `raidDayKey`는 해당 instant를 KST로 바꾸고 5시간을 뺀 local date로 계산합니다. DB timestamp는 UTC로 저장하고 lazy idempotent rollover를 권위로 사용합니다. scheduler는 보조일 뿐입니다. attempt quota, 소비 시점과 05:00을 가로지르는 진행 중 run 처리는 별도 versioned policy로 확정하며 임의로 공식 기본값을 복사하지 않습니다.
 
+checked-in 기본은 여섯 축이 모두 `unresolved`인 `challenge-operational-policy/unresolved/v1`입니다. 이 상태에서도 boot/lobby/directory/season selection과 Challenge unlock projection은 유지하지만 새 run은 fail closed합니다. 빈 DB의 초기 bootstrap은 여섯 축을 모두 명시한 configured policy를 현재 raid day에 활성화할 수 있고, 이후 관리자 전환은 CAS를 사용해 다음 raid day에만 예약합니다.
+
 ### 2B3. Challenge run
 
 - exact raid snapshot, account state와 client/runtime/control profile admission
 - 한 run에 순차적으로 1~5개 `SquadRevision` 결박
 - run 전체에서 character 중복 금지
-- open, team enter, original-client observed damage, regroup, close/result 상태기계
+- open, team enter, `lab_harness_observation/v1`, regroup, close/result 상태기계
 - 팀별 damage와 누적 damage, 사용 revision, telemetry와 warning 보존
 - mock battle 지원 여부와 local ranking/result projection을 별도 capability로 versioning
 
-원본 damage는 client runtime의 권위값입니다. backend는 동일 session의 팀별 receipt와 합계를 검증·저장하지만 독립 simulator 값으로 HUD를 대체하지 않습니다.
+원본 damage는 client runtime의 권위값입니다. Phase 2B backend는 original wire integer를 가정하지 않고 lab harness가 전달한 canonical nonnegative decimal receipt와 동일 run의 팀별 합계만 검증·저장합니다. boot는 `finalDamageAuthority=original_client_runtime`과 `originalRuntimeObservationStatus=blocked_by_gate`를 별도로 보존하며, Phase 3 adapter 전에 harness receipt를 original-runtime 증거로 승격하지 않습니다.
 
 ### 완료 조건
 
 - 여섯 시즌이 동시에 영구 directory에 존재하고 선택만 한 시즌입니다.
-- Challenge는 신규 local account에서 즉시 열리며 Normal/Quick Battle route가 없습니다.
+- Challenge unlock projection은 신규 local account에서 즉시 열리며 Normal/Quick Battle 실행 route가 없습니다. Challenge run admission은 exact configured policy를 따릅니다.
 - 04:59:59와 05:00:00 KST 경계, downtime 후 lazy reset과 동시 요청 idempotency를 검증합니다.
 - 최대 다섯 팀과 run-wide 중복 금지, revision pinning과 결과 idempotency를 검증합니다.
 - harness가 API/DB 계약을 통과해도 원본 client 완료로 표기하지 않습니다.
+
+private-server access token 서명 key는 process-local입니다. 같은 API process의 같은 Open operation replay는 최초 token byte를 exact 재사용하지만, process restart 후에는 영속 session/context/issued/expires를 복원해도 token이 새 key로 재서명될 수 있습니다. durable signing key와 restart 간 token byte 동일성은 Phase 2B 범위가 아닙니다.
 
 ## Phase 3 — 승인된 original-client adapter와 선언 UI
 

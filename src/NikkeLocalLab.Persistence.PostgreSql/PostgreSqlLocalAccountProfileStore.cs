@@ -9,7 +9,7 @@ using DomainProfile = NikkeLocalLab.Domain.Profile;
 
 namespace NikkeLocalLab.Persistence.PostgreSql;
 
-public sealed class PostgreSqlLocalAccountProfileStore
+public sealed partial class PostgreSqlLocalAccountProfileStore
 {
   private const long OperationLockSeed = 7_220_612_749_941_337_821;
   private readonly NpgsqlDataSource _dataSource;

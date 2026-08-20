@@ -9,6 +9,11 @@ internal sealed class EntityUidJsonConverter : JsonConverter<EntityUid>
 {
   public override EntityUid Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
   {
+    if (reader.TokenType != JsonTokenType.String)
+    {
+      throw new JsonException("entity_uid_invalid");
+    }
+
     var value = reader.GetString();
     if (!Guid.TryParseExact(value, "D", out var guid) || guid == Guid.Empty)
     {
@@ -29,6 +34,11 @@ internal sealed class Sha256DigestJsonConverter : JsonConverter<Sha256Digest>
       Type typeToConvert,
       JsonSerializerOptions options)
   {
+    if (reader.TokenType != JsonTokenType.String)
+    {
+      throw new JsonException("sha256_invalid");
+    }
+
     if (!Sha256Digest.TryParse(reader.GetString(), out var digest))
     {
       throw new JsonException("sha256_invalid");

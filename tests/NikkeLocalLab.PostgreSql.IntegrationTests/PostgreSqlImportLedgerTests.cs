@@ -27,7 +27,7 @@ public sealed class PostgreSqlImportLedgerTests
     await ResetSchemasAsync(dataSource);
 
     var migrations = new PostgreSqlMigrationRunner();
-    Assert.Equal(6, await migrations.MigrateAsync(dataSource));
+    Assert.Equal(7, await migrations.MigrateAsync(dataSource));
     Assert.Equal(0, await migrations.MigrateAsync(dataSource));
     await AssertMigrationChecksumDriftFailsAsync(dataSource);
 
@@ -249,6 +249,7 @@ public sealed class PostgreSqlImportLedgerTests
 
     await using var command = dataSource.CreateCommand(
         """
+        DROP SCHEMA IF EXISTS lab_private_server CASCADE;
         DROP SCHEMA IF EXISTS lab_local_game CASCADE;
         DROP SCHEMA IF EXISTS lab_profile CASCADE;
         DROP SCHEMA IF EXISTS lab_combat_support CASCADE;

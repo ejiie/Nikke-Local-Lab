@@ -1,6 +1,6 @@
 # Next steps
 
-최종 목표는 원본 NIKKE client가 제한된 Local Lab private server에 접속하여 선언된 로비와 지원 Solo Raid Challenge를 원본 UI·asset·전투 runtime으로 실행하는 것입니다. 자세한 제품 계약은 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md), 단계별 계약은 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)를 따릅니다.
+최종 목표는 원본 NIKKE client가 제한된 Local Lab private server에 접속하여 선언된 로비와 지원 Solo Raid Challenge를 원본 UI·asset·전투 runtime으로 실행하는 것입니다. Phase 2B source-free backend/harness는 완료했고, 바로 다음 단계는 Phase 3 original-client adapter입니다. 자세한 제품 계약은 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md), 단계별 계약은 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)를 따릅니다.
 
 ## 완료 기반
 
@@ -83,7 +83,9 @@
 - loopback admin security, source-free CLI와 V0006 전체를 `scripts/verify-phase2a2.ps1 -Integration`으로 검증합니다.
 - editor는 관리 sidecar이고 원본 게임 UI를 대체하지 않습니다.
 
-## 다음 1 — Phase 2B private server와 Solo Raid service
+## 완료 — Phase 2B private server backend/harness
+
+상태: 완료. `scripts/verify-phase2b.ps1`의 단위 및 live PostgreSQL integration gate가 모두 통과했습니다. original-client adapter/UI/runtime 인수는 이 완료 범위에 포함하지 않습니다.
 
 ### Boot와 lobby
 
@@ -117,20 +119,26 @@ Normal battle/reward/Quick Battle route를 만들지 않습니다. 05:00 KST res
 - exact raid/account/build/runtime/control admission
 - 한 run에 1~5개 5인 squad를 순차 결박
 - run 전체 character 재사용 금지
-- open → enter → original-client damage → regroup/next team → result
+- open → enter → `lab_harness_observation/v1` receipt → regroup/next team → result
 - 팀별 result와 누적 damage, 사용 revision과 telemetry 저장
 
 일일 attempt quota, 소비 시점, 05:00을 가로지르는 진행 중 run, mock battle과 local ranking 표시 범위는 별도 versioned policy로 확정합니다. 사용자가 정하지 않은 값을 공식 기본값이라는 이유만으로 고정하지 않습니다.
 
+checked-in 기본은 여섯 축이 모두 미해소인 `challenge-operational-policy/unresolved/v1`입니다. 이 정책은 boot/lobby/directory/season selection과 `challengeUnlocked=true`를 유지하면서 새 run admission만 `policy_unresolved`로 fail closed합니다. 빈 DB bootstrap에서 여섯 축을 모두 명시한 configured policy를 주입하면 현재 raid day에 초기 활성화할 수 있지만, 이후 admin policy 전환은 다음 raid day에만 효력을 가집니다.
+
 ### 완료 기준
 
-- 신규 local account에서 Challenge가 즉시 열립니다.
+- 신규 local account에서 Challenge unlock projection이 즉시 열리고, 실제 run admission은 exact configured operational policy를 따릅니다.
 - season expiry와 Quick Battle이 없습니다.
 - 04:59:59/05:00:00 KST 경계와 동시 rollover가 결정적입니다.
 - 최대 다섯 팀과 팀 간 중복 금지, result revision pinning이 검증됩니다.
 - harness green은 original-client 완료로 표시하지 않습니다.
 
-## 다음 2 — Phase 3 original-client gate와 adapter
+Phase 2B result transport는 `lab_harness_observation/v1`입니다. backend는 damage를 계산하지 않고 exact 팀별 receipt와 누적 합계만 검산합니다. boot의 최종 권위는 `original_client_runtime`, 관측 상태는 `blocked_by_gate`로 남으며 Phase 3 adapter 전에 이 harness receipt를 original-runtime 증거로 승격하지 않습니다.
+
+private-server access token은 process-local signing key를 사용합니다. 같은 process의 같은 Open operation replay는 exact token byte를 재사용하지만, restart 후에는 영속 session/context/time을 복원하더라도 새 process key로 재서명할 수 있습니다.
+
+## 다음 1 — Phase 3 original-client gate와 adapter
 
 ### Gate
 
@@ -151,7 +159,7 @@ Normal battle/reward/Quick Battle route를 만들지 않습니다. 05:00 KST res
 
 서버 feature flag와 승인된 client UI variant의 역할을 화면 요소별로 증명합니다. exact lobby variant가 없으면 그 요구는 blocked입니다.
 
-## 다음 3 — Phase 4 사용자 실플레이 검증
+## 다음 2 — Phase 4 사용자 실플레이 검증
 
 - 실행 → 로딩 → 로컬 접속 → 로비
 - profile/재화와 lobby keep/remove/replace 명세
@@ -175,11 +183,11 @@ Normal battle/reward/Quick Battle route를 만들지 않습니다. 05:00 KST res
 - `RaidSnapshot`, account state, build, 5인 squad와 profile revision
 - CAS/lineage/idempotency와 기존 canonical hash
 
-후속 additive migration으로 추가할 것:
+후속 additive migration으로 추가한 것:
 
 - lobby presentation, wallet, feature manifest와 inventory subset
 - permanent season directory와 selected season
 - KST operational day와 daily state
 - 1~5팀 Challenge run/result와 execution segment
 
-Phase 2A2 config 계약에는 이미 `oneSelectedSeasonPerClientContext`, `challengeUnlocked=true`, `lastClearLevel=7`, permanent/no-quick/05:00 KST가 명시되어 있습니다. Phase 2B는 이 확정된 설정 의미를 private-server state machine과 API에 구현합니다.
+Phase 2A2 config 계약에는 이미 `oneSelectedSeasonPerClientContext`, `challengeUnlocked=true`, `lastClearLevel=7`, permanent/no-quick/05:00 KST가 명시되어 있습니다. Phase 2B V0007/state machine/API는 이 확정 의미와 별도 operational-policy 권위를 구현하며 V0001~V0006 checksum을 바꾸지 않습니다.

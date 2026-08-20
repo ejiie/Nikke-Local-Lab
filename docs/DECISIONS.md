@@ -75,6 +75,8 @@
 - 각 지원 시즌의 runtime exact 증거 확보 범위
 - 원본 client gate를 충족할 수 있는 권리자 지원 interface의 존재 여부
 - 승인된 client UI variant가 고정 lobby widget 제거, season folder와 영구 시즌 표시를 지원할 수 있는지
-- Challenge 일일 entry 수와 local record/ranking 표시 범위
+- Challenge 일일 entry 수, 소비 시점과 `per_season`/`shared_directory` counter 범위
+- 05:00을 가로지르는 active run 처리
+- Mock Battle과 local record/ranking 표시 범위
 
 미정값은 임의 기본값으로 채우지 않고 contract에서 `unresolved`로 표현합니다.

@@ -1,6 +1,6 @@
 # Architecture direction
 
-최종 실행 경로는 원본 NIKKE client의 UI·asset·전투 runtime이 제한된 Local Lab private server를 사용하는 구조입니다. backend는 게임을 다시 렌더링하거나 damage를 대신 계산하지 않고 local session, profile projection, lobby capability, Solo Raid 상태와 결과를 공급합니다. Phase 2A1에서 자체 local account/profile revision 저장을, Phase 2A2에서 strict offline ingress와 관리/client-facing projection을 완료했습니다.
+최종 실행 경로는 원본 NIKKE client의 UI·asset·전투 runtime이 제한된 Local Lab private server를 사용하는 구조입니다. backend는 게임을 다시 렌더링하거나 damage를 대신 계산하지 않고 local session, profile projection, lobby capability, Solo Raid 상태와 결과를 공급합니다. Phase 2A1에서 자체 local account/profile revision 저장을, Phase 2A2에서 strict offline ingress와 관리/client-facing projection을 완료했으며, Phase 2B source-free private-server backend/harness까지 단위 및 live PostgreSQL gate로 완료했습니다.
 
     C:\NIKKE (read-only)
             |
@@ -63,13 +63,19 @@ Phase 2A2 모듈도 단위 및 live PostgreSQL gate로 완료했습니다.
 - `Admin.Api`: loopback-only command API, process-local admin session과 no-CDN/no-inline editor
 - `Import.Cli`: source-free `profile-source-inspect`와 `profile-draft-import`
 
-## 후속 예정 모듈
+Phase 2B는 다음 모듈을 구현했고 단위 및 live PostgreSQL gate로 검증했습니다.
+
+- `Domain.PrivateServer`: fixed Solo Raid capability, permanent six-season directory, KST raid day, operational policy, runtime/control revision과 Challenge run state machine
+- `Application.PrivateServer`: boot/session/context, lobby/Solo Raid projection, policy/profile/run command port
+- `Persistence.PostgreSql`: V0007 directory/selection/daily/profile/run/result aggregate, immutable operation ledger와 recovery
+- `PrivateServer.Api`: loopback-only boot/connect/lobby/Solo Raid/Challenge lab contract과 process-local access-token 서명
+- `Admin.Api`: 여섯 축 operational policy와 runtime/control profile의 authenticated preview/save/activation 경계
+- `PrivateServer.UnitTests`, `PrivateServer.Api.UnitTests`, PostgreSQL integration harness: backend 계약 검증
+
+## Phase 2B 후속 예정 모듈
 
 - `Import.Formats`: 후속 전투 실행에 필요한 추가 NKDB/UnityFS reader
-- `SoloRaid.Service`: permanent season directory, selected season, KST raid day와 Challenge run
-- `Challenge.Session`: 1~5개 squad 진입, 팀별 original-client damage, 결과와 실행 segment 기록
 - `Compatibility`: tier 평가와 Git 비추적 mapping adapter
-- `Harness`: 프로젝트 소유 contract/integration test client
 - `OriginalClientCompatibilityAdapter`: gate 통과 후에만 활성화되는 wire/presentation client 경계
 
 ## 데이터와 실행 상태 분리
@@ -102,6 +108,14 @@ gate가 모두 해제된 경우에만 활성화합니다. domain, importer, pers
 gate가 해제되지 않으면 개발 가능한 계층은 계속 검증하되 제품의 최종 인수 상태는 `blocked`로 남습니다.
 
 기존 `Nikke-Dmg-Simulator`는 optional oracle/optimizer sidecar입니다. versioned source hash와 normalized exchange contract로만 결과를 주고받으며, 원본 client runtime의 전투·damage·HUD 권위를 대체하지 않습니다. sidecar 계산 readiness와 original-client execution readiness를 섞지 않습니다.
+
+## Phase 2B backend/harness 경계
+
+Private-server API의 boot 응답은 현재 관측 계약 `lab_harness_observation/v1`, 최종 damage 권위 `original_client_runtime`, 원본 runtime 관측 상태 `blocked_by_gate`를 별도 필드로 보존합니다. Phase 2B backend는 harness damage를 계산하지 않고 exact decimal receipt와 팀별 합계만 검산합니다. Phase 3에서도 이 receipt를 이름만 바꿔 original-runtime 증거로 승격하지 않고 실제 client observation mapping을 새 versioned provenance로 추가해야 합니다.
+
+`challenge-operational-policy/unresolved/v1`은 checked-in 기본이며 Challenge unlock을 닫지 않고 새 run admission만 fail closed합니다. 빈 DB의 초기 configured policy는 현재 raid day에 활성화할 수 있지만, 이후 admin 전환은 다음 KST 05:00 raid day에만 효력이 발생합니다. client context는 선택 season과 exact profile/lobby/wallet/feature/squad revision set을 고정하고, runtime/control head는 run open에서 다시 대조한 뒤 run에 고정합니다.
+
+Private-server bearer token은 process-local HMAC key로 서명합니다. 같은 process에서 같은 Open operation을 replay하면 최초 token byte까지 재사용하지만, restart 뒤에는 영속 session/context/issued/expires를 복원해도 새 process key로 token이 재서명될 수 있습니다. durable signing key나 restart 간 token byte 동일성은 Phase 2B 계약이 아닙니다.
 
 ## Profile and execution lane
 

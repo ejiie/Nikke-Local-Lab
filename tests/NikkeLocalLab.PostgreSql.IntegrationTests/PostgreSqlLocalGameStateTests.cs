@@ -189,7 +189,7 @@ public sealed class PostgreSqlLocalGameStateTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(6, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     var store = new PostgreSqlLocalGameStateStore(dataSource, new RandomEntityUidGenerator());
     var manifest = new LocalClientFeatureManifestWrite(
@@ -232,7 +232,7 @@ public sealed class PostgreSqlLocalGameStateTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(6, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
     var imported = await ImportStrictDraftAsync(
@@ -363,7 +363,7 @@ public sealed class PostgreSqlLocalGameStateTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(6, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
     var detailDraft = await ImportStrictDraftAsync(
         dataSource,
@@ -492,7 +492,7 @@ public sealed class PostgreSqlLocalGameStateTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(6, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
     var unresolved = await ImportStrictDraftAsync(
         dataSource,
@@ -632,7 +632,7 @@ public sealed class PostgreSqlLocalGameStateTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(6, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
     var profileStore = new PostgreSqlLocalAccountProfileStore(
         dataSource,
@@ -1081,7 +1081,7 @@ public sealed class PostgreSqlLocalGameStateTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(6, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
     var imported = await ImportStrictDraftAsync(
         dataSource,
@@ -1151,7 +1151,7 @@ public sealed class PostgreSqlLocalGameStateTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(6, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
     var profileStore = new PostgreSqlLocalAccountProfileStore(
@@ -2018,6 +2018,7 @@ public sealed class PostgreSqlLocalGameStateTests
 
     await using var command = dataSource.CreateCommand(
         """
+        DROP SCHEMA IF EXISTS lab_private_server CASCADE;
         DROP SCHEMA IF EXISTS lab_local_game CASCADE;
         DROP SCHEMA IF EXISTS lab_profile CASCADE;
         DROP SCHEMA IF EXISTS lab_combat_support CASCADE;

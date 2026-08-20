@@ -10,7 +10,9 @@
 - `isolated_local_compatibility_route`: not_evaluated/conditional
 - `lobby_presentation_variant`: not_evaluated/conditional
 
-Phase 0~2B의 domain, importer, private-server API와 harness 검증은 이 gate와 독립적으로 진행할 수 있습니다. gate가 막힌 상태에서 harness나 별도 UI를 최종 제품으로 선언하지 않습니다.
+Phase 0~2B의 domain, importer, private-server API와 harness 검증은 이 gate와 독립적으로 진행할 수 있습니다. Phase 2B source-free backend/harness는 최종 단위/live PostgreSQL gate를 통과해 완료했습니다. gate가 막힌 상태에서 harness나 별도 UI를 최종 제품으로 선언하지 않습니다.
+
+Phase 2B boot의 `resultObservationContractId=lab_harness_observation/v1`, `finalDamageAuthority=original_client_runtime`, `originalRuntimeObservationStatus=blocked_by_gate`는 의도적으로 분리됩니다. harness receipt는 backend state/persistence 계약 증거일 뿐 Gate B·D의 original-client observation이 아닙니다.
 
 ## Gate A — isolated local compatibility route
 
@@ -63,9 +65,10 @@ wire adapter는 lab-owned UID와 client-local content reference를 Git 비추적
 
 | 항목 | 상태 | 현재 판정 |
 |---|---|---|
-| private-server domain/API 설계 | 진행 가능 | Phase 2B에서 harness 검증 |
-| Normal clear/Challenge unlock contract | design-ready | `lastClearLevel=7`, Challenge 기본 open |
-| permanent season/no Quick Battle/05:00 KST | design-ready | Phase 2B 신규 state 필요 |
+| private-server domain/API/harness | backend_complete | Phase 2B V0007·loopback API·harness 단위/live PostgreSQL gate 통과 |
+| Normal clear/Challenge unlock contract | backend_complete | `lastClearLevel=7`, Challenge 기본 open, Normal run unsupported 검증 |
+| permanent season/no Quick Battle/05:00 KST | backend_complete | six-member directory·no-expiry·KST day state 검증 |
+| Phase 2B damage observation | harness_only | `lab_harness_observation/v1`; 최종 권위는 original runtime으로 blocked |
 | stock retail backend selector | blocked | 지원 switch 미확인 |
 | isolated local compatibility client | conditional | 승인된 route/build 증거 필요 |
 | multi-season lobby variant | conditional | client presentation capability 필요 |
@@ -75,3 +78,7 @@ wire adapter는 lab-owned UID와 client-local content reference를 Git 비추적
 ## 완료 판정
 
 Phase 3은 Gate A~D를 모두 통과해야 합니다. Phase 4 완료는 다시 `(client build, season, raid snapshot)`별 실제 플레이 증거가 필요합니다. gate가 열리지 않으면 Phase 1·2 결과는 보존하지만 최종 제품 상태는 `blocked`입니다.
+
+Phase 2B operational policy의 checked-in 기본은 여섯 축 미해소이며 Challenge unlock을 유지하고 새 run만 fail closed합니다. configured initial policy는 빈 DB의 현재 raid day에 활성화할 수 있지만 이후 admin 전환은 다음 raid day로만 예약합니다. 이 backend policy readiness와 Gate A~D는 별개입니다.
+
+Phase 2B access token은 process-local HMAC key로 서명됩니다. 같은 process의 같은 Open operation은 exact token byte를 replay하지만, restart 후 영속 session/context/time 복원이 token byte 동일성을 뜻하지 않습니다. 이 lab authentication contract도 original-client Gate A·B를 통과했다는 증거가 아닙니다.

@@ -341,6 +341,7 @@ Assert-True ($Defaults.overloadValidationMode -eq "research") "Overload must def
 Assert-True ($Defaults.collectibleSelection -eq "favorite_max_if_applicable_else_highest_rarity_collection_max") "Collectible selection policy mismatch."
 
 Assert-True ($Config.network.allowOfficialOutbound -eq $false) "Official outbound must be disabled."
+Assert-True (($Config.network.adminPort -eq 17878) -and ($Config.network.privateServerPort -eq 17879)) "Admin and private-server loopback ports must use the reviewed distinct defaults."
 Assert-True ($Config.network.localAuthenticationRequiredForLan -eq $true) "LAN must require local authentication."
 Assert-True ($Config.sources.gameFilesReadOnly -eq $true) "Game files must remain read-only."
 Assert-True ($Config.sources.allowOfficialNetwork -eq $false) "Official network sources must be disabled."
@@ -377,6 +378,15 @@ Assert-True ($SoloRaid.seasonAvailability -eq "permanent") "Published seasons mu
 Assert-True ($null -eq $SoloRaid.seasonEndsAt) "Permanent seasons cannot carry an expiry."
 Assert-True ($SoloRaid.dailyReset.timeZoneId -eq "Asia/Seoul") "Solo Raid daily reset timezone mismatch."
 Assert-True (($SoloRaid.dailyReset.hour -eq 5) -and ($SoloRaid.dailyReset.minute -eq 0)) "Solo Raid daily reset must occur at 05:00."
+$OperationalPolicy = $SoloRaid.challengeOperationalPolicy
+Assert-True ($OperationalPolicy.policyId -eq "challenge-operational-policy/unresolved/v1") "Challenge operational policy identity mismatch."
+Assert-True ($OperationalPolicy.resolutionStatus -eq "unresolved") "Unconfirmed Challenge operation rules must remain unresolved."
+Assert-True ($null -eq $OperationalPolicy.dailyEntryLimit) "Daily entry limit must not be guessed."
+Assert-True ($OperationalPolicy.entryConsumptionPoint -eq "unresolved") "Entry consumption point must not be guessed."
+Assert-True ($OperationalPolicy.activeRunAtReset -eq "unresolved") "Reset behavior for an active run must not be guessed."
+Assert-True ($OperationalPolicy.dailyCounterScope -eq "unresolved") "Multi-season counter scope must not be guessed."
+Assert-True ($OperationalPolicy.mockBattleCapability -eq "unresolved") "Mock Battle capability must not be guessed."
+Assert-True ($OperationalPolicy.localRankingCapability -eq "unresolved") "Local ranking capability must not be guessed."
 Assert-True ($SoloRaid.unionRaidEnabled -eq $false) "Union Raid must remain disabled in Phase 0."
 Assert-True ($SoloRaid.requireRuntimeMatchForOriginalClientExecution -eq $true) "Original-client execution must require a runtime match."
 

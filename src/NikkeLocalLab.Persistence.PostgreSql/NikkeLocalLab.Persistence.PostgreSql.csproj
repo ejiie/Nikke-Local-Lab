@@ -2,9 +2,11 @@
   <ItemGroup>
     <ProjectReference Include="..\NikkeLocalLab.Application\NikkeLocalLab.Application.csproj" />
     <ProjectReference Include="..\NikkeLocalLab.Application.ProfileManagement\NikkeLocalLab.Application.ProfileManagement.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Application.PrivateServer\NikkeLocalLab.Application.PrivateServer.csproj" />
     <ProjectReference Include="..\NikkeLocalLab.Domain.Character\NikkeLocalLab.Domain.Character.csproj" />
     <ProjectReference Include="..\NikkeLocalLab.Domain.CombatSupport\NikkeLocalLab.Domain.CombatSupport.csproj" />
     <ProjectReference Include="..\NikkeLocalLab.Domain.LocalGameState\NikkeLocalLab.Domain.LocalGameState.csproj" />
+    <ProjectReference Include="..\NikkeLocalLab.Domain.PrivateServer\NikkeLocalLab.Domain.PrivateServer.csproj" />
     <ProjectReference Include="..\NikkeLocalLab.Domain.Profile\NikkeLocalLab.Domain.Profile.csproj" />
     <ProjectReference Include="..\NikkeLocalLab.Domain.Raid\NikkeLocalLab.Domain.Raid.csproj" />
     <ProjectReference Include="..\NikkeLocalLab.Identity\NikkeLocalLab.Identity.csproj" />

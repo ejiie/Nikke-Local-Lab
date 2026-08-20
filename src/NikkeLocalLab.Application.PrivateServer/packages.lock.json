@@ -1,0 +1,70 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net8.0": {
+      "nikkelocallab.application.profilemanagement": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
+      "nikkelocallab.domain.character": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
+      "nikkelocallab.domain.combatsupport": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
+      "nikkelocallab.domain.localgamestate": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
+      "nikkelocallab.domain.privateserver": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Domain.LocalGameState": "[1.0.0, )",
+          "NikkeLocalLab.Domain.Profile": "[1.0.0, )",
+          "NikkeLocalLab.Domain.Raid": "[1.0.0, )",
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
+      "nikkelocallab.domain.profile": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Domain.Character": "[1.0.0, )",
+          "NikkeLocalLab.Domain.CombatSupport": "[1.0.0, )",
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
+      "nikkelocallab.domain.raid": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
+      "nikkelocallab.identity": {
+        "type": "Project"
+      },
+      "nikkelocallab.provenance": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )"
+        }
+      }
+    }
+  }
+}

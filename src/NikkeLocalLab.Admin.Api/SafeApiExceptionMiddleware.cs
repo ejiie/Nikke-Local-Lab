@@ -1,4 +1,5 @@
 using System.Text.Json;
+using NikkeLocalLab.Application.PrivateServer;
 using NikkeLocalLab.Application.ProfileManagement;
 
 namespace NikkeLocalLab.Admin.Api;
@@ -73,6 +74,24 @@ internal sealed class SafeApiExceptionMiddleware
           (StatusCodes.Status422UnprocessableEntity, management.Code),
       ProfileManagementFailureKind.Unavailable =>
           (StatusCodes.Status503ServiceUnavailable, management.Code),
+      _ => (StatusCodes.Status500InternalServerError, "internal_error")
+    },
+    PrivateServerApplicationException privateServer => privateServer.Kind switch
+    {
+      PrivateServerFailureKind.InvalidRequest =>
+          (StatusCodes.Status400BadRequest, privateServer.Code),
+      PrivateServerFailureKind.NotFound =>
+          (StatusCodes.Status404NotFound, privateServer.Code),
+      PrivateServerFailureKind.Conflict =>
+          (StatusCodes.Status409Conflict, privateServer.Code),
+      PrivateServerFailureKind.Forbidden =>
+          (StatusCodes.Status403Forbidden, privateServer.Code),
+      PrivateServerFailureKind.PolicyUnresolved =>
+          (StatusCodes.Status422UnprocessableEntity, privateServer.Code),
+      PrivateServerFailureKind.Unsupported =>
+          (StatusCodes.Status501NotImplemented, privateServer.Code),
+      PrivateServerFailureKind.Unavailable =>
+          (StatusCodes.Status503ServiceUnavailable, privateServer.Code),
       _ => (StatusCodes.Status500InternalServerError, "internal_error")
     },
     BadHttpRequestException badRequest =>

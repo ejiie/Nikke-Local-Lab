@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using NikkeLocalLab.Application.PrivateServer;
 using NikkeLocalLab.Application.ProfileManagement;
 
 namespace NikkeLocalLab.Admin.Api;
@@ -19,6 +20,8 @@ public sealed record AdminApiHostOptions
   public Action<IServiceCollection>? ConfigureServices { get; init; }
 
   public bool AllowUnavailableProfileManagementForTests { get; init; }
+
+  public bool RequirePrivateServerAdministration { get; init; }
 }
 
 public static class AdminApiHost
@@ -99,12 +102,19 @@ public static class AdminApiHost
             options.BootstrapCodeSink));
     options.ConfigureServices?.Invoke(builder.Services);
     builder.Services.TryAddSingleton<IProfileManagementService, UnavailableProfileManagementService>();
+    builder.Services.TryAddSingleton<IPrivateServerService, UnavailablePrivateServerService>();
 
     var app = builder.Build();
     if (!options.AllowUnavailableProfileManagementForTests &&
         app.Services.GetRequiredService<IProfileManagementService>() is UnavailableProfileManagementService)
     {
       throw new InvalidOperationException("profile_management_composition_missing");
+    }
+
+    if (options.RequirePrivateServerAdministration &&
+        app.Services.GetRequiredService<IPrivateServerService>() is UnavailablePrivateServerService)
+    {
+      throw new InvalidOperationException("private_server_administration_composition_missing");
     }
 
     _ = app.Services.GetRequiredService<AdminAccessSessionManager>();
@@ -174,6 +184,8 @@ public static class AdminApiHost
       return Results.Json(new { requestToken = tokens.RequestToken });
     });
     app.MapAdminApiEndpoints();
+    app.MapPrivateServerPolicyAdminEndpoints();
+    app.MapPrivateServerExecutionAdminEndpoints();
     return app;
   }
 }
