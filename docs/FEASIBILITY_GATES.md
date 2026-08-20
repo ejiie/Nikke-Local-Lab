@@ -1,39 +1,77 @@
-# Original client feasibility gates
+# Original-client private-server feasibility gates
 
 ## 현재 결론
 
-현재 설치된 리테일 release build로 원본 UI와 전투 runtime을 그대로 사용하면서 안전하게 local backend를 선택하는 지원 경로는 확인되지 않았습니다. 따라서 원본 client 연결 상태는 `blocked`입니다.
+최종 제품은 원본 NIKKE UI·asset·전투 runtime을 사용하는 제한 기능 local private server입니다. 그러나 현재 설치된 stock retail release build에서 공식 server 대신 Local Lab을 선택하는 지원 경로와, 사용자 선언 lobby를 적용할 승인된 UI variant 경로는 아직 확인되지 않았습니다.
 
-Phase 0 계약과 importer·backend·harness 개발은 이 gate와 무관하게 진행할 수 있습니다. 다만 harness는 계약 검증 도구일 뿐이며, gate가 막힌 상태에서 최종 인수 조건을 대신 충족하지 않습니다.
+따라서 두 경로를 분리합니다.
 
-## 여섯 가지 확인 결과
+- `stock_retail_route`: blocked
+- `isolated_local_compatibility_route`: not_evaluated/conditional
+- `lobby_presentation_variant`: not_evaluated/conditional
 
-| # | 확인 항목 | 상태 | 현재 판정 |
-|---|---|---|---|
-| 1 | 지원되는 backend/environment 선택 기능 | blocked | release build에서 지원 switch를 확인하지 못함 |
-| 2 | 공식 자격증명 없는 합성 local session | conditional | local backend 계약은 가능하나 1번 때문에 원본 client의 안전한 부팅 경로에 도달하지 못함 |
-| 3 | Challenge 진입용 normalized contract | design-ready | Challenge-only 계약과 normal-stage unlock state를 backend/harness에 모델링 가능 |
-| 4 | 전투 authority 분리 | partially confirmed | client에 battle runtime이 존재함은 정적으로 확인; local backend의 결과 검증 역할은 추가 확인 필요 |
-| 5 | 시즌별 패턴 보존 | partial | static/behavior/asset/runtime 증거 수준을 tier로 분리해야 함 |
-| 6 | 공식 outbound zero | blocked for retail | 현재 release 부팅에서 완전 차단과 정상 진행을 동시에 보장하지 못함 |
+Phase 0~2B의 domain, importer, private-server API와 harness 검증은 이 gate와 독립적으로 진행할 수 있습니다. gate가 막힌 상태에서 harness나 별도 UI를 최종 제품으로 선언하지 않습니다.
 
-## Gate 해제 조건
+## Gate A — isolated local compatibility route
 
-다음 조건을 모두 충족해야 원본 client adapter를 활성화할 수 있습니다.
+원본 UI/runtime을 유지하는 격리된 local/test client 경로는 다음을 모두 충족해야 합니다.
 
-1. 권리자가 해당 사용자와 실험 목적에 적법하게 제공·승인한 local backend 선택 기능 또는 개발/테스트 client가 있거나, 권리자의 서면 허가가 있다.
-2. 실행 파일, endpoint, route, auth 흐름을 변조하지 않는다.
-3. 공식 계정, 쿠키, token, session을 사용하거나 복사하지 않는다.
-4. 주입, 후킹, 메모리 조작, launcher/안티치트 우회를 사용하지 않는다.
-5. 공식 서버와 telemetry로 향하는 outbound가 0임을 재현 가능한 방식으로 검증한다.
-6. 원본 및 파생 데이터를 Git에 넣거나 제3자에게 제공하지 않는다.
+1. 권리자가 제공·지원·승인한 local/test environment selector, 개발·테스트 client 또는 동일 범위의 명시적 허가가 있습니다.
+2. 대상 client build와 executable/content hash, 허용 목적과 유효 범위를 로컬 증거로 고정합니다.
+3. 공식 account, cookie, token과 session을 사용하거나 복사하지 않고 Local Lab synthetic session만 사용합니다.
+4. 공식 endpoint/auth protocol replay, 추측 credential, process injection, hooking, memory patch와 launcher/anti-cheat bypass를 사용하지 않습니다.
+5. 공식 server와 telemetry로 향하는 outbound가 0임을 재현 가능하게 검증합니다.
+6. 원본·복호물·asset·patch output·wire capture를 Git, CI artifact 또는 제3자 remote에 넣지 않습니다.
 
-한 조건이라도 충족하지 못하면 fail closed로 유지합니다. harness로 local backend를 검증할 수는 있지만, 원본 UI·전투 runtime 검증 완료로 보고하지 않습니다.
+한 조건이라도 충족하지 못하면 adapter는 fail closed입니다. 사용자 의도나 제3자 사례만으로 이 gate를 통과했다고 보지 않습니다.
 
-서면 허가는 발급 주체, 허용 목적, 대상 client build/hash, 유효 기간을 로컬 증거로 고정합니다. 기술 gate 통과는 법적 적법성을 자동 보장하지 않습니다.
+## Gate B — client wire contract
 
-client build/hash가 바뀌면 기존 gate 판정과 runtime compatibility를 각각 `blocked`, `not_evaluated`로 되돌리고 처음부터 재검증합니다.
+private-server state가 원본 client 화면을 정상 구동하려면 다음이 입증돼야 합니다.
 
-## 비집행 정황의 취급
+- boot/loading/local-session bootstrap에 필요한 request/response contract
+- profile, wallet, roster, squad와 inventory subset projection
+- Solo Raid season directory selection과 classic Solo Raid state projection
+- Challenge open/enter/regroup/result state machine
+- original-client observed damage/result receipt
+- unsupported route의 controlled no-op/not-supported 처리
 
-제3자 판매·유통 사례에 대해 공개 제재가 확인되지 않았다는 관찰은 권리자의 허가, 권리 포기, 합법성 또는 향후 미집행을 의미하지 않습니다. 이 정황을 gate 해제의 근거로 사용하지 않습니다.
+wire adapter는 lab-owned UID와 client-local content reference를 Git 비추적 compatibility binding에서 변환합니다. 이 transient compatibility value를 domain PK/FK, public API, log와 fixture에 노출하지 않습니다.
+
+## Gate C — lobby presentation variant
+
+서버 feature state로 기존 button을 숨기는 것과 고정 prefab을 재배치하는 것은 다른 capability입니다. 사용자 선언 lobby를 충족하려면 다음을 각각 확인합니다.
+
+- 기존 banner/menu/card를 server-driven flag로 숨길 수 있는 항목
+- 승인된 client variant가 필요한 고정 widget 제거·재flow
+- 좌측 multi-season folder와 boss presentation binding
+- permanent season의 countdown 숨김 또는 `상시` 표시
+- Quick Battle button 제거/disabled projection
+- Recruit click feedback 후 page transition 차단
+
+서버에 빈 payload를 보내 발생한 오류·timeout·빈 화면은 UI 구현으로 인정하지 않습니다. 승인된 presentation path가 없으면 private-server backend가 완성돼도 exact lobby 요구는 blocked입니다.
+
+## Gate D — original battle runtime integrity
+
+- 원본 battle scene, Spot behavior, animation, QTE, parts와 HUD가 로드됩니다.
+- client의 damage calculation/display path를 Local Lab이나 sidecar simulator가 대체하지 않습니다.
+- runtime execution/control profile의 requested/effective 값과 frame telemetry가 일치합니다.
+- result가 exact raid/account/squad/build/client revision을 참조합니다.
+- client build/hash가 바뀌면 route, presentation과 runtime compatibility를 모두 재평가합니다.
+
+## 현재 evidence 상태
+
+| 항목 | 상태 | 현재 판정 |
+|---|---|---|
+| private-server domain/API 설계 | 진행 가능 | Phase 2B에서 harness 검증 |
+| Normal clear/Challenge unlock contract | design-ready | `lastClearLevel=7`, Challenge 기본 open |
+| permanent season/no Quick Battle/05:00 KST | design-ready | Phase 2B 신규 state 필요 |
+| stock retail backend selector | blocked | 지원 switch 미확인 |
+| isolated local compatibility client | conditional | 승인된 route/build 증거 필요 |
+| multi-season lobby variant | conditional | client presentation capability 필요 |
+| battle runtime compatibility | partial | season별 evidence tier 상한이 다름 |
+| official outbound zero | blocked for retail | 격리 client에서 별도 입증 필요 |
+
+## 완료 판정
+
+Phase 3은 Gate A~D를 모두 통과해야 합니다. Phase 4 완료는 다시 `(client build, season, raid snapshot)`별 실제 플레이 증거가 필요합니다. gate가 열리지 않으면 Phase 1·2 결과는 보존하지만 최종 제품 상태는 `blocked`입니다.

@@ -127,6 +127,15 @@ public sealed record SoloRaidNormalStageOptions
   public required int LastClearLevel { get; init; }
 }
 
+public sealed record SoloRaidDailyResetOptions
+{
+  public required string TimeZoneId { get; init; }
+
+  public required int Hour { get; init; }
+
+  public required int Minute { get; init; }
+}
+
 public sealed record SoloRaidOptions
 {
   public required bool Enabled { get; init; }
@@ -139,7 +148,19 @@ public sealed record SoloRaidOptions
 
   public required SoloRaidNormalStageOptions NormalStages { get; init; }
 
-  public required bool OneActiveSeasonAtATime { get; init; }
+  public required int[] PublishedSeasonNumbers { get; init; }
+
+  public required bool OneSelectedSeasonPerClientContext { get; init; }
+
+  public required bool ChallengeUnlocked { get; init; }
+
+  public required bool QuickBattleSupported { get; init; }
+
+  public required string SeasonAvailability { get; init; }
+
+  public required string? SeasonEndsAt { get; init; }
+
+  public required SoloRaidDailyResetOptions DailyReset { get; init; }
 
   public required bool UnionRaidEnabled { get; init; }
 
@@ -188,7 +209,9 @@ public sealed record ResolvedLabConfiguration(
     string GameRoot,
     string RuntimeRoot,
     string DatabaseConnectionStringEnvironmentVariable,
-    string IdentitySecretEnvironmentVariable);
+    string IdentitySecretEnvironmentVariable,
+    string BindAddress,
+    int Port);
 
 public interface ILabEnvironment
 {
@@ -265,7 +288,9 @@ public static class LabConfigurationLoader
         gameRoot,
         runtimeRoot,
         document.Database.ConnectionStringEnvironmentVariable,
-        document.Identity.HmacSecretEnvironmentVariable);
+        document.Identity.HmacSecretEnvironmentVariable,
+        document.Network.BindAddress,
+        document.Network.Port);
   }
 
   private static string ResolveDefaultRuntimeRoot(ILabEnvironment environment)
@@ -372,6 +397,8 @@ public static class LabConfigurationLoader
         options.SupportPolicy.Rules is null ||
         options.ChallengeCompatibility is null ||
         options.NormalStages is null ||
+        options.PublishedSeasonNumbers is null ||
+        options.DailyReset is null ||
         !options.Enabled ||
         !options.SupportedModes.SequenceEqual(["challenge"], StringComparer.Ordinal) ||
         !string.Equals(
@@ -385,7 +412,15 @@ public static class LabConfigurationLoader
         options.NormalStages.Implemented ||
         !options.NormalStages.UnlockStateOnly ||
         options.NormalStages.LastClearLevel != 7 ||
-        !options.OneActiveSeasonAtATime ||
+        !options.PublishedSeasonNumbers.SequenceEqual([7, 13, 26, 29, 34, 40]) ||
+        !options.OneSelectedSeasonPerClientContext ||
+        !options.ChallengeUnlocked ||
+        options.QuickBattleSupported ||
+        !string.Equals(options.SeasonAvailability, "permanent", StringComparison.Ordinal) ||
+        options.SeasonEndsAt is not null ||
+        !string.Equals(options.DailyReset.TimeZoneId, "Asia/Seoul", StringComparison.Ordinal) ||
+        options.DailyReset.Hour != 5 ||
+        options.DailyReset.Minute != 0 ||
         options.UnionRaidEnabled ||
         !options.RequireRuntimeMatchForOriginalClientExecution ||
         !HasExpectedSoloRaidRules(options.SupportPolicy.Rules))

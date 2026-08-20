@@ -17,7 +17,7 @@
     Phase 0 schema/fixture check
               |
               v
-    Phase 2A1 Windows build/unit check
+    Phase 2A2 Windows build/unit check
               |
               +---- PostgreSQL integration check
               |
@@ -28,6 +28,8 @@
     create or reuse PR -> squash merge -> delete remote branch
 
 검증 job이 실패하거나 취소되면 publish job은 실행되지 않습니다.
+
+현재 workflow는 Phase 2A1 회귀 검사를 포함하는 Phase 2A2 gate를 표시합니다. 다음 Phase 2B에서는 같은 흐름에 permanent season directory, 05:00 KST boundary, Quick Battle unsupported와 1~5팀 Challenge run verifier를 추가합니다. credential-bearing raw profile, original-client와 실제 game asset은 Actions 입력이 아니며 Phase 3·4 증거를 CI가 대신하지 않습니다.
 
 ## 보안 경계
 
@@ -62,7 +64,7 @@ push 이후에는 Actions run이 PR과 merge를 담당합니다. 실패 시 원�
 
     pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode working -AllowRemote
     pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
-    pwsh -NoProfile -File scripts/verify-phase2a1.ps1
+    pwsh -NoProfile -File scripts/verify-phase2a2.ps1
     pwsh -NoProfile -File scripts/verify-actions-contract.ps1
 
 GitHub 저장소 설정 변경이나 workflow 수정 후에는 실제 synthetic branch로 end-to-end push→PR→merge를 다시 검증합니다.

@@ -82,7 +82,7 @@ V0003은 immutable RaidSnapshot과 다음 provenance를 저장합니다.
 - compatibility/readiness warning
 - dataset membership과 canonical content hash
 
-Import ledger 완료와 여섯 snapshot 게시를 한 transaction으로 처리합니다. 동일 request는 기존 publish 결과를 재사용하고, 중간 실패·hash 불일치·tier invariant 위반은 전체 transaction을 rollback합니다. 활성 시즌 포인터와 실제 session 실행은 이 단계의 범위가 아닙니다.
+Import ledger 완료와 여섯 snapshot 게시를 한 transaction으로 처리합니다. 동일 request는 기존 publish 결과를 재사용하고, 중간 실패·hash 불일치·tier invariant 위반은 전체 transaction을 rollback합니다. permanent season directory, account/session별 selected season과 실제 session 실행은 이 단계의 범위가 아닙니다.
 
 ## 검증
 
@@ -101,4 +101,5 @@ Import ledger 완료와 여섯 snapshot 게시를 한 transaction으로 처리�
 - Phase 2에서 account/profile/build write와 Challenge session backend를 구현합니다.
 - 원본 client gate는 계속 blocked입니다. 지원·승인된 local/test route 없이 원본 실행 파일, 인증, endpoint 또는 보호 기능을 변경하지 않습니다.
 - `compatibility_map_uid`는 이 단계에서 raw ID map 파일을 뜻하지 않습니다. 원본 client adapter용 매핑은 gate 해제 후 정확한 dataset으로 Git 밖에서 재생성·검증합니다.
+- lobby의 localized boss name, icon과 banner presentation은 RaidSnapshot identity/evidence와 별도입니다. Phase 3의 build-bound Git 비추적 presentation binding 또는 lab-owned presentation version이 해소하며 이름만으로 snapshot을 연결하지 않습니다.
 - 역사 시즌의 완전한 behavior/timeline/runtime 근거를 추가로 확보하면 새 evidence로 tier를 재평가하되, 현재 snapshot을 근거 없이 승격하지 않습니다.

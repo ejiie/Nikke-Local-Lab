@@ -19,7 +19,7 @@ public sealed class PostgreSqlRaidSnapshotTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(5, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(6, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     Assert.Equal(0, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     var staticArtifact = Artifact("synthetic-static-data");
@@ -790,7 +790,7 @@ public sealed class PostgreSqlRaidSnapshotTests
             "NIKKE_LAB_TEST_DB is required for PostgreSQL integration tests.");
     var validated = PostgreSqlConnectionPolicy.Validate(connectionString);
     var builder = new NpgsqlConnectionStringBuilder(validated);
-    Assert.Equal("nikke_local_lab_test", builder.Database);
+    PostgreSqlTestDatabaseGuard.RequireDisposableDatabase(builder);
     return PostgreSqlDataSourceFactory.Create(validated);
   }
 
@@ -806,6 +806,7 @@ public sealed class PostgreSqlRaidSnapshotTests
 
     await using var command = dataSource.CreateCommand(
         """
+        DROP SCHEMA IF EXISTS lab_local_game CASCADE;
         DROP SCHEMA IF EXISTS lab_profile CASCADE;
         DROP SCHEMA IF EXISTS lab_combat_support CASCADE;
         DROP SCHEMA IF EXISTS lab_raid CASCADE;

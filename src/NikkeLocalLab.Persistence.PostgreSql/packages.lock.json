@@ -37,6 +37,13 @@
           "NikkeLocalLab.Provenance": "[1.0.0, )"
         }
       },
+      "nikkelocallab.application.profilemanagement": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
       "nikkelocallab.domain.character": {
         "type": "Project",
         "dependencies": {
@@ -45,6 +52,13 @@
         }
       },
       "nikkelocallab.domain.combatsupport": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
+      "nikkelocallab.domain.localgamestate": {
         "type": "Project",
         "dependencies": {
           "NikkeLocalLab.Identity": "[1.0.0, )",
@@ -69,6 +83,13 @@
       },
       "nikkelocallab.identity": {
         "type": "Project"
+      },
+      "nikkelocallab.import.profile": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
       },
       "nikkelocallab.provenance": {
         "type": "Project",

@@ -2,9 +2,11 @@
 
 ## 목적
 
-자체 ID 기반 local backend에 NIKKE 캐릭터 빌드를 보관·수정하고, 선택된 Solo Raid Challenge의 데이터·asset·runtime 근거와 빌드 revision을 고정하여 **원본 UI와 실제 전투 runtime**으로 결과를 검증합니다.
+원본 NIKKE 클라이언트에 필요한 기능만 공급하는 자체 ID 기반 local private server를 만들고, 캐릭터 빌드와 지원 Solo Raid Challenge의 데이터·asset·runtime 근거를 고정하여 **원본 UI와 실제 전투 runtime**으로 실행·검증합니다.
 
-lab-owned harness는 계약과 backend를 준비·검사하는 보조 도구입니다. 자체 렌더러나 대미지 시뮬레이터만으로는 최종 목표를 달성한 것으로 보지 않습니다.
+원본 client는 UI, asset, animation, 전투 simulation, damage 계산과 HUD의 권위입니다. Local Lab은 local session, profile projection, 기능 개방, Solo Raid session과 결과 저장의 권위입니다. lab-owned harness와 `Nikke-Dmg-Simulator`는 계약 검사·데이터 해석·최적화·대조용 sidecar이며 최종 게임 client를 대체하지 않습니다.
+
+로비와 Solo Raid의 제품 계약은 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md)가 단일 권위입니다.
 
 ## Phase 0 확정 범위
 
@@ -40,12 +42,15 @@ lab-owned harness는 계약과 backend를 준비·검사하는 보조 도구입�
 - 지원 모드는 `challenge` 하나뿐입니다.
 - 지원 판정은 `season == 40 OR (bossElement == electric AND weaknessCode == iron AND season NOT IN [14, 39])`입니다.
 - 현재 authoritative snapshot의 파생 allowlist는 `[7, 13, 26, 29, 34, 40]`입니다.
-- 일반 1~7단계는 `implemented=false`, `lastClearLevel=7`인 UI 해금 stub입니다.
+- 일반 1~7단계는 `implemented=false`, `lastClearLevel=7`인 UI 해금 stub이며 `challengeUnlocked=true`가 기본입니다.
 - 일반 단계의 전투 진입, 보상, 결과 저장 API는 만들지 않습니다.
-- 한 번에 하나의 지원 Challenge season만 활성화합니다.
+- 모든 published 지원 시즌은 종료되지 않는 local content이며 season end timestamp를 만들지 않습니다.
+- lobby directory에는 여러 지원 시즌을 나열하지만 원본 클래식 Solo Raid 화면에는 사용자가 선택한 한 시즌만 투영합니다.
+- Quick Battle은 구현하지 않고 원본 button은 숨김 또는 controlled disabled/no-op으로 처리합니다.
+- daily Challenge state는 `Asia/Seoul`의 매일 05:00에 초기화합니다.
 - Union Raid는 향후 확장 지점만 예약하고 현재 비활성화합니다.
 
-## 이번 단계에서 하지 않는 것
+## Phase 0에서 하지 않았던 것
 
 - 서버/API/DB 구현
 - 원본 리테일 클라이언트 연결 또는 실행
@@ -55,3 +60,5 @@ lab-owned harness는 계약과 backend를 준비·검사하는 보조 도구입�
 - Union Raid, 스테이지, 타워, 아레나, 상점, 전초기지 구현
 - 실제 게임 데이터 import 또는 원본 자산 복사
 - 기존 대미지 시뮬레이터를 최종 전투 runtime으로 사용
+
+Phase 0의 "하지 않는 것"은 해당 단계의 범위입니다. 이후 Phase 2에서는 local private server를 구현하고, Phase 3 gate가 열린 뒤에만 승인된 original-client adapter와 lobby UI variant를 연결합니다.

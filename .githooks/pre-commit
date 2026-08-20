@@ -3,5 +3,5 @@ set -eu
 
 pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode staged -AllowRemote
 pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
-pwsh -NoProfile -File scripts/verify-phase2a1.ps1
+pwsh -NoProfile -File scripts/verify-phase2a2.ps1
 pwsh -NoProfile -File scripts/verify-actions-contract.ps1

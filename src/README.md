@@ -17,6 +17,17 @@
 - `NikkeLocalLab.Import.RaidCatalog`: strict Challenge FK chain과 source-ID-free evidence reader
 - `NikkeLocalLab.Domain.Profile`: 자체 local account/session, account state, character build, squad와 profile template revision
 
-다음 단계에서는 offline sanitizer와 loopback profile API/editor를 추가한 뒤 Challenge session, harness 및 허용된 원본 client adapter를 순서대로 확장합니다.
+Phase 2A2에서는 다음 모듈을 구현했고 단위 및 live PostgreSQL gate로 검증했습니다.
 
-원본 client adapter는 최종 목표에 필수지만 현재 disabled입니다. harness는 이를 대체하지 않습니다.
+- `NikkeLocalLab.Import.Profile`: strict raw parser, canonical sanitized draft codec, typed catalog rebase와 reviewed bond/manufacturer override
+- `NikkeLocalLab.Domain.LocalGameState`: lobby presentation, synthetic `jewel|credit` wallet과 feature manifest
+- `NikkeLocalLab.Application.ProfileManagement`: typed edit/import/create/rebase command와 bootstrap/read-model port
+- `NikkeLocalLab.Persistence.PostgreSql`: V0006 local state, 별도 sanitized draft/editor candidate, diff, recoverable application intent/ledger와 inventory projection
+- `NikkeLocalLab.Admin.Api`: loopback-only API, process-local admin session과 no-CDN/no-inline editor
+- `NikkeLocalLab.Import.Cli`: aggregate-only `profile-source-inspect`와 source-free `profile-draft-import`
+
+Import는 bond `0`/missing manufacturer 같은 보존 가능한 의미 미해결을 Research fact로 materialize하고 readiness를 낮출 수 있지만 identity/catalog/shape/coordinate/level-authority failure는 write 전에 차단합니다. 빈 DB의 최초 profile은 target account가 없는 explicit create-preview/create command로만 생성합니다. raw `nll/sanitized-profile-draft/v1`과 editor `nll/profile-edit-candidate/v1`은 서로 바꿔 읽지 않습니다.
+
+다음 Phase 2B에서는 boot/lobby private-server service, permanent multi-season directory, `Asia/Seoul` 05:00 daily state, 1~5팀 Challenge run/result를 구현합니다.
+
+후속 모듈은 `SoloRaid.Service`, `Challenge.Session`, wire/presentation `OriginalClientCompatibilityAdapter`로 분리합니다. 단일 `SquadRevision`은 한 팀이고 multi-team run aggregate가 아닙니다. 원본 client adapter는 최종 목표에 필수지만 현재 disabled이며 harness와 editor는 이를 대체하지 않습니다.

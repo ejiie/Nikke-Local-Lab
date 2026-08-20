@@ -7,6 +7,7 @@
 - loopback에서 실행되는 API와 관리 UI
 - 계약 검증용으로 프로젝트가 소유한 test harness
 - 사용자가 명시적으로 활성화한 사설망의 lab-owned client
+- 권리자가 제공·지원·승인하고 build/hash와 허용 범위가 고정된 local/test compatibility client 및 UI variant
 
 ## 제외
 
@@ -23,6 +24,10 @@
 원본 리테일 클라이언트는 `docs/FEASIBILITY_GATES.md`의 모든 조건이 충족되기 전까지 연결 대상이 아닙니다. 현재 실제 연결이 허용된 client는 lab-owned test harness뿐이지만, 이는 backend 계약 검사용 임시 수단이며 최종 인수 조건을 대체하지 않습니다. 기술적으로 가능한 경로와 프로젝트 정책상 허용된 경로를 혼동하지 않습니다.
 
 gate가 열리면 승인된 원본 client가 최종 실행 경로가 되고 harness는 계속 자동 테스트에만 사용됩니다. gate가 열리지 않으면 최종 인수 상태는 `blocked`입니다.
+
+stock retail client를 임의로 private server에 연결하는 경로와 승인된 isolated local/test compatibility client는 같은 것이 아닙니다. 전자는 계속 제외합니다. 후자는 `FEASIBILITY_GATES.md`의 route, wire, presentation, outbound와 runtime integrity gate를 모두 통과한 경우에만 활성화합니다.
+
+승인된 presentation variant가 고정 lobby widget 제거·재배치, multi-season folder, permanent season 표시와 controlled no-op을 소유할 수 있습니다. 원본 asset이나 patch output은 Git에 넣지 않으며 빈 응답, protocol 오류, memory patch 또는 hooking을 UI 제어 수단으로 사용하지 않습니다.
 
 ## 네트워크 기본값
 

@@ -36,6 +36,8 @@
 
 복호물, compatibility map, 런타임 DB, cache와 log는 모두 Git 외부에 둡니다. 저장소 fixture에는 자체 UUID와 합성 hash만 사용합니다.
 
+original-client wire/presentation adapter가 client-local content reference를 요구하면 정확한 client build에 결박된 Git 비추적 compatibility binding에서 실행 중에만 변환합니다. 해당 원본 reference, localized asset, icon, prefab 또는 patch output을 public domain/API, receipt, log, fixture와 Git에 복사하지 않습니다.
+
 Phase 1A의 `database\` 디렉터리는 경계만 초기화하며 PostgreSQL cluster나 dump를 자동 생성하지 않습니다. `staging\`은 import 실행 중 임시 데이터용이며 source 또는 repository와 겹칠 수 없습니다. Phase 1B character reader는 archive를 메모리에서만 해석하고 decoded file을 만들지 않습니다. 향후 staging을 쓰는 importer는 성공·실패·취소 후 이를 비워야 합니다.
 
 ## Private source remote 경계

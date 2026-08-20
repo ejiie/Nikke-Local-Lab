@@ -4,6 +4,8 @@
 
 - 별도 신규 저장소이며 기존 Git history를 상속하지 않는다.
 - 최종 목표는 자체 local backend에 연결된 원본 NIKKE UI와 실제 전투 runtime으로 검증하는 것이다.
+- 제품 형태는 원본 client에 필요한 기능만 공급하는 제한된 local private server다. 별도 UI, harness 또는 damage simulator를 최종 client로 만들지 않는다.
+- 원본 client는 UI·asset·animation·전투 simulation·damage 계산과 표시의 권위이고, Local Lab은 local session·profile projection·기능 개방·Solo Raid session/result의 권위다.
 - lab-owned harness는 개발·계약 검증 도구이며 최종 인수 조건을 대체하지 않는다.
 - 실제 계정이 아닌 자체 계정·자체 ID만 사용한다.
 - 캐릭터 빌드는 revision 기반이며 과거 revision은 불변이다.
@@ -18,12 +20,19 @@
 - 보스 admission은 `challenge-boss-support/v1`을 따른다.
 - 현재 지원 시즌은 `7, 13, 26, 29, 34, 40`이다.
 - 시즌 14와 39는 전격·철갑 조건을 만족해도 명시적으로 제외한다.
-- 일반 1~7단계는 `lastClearLevel=7` 해금 stub이며 전투 구현 대상이 아니다.
+- 일반 1~7단계는 `lastClearLevel=7` 해금 stub이고 `challengeUnlocked=true`가 기본이며 전투 구현 대상이 아니다.
+- published 지원 시즌은 종료되지 않는 local content다. `SeasonAvailability=permanent`, `seasonEndsAt=null`이고 만료·정산 job을 만들지 않는다.
+- lobby season directory는 여러 지원 시즌을 표시하며, 선택된 한 시즌만 클래식 Solo Raid 실행 context에 투영한다.
+- Quick Battle은 지원하지 않으며 endpoint, reward와 persistence를 만들지 않는다.
+- Challenge daily state는 IANA `Asia/Seoul`의 매일 05:00에 초기화한다.
+- 공식 global ranking, reward mail과 live-service 시즌 정산은 모방하지 않는다. 필요한 경우 자체 local record만 별도 계약으로 표시한다.
+- 로비의 기존 홍보·상점·social widget은 제거하고, 좌측에는 Solo Raid season folder를 둔다. 하단 니케·스쿼드·로비·인벤토리·대원모집은 유지하되 대원모집은 controlled no-op이다.
 - Union Raid는 비활성 확장 지점이다.
 - 원본 리테일 클라이언트 연결은 `docs/FEASIBILITY_GATES.md`가 해제될 때까지 blocked다.
 - raid 호환성 tier는 `static_exact`, `behavior_exact`, `asset_exact_runtime_current`, `historical_runtime_exact` 네 단계다.
 - published raid snapshot 계약은 v2이며 `ready` 상태와 non-null dataset-scoped compatibility binding marker를 강제한다. raw client mapping은 이 단계에서 materialize하지 않으며 불완전 후보는 import diagnostic으로 분리한다.
 - 현재 시즌 목록은 dataset에서 정책으로 파생한 문서화 결과이지 config에 고정된 두 번째 allowlist가 아니다.
+- v1 lobby directory는 review된 시즌 `7, 13, 26, 29, 34, 40`으로 versioning한다. 새 dataset candidate는 자동 노출하지 않고 evidence review와 directory contract revision 뒤에 추가한다.
 - 공개 제재가 보이지 않는다는 정황은 permission 또는 gate 해제 근거로 사용하지 않는다.
 - Phase 1A source 보호는 importer capability 수준의 read-only 보장이다. OS 전체 쓰기 방지로 표현하지 않는다.
 - source path, file name, raw ID, decoded payload, exception text는 import ledger schema에 두지 않는다.
@@ -65,5 +74,7 @@
 - client graphics/control setting의 authoritative local capture 위치와 적용 경로
 - 각 지원 시즌의 runtime exact 증거 확보 범위
 - 원본 client gate를 충족할 수 있는 권리자 지원 interface의 존재 여부
+- 승인된 client UI variant가 고정 lobby widget 제거, season folder와 영구 시즌 표시를 지원할 수 있는지
+- Challenge 일일 entry 수와 local record/ranking 표시 범위
 
 미정값은 임의 기본값으로 채우지 않고 contract에서 `unresolved`로 표현합니다.

@@ -9,18 +9,21 @@
 5. `docs/DOMAIN.md`
 6. `docs/RAID_DOMAIN.md`
 7. `docs/PROFILE_EXECUTION_DOMAIN.md`
-8. `docs/IDENTITY.md`
-9. `docs/DECISIONS.md`
-10. `docs/IMPLEMENTATION_PLAN.md`
-11. `docs/NEXT_STEPS.md`
-12. `docs/GITHUB_AUTOMATION.md`
-13. `docs/ARCHITECTURE.md`
-14. `docs/PHASE1D.md`
-15. `docs/PHASE2A1.md`
+8. `docs/PRIVATE_SERVER_UI.md`
+9. `docs/IDENTITY.md`
+10. `docs/DECISIONS.md`
+11. `docs/IMPLEMENTATION_PLAN.md`
+12. `docs/NEXT_STEPS.md`
+13. `docs/GITHUB_AUTOMATION.md`
+14. `docs/ARCHITECTURE.md`
+15. `docs/PHASE1D.md`
+16. `docs/PHASE2A1.md`
+17. `docs/PHASE2A2.md`
 
 ## 불변 규칙
 
 - 최종 목표는 허용된 로컬 backend에 연결된 원본 NIKKE UI와 실제 전투 runtime으로 검증하는 것입니다.
+- 제품은 원본 client에 일부 기능만 공급하는 제한된 local private server이며 별도 게임 UI나 simulator runtime이 아닙니다.
 - lab-owned harness는 계약·데이터 검사용 보조 도구이며 최종 인수 조건을 대체하지 않습니다.
 - 공식 로그인, 계정 토큰, 패킷 가로채기, 게임 프로세스 주입, 안티치트 우회를 사용하지 않습니다.
 - 원본 리테일 클라이언트 연결은 `docs/FEASIBILITY_GATES.md`의 조건을 모두 충족하기 전까지 차단합니다.
@@ -31,6 +34,7 @@
 - 캐릭터 빌드 수정은 기존 row 덮어쓰기가 아니라 새 revision 생성으로 처리합니다.
 - 기본값은 생성 시점 데이터 snapshot에서 실제 값으로 해소하여 저장합니다. 데이터 업데이트가 과거 revision을 자동 변경하면 안 됩니다.
 - Solo Raid는 Challenge만 지원하고 `challenge-boss-support/v1` admission policy를 통과한 보스만 publish합니다.
-- 일반 1~7단계와 Union Raid 전투 세션을 만들지 않습니다.
+- Normal I~VII는 기본 clear(`lastClearLevel=7`)이고 Challenge는 기본 개방합니다. Normal과 Union Raid 전투 세션을 만들지 않습니다.
+- 지원 시즌은 만료되지 않으며 Quick Battle을 구현하지 않습니다. daily state는 `Asia/Seoul`의 05:00에 초기화합니다.
 - 변경은 `agent/**` branch에 commit하고 Actions가 검증·PR·squash merge하도록 합니다.
-- 작업 전후 repository, Phase 0, 현재 구현 단계(최소 Phase 2A1), Actions contract 검사를 모두 실행합니다.
+- 작업 전후 repository, Phase 0, 완료된 Phase 2A1·Phase 2A2와 Actions contract 검사를 모두 실행합니다. Phase 2A2 완료 이력은 `scripts/verify-phase2a2.ps1`의 단위 및 live PostgreSQL integration gate가 모두 통과한 revision에만 유지합니다.

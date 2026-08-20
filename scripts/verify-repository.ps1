@@ -20,6 +20,11 @@ $Failures = [System.Collections.Generic.List[string]]::new()
 $ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $ScriptDirectory ".."))
 
+$TemporaryPostgreSqlPath = Join-Path $RepositoryRoot ".tmp-pg"
+if (Test-Path -LiteralPath $TemporaryPostgreSqlPath) {
+    Add-Failure "Disposable PostgreSQL cluster must not remain in the repository workspace: .tmp-pg"
+}
+
 $GitTop = (& git -C $RepositoryRoot rev-parse --show-toplevel).Trim()
 if ([System.IO.Path]::GetFullPath($GitTop) -ne $RepositoryRoot) {
     Add-Failure "Git top-level is not the new repository root: $GitTop"
@@ -51,7 +56,7 @@ $Paths = switch ($Mode) {
     default { @(& git -C $RepositoryRoot ls-files --cached --others --exclude-standard) }
 }
 
-$ForbiddenDirectoryPattern = '(^|/)(data|Database|raw|decoded|decrypted|extracted|bundles|captures|dumps|outputs|artifacts|cache|var|logs|tmp|secrets|vault|staging|runtime|NikkeLocalLab|TestResults)(/|$)'
+$ForbiddenDirectoryPattern = '(^|/)(data|Database|raw|decoded|decrypted|extracted|bundles|captures|dumps|outputs|artifacts|cache|var|logs|tmp|\.tmp-pg|secrets|vault|staging|runtime|NikkeLocalLab|TestResults)(/|$)'
 $ForbiddenNamePattern = '(^|/)(\.env($|\.)|auth_state[^/]*\.json$|cookies?[^/]*\.json$|credentials?[^/]*\.json$|sessions?[^/]*\.json$|tokens?[^/]*\.json$|\.gitmodules$)'
 $ForbiddenExtensions = @(
     ".mpk", ".bundle", ".unity3d", ".assets", ".asset", ".ress", ".resource",

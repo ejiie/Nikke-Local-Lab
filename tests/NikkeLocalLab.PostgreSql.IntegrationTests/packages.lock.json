@@ -128,6 +128,13 @@
           "NikkeLocalLab.Provenance": "[1.0.0, )"
         }
       },
+      "nikkelocallab.application.profilemanagement": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
       "nikkelocallab.configuration": {
         "type": "Project"
       },
@@ -139,6 +146,13 @@
         }
       },
       "nikkelocallab.domain.combatsupport": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
+      "nikkelocallab.domain.localgamestate": {
         "type": "Project",
         "dependencies": {
           "NikkeLocalLab.Identity": "[1.0.0, )",
@@ -164,6 +178,13 @@
       "nikkelocallab.identity": {
         "type": "Project"
       },
+      "nikkelocallab.import.profile": {
+        "type": "Project",
+        "dependencies": {
+          "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Provenance": "[1.0.0, )"
+        }
+      },
       "nikkelocallab.import.sources": {
         "type": "Project",
         "dependencies": {
@@ -176,11 +197,14 @@
         "type": "Project",
         "dependencies": {
           "NikkeLocalLab.Application": "[1.0.0, )",
+          "NikkeLocalLab.Application.ProfileManagement": "[1.0.0, )",
           "NikkeLocalLab.Domain.Character": "[1.0.0, )",
           "NikkeLocalLab.Domain.CombatSupport": "[1.0.0, )",
+          "NikkeLocalLab.Domain.LocalGameState": "[1.0.0, )",
           "NikkeLocalLab.Domain.Profile": "[1.0.0, )",
           "NikkeLocalLab.Domain.Raid": "[1.0.0, )",
           "NikkeLocalLab.Identity": "[1.0.0, )",
+          "NikkeLocalLab.Import.Profile": "[1.0.0, )",
           "NikkeLocalLab.Provenance": "[1.0.0, )",
           "Npgsql": "[10.0.3, )"
         }

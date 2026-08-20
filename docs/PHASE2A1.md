@@ -14,13 +14,15 @@ Phase 2A1은 정적 catalog를 실제 전투 입력 상태로 조합하는 저�
 - optimistic concurrency를 사용하는 원자적 current-pointer 교체
 - `V0005__local_account_profile.sql`
 
-HTTP bearer credential, portable import/export, Save As UI, 다른 account에 적용하는 diff와 legacy raw sanitizer는 Phase 2A2에서 이 기반 위에 구현합니다.
+HTTP admin credential, source-free sanitized import, Save As UI, 다른 account에 적용하는 diff와 offline raw sanitizer는 Phase 2A2에서 이 기반 위에 구현합니다. portable export는 구체적인 소비자와 배포 경계가 정해질 때까지 후속 범위로 남깁니다.
 
 ## LocalAccount와 LocalSession
 
 `LocalAccount`는 무작위 lab UUID와 생성 시각만으로 식별합니다. 실제 account UID, open identifier, nickname, cookie, token 또는 공식 session 식별자는 저장하지 않습니다.
 
 `LocalSession`은 local account를 선택하는 최소 수명 계약입니다. 자체 session UUID, 발급·만료·폐기 시각만 보존하며 공식 인증 semantics를 모방하지 않습니다. loopback API용 local credential 발급은 Phase 2A2에서 별도 비밀 경계로 추가합니다.
+
+이 session의 만료는 local login/session 수명이며 Solo Raid season expiry가 아닙니다. 지원 Raid season은 후속 service 계약에서 permanent로 제공하므로 두 수명을 결합하지 않습니다.
 
 ## AccountCombatStateRevision
 
@@ -125,3 +127,28 @@ PostgreSQL은 exact catalog-member FK, account 소유 관계, revision lineage, 
 - 합성 단위 검사와 PostgreSQL integration이 Windows/Linux Actions에서 통과한다.
 
 이 revision은 위 조건과 `scripts/verify-phase2a1.ps1`, `scripts/verify-phase2a1.ps1 -Integration`을 모두 통과해 Phase 2A1 완료로 판정했습니다.
+
+## Private-server 방향 재감사
+
+원본 client에 제한 기능 private server를 제공하는 제품 방향으로 재감사한 결과, Phase 2A1의 domain과 V0005를 수정하거나 폐기할 필요는 없습니다.
+
+그대로 재사용하는 항목:
+
+- 자체 account/session identity와 catalog binding
+- account combat state, character build와 immutable revision
+- 5인 `SquadRevision`과 profile template
+- selection/combat-semantics readiness 분리
+- CAS Save, lineage, idempotency와 child sealing
+
+후속 단계가 additive migration으로 보완할 항목:
+
+- local display profile, wallet, feature manifest와 제한된 inventory projection
+- 여러 permanent 지원 season과 account/session별 selected season
+- Normal I~VII clear, Challenge 기본 개방과 Quick Battle unsupported projection
+- `Asia/Seoul` 05:00 operational day와 daily state
+- 한 Challenge run에 순차 결박되는 1~5개 squad와 팀 간 character 중복 금지
+- original-client observed 팀별 damage, 누적 result와 execution segment
+
+현재 `SquadRevision`은 정확한 한 팀이지 Solo Raid 전체 lineup이 아닙니다. `ProfileTemplateRevision`의 active squad와 combat readiness도 최대 다섯 팀 Challenge run의 준비 완료를 뜻하지 않습니다. 기존 migration V0001~V0005는 checksum 이력으로 보존하고 위 상태는 V0006 이후 새 schema에서 구현합니다.
+
+Phase 2A1 시점에는 season expiry, Quick Battle 또는 daily reset 구현이 없어 되돌릴 로직도 없었습니다. 후속 Phase 2A2 config 계약은 `lastClearLevel=7`, `challengeUnlocked=true`, `seasonAvailability=permanent`, `quickBattle=unsupported`, `dailyReset=asia-seoul-0500/v1`을 명시적으로 고정했습니다. 이 설정에 대응하는 runtime state machine과 API 구현은 Phase 2B 범위입니다.

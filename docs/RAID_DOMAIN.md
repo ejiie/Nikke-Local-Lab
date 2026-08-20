@@ -2,7 +2,7 @@
 
 ## 지원 범위
 
-`SoloRaidChallenge`만 지원합니다. 일반 솔로 레이드 1~7단계는 전투 콘텐츠로 구현하지 않으며 Union Raid는 비활성 확장 지점입니다.
+`SoloRaidChallenge`만 지원합니다. 일반 솔로 레이드 1~7단계는 전투 콘텐츠로 구현하지 않으며 Union Raid는 비활성 확장 지점입니다. published 지원 시즌은 만료되지 않는 local content이며 사용자는 lobby season directory에서 언제든 선택할 수 있습니다.
 
 ## Boss admission policy
 
@@ -36,8 +36,11 @@ Challenge 해금 선행조건 호환이 필요할 때 local session state에서 
 
     implemented = false
     lastClearLevel = 7
+    challengeUnlocked = true
 
 이 상태는 `RaidSnapshot`의 불변 provenance가 아니므로 snapshot에 저장하지 않습니다. 일반 단계의 raid session, battle entry, result, reward를 만들 권한도 없습니다. 원본 client gate가 해제되기 전에는 이 값을 원본 client에 전달하지 않으며 공식 계정·서비스 진행도 우회에 사용하지 않습니다.
+
+Normal I~VII가 이미 clear된 compatibility state이므로 Quick Battle은 지원하지 않습니다. quick-battle availability, request, reward와 persistence를 만들지 않으며 client projection은 관련 button을 숨기거나 controlled unavailable로 처리합니다.
 
 `difficultyType=2`와 `waveOrder=8`은 Challenge adapter의 고정 compatibility selector이며 도메인 entity ID가 아닙니다.
 
@@ -68,11 +71,26 @@ published snapshot은 `readiness.status=ready`이고 non-null `compatibility_map
 
 선택 bundle이 없으면 `selected_asset_bundles`는 비어 있고 `asset_bundle_set_sha256`은 null입니다. bundle이 하나 이상이면 set hash도 반드시 존재합니다. `asset_bundle_set_sha256`은 선택 bundle SHA-256을 소문자로 정규화하고 중복 제거·사전식 정렬한 뒤, LF(`\n`) 하나로 연결한 UTF-8 byte열의 SHA-256입니다. 마지막 LF는 붙이지 않습니다. importer와 validator는 저장값을 재계산합니다.
 
-## 활성 시즌
+## 시즌 directory와 선택된 실행 시즌
 
-`ActiveRaidSeason`은 현재 UI에 노출할 단 하나의 published `RaidSnapshot`을 가리키는 가변 포인터입니다. snapshot 자체는 불변입니다.
+`AvailableRaidSeasonDirectory`는 모든 published 지원 `RaidSnapshot`의 source-free user-facing season number, boss display metadata와 readiness를 나열합니다. 이 목록은 lobby의 Solo Raid folder가 소비하며 여러 시즌을 동시에 포함합니다.
 
-지원 정책을 통과하지 못한 snapshot은 활성 포인터의 대상이 될 수 없습니다. 과거 시즌 선택은 이 포인터를 바꾸는 관리 작업이며, 원본 UI가 역사 시즌 browser를 제공한다고 가정하지 않습니다.
+`SelectedRaidSeason`은 account/session별로 사용자가 directory에서 선택해 현재 클래식 Solo Raid 화면과 다음 session에 투영할 단 하나의 published `RaidSnapshot`을 가리키는 가변 포인터입니다. snapshot과 directory member는 불변이며 선택 변경만 새 실행 context를 나타냅니다. Phase 2A2 config 계약의 canonical invariant는 `oneSelectedSeasonPerClientContext=true`이고, Phase 2B가 이 포인터와 선택 상태를 실제 service에 구현합니다.
+
+지원 정책을 통과하지 못한 snapshot은 directory나 선택 포인터의 대상이 될 수 없습니다. v1 directory는 review된 시즌 7·13·26·29·34·40으로 고정하며 새 admission candidate를 자동 노출하지 않습니다. 새 시즌은 evidence review와 directory contract version 변경 뒤에만 추가합니다. 모든 member는 `SeasonAvailability=permanent`, `seasonEndsAt=null`인 영구 local content이며 종료·만료 job이 없습니다. 원본 UI가 역사 시즌 browser를 제공한다고 가정하지 않고, lobby season folder는 승인된 client UI variant가 소유합니다.
+
+## 일일 Challenge 상태
+
+Challenge attempt state는 시즌 수명과 분리합니다.
+
+- 권위 timezone: `Asia/Seoul`
+- reset local time: 매일 `05:00:00`
+- reset 대상: daily entry counter와 명시적으로 daily인 Challenge state
+- 유지 대상: published snapshot, active-season 선택, profile/build, 최고 local record와 과거 result
+
+process timezone, UTC calendar date 또는 서버 시작 시각으로 daily boundary를 대신하지 않습니다. 해당 instant가 속한 KST reset window를 계산해 idempotent하게 새 daily state를 엽니다.
+
+공식 global ranking, 공식 reward mail과 시즌 종료 정산은 범위 밖입니다. 결과 화면에 ranking을 투영할 경우 자체 local record contract만 사용합니다.
 
 ## 호환성 등급
 
@@ -115,4 +133,6 @@ Phase 1C actual smoke는 최신 StaticData를 read-only로 읽어 정책을 다�
 
     (raid_snapshot_uid, dataset_snapshot_uid, squad_revision_uid[])
 
-결과에는 계산된 damage뿐 아니라 사용한 compatibility tier와 validation warning을 함께 보존합니다.
+결과에는 수락된 original-client observed damage뿐 아니라 사용한 compatibility tier와 validation warning을 함께 보존합니다.
+
+원본 client의 `StatisticsContext`가 계산·표시한 damage가 실행 결과의 권위입니다. backend는 이를 별도 simulator 값으로 바꿔 화면에 공급하지 않고, session identity와 함께 수신·검증·보존합니다.

@@ -249,6 +249,43 @@ public sealed class PostgreSqlLocalAccountProfileStore
     return new LocalCurrentAccountProfile(receipt, profile);
   }
 
+  public async Task<LocalAccountProfileReceipt?> GetByOperationAsync(
+      EntityUid operationUid,
+      CancellationToken cancellationToken = default)
+  {
+    RequireUid(operationUid, "profile_operation_uid_invalid");
+    await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken)
+        .ConfigureAwait(false);
+    await using var transaction = await connection.BeginTransactionAsync(
+        IsolationLevel.RepeatableRead,
+        cancellationToken).ConfigureAwait(false);
+    await using var command = new NpgsqlCommand(
+        """
+        SELECT result_profile_template_revision_id
+        FROM lab_profile.profile_write_operation
+        WHERE operation_uid = @operation_uid;
+        """,
+        connection,
+        transaction);
+    Add(command, "operation_uid", NpgsqlDbType.Uuid, operationUid.Value);
+    var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+    if (value is null)
+    {
+      await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+      return null;
+    }
+
+    var receipt = await ReadReceiptAsync(
+        connection,
+        transaction,
+        operationUid,
+        Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture),
+        isReplay: true,
+        cancellationToken).ConfigureAwait(false);
+    await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    return receipt;
+  }
+
   public async Task<LocalSessionReceipt> IssueLocalSessionAsync(
       EntityUid accountUid,
       DateTimeOffset issuedAtUtc,
@@ -689,7 +726,7 @@ public sealed class PostgreSqlLocalAccountProfileStore
         {
           await using var gate = new NpgsqlCommand(
               """
-              SELECT minimum_synchro_status, minimum_synchro_level
+              SELECT minimum_synchro_level
               FROM lab_combat_support.console_legal_level
               WHERE definition_version_id = @version_id
                 AND level = @level;
@@ -709,13 +746,9 @@ public sealed class PostgreSqlLocalAccountProfileStore
 
             issue ??= "profile_semantics_unresolved";
           }
-          else if (gateReader.GetString(0) != "ready" || gateReader.IsDBNull(1))
-          {
-            issue ??= "profile_semantics_unresolved";
-          }
           else if (state.SynchroLevel.Value is { } synchroLevel)
           {
-            if (synchroLevel < gateReader.GetInt32(1))
+            if (synchroLevel < gateReader.GetInt32(0))
             {
               throw new LocalAccountProfileIntegrityException(
                   "profile_console_synchro_gate_failed");
@@ -4967,6 +5000,8 @@ public sealed class PostgreSqlLocalAccountProfileStore
       "profile_revision_lineage_invalid" => "profile_revision_conflict",
       "profile_current_graph_inconsistent" => "profile_current_graph_inconsistent",
       "profile_overload_equipment_invalid" => "profile_overload_equipment_invalid",
+      "local_game_lobby_character_not_in_profile" =>
+          "local_game_lobby_character_not_in_profile",
       "immutable_profile_row" => "profile_immutable_violation",
       _ when exception.SqlState == PostgresErrorCodes.ForeignKeyViolation =>
           "profile_reference_invalid",
