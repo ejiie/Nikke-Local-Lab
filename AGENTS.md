@@ -25,7 +25,8 @@
 21. `docs/PHASE3AR.md`
 22. `docs/PHASE3B0.md`
 23. `docs/PHASE3B1.md`
-24. `docs/HANDOFF.md`
+24. `docs/PHASE3B2.md`
+25. `docs/HANDOFF.md`
 
 ## 불변 규칙
 
@@ -52,4 +53,4 @@
 - Phase 2B는 `lab_harness_observation/v1`만 수락하며 최종 damage/HUD/result 권위는 `original_client_runtime`에 남습니다. harness receipt를 original-runtime 증거로 승격하지 않습니다.
 - private-server access token 서명 key는 process-local입니다. 같은 process의 같은 Open operation replay만 exact token byte를 재사용하고, restart 뒤에는 영속 session/context/time을 복원해도 token은 재서명될 수 있습니다.
 - 변경은 `agent/**` branch에 commit하고 Actions가 검증·PR·squash merge하도록 합니다.
-- 작업 전후 repository, Phase 0, 완료된 Phase 2A1·Phase 2A2·Phase 2B, Phase 3A 역사 contract, Phase 3B-0 source-free closure, Phase 3B-1 selected-manager receipt와 Actions contract 검사를 모두 실행합니다. Phase 2B 완료 이력은 `scripts/verify-phase2b.ps1`의 단위 및 live PostgreSQL integration gate가 모두 통과한 revision을 기준으로 합니다. `scripts/verify-phase3a.ps1`은 과거 source-free evidence shape와 blocked verdict를, `scripts/verify-phase3b0.ps1`은 별도 시즌 26 closure assessment를, `scripts/verify-phase3b1.ps1`은 외부 통합 patch와 focused test의 source-free receipt를 검증합니다. 어느 script도 original-client adapter/UI/runtime actual-play를 대신 판정하지 않습니다.
+- 작업 전후 repository, Phase 0, 완료된 Phase 2A1·Phase 2A2·Phase 2B, Phase 3A 역사 contract, Phase 3B-0 source-free closure, Phase 3B-1 selected-manager receipt, Phase 3B-2 contract scaffold와 Actions contract 검사를 모두 실행합니다. Phase 2B 완료 이력은 `scripts/verify-phase2b.ps1`의 단위 및 live PostgreSQL integration gate가 모두 통과한 revision을 기준으로 합니다. `scripts/verify-phase3a.ps1`은 과거 source-free evidence shape와 blocked verdict를, `scripts/verify-phase3b0.ps1`은 별도 시즌 26 closure assessment를, `scripts/verify-phase3b1.ps1`은 외부 통합 patch와 focused test의 source-free receipt를 검증합니다. `scripts/verify-phase3b2.ps1`의 현행 Wave 0은 blocked preflight와 not-executed 합성 fixture만 검증하며 measured ready receipt나 actual-play 성공을 주장하지 않습니다. 어느 script도 original-client adapter/UI/runtime actual-play를 대신 판정하지 않습니다.

@@ -2,7 +2,7 @@
 
 최종 인수 조건은 **원본 NIKKE 클라이언트가 제한된 Local Lab private server에 접속하여 선언된 로비와 지원 Solo Raid Challenge를 원본 UI·asset·전투 runtime으로 실행하는 것**입니다. lab-owned harness, editor와 `Nikke-Dmg-Simulator`는 sidecar이며 최종 client를 대체하지 않습니다.
 
-제품 UI와 서비스 정책의 권위는 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md)입니다. Phase 3의 현행 operator-authorized local compatibility 정책은 [PHASE3AR.md](PHASE3AR.md), 완료된 시즌 26 static/runtime closure는 [PHASE3B0.md](PHASE3B0.md), 완료된 selected-manager patch와 receipt는 [PHASE3B1.md](PHASE3B1.md)가 소유합니다.
+제품 UI와 서비스 정책의 권위는 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md)입니다. Phase 3의 현행 operator-authorized local compatibility 정책은 [PHASE3AR.md](PHASE3AR.md), 완료된 시즌 26 static/runtime closure는 [PHASE3B0.md](PHASE3B0.md), 완료된 selected-manager patch와 receipt는 [PHASE3B1.md](PHASE3B1.md), 3B-2 실행 계약과 현재 Wave 0 경계는 [PHASE3B2.md](PHASE3B2.md)가 소유합니다.
 
 ## Phase 0 — 계약과 경계 — 완료
 
@@ -173,6 +173,8 @@ Static/content 축은 `ready_for_selected_manager_patch`이며 timing blocker는
 ### 3B-2. Isolated live season 26 proof
 
 예상 `2~4시간`입니다.
+
+상태는 **Wave 0 contract scaffold 완료 / live proof 미실행**입니다. 두 스키마와 blocked/not-executed 합성 fixture는 실행 판정 형식만 고정하며, measured preflight나 원본 client result를 주장하지 않습니다.
 
 - primary 설치본과 분리된 snapshot 가능한 disposable VM/별도 OS 사용. 단순 디렉터리 복제본은 정적 검산에만 사용
 - synthetic local account만 사용하고 client, launcher, EpinelPS/server와 관련 child process 전체의 non-loopback 통신 차단·관측

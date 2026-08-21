@@ -81,11 +81,11 @@ Phase 2B는 다음 모듈을 구현했고 단위 및 live PostgreSQL gate로 검
 - `Phase3B0Closure`: client `150.6.9`의 시즌 26 static/content closure와 별도 timing-analysis status — 완료
 - `ExternalCompatibilityRuntime`: reviewed commit `28b2f5413a0a1e3521a11ae162f91851335c8b40`에 고정한 별도 EpinelPS checkout/process
 - `ExternalSelectedManagerResolver`: account selection, active-run pin, per-request handler isolation과 final `7/10/2` route policy — external patch 완료
-- `ClassicSoloRaidSeason26Spike`: selected-manager 경로 완료; disposable reference run — 후속
+- `ClassicSoloRaidSeason26Spike`: selected-manager 경로와 Wave 0 source-free contract scaffold 완료; measured preflight와 disposable reference run — 후속
 - `LocalCompatibilityBridge`: EpinelPS façade와 Phase 2B context/run을 연결할 후속 source-free loopback boundary
 - `OriginalClientBattleObservationAdapter`: 후속 original-runtime observation, regroup/next-team, close/result와 telemetry boundary
 
-기존 3A verdict는 당시 정책에서 유효했던 역사적 결과입니다. 새 3A-R verdict는 `ready_for_local_compatibility_spike`이고, 후속 3B-0은 `ready_for_selected_manager_patch_with_timing_analysis_blocker`로 닫혔습니다. 3B-1 external patch와 focused test도 완료되어 현재 verdict는 `ready_for_isolated_season26_reference_run`입니다. 이는 위 bridge와 adapter 또는 client actual-play가 구현됐다는 뜻이 아닙니다. 현재 production composition은 계속 fail closed이며 각 단계는 하나의 observable transition과 focused commit으로 닫습니다. 정책과 pin은 [PHASE3AR.md](PHASE3AR.md), closure 상세는 [PHASE3B0.md](PHASE3B0.md), selected-manager receipt는 [PHASE3B1.md](PHASE3B1.md)를 따릅니다.
+기존 3A verdict는 당시 정책에서 유효했던 역사적 결과입니다. 새 3A-R verdict는 `ready_for_local_compatibility_spike`이고, 후속 3B-0은 `ready_for_selected_manager_patch_with_timing_analysis_blocker`로 닫혔습니다. 3B-1 external patch와 focused test도 완료되어 그 단계의 verdict는 `ready_for_isolated_season26_reference_run`입니다. 3B-2 Wave 0은 preflight/reference-run 계약 scaffold만 추가했으며 checked-in 환경 판정은 blocked/not-executed입니다. 이는 위 bridge와 adapter 또는 client actual-play가 구현됐다는 뜻이 아닙니다. 현재 production composition은 계속 fail closed이며 각 단계는 하나의 observable transition과 focused commit으로 닫습니다. 정책과 pin은 [PHASE3AR.md](PHASE3AR.md), closure 상세는 [PHASE3B0.md](PHASE3B0.md), selected-manager receipt는 [PHASE3B1.md](PHASE3B1.md), 실행 계약은 [PHASE3B2.md](PHASE3B2.md)를 따릅니다.
 
 ## 데이터와 실행 상태 분리
 

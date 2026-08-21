@@ -31,6 +31,8 @@ Git checkout은 항상 원격 `main`을 fetch한 뒤 현재 HEAD를 다시 확�
    구현하고 source-free receipt를 봉인했습니다.
 6. Phase 3B-1 external focused 결과는 selected-manager/lifecycle `58/58`, dispatch isolation `5/5`,
    Release build 오류 `0`입니다.
+7. Phase 3B-2 Wave 0에서 preflight/reference-run source-free schema, blocked/not-executed 합성 fixture와
+   전용 verifier를 추가했습니다. 이는 measured ready receipt나 actual-client 실행 증거가 아닙니다.
 
 아직 완료하지 않은 것은 original-client battle/HUD/result, Local Lab bridge, one-team observation sealing,
 1~5팀 runtime parity와 다른 시즌 확장입니다.
@@ -72,7 +74,8 @@ Latest preflight patch에서 확인한 코드 상태는 다음과 같습니다.
 
 ## 바로 다음 단계 — Phase 3B-2
 
-다음 작업은 disposable VM 또는 별도 disposable OS에서 시즌 26 reference run을 실행하는 것입니다.
+다음 작업은 [PHASE3B2.md](PHASE3B2.md)의 preflight 계약을 disposable VM 또는 별도 disposable OS의
+실측값으로 봉인한 뒤 시즌 26 reference run을 실행하는 것입니다.
 단순 client 디렉터리 복제본이나 주 Windows 설치본에서는 실행하지 않습니다.
 
 실행 전 필수 gate는 다음과 같습니다.
@@ -118,11 +121,12 @@ Local Lab 재검증:
 
 ```powershell
 pwsh -NoProfile -File scripts/verify-phase3b1.ps1 -ContractOnly
+pwsh -NoProfile -File scripts/verify-phase3b2.ps1 -ContractOnly
 pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode working -AllowRemote
 pwsh -NoProfile -File scripts/verify-actions-contract.ps1
 ```
 
-Branch 완료 전에는 `verify-phase3b1.ps1`을 `-ContractOnly` 없이 실행하고, PostgreSQL live integration은
+Branch 완료 전에는 `verify-phase3b2.ps1`을 `-ContractOnly` 없이 실행하고, PostgreSQL live integration은
 Actions 또는 명시적으로 보호된 disposable test DB에서 실행합니다.
 
 ## 새 ChatGPT/Codex 대화 시작 문구
@@ -132,9 +136,10 @@ Actions 또는 명시적으로 보호된 disposable test DB에서 실행합니�
 ```text
 ejiie/Nikke-Local-Lab의 최신 main을 source of truth로 사용한다.
 AGENTS.md의 문서를 지정된 순서대로 전부 읽고 docs/HANDOFF.md에서 현재 운영 위치를 확인한다.
-Phase 3B-1까지 완료됐으며 다음 단계는 disposable VM/별도 OS의 시즌 26 classic Solo Raid 3B-2
-reference run이다. Museum은 금지되고 fallback도 허용하지 않는다. 구현 또는 실행 전에 최신 main,
-외부 EpinelPS patch commit, toolchain과 preflight gate를 재검증하라.
+Phase 3B-2 Wave 0 contract scaffold까지 완료됐으며 checked-in fixture는 blocked/not-executed뿐이다.
+다음 단계는 disposable VM/별도 OS에서 source-free measured preflight를 먼저 봉인한 뒤 시즌 26 classic
+Solo Raid 3B-2 reference run을 실행하는 것이다. Museum은 금지되고 fallback도 허용하지 않는다.
+구현 또는 실행 전에 최신 main, 외부 EpinelPS patch commit, toolchain과 preflight gate를 재검증하라.
 ```
 
 ## 갱신 규칙
