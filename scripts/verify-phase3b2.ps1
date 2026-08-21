@@ -1,5 +1,7 @@
 param(
-    [switch]$ContractOnly
+    [switch]$ContractOnly,
+    [string]$LocalObservationSetPath,
+    [string]$LocalPreflightAssessmentPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,6 +42,123 @@ function Test-UtcSecondInstant {
         [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal,
         [ref]$parsed
     )
+}
+
+function Get-Sha256Hex {
+    param([byte[]]$Bytes)
+
+    return [Convert]::ToHexString(
+        [System.Security.Cryptography.SHA256]::HashData($Bytes)
+    ).ToLowerInvariant()
+}
+
+function Write-CanonicalJsonElement {
+    param(
+        [System.Text.Json.JsonElement]$Element,
+        [System.Text.Json.Utf8JsonWriter]$Writer
+    )
+
+    switch ($Element.ValueKind) {
+        ([System.Text.Json.JsonValueKind]::Object) {
+            $names = [System.Collections.Generic.List[string]]::new()
+            foreach ($property in $Element.EnumerateObject()) {
+                $names.Add($property.Name)
+            }
+            $names.Sort([System.StringComparer]::Ordinal)
+
+            $Writer.WriteStartObject()
+            foreach ($name in $names) {
+                $Writer.WritePropertyName($name)
+                Write-CanonicalJsonElement ($Element.GetProperty($name)) $Writer
+            }
+            $Writer.WriteEndObject()
+            break
+        }
+        ([System.Text.Json.JsonValueKind]::Array) {
+            $Writer.WriteStartArray()
+            foreach ($item in $Element.EnumerateArray()) {
+                Write-CanonicalJsonElement $item $Writer
+            }
+            $Writer.WriteEndArray()
+            break
+        }
+        ([System.Text.Json.JsonValueKind]::String) {
+            $Writer.WriteStringValue($Element.GetString())
+            break
+        }
+        ([System.Text.Json.JsonValueKind]::Number) {
+            $integer = [long]0
+            $decimal = [decimal]0
+            if ($Element.TryGetInt64([ref]$integer)) {
+                $Writer.WriteNumberValue($integer)
+            }
+            elseif ($Element.TryGetDecimal([ref]$decimal)) {
+                $Writer.WriteNumberValue($decimal)
+            }
+            else {
+                throw "phase3b2_noncanonical_observation_number"
+            }
+            break
+        }
+        ([System.Text.Json.JsonValueKind]::True) {
+            $Writer.WriteBooleanValue($true)
+            break
+        }
+        ([System.Text.Json.JsonValueKind]::False) {
+            $Writer.WriteBooleanValue($false)
+            break
+        }
+        ([System.Text.Json.JsonValueKind]::Null) {
+            $Writer.WriteNullValue()
+            break
+        }
+        default {
+            throw "phase3b2_unsupported_observation_json_kind"
+        }
+    }
+}
+
+function Get-CanonicalObservationManifest {
+    param([System.Text.Json.JsonElement]$ObservationSetRoot)
+
+    $members = @($ObservationSetRoot.GetProperty("observations").EnumerateArray())
+    $orderedMembers = @($members | Sort-Object { $_.GetProperty("ordinal").GetInt32() })
+    $stream = [System.IO.MemoryStream]::new()
+    try {
+        foreach ($member in $orderedMembers) {
+            $memberStream = [System.IO.MemoryStream]::new()
+            try {
+                $writer = [System.Text.Json.Utf8JsonWriter]::new(
+                    $memberStream,
+                    [System.Text.Json.JsonWriterOptions]@{ Indented = $false }
+                )
+                try {
+                    Write-CanonicalJsonElement $member $writer
+                    $writer.Flush()
+                }
+                finally {
+                    $writer.Dispose()
+                }
+
+                $memberBytes = $memberStream.ToArray()
+                $stream.Write($memberBytes, 0, $memberBytes.Length)
+                $stream.WriteByte(0x0A)
+            }
+            finally {
+                $memberStream.Dispose()
+            }
+        }
+
+        $bytes = $stream.ToArray()
+        return [pscustomobject]@{
+            MemberCount = $orderedMembers.Count
+            ByteLength = $bytes.Length
+            Sha256 = Get-Sha256Hex $bytes
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
 }
 
 function Assert-SafeJsonElement {
@@ -108,6 +227,10 @@ function Assert-SafeJsonElement {
             -not $value.StartsWith('//', [System.StringComparison]::Ordinal) -and
             $value -notmatch '^/(home|mnt|private|root|tmp|Users|var)/' -and
             -not $value.StartsWith('file:', [System.StringComparison]::OrdinalIgnoreCase)) "phase3b2_local_path_value_exposed"
+        Assert-True ($value -notmatch '-----BEGIN (CERTIFICATE|[^-]*PRIVATE KEY)-----' -and
+            $value -notmatch '(?i)^Bearer\s+' -and
+            $value -notmatch '^eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$' -and
+            $value -notmatch '^[A-Za-z0-9+/_-]{160,}={0,2}$') "phase3b2_credential_or_binary_value_exposed"
     }
 }
 
@@ -173,6 +296,265 @@ function Assert-ProhibitedMaterialBoundary {
     }
 }
 
+function Assert-ExternalRegularJsonPath {
+    param(
+        [string]$Path,
+        [string]$RepositoryRoot,
+        [string]$FailurePrefix
+    )
+
+    Assert-True ([System.IO.Path]::IsPathFullyQualified($Path)) "${FailurePrefix}_path_not_absolute"
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $repositoryPrefix = $RepositoryRoot.TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    ) + [System.IO.Path]::DirectorySeparatorChar
+    Assert-True (-not $fullPath.StartsWith($repositoryPrefix, [System.StringComparison]::OrdinalIgnoreCase)) "${FailurePrefix}_path_inside_repository"
+    Assert-True (Test-Path -LiteralPath $fullPath -PathType Leaf) "${FailurePrefix}_file_missing"
+    $current = Get-Item -LiteralPath $fullPath -Force
+    while ($null -ne $current) {
+        Assert-True (($current.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) "${FailurePrefix}_reparse_point_rejected"
+        $current = $current.Parent
+    }
+    return $fullPath
+}
+
+function Assert-ObservationRoleOrder {
+    param([System.Text.Json.JsonElement]$ObservationSetRoot)
+
+    $expectedRoles = @(
+        "disposable_environment",
+        "primary_install",
+        "client_build_content",
+        "external_lineage_build",
+        "runtime_pack_staticdata",
+        "locale_bgm",
+        "locale_character",
+        "locale_costume",
+        "locale_item",
+        "synthetic_identity",
+        "process_tree_egress",
+        "mutation_backup_rollback",
+        "local_only_config",
+        "loopback_listeners",
+        "target_binding",
+        "prelistener_bootstrap",
+        "active_run_state",
+        "log_safety"
+    )
+    $expectedStatuses = @(
+        "verified",
+        "unchanged",
+        "exact",
+        "exact",
+        "exact",
+        "exact",
+        "exact",
+        "exact",
+        "exact",
+        "verified",
+        "verified",
+        "prepared",
+        "effective",
+        "verified",
+        "exact",
+        "verified",
+        "verified",
+        "verified"
+    )
+
+    $observations = @($ObservationSetRoot.GetProperty("observations").EnumerateArray())
+    Assert-True ($observations.Count -eq $expectedRoles.Count) "phase3b2_observation_count_mismatch"
+    for ($index = 0; $index -lt $expectedRoles.Count; $index++) {
+        Assert-True ($observations[$index].GetProperty("ordinal").GetInt32() -eq ($index + 1)) "phase3b2_observation_ordinal_mismatch"
+        Assert-True ($observations[$index].GetProperty("roleCode").GetString() -ceq $expectedRoles[$index]) "phase3b2_observation_role_order_mismatch"
+        Assert-True ($observations[$index].GetProperty("statusCode").GetString() -ceq $expectedStatuses[$index]) "phase3b2_observation_status_mismatch"
+    }
+
+    $canonicalization = $ObservationSetRoot.GetProperty("canonicalization")
+    Assert-True ($canonicalization.GetProperty("canonicalizationCode").GetString() -ceq "role_ordered_ordinal_json_members_lf_v1") "phase3b2_observation_canonicalization_mismatch"
+    Assert-True ($canonicalization.GetProperty("encodingCode").GetString() -ceq "utf8_no_bom") "phase3b2_observation_encoding_mismatch"
+    Assert-True ($canonicalization.GetProperty("memberSerializationCode").GetString() -ceq "recursive_ordinal_keys_compact_json") "phase3b2_observation_member_serialization_mismatch"
+    Assert-True ($canonicalization.GetProperty("terminalLf").GetBoolean()) "phase3b2_observation_terminal_lf_required"
+    Assert-True ($canonicalization.GetProperty("memberCount").GetInt32() -eq $expectedRoles.Count) "phase3b2_observation_canonical_member_count_mismatch"
+    $declaredRoles = @($canonicalization.GetProperty("roleOrder").EnumerateArray() | ForEach-Object { $_.GetString() })
+    Assert-True (($declaredRoles -join "`n") -ceq ($expectedRoles -join "`n")) "phase3b2_observation_declared_role_order_mismatch"
+}
+
+function Test-CanonicalObservationSet {
+    param(
+        [string]$Json,
+        [string]$SchemaPath,
+        [string]$ExpectedContractId
+    )
+
+    if (-not (Test-Json -Json $Json -SchemaFile $SchemaPath -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+
+    try {
+        $document = [System.Text.Json.JsonDocument]::Parse($Json)
+        try {
+            $root = $document.RootElement
+            Assert-SafeJsonElement $root
+            Assert-True (Test-UtcSecondInstant ($root.GetProperty("observedAtUtc").GetString())) "phase3b2_observation_set_timestamp_invalid"
+            Assert-True ($root.GetProperty("contractId").GetString() -ceq $ExpectedContractId) "phase3b2_observation_set_contract_id_mismatch"
+            Assert-True ($root.GetProperty("statusCode").GetString() -ceq "measured_complete") "phase3b2_observation_set_status_mismatch"
+            Assert-True ($root.GetProperty("observationCount").GetInt32() -eq 18) "phase3b2_observation_set_declared_count_mismatch"
+            Assert-ObservationRoleOrder $root
+
+            $computedManifest = Get-CanonicalObservationManifest $root
+            $declaredManifest = $root.GetProperty("canonicalManifest")
+            Assert-True ($declaredManifest.GetProperty("contractId").GetString() -ceq $ExpectedContractId) "phase3b2_observation_set_manifest_contract_mismatch"
+            Assert-True ($declaredManifest.GetProperty("canonicalizationCode").GetString() -ceq "role_ordered_ordinal_json_members_lf_v1") "phase3b2_observation_set_manifest_canonicalization_mismatch"
+            Assert-True ($declaredManifest.GetProperty("memberCount").GetInt32() -eq $computedManifest.MemberCount) "phase3b2_observation_set_manifest_count_mismatch"
+            Assert-True ($declaredManifest.GetProperty("canonicalByteLength").GetInt64() -eq $computedManifest.ByteLength) "phase3b2_observation_set_manifest_length_mismatch"
+            Assert-True ($declaredManifest.GetProperty("sha256").GetString() -ceq $computedManifest.Sha256) "phase3b2_observation_set_manifest_sha_mismatch"
+
+            $sourceFreeSet = $Json | ConvertFrom-Json -Depth 100
+            Assert-ProhibitedMaterialBoundary $sourceFreeSet
+            return $true
+        }
+        finally {
+            $document.Dispose()
+        }
+    }
+    catch {
+        return $false
+    }
+}
+
+function Assert-ManifestMatches {
+    param(
+        [object]$Manifest,
+        [object]$ComputedManifest,
+        [string]$ExpectedContractId,
+        [string]$FailurePrefix
+    )
+
+    Assert-True ($null -ne $Manifest) "${FailurePrefix}_missing"
+    Assert-True ($Manifest.contractId -ceq $ExpectedContractId) "${FailurePrefix}_contract_mismatch"
+    Assert-True ($Manifest.canonicalizationCode -ceq "role_ordered_ordinal_json_members_lf_v1") "${FailurePrefix}_canonicalization_mismatch"
+    Assert-True ($Manifest.memberCount -eq $ComputedManifest.MemberCount) "${FailurePrefix}_member_count_mismatch"
+    Assert-True ($Manifest.canonicalByteLength -eq $ComputedManifest.ByteLength) "${FailurePrefix}_byte_length_mismatch"
+    Assert-True ($Manifest.sha256 -ceq $ComputedManifest.Sha256) "${FailurePrefix}_sha_mismatch"
+}
+
+function Assert-ReadyPreflightObservationBinding {
+    param(
+        [string]$ObservationSetJson,
+        [string]$PreflightJson,
+        [string]$ObservationSetSchemaPath,
+        [string]$PreflightSchemaPath,
+        [string]$ObservationSetContractId
+    )
+
+    Assert-True (Test-CanonicalObservationSet $ObservationSetJson $ObservationSetSchemaPath $ObservationSetContractId) "phase3b2_local_observation_set_invalid"
+    Assert-True (Test-CanonicalAssessment $PreflightJson $PreflightSchemaPath) "phase3b2_local_preflight_assessment_invalid"
+
+    $observationDocument = [System.Text.Json.JsonDocument]::Parse($ObservationSetJson)
+    try {
+        $observationRoot = $observationDocument.RootElement
+        $computedManifest = Get-CanonicalObservationManifest $observationRoot
+        $observationAssessmentUid = $observationRoot.GetProperty("assessmentUid").GetString()
+        $observedAtUtc = [DateTimeOffset]::ParseExact(
+            $observationRoot.GetProperty("observedAtUtc").GetString(),
+            "yyyy-MM-dd'T'HH:mm:ss'Z'",
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal
+        )
+        $observationMembers = @($observationRoot.GetProperty("observations").EnumerateArray())
+
+        $externalBuildObservation = $observationMembers[3]
+        Assert-True ($externalBuildObservation.GetProperty("dotnetSdkVersion").GetString() -ceq "10.0.400") "phase3b2_local_external_sdk_mismatch"
+        Assert-True ($externalBuildObservation.GetProperty("selectedManagerPassedCount").GetInt32() -eq 59 -and
+            $externalBuildObservation.GetProperty("handlerIsolationPassedCount").GetInt32() -eq 5 -and
+            $externalBuildObservation.GetProperty("focusedTestFailedCount").GetInt32() -eq 0) "phase3b2_local_external_focused_test_mismatch"
+
+        $http3Listener = $observationMembers[13].GetProperty("http3Listener")
+        Assert-True ($http3Listener.GetProperty("protocolCode").GetString() -ceq "http3" -and
+            $http3Listener.GetProperty("transportCode").GetString() -ceq "udp" -and
+            $http3Listener.GetProperty("addressFamilyCode").GetString() -ceq "ipv4" -and
+            $http3Listener.GetProperty("bindAddressCode").GetString() -ceq "loopback_127_0_0_1" -and
+            $http3Listener.GetProperty("port").GetInt32() -eq 443 -and
+            $http3Listener.GetProperty("listenerCount").GetInt32() -eq 1) "phase3b2_local_http3_listener_mismatch"
+
+        $preflightDocument = [System.Text.Json.JsonDocument]::Parse($PreflightJson)
+        try {
+            $preflightAssessmentUid = $preflightDocument.RootElement.GetProperty("assessmentUid").GetString()
+            $preflightAssessedAtUtc = $preflightDocument.RootElement.GetProperty("assessedAtUtc").GetString()
+        }
+        finally {
+            $preflightDocument.Dispose()
+        }
+
+        $preflight = $PreflightJson | ConvertFrom-Json -Depth 100
+        Assert-True ($preflightAssessmentUid -ceq $observationAssessmentUid) "phase3b2_local_assessment_uid_binding_mismatch"
+        $assessedAtUtc = [DateTimeOffset]::ParseExact(
+            $preflightAssessedAtUtc,
+            "yyyy-MM-dd'T'HH:mm:ss'Z'",
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal
+        )
+        Assert-True ($assessedAtUtc -ge $observedAtUtc) "phase3b2_local_assessment_precedes_observation"
+        Assert-True ($preflight.verdict -ceq "ready_to_start_isolated_season26_reference_run") "phase3b2_local_preflight_not_ready"
+        Assert-FixedTarget $preflight
+        Assert-FixedExternalLineage $preflight
+        Assert-ProhibitedMaterialBoundary $preflight
+
+        Assert-True ($preflight.environment.environmentKindCode -ceq $observationMembers[0].GetProperty("environmentKindCode").GetString()) "phase3b2_local_environment_kind_binding_mismatch"
+        Assert-True ($preflight.environment.snapshotStatusCode -ceq "ready") "phase3b2_local_snapshot_not_ready"
+        Assert-True ($preflight.environment.systemTrustIsolationStatusCode -ceq "disposable_environment_only") "phase3b2_local_system_trust_not_isolated"
+        Assert-True ($preflight.environment.primaryInstallIntegrityStatusCode -ceq "unchanged") "phase3b2_local_primary_install_not_unchanged"
+        Assert-True ($preflight.environment.syntheticLocalAccountOnly -eq $true -and
+            $preflight.environment.officialAccountMaterialPresent -eq $false -and
+            $preflight.environment.clientExecutionStarted -eq $false) "phase3b2_local_environment_identity_or_execution_violation"
+
+        Assert-True ($preflight.runtimeInputs.clientBuildStatusCode -ceq "exact" -and
+            $preflight.runtimeInputs.externalLineageStatusCode -ceq "exact" -and
+            $preflight.runtimeInputs.reviewedRuntimeInputStatusCode -ceq "exact" -and
+            $preflight.runtimeInputs.reviewedRuntimeInputExpectedMemberCount -eq 4 -and
+            $preflight.runtimeInputs.reviewedRuntimeInputObservedMemberCount -eq 4) "phase3b2_local_runtime_inputs_not_exact"
+        Assert-True ($preflight.networkIsolation.processTreeScopeStatusCode -ceq "complete" -and
+            $preflight.networkIsolation.loopbackBindStatusCode -ceq "exact_127_0_0_1" -and
+            $preflight.networkIsolation.nonLoopbackEgressStatusCode -ceq "blocked" -and
+            $preflight.networkIsolation.coversIpv4 -eq $true -and
+            $preflight.networkIsolation.coversIpv6 -eq $true -and
+            $preflight.networkIsolation.coversDns -eq $true -and
+            $preflight.networkIsolation.coversTcp -eq $true -and
+            $preflight.networkIsolation.coversUdp -eq $true) "phase3b2_local_network_isolation_incomplete"
+        Assert-True ($preflight.mutationRollback.statusCode -ceq "prepared") "phase3b2_local_mutation_rollback_not_prepared"
+        $mutationObservation = $observationMembers[11]
+        $mutationBindings = @(
+            @($preflight.mutationRollback.systemHostsStatusCode, $mutationObservation.GetProperty("systemHosts").GetProperty("statusCode").GetString()),
+            @($preflight.mutationRollback.rootCaStatusCode, $mutationObservation.GetProperty("rootCa").GetProperty("statusCode").GetString()),
+            @($preflight.mutationRollback.clientCertificateBundleStatusCode, $mutationObservation.GetProperty("clientCertificateBundle").GetProperty("statusCode").GetString()),
+            @($preflight.mutationRollback.nativeCompatibilityShimStatusCode, $mutationObservation.GetProperty("nativeCompatibilityShim").GetProperty("statusCode").GetString())
+        )
+        foreach ($binding in $mutationBindings) {
+            Assert-True ($binding[0] -ceq $binding[1]) "phase3b2_local_mutation_member_binding_mismatch"
+            Assert-True ($binding[0] -ceq "not_applicable" -or $binding[0] -ceq "sealed_with_backup_and_rollback") "phase3b2_local_mutation_member_not_prepared"
+        }
+        Assert-True ($preflight.measuredEvidence.statusCode -ceq "measured_complete" -and
+            $preflight.measuredEvidence.observationCount -eq 18) "phase3b2_local_measured_evidence_incomplete"
+        Assert-True (@($preflight.blockingReasonCodes).Count -eq 0) "phase3b2_local_ready_preflight_has_blockers"
+        $expectedNextSteps = @(
+            "start_exact_bound_reference_run_once",
+            "preserve_assessment_pins_until_client_start",
+            "do_not_restart_or_restore_before_reference_run"
+        )
+        Assert-True ((@($preflight.nextStepRequirementCodes) -join "`n") -ceq ($expectedNextSteps -join "`n")) "phase3b2_local_next_step_contract_mismatch"
+
+        Assert-ManifestMatches $preflight.runtimeInputs.canonicalManifest $computedManifest $ObservationSetContractId "phase3b2_local_runtime_manifest"
+        Assert-ManifestMatches $preflight.networkIsolation.canonicalManifest $computedManifest $ObservationSetContractId "phase3b2_local_network_manifest"
+        Assert-ManifestMatches $preflight.mutationRollback.canonicalManifest $computedManifest $ObservationSetContractId "phase3b2_local_mutation_manifest"
+        Assert-ManifestMatches $preflight.measuredEvidence.canonicalManifest $computedManifest $ObservationSetContractId "phase3b2_local_measured_manifest"
+    }
+    finally {
+        $observationDocument.Dispose()
+    }
+}
+
 function Get-RepositoryJsonPaths {
     param([string]$RepositoryRoot)
 
@@ -185,12 +567,20 @@ $ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $ScriptDirectory ".."))
 $PreflightSchemaPath = Join-Path $RepositoryRoot "contracts/season26-classic-live-preflight.schema.json"
 $ReferenceRunSchemaPath = Join-Path $RepositoryRoot "contracts/season26-classic-reference-run.schema.json"
+$ObservationSetSchemaPath = Join-Path $RepositoryRoot "contracts/season26-classic-live-preflight-observation-set.schema.json"
 $PreflightRelativePath = "tests/fixtures/synthetic/season26-classic-live-preflight.blocked.json"
 $ReferenceRunRelativePath = "tests/fixtures/synthetic/season26-classic-reference-run.not-executed.json"
+$ObservationSetRelativePath = "tests/fixtures/synthetic/season26-classic-live-preflight-observation-set.valid.json"
 $PreflightPath = Join-Path $RepositoryRoot $PreflightRelativePath
 $ReferenceRunPath = Join-Path $RepositoryRoot $ReferenceRunRelativePath
+$ObservationSetPath = Join-Path $RepositoryRoot $ObservationSetRelativePath
 $PreflightContractId = "nll/season26-classic-live-preflight/v1"
 $ReferenceRunContractId = "nll/season26-classic-reference-run/v1"
+$ObservationSetContractId = "nll/season26-classic-live-preflight-observation-set/v1"
+
+$hasLocalObservationSet = -not [string]::IsNullOrWhiteSpace($LocalObservationSetPath)
+$hasLocalPreflightAssessment = -not [string]::IsNullOrWhiteSpace($LocalPreflightAssessmentPath)
+Assert-True ($hasLocalObservationSet -eq $hasLocalPreflightAssessment) "phase3b2_local_pair_paths_required_together"
 
 if ($ContractOnly) {
     Invoke-Checked "pwsh" @("-NoProfile", "-File", (Join-Path $ScriptDirectory "verify-phase3b1.ps1"), "-ContractOnly")
@@ -201,13 +591,17 @@ else {
 
 Assert-True (Test-Path -LiteralPath $PreflightSchemaPath -PathType Leaf) "phase3b2_preflight_schema_missing"
 Assert-True (Test-Path -LiteralPath $ReferenceRunSchemaPath -PathType Leaf) "phase3b2_reference_run_schema_missing"
+Assert-True (Test-Path -LiteralPath $ObservationSetSchemaPath -PathType Leaf) "phase3b2_observation_set_schema_missing"
 Assert-True (Test-Path -LiteralPath $PreflightPath -PathType Leaf) "phase3b2_blocked_preflight_fixture_missing"
 Assert-True (Test-Path -LiteralPath $ReferenceRunPath -PathType Leaf) "phase3b2_not_executed_reference_run_fixture_missing"
+Assert-True (Test-Path -LiteralPath $ObservationSetPath -PathType Leaf) "phase3b2_observation_set_fixture_missing"
 
 $preflightText = [System.IO.File]::ReadAllText($PreflightPath, [System.Text.UTF8Encoding]::new($false, $true))
 $referenceRunText = [System.IO.File]::ReadAllText($ReferenceRunPath, [System.Text.UTF8Encoding]::new($false, $true))
+$observationSetText = [System.IO.File]::ReadAllText($ObservationSetPath, [System.Text.UTF8Encoding]::new($false, $true))
 Assert-True (Test-CanonicalAssessment $preflightText $PreflightSchemaPath) "phase3b2_blocked_preflight_fixture_invalid"
 Assert-True (Test-CanonicalAssessment $referenceRunText $ReferenceRunSchemaPath) "phase3b2_not_executed_reference_run_fixture_invalid"
+Assert-True (Test-CanonicalObservationSet $observationSetText $ObservationSetSchemaPath $ObservationSetContractId) "phase3b2_observation_set_fixture_invalid"
 
 $preflight = $preflightText | ConvertFrom-Json -Depth 100
 $referenceRun = $referenceRunText | ConvertFrom-Json -Depth 100
@@ -274,9 +668,86 @@ $timestampCandidate = $referenceRunText | ConvertFrom-Json -Depth 100
 $timestampCandidate.assessedAtUtc = "2026-02-31T00:00:00Z"
 Assert-True (-not (Test-CanonicalAssessment ($timestampCandidate | ConvertTo-Json -Depth 100) $ReferenceRunSchemaPath)) "phase3b2_invalid_timestamp_accepted"
 
+$observationContractCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$observationContractCandidate.contractId = "nll/season26-classic-live-preflight-observation-set/v2"
+Assert-True (-not (Test-CanonicalObservationSet ($observationContractCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_observation_contract_drift_accepted"
+
+$observationOrderCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$firstObservation = $observationOrderCandidate.observations[0]
+$observationOrderCandidate.observations[0] = $observationOrderCandidate.observations[1]
+$observationOrderCandidate.observations[1] = $firstObservation
+Assert-True (-not (Test-CanonicalObservationSet ($observationOrderCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_observation_role_reorder_accepted"
+
+$runtimePackCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$runtimePackCandidate.observations[4] = $runtimePackCandidate.observations[5]
+Assert-True (-not (Test-CanonicalObservationSet ($runtimePackCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_distinct_runtime_pack_missing_accepted"
+
+$egressCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$egressCandidate.observations[10].nonLoopbackAttemptCount = 1
+Assert-True (-not (Test-CanonicalObservationSet ($egressCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_non_loopback_attempt_accepted"
+
+$wildcardListenerCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$wildcardListenerCandidate.observations[13].wildcardListenerCount = 1
+Assert-True (-not (Test-CanonicalObservationSet ($wildcardListenerCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_wildcard_listener_accepted"
+
+$http3ListenerCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$http3ListenerCandidate.observations[13].http3Listener.port = 444
+Assert-True (-not (Test-CanonicalObservationSet ($http3ListenerCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_http3_listener_drift_accepted"
+
+$externalSdkCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$externalSdkCandidate.observations[3].dotnetSdkVersion = "10.0.401"
+Assert-True (-not (Test-CanonicalObservationSet ($externalSdkCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_external_sdk_drift_accepted"
+
+$externalTestCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$externalTestCandidate.observations[3].focusedTestFailedCount = 1
+Assert-True (-not (Test-CanonicalObservationSet ($externalTestCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_external_focused_test_failure_accepted"
+
+$observationManifestCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$observationManifestCandidate.canonicalManifest.sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+Assert-True (-not (Test-CanonicalObservationSet ($observationManifestCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_observation_manifest_drift_accepted"
+
+$observationPathCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$observationPathCandidate.observations[0] | Add-Member -NotePropertyName "localPath" -NotePropertyValue "C:\synthetic"
+Assert-True (-not (Test-CanonicalObservationSet ($observationPathCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_observation_local_path_accepted"
+
+$observationProhibitedCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$observationProhibitedCandidate.prohibitedMaterial.certificateMaterialIncluded = $true
+Assert-True (-not (Test-CanonicalObservationSet ($observationProhibitedCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_observation_certificate_material_accepted"
+
+if ($hasLocalObservationSet) {
+    $resolvedLocalObservationSetPath = Assert-ExternalRegularJsonPath $LocalObservationSetPath $RepositoryRoot "phase3b2_local_observation_set"
+    $resolvedLocalPreflightAssessmentPath = Assert-ExternalRegularJsonPath $LocalPreflightAssessmentPath $RepositoryRoot "phase3b2_local_preflight_assessment"
+    $localObservationSetText = [System.IO.File]::ReadAllText($resolvedLocalObservationSetPath, [System.Text.UTF8Encoding]::new($false, $true))
+    $localPreflightAssessmentText = [System.IO.File]::ReadAllText($resolvedLocalPreflightAssessmentPath, [System.Text.UTF8Encoding]::new($false, $true))
+    Assert-ReadyPreflightObservationBinding $localObservationSetText $localPreflightAssessmentText $ObservationSetSchemaPath $PreflightSchemaPath $ObservationSetContractId
+
+    $manifestMutationCandidate = $localPreflightAssessmentText | ConvertFrom-Json -Depth 100
+    $manifestMutationCandidate.measuredEvidence.canonicalManifest.sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    $manifestMutationRejected = $false
+    try {
+        Assert-ReadyPreflightObservationBinding $localObservationSetText ($manifestMutationCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $PreflightSchemaPath $ObservationSetContractId
+    }
+    catch {
+        $manifestMutationRejected = $true
+    }
+    Assert-True $manifestMutationRejected "phase3b2_local_manifest_mutation_accepted"
+
+    $clientStartMutationCandidate = $localPreflightAssessmentText | ConvertFrom-Json -Depth 100
+    $clientStartMutationCandidate.environment.clientExecutionStarted = $true
+    $clientStartMutationRejected = $false
+    try {
+        Assert-ReadyPreflightObservationBinding $localObservationSetText ($clientStartMutationCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $PreflightSchemaPath $ObservationSetContractId
+    }
+    catch {
+        $clientStartMutationRejected = $true
+    }
+    Assert-True $clientStartMutationRejected "phase3b2_local_premature_client_start_accepted"
+}
+
 $inventory = Get-RepositoryJsonPaths $RepositoryRoot
 $preflightMatchingPaths = [System.Collections.Generic.List[string]]::new()
 $referenceRunMatchingPaths = [System.Collections.Generic.List[string]]::new()
+$observationSetMatchingPaths = [System.Collections.Generic.List[string]]::new()
 foreach ($candidatePath in $inventory) {
     $fullPath = Join-Path $RepositoryRoot $candidatePath
     try {
@@ -301,6 +772,10 @@ foreach ($candidatePath in $inventory) {
                 Assert-SafeJsonElement $document.RootElement
                 $referenceRunMatchingPaths.Add($candidatePath)
             }
+            elseif ($contractId -ceq $ObservationSetContractId) {
+                Assert-SafeJsonElement $document.RootElement
+                $observationSetMatchingPaths.Add($candidatePath)
+            }
         }
         finally {
             $document.Dispose()
@@ -317,6 +792,14 @@ Assert-True ($preflightMatchingPaths.Count -eq 1) "phase3b2_preflight_assessment
 Assert-True ($preflightMatchingPaths[0] -ceq $PreflightRelativePath) "phase3b2_preflight_assessment_inventory_path_mismatch"
 Assert-True ($referenceRunMatchingPaths.Count -eq 1) "phase3b2_reference_run_assessment_inventory_count_mismatch"
 Assert-True ($referenceRunMatchingPaths[0] -ceq $ReferenceRunRelativePath) "phase3b2_reference_run_assessment_inventory_path_mismatch"
+Assert-True ($observationSetMatchingPaths.Count -eq 1) "phase3b2_observation_set_inventory_count_mismatch"
+Assert-True ($observationSetMatchingPaths[0] -ceq $ObservationSetRelativePath) "phase3b2_observation_set_inventory_path_mismatch"
 
 $mode = if ($ContractOnly) { "contract-only" } else { "full baseline and contract" }
-Write-Output "Phase 3B-2 $mode scaffold verification passed; preflight remains blocked and unmeasured, the reference run is not executed, and no tracked receipt makes a live-ready or original-client-result claim."
+$localMode = if ($hasLocalObservationSet) {
+    " A Git-external measured observation set and ready preflight candidate were also validated; neither was copied into tracked evidence."
+}
+else {
+    ""
+}
+Write-Output "Phase 3B-2 $mode scaffold verification passed; tracked preflight remains blocked and the tracked reference run remains not executed.$localMode"

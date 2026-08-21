@@ -1,11 +1,21 @@
-# Phase 3B-2 Wave 0 — disposable preflight and reference-run contracts
+# Phase 3B-2 — disposable preflight and reference-run contracts
 
 ## 현재 판정
 
 상태: **`contract_scaffold_only`**
 
-현재 이 문서가 확정하는 것은 disposable 환경의 첫 Wave 0을 어떤 입력, 관측, 실패 우선순위와
-rollback 조건으로 판정할지뿐입니다.
+Wave 0 contract scaffold는 완료됐습니다. 현재 진행 대상인 Wave 1은 disposable 환경의 measured
+preflight이며, 실제 client reference run은 Wave 2입니다. 이 문서는 두 실행 wave가 어떤 입력, 관측,
+실패 우선순위와 rollback 조건으로 판정될지를 함께 고정합니다.
+
+| delivery wave | 범위 | client 실행 |
+|---|---|---|
+| Wave 0 | schema, verifier, blocked/not-executed 합성 fixture | 없음 |
+| Wave 1 | P0 cold admission과 P1 server-start/client-cold measured preflight | 없음 |
+| Wave 2 | exact Wave 1 receipt에 결박된 isolated original-client reference run과 rollback | 있음 |
+
+기존 machine section code `wave0_envelope`는 Wave 0 scaffold에서 동결된 wire 이름이므로 변경하지 않습니다.
+그 이름이 Wave 1·2의 측정이 이미 끝났다는 뜻은 아닙니다.
 
 - disposable VM/별도 OS measured preflight receipt: 없음; checked-in artifact는 blocked/not-executed 합성 fixture뿐
 - client `150.6.9` VM copy hash 검증: 미실행
@@ -15,9 +25,10 @@ rollback 조건으로 판정할지뿐입니다.
 - classic Solo Raid 시즌 26 화면·전투·result 관측: 없음
 - `GetLogs` client compatibility 관측: 없음
 - rollback 실행 증거: 없음
-- Wave 0 aggregate verdict: `not_evaluated`
+- Wave 1 measured-preflight verdict: `not_evaluated`
+- Wave 2 reference-run aggregate verdict: `not_evaluated`
 
-따라서 이 문서는 `GO`를 발행하지 않으며, `ready_for_3c`, `reference_run_passed`,
+따라서 현재 checked-in evidence는 `GO`를 발행하지 않으며, `ready_for_3c`, `reference_run_passed`,
 `original_client_result_observed_one_team` 또는 runtime parity를 주장하지 않습니다.
 [PHASE3B1.md](PHASE3B1.md)의 `ready_for_isolated_season26_reference_run`은 Wave 0에 들어갈 수 있는
 external selected-manager 입력의 판정이지, 이 문서의 VM/client proof가 이미 존재한다는 뜻이 아닙니다.
@@ -52,12 +63,16 @@ Wave 0의 direct client observation은 후속 3C/3D의 identity sealing과 Phase
 
 ## 동결된 machine contract ID
 
-Wave 0의 machine contract ID는 다음 두 개뿐입니다.
+Wave 0에서 동결한 assessment contract ID는 다음 두 개뿐입니다.
 
 | 역할 | contract ID | 의미 |
 |---|---|---|
 | live preflight | `nll/season26-classic-live-preflight/v1` | client 시작 전 환경·pin·build·network·backup과 client-start admission |
 | reference run | `nll/season26-classic-reference-run/v1` | 원본 client transition, 한 팀 result, GetLogs, rollback과 aggregate verdict |
+
+Wave 1의 Git-external P0/P1 관측을 deterministic stream으로 검증하기 위한 보조 contract는
+`nll/season26-classic-live-preflight-observation-set/v1`입니다. 이는 세 번째 assessment verdict가 아니며,
+18개 고정 role의 source-free local evidence shape와 ordinal JSON/LF canonicalization만 소유합니다.
 
 두 contract의 사람용 절차와 Git 밖 canonical observation manifest에서 다음 section/observation code를
 사용합니다. 이 값들은 독립된 contract ID나 machine receipt의 새 top-level property가 아닙니다.
@@ -83,8 +98,13 @@ fixture를 통과시켜도 live readiness나 reference-run 성공으로 승격�
 - reference-run [schema](../contracts/season26-classic-reference-run.schema.json)와
   [not-executed fixture](../tests/fixtures/synthetic/season26-classic-reference-run.not-executed.json):
   `verdict=not_executed_contract_scaffold_only`, `execution.statusCode=not_executed`
-- [contract verifier](../scripts/verify-phase3b2.ps1): 두 fixture의 schema/source-free/pin/fail-closed shape를
-  검사하지만 disposable environment 또는 client를 실행하지 않음
+- live-preflight observation-set [schema](../contracts/season26-classic-live-preflight-observation-set.schema.json)와
+  [합성 fixture](../tests/fixtures/synthetic/season26-classic-live-preflight-observation-set.valid.json):
+  18개 role와 canonicalization의 positive/negative control일 뿐 실제 environment 측정이 아님
+- [contract verifier](../scripts/verify-phase3b2.ps1): tracked 합성 fixture를 항상 검사하고, 두 external path를
+  함께 명시하면 Git-external observation set과 ready candidate의 exact digest binding도 검사함
+- [preflight sealer](../scripts/seal-phase3b2-preflight.ps1): 이미 측정된 Git-external observation set만 받아
+  external ready candidate를 생성·검증하며 입력을 수집하거나 server/client를 시작하지 않음
 
 ## 외부 dependency pin chain
 
@@ -149,7 +169,9 @@ Server나 client process를 시작하기 전에 다음을 모두 확인합니다
 - `C:\NIKKE` 주 설치본은 실행·수정 대상이 아니고 before digest가 기록됨
 - VM 내부 disposable client가 exact `150.6.9` build/content manifest와 일치함
 - synthetic local account만 준비되어 있고 official credential, cookie, session과 token이 없음
-- 외부 pin chain, clean tree, toolchain, build artifact와 네 개의 reviewed locale/runtime input이 exact
+- 외부 pin chain, clean tree, toolchain과 fresh build artifact가 exact
+- server-cold `--local-only` 시작에 필요한 reviewed `StaticData.pack`이 별도 필수 runtime input으로 exact
+- 네 개의 reviewed locale input이 exact; 이 4개 count에 `StaticData.pack`을 합산하지 않음
 - server의 `--headless --local-only` 또는 동등한 fail-closed local-only 설정이 effective함
 - client, launcher, server와 관련 child process 전체에 non-loopback deny가 적용되고 관측 seam이 준비됨
 - local endpoint는 `127.0.0.1` exact bind만 허용되며 wildcard/LAN/public bind와 port forwarding이 없음
@@ -274,9 +296,11 @@ Aggregate receipt의 `evidence_strength`는 실제로 완료한 가장 강한 �
 
 ## Source-free receipt fields
 
-Tracked receipt에는 두 checked-in machine schema가 허용하는 source-free field군만 사용합니다. 현재
-blocked/not-executed 합성 fixture의 값이나 schema-valid 임의 값은 measured ready/live evidence로 간주하지
-않습니다.
+Assessment receipt에는 두 checked-in machine schema가 허용하는 source-free field군만 사용합니다. 현재
+저장소 정책상 직접 만든 합성 fixture만 track하므로 measured ready candidate와 그 raw observation set은
+Git 밖에 둡니다. blocked/not-executed 합성 fixture의 값이나 schema-valid 임의 값은 measured ready/live
+evidence로 간주하지 않습니다. 향후 measured receipt를 track하려면 먼저 `AGENTS.md`의 private-remote
+허용 범위를 명시적으로 변경해야 합니다.
 
 ### 공통 field군
 
@@ -316,7 +340,7 @@ preflight binding, completed execution, verified classic boundary, verified orig
 각 canonical manifest는 contract ID, canonicalization code, member count, canonical byte length와 SHA-256만
 포함합니다. Raw observation 자체나 GetLogs outcome을 machine receipt의 새 top-level property로 추가하지 않습니다.
 
-Tracked receipt에는 raw game/account/manager/raid/preset/wave/monster/asset ID, raw damage value, request/response,
+Assessment receipt에는 raw game/account/manager/raid/preset/wave/monster/asset ID, raw damage value, request/response,
 decoded row, original screenshot/video, local path, hostname, user name, credential/token, certificate/key, firewall rule
 내용, binary 또는 client snapshot을 넣지 않습니다. 이러한 local evidence가 필요하면 Git 밖에 보관하고 receipt에는
 비가역 digest와 최소 provenance만 남깁니다.

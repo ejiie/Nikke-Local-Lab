@@ -67,6 +67,10 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/verify-phase3b1.ps1
 
+      - name: Verify Phase 3B-2 source-free contracts
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/verify-phase3b2.ps1 -ContractOnly
+
       - name: Verify Actions automation contract
         shell: pwsh
         run: pwsh -NoProfile -File scripts/verify-actions-contract.ps1

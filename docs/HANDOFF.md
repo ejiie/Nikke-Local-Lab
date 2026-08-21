@@ -31,8 +31,10 @@ Git checkout은 항상 원격 `main`을 fetch한 뒤 현재 HEAD를 다시 확�
    구현하고 source-free receipt를 봉인했습니다.
 6. Phase 3B-1 external focused 결과는 selected-manager/lifecycle `58/58`, dispatch isolation `5/5`,
    Release build 오류 `0`입니다.
-7. Phase 3B-2 Wave 0에서 preflight/reference-run source-free schema, blocked/not-executed 합성 fixture와
-   전용 verifier를 추가했습니다. 이는 measured ready receipt나 actual-client 실행 증거가 아닙니다.
+7. Phase 3B-2 Wave 0 contract scaffold에서 preflight/reference-run source-free schema, blocked/not-executed 합성
+   fixture와 전용 verifier를 추가했습니다. Wave 1 준비 branch에서는 18-role local observation-set schema,
+   합성 fixture, external candidate sealer와 verifier binding mode를 보강했습니다. 이는 measured ready receipt나
+   actual-client 실행 증거가 아닙니다.
 
 아직 완료하지 않은 것은 original-client battle/HUD/result, Local Lab bridge, one-team observation sealing,
 1~5팀 runtime parity와 다른 시즌 확장입니다.
@@ -74,9 +76,14 @@ Latest preflight patch에서 확인한 코드 상태는 다음과 같습니다.
 
 ## 바로 다음 단계 — Phase 3B-2
 
-다음 작업은 [PHASE3B2.md](PHASE3B2.md)의 preflight 계약을 disposable VM 또는 별도 disposable OS의
-실측값으로 봉인한 뒤 시즌 26 reference run을 실행하는 것입니다.
+다음 작업은 [PHASE3B2.md](PHASE3B2.md)의 Wave 1 preflight 계약을 disposable VM 또는 별도 disposable
+OS의 실측값으로 봉인하는 것입니다. Client를 실제로 시작하는 시즌 26 reference run은 Wave 2입니다.
 단순 client 디렉터리 복제본이나 주 Windows 설치본에서는 실행하지 않습니다.
+
+현재 host에서는 Windows Sandbox 기능 활성화가 예약됐고 적용을 위한 재부팅이 필요합니다. 재부팅 뒤
+networking disabled Sandbox를 `separate_disposable_os`로 검산하고, 같은 Sandbox session 안에서 P0와 P1을
+완료합니다. Sandbox 종료·server 재시작·pin 또는 manifest 변경 뒤에는 기존 ready candidate를 재사용하지
+않고 새 assessment를 봉인합니다.
 
 실행 전 필수 gate는 다음과 같습니다.
 
@@ -87,9 +94,15 @@ Latest preflight patch에서 확인한 코드 상태는 다음과 같습니다.
 5. selector의 `GameRoot`가 VM 안의 disposable client를 가리키고 주 설치본 `C:\NIKKE`가 before/after hash상
    불변인지 확인합니다.
 6. hosts, root CA, client certificate bundle과 native shim 변경의 backup·rollback manifest를 준비합니다.
-7. reviewed locale/runtime input 네 파일의 exact byte length와 SHA-256을 Git 비추적 trusted manifest에
-   기록하고 VM copy에서 재계산합니다. 현재 validator의 `NKDB` magic 확인만으로는 충분하지 않습니다.
-8. 위 결과를 source-free 3B-2 preflight receipt로 봉인한 뒤에만 server와 client를 시작합니다.
+7. server-cold `--local-only` 시작에 필요한 reviewed `StaticData.pack`을 별도 필수 input으로 준비하고 exact
+   byte length와 SHA-256을 Git 비추적 trusted manifest에 기록합니다. 공식 endpoint에서 자동 취득하지 않습니다.
+8. reviewed locale input 네 파일의 exact byte length와 SHA-256을 별도 4-role로 기록하고 VM copy에서
+   재계산합니다. 현재 validator의 `NKDB` magic 확인만으로는 충분하지 않습니다.
+9. P0 trusted observation set을 server 시작 전에 봉인하고, server만 시작해 HTTP 80, HTTPS 443과 HTTP/3
+   UDP 443이 모두 IPv4 `127.0.0.1`에만 존재하며 process-tree non-loopback 시도·성공이 0인지 P1에서
+   측정합니다. Client는 계속 cold 상태여야 합니다.
+10. P0/P1 18-role observation set과 source-free ready candidate의 canonical digest binding이 검증된 뒤에만
+    Wave 2 client 시작을 허용합니다.
 
 Reference run의 목표 전이는 다음과 같습니다.
 
@@ -137,6 +150,8 @@ Actions 또는 명시적으로 보호된 disposable test DB에서 실행합니�
 ejiie/Nikke-Local-Lab의 최신 main을 source of truth로 사용한다.
 AGENTS.md의 문서를 지정된 순서대로 전부 읽고 docs/HANDOFF.md에서 현재 운영 위치를 확인한다.
 Phase 3B-2 Wave 0 contract scaffold까지 완료됐으며 checked-in fixture는 blocked/not-executed뿐이다.
+다음 작업은 client를 시작하지 않는 Wave 1 measured preflight이고, 그 exact receipt에 결박된 original-client
+reference run은 Wave 2이다.
 다음 단계는 disposable VM/별도 OS에서 source-free measured preflight를 먼저 봉인한 뒤 시즌 26 classic
 Solo Raid 3B-2 reference run을 실행하는 것이다. Museum은 금지되고 fallback도 허용하지 않는다.
 구현 또는 실행 전에 최신 main, 외부 EpinelPS patch commit, toolchain과 preflight gate를 재검증하라.
