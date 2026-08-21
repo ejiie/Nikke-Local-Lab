@@ -315,9 +315,16 @@ public sealed class PrivateServerApiSecurityTests
     Assert.Equal(HttpStatusCode.Forbidden, wrongScopeResponse.StatusCode);
     Assert.Equal("local_session_scope_rejected", await ReadCodeAsync(wrongScopeResponse));
 
+    const string base64UrlAlphabet =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    var finalCharacterIndex = base64UrlAlphabet.IndexOf(grant.Token[^1]);
+    Assert.True(finalCharacterIndex >= 0);
+    Assert.Equal(0, finalCharacterIndex % 4);
+    var nonCanonicalEquivalent =
+        grant.Token[..^1] + base64UrlAlphabet[finalCharacterIndex + 1];
     using var tampered = fixture.CreateProtectedGet(
         grant.SeasonsPath,
-        grant.Token[..^1] + (grant.Token[^1] == 'a' ? "b" : "a"));
+        nonCanonicalEquivalent);
     var tamperedResponse = await fixture.Client.SendAsync(tampered);
     Assert.Equal(HttpStatusCode.Unauthorized, tamperedResponse.StatusCode);
 
