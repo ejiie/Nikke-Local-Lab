@@ -146,7 +146,8 @@ internal sealed class PrivateServerSessionTokenProtector : IDisposable
     try
     {
       bytes = Convert.FromBase64String(value.Replace('-', '+').Replace('_', '/') + "=");
-      if (bytes.Length == 32)
+      if (bytes.Length == 32 &&
+          string.Equals(value, Base64Url(bytes), StringComparison.Ordinal))
       {
         return true;
       }
