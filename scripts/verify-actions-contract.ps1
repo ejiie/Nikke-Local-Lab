@@ -33,6 +33,11 @@ if (-not (Test-Path -LiteralPath $WorkflowPath -PathType Leaf)) {
 $Workflow = Get-Content -Raw -LiteralPath $WorkflowPath
 $HookPath = Join-Path $RepositoryRoot ".githooks/pre-commit"
 $Hook = Get-Content -Raw -LiteralPath $HookPath
+$Phase3B1Path = Join-Path $RepositoryRoot "scripts/verify-phase3b1.ps1"
+if (-not (Test-Path -LiteralPath $Phase3B1Path -PathType Leaf)) {
+    throw "Phase 3B-1 verification script is missing."
+}
+$Phase3B1 = Get-Content -Raw -LiteralPath $Phase3B1Path
 
 Assert-Contains $Workflow '(?m)^\s*push:\s*$' "Workflow must run from a push event."
 Assert-Contains $Workflow '(?m)^\s*-\s+"agent/\*\*"\s*$' "Workflow must be limited to agent/** branches."
@@ -42,9 +47,9 @@ Assert-Contains $Workflow '(?m)^\s*group:\s*agent-publish-main\s*$' "Agent workf
 Assert-Contains $Workflow 'needs:\s*\[validate,\s*postgres\]' "Publish job must depend on Windows and PostgreSQL validation."
 Assert-Contains $Workflow 'verify-repository\.ps1\s+-Mode\s+tracked\s+-AllowRemote' "Workflow must enforce the repository boundary with explicit remote allowance."
 Assert-Contains $Workflow 'verify-phase0-contract\.ps1' "Workflow must run Phase 0 contract checks."
-Assert-Contains $Workflow 'verify-phase2a1\.ps1' "Workflow must run Phase 2A1 build and test checks."
-Assert-Contains $Workflow 'verify-phase2a1\.ps1\s+-Integration' "Workflow must run live PostgreSQL integration checks."
-Assert-Contains $Workflow 'name:\s*Verify Phase 2A1 with PostgreSQL' "PostgreSQL validation job must name the Phase 2A1 gate."
+Assert-Contains $Workflow 'verify-phase3b1\.ps1' "Workflow must run the Phase 3B-1 selected-manager contract and completed baseline checks."
+Assert-Contains $Workflow 'verify-phase2b\.ps1\s+-Integration' "Workflow must run live PostgreSQL integration checks."
+Assert-Contains $Workflow 'name:\s*Verify Phase 2B with PostgreSQL' "PostgreSQL validation job must name the Phase 2B gate."
 Assert-Contains $Workflow 'verify-actions-contract\.ps1' "Workflow must validate its own automation contract."
 Assert-Contains $Workflow 'gh\s+pr\s+create' "Workflow must create or reuse a pull request."
 Assert-Contains $Workflow 'gh\s+pr\s+merge' "Workflow must merge through the pull request."
@@ -71,6 +76,7 @@ Assert-NotContains $Workflow 'character-catalog-(inspect|import)' "Actions must 
 Assert-NotContains $Workflow 'raid-catalog-(inspect|import)' "Actions must never read an actual local raid source."
 Assert-NotContains $Workflow 'combat-support-catalog-(inspect|import)' "Actions must never read an actual local combat-support source."
 Assert-NotContains $Workflow 'NIKKE_LAB_ID_SECRET' "Actions must not receive a local identity secret."
+Assert-NotContains $Workflow 'LocalAssessmentPath|NIKKE_LAB_.*EVIDENCE|ready_for_phase3b' "Actions must not receive or assert local original-client evidence."
 Assert-NotContains $Workflow 'upload-artifact' "Actions must not upload import outputs or source-derived artifacts."
 
 $ValidateBlock = [regex]::Match($Workflow, '(?ms)^  validate:\s*$.*?(?=^  postgres:\s*$)').Value
@@ -89,7 +95,8 @@ Assert-NotContains $PublishBlock 'actions/checkout' "Write-enabled publish job m
 Assert-Contains $Hook '(?m)^set -eu\s*$' "Pre-commit hook must stop on the first failed check."
 Assert-Contains $Hook 'verify-repository\.ps1.*-AllowRemote' "Pre-commit hook must verify the repository boundary."
 Assert-Contains $Hook 'verify-phase0-contract\.ps1' "Pre-commit hook must verify Phase 0 contracts."
-Assert-Contains $Hook 'verify-phase2a1\.ps1' "Pre-commit hook must verify Phase 2A1 locally."
+Assert-Contains $Hook 'verify-phase3b1\.ps1' "Pre-commit hook must verify Phase 3B-1 and the completed baseline locally."
 Assert-Contains $Hook 'verify-actions-contract\.ps1' "Pre-commit hook must verify Actions automation."
+Assert-Contains $Phase3B1 'verify-phase3b0\.ps1' "Phase 3B-1 must preserve the Phase 3B-0, historical Phase 3A, and completed baseline chain."
 
 Write-Output "GitHub Actions owner-only validate/PR/merge contract passed."

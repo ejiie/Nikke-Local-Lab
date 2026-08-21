@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:season26-classic-target-observation:v1",
+  "title": "Season26ClassicTargetObservation",
+  "description": "Source-free contract for recomputing the exact Season 26 classic Solo Raid target binding from EpinelPS GameData. It contains no raw manager, preset, wave, monster, model, or stat identifiers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "sourceClosureContractId",
+    "sourceObservationRoleCode",
+    "sourceObservationSha256",
+    "clientBuildVersion",
+    "seasonNumber",
+    "modeCode",
+    "museumAllowed",
+    "recordRoleCount",
+    "canonicalLineCount",
+    "canonicalByteLength",
+    "sha256",
+    "recomputedMatch"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "nll/season26-classic-target-observation/v1" },
+    "sourceClosureContractId": { "const": "nll/season26-classic-solo-raid-closure/v1" },
+    "sourceObservationRoleCode": { "const": "staticdata_archive_target" },
+    "sourceObservationSha256": { "const": "925762cd3ef56601916b2e2ae58f929d4dd389055b0d8bcd2176e9abd9b29e69" },
+    "clientBuildVersion": { "const": "150.6.9" },
+    "seasonNumber": { "const": 26 },
+    "modeCode": { "const": "classic_solo_raid" },
+    "museumAllowed": { "const": false },
+    "recordRoleCount": { "const": 6 },
+    "canonicalLineCount": { "const": 150 },
+    "canonicalByteLength": { "const": 6684 },
+    "sha256": { "const": "ed3a8682d0bbb2b49394db1c862da74a8c44cab097188cad3d5b5851dc5f50ba" },
+    "recomputedMatch": { "const": true }
+  },
+  "x-nll-canonicalization": {
+    "canonicalizationCode": "role_path_type_value_tsv_lf/v1",
+    "encoding": "utf-8",
+    "lineEnding": "lf",
+    "terminalLf": true,
+    "headerLine": "contractId\tstring\tnll/season26-classic-target-observation/v1",
+    "fieldLineFormat": "{roleCode}\t{path}\t{typeCode}\t{value}",
+    "roleOrder": [
+      "manager",
+      "challenge_preset",
+      "wave",
+      "monster",
+      "model",
+      "stat_enhance"
+    ],
+    "scalarEncoding": {
+      "int32": "invariant base-10; optional leading minus only; zero is 0; no plus sign or leading zero",
+      "int64": "invariant base-10; optional leading minus only; zero is 0; no plus sign or leading zero",
+      "uint32": "invariant unsigned base-10; zero is 0; no plus sign or leading zero",
+      "bool": "lowercase true or false",
+      "string": "Unicode NFC; tab, CR, and LF forbidden"
+    },
+    "arrayEncoding": "Preserve source order. Emit {path}.count as uint32, then each item as {path}[i]. Nested arrays repeat the same rule.",
+    "selectionRules": [
+      "The operator supplies a raw manager identifier only through an untracked local binding; it is never part of this checked-in contract.",
+      "Resolve exactly one manager row, one Challenge preset with numeric difficultyType 2 and waveOrder 8, one referenced wave row, one exact target/spawn-intersection monster row, one referenced model row, and one stat-enhance row whose group matches the monster and whose level matches the preset.",
+      "Reject missing or duplicate rows, a target/spawn intersection other than exactly one monster, a Museum row, and every caller-supplied expected digest.",
+      "Enums are encoded by their signed int32 underlying value. No culture-sensitive names or floating-point text participate in the observation.",
+      "monster.skillData includes only entries whose skillId is nonzero and preserves their original row order; every included use/hurt function list preserves source order including zero sentinels."
+    ],
+    "roles": [
+      {
+        "roleCode": "manager",
+        "recordType": "SoloRaidManagerRecord",
+        "expectedLineCount": 3,
+        "fields": [
+          "id:int32",
+          "monsterPreset:int32",
+          "rankingGroupId:int32"
+        ]
+      },
+      {
+        "roleCode": "challenge_preset",
+        "recordType": "SoloRaidPresetRecord",
+        "expectedLineCount": 13,
+        "fields": [
+          "id:int32",
+          "presetGroupId:int32",
+          "difficultyType:int32",
+          "quickBattleType:int32",
+          "characterLv:int32",
+          "waveOpenCondition:int32",
+          "waveOrder:int32",
+          "wave:int32",
+          "monsterStageLv:int32",
+          "monsterStageLvChangeGroup:int32",
+          "dynamicObjectStageLv:int32",
+          "coverStageLv:int32",
+          "spotAutocontrol:bool"
+        ]
+      },
+      {
+        "roleCode": "wave",
+        "recordType": "WaveDataRecord",
+        "expectedLineCount": 13,
+        "fields": [
+          "stageId:int32",
+          "groupId:string",
+          "spotMod:int32",
+          "battleTime:int32",
+          "monsterCount:int32",
+          "targetList:array<int64>",
+          "waveData:array<object{wavePath:string,privateMonsterCount:int32,waveMonsterList:array<object{waveMonsterId:int64,spawnType:int32}>}>"
+        ]
+      },
+      {
+        "roleCode": "monster",
+        "recordType": "MonsterRecord",
+        "expectedLineCount": 96,
+        "fields": [
+          "id:int64",
+          "monsterModelId:int32",
+          "uiGrade:int32",
+          "hpRatio:int32",
+          "defenceRatio:int32",
+          "attackRatio:int32",
+          "defenceRatioRatio:int32",
+          "energyResistRatio:int32",
+          "metalResistRatio:int32",
+          "bioResistRatio:int32",
+          "spotAi:string",
+          "spotAiDefense:string",
+          "spotAiBasedefense:string",
+          "fixedSpawnType:int32",
+          "passiveSkillId:int32",
+          "statenhanceId:int32",
+          "elementId:array<int32>",
+          "skillData:array<object{skillId:int32,useFunctionIdSkill:array<int32>,hurtFunctionIdSkill:array<int32>}>"
+        ]
+      },
+      {
+        "roleCode": "model",
+        "recordType": "MonsterModelRecord",
+        "expectedLineCount": 12,
+        "fields": [
+          "id:int32",
+          "resourceId:int32",
+          "monPrefab:string",
+          "grade:int32",
+          "size:int32",
+          "dissolveType:int32",
+          "attribute:int32",
+          "moveType:int32",
+          "categoryType1:int32",
+          "categoryType2:int32",
+          "categoryType3:int32",
+          "class:int32"
+        ]
+      },
+      {
+        "roleCode": "stat_enhance",
+        "recordType": "MonsterStatEnhanceRecord",
+        "expectedLineCount": 12,
+        "fields": [
+          "id:int32",
+          "groupId:int32",
+          "lv:int32",
+          "levelHp:int64",
+          "levelAttack:int32",
+          "levelDefence:int32",
+          "levelStatdamageratio:int32",
+          "levelEnergyResist:int32",
+          "levelMetalResist:int32",
+          "levelBioResist:int32",
+          "levelProjectileHp:int32",
+          "levelBrokenHp:int64"
+        ]
+      }
+    ]
+  }
+}

@@ -10,12 +10,17 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\NikkeLocalLab.Application\NikkeLocalLab.Application.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Application.ProfileManagement\NikkeLocalLab.Application.ProfileManagement.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Application.PrivateServer\NikkeLocalLab.Application.PrivateServer.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.Character\NikkeLocalLab.Domain.Character.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.CombatSupport\NikkeLocalLab.Domain.CombatSupport.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.LocalGameState\NikkeLocalLab.Domain.LocalGameState.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.Profile\NikkeLocalLab.Domain.Profile.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.PrivateServer\NikkeLocalLab.Domain.PrivateServer.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.Raid\NikkeLocalLab.Domain.Raid.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Identity\NikkeLocalLab.Identity.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Import.Sources\NikkeLocalLab.Import.Sources.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Import.Profile\NikkeLocalLab.Import.Profile.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Persistence.PostgreSql\NikkeLocalLab.Persistence.PostgreSql.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Provenance\NikkeLocalLab.Provenance.csproj" />
   </ItemGroup>

@@ -63,16 +63,16 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
 
-      - name: Verify Phase 2A1 build and unit contracts
+      - name: Verify Phase 3B-1 selected-manager contract and completed baseline
         shell: pwsh
-        run: pwsh -NoProfile -File scripts/verify-phase2a1.ps1
+        run: pwsh -NoProfile -File scripts/verify-phase3b1.ps1
 
       - name: Verify Actions automation contract
         shell: pwsh
         run: pwsh -NoProfile -File scripts/verify-actions-contract.ps1
 
   postgres:
-    name: Verify Phase 2A1 with PostgreSQL
+    name: Verify Phase 2B with PostgreSQL
     if: ${{ github.actor == github.repository_owner }}
     permissions:
       contents: read
@@ -125,9 +125,9 @@ jobs:
               throw "Feature branch does not produce a clean merge result with origin/main."
           }
 
-      - name: Verify Phase 2A1 with PostgreSQL
+      - name: Verify Phase 2B with PostgreSQL
         shell: pwsh
-        run: pwsh -NoProfile -File scripts/verify-phase2a1.ps1 -Integration
+        run: pwsh -NoProfile -File scripts/verify-phase2b.ps1 -Integration
 
   publish:
     name: Open PR and squash merge
@@ -177,7 +177,7 @@ jobs:
             body="$(printf '%s\n' \
               'Created by the owner-only agent branch workflow.' \
               '' \
-              'The same workflow validated repository boundaries, Phase 0, Phase 2A1 on Windows and PostgreSQL, and the automation contract before opening this PR.')"
+              'The same workflow validated repository boundaries, Phase 0, Phase 2B on Windows and PostgreSQL, and the automation contract before opening this PR.')"
             pr_url="$(gh pr create \
               --repo "$GITHUB_REPOSITORY" \
               --head "$HEAD_BRANCH" \

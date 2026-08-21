@@ -1,6 +1,7 @@
 using NikkeLocalLab.Configuration;
 using NikkeLocalLab.Import.CharacterCatalog;
 using NikkeLocalLab.Import.CombatSupportCatalog;
+using NikkeLocalLab.Import.Profile;
 using NikkeLocalLab.Import.RaidCatalog;
 using NikkeLocalLab.Import.Sources;
 using NikkeLocalLab.Persistence.PostgreSql;
@@ -77,6 +78,15 @@ internal static class ImportCli
               configuration,
               repositoryRoot,
               options).ConfigureAwait(false);
+        case "profile-source-inspect":
+          return await ProfileSanitizerCli.InspectAsync(
+              configuration,
+              repositoryRoot).ConfigureAwait(false);
+        case "profile-draft-import":
+          return await ProfileDraftImportCli.ImportAsync(
+              configuration,
+              repositoryRoot,
+              options).ConfigureAwait(false);
         default:
           return Fail("command_not_supported");
       }
@@ -118,6 +128,18 @@ internal static class ImportCli
       return Fail(exception.Code);
     }
     catch (RaidSnapshotIntegrityException exception)
+    {
+      return Fail(exception.Code);
+    }
+    catch (SanitizedProfileDraftCodecException exception)
+    {
+      return Fail(exception.Code);
+    }
+    catch (LocalAccountProfileIntegrityException exception)
+    {
+      return Fail(exception.Code);
+    }
+    catch (LocalGameStateIntegrityException exception)
     {
       return Fail(exception.Code);
     }

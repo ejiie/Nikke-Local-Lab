@@ -181,7 +181,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(5, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     await using var connection = await dataSource.OpenConnectionAsync();
     var forbidden = await ReadForbiddenProfileColumnsAsync(connection);
@@ -220,7 +220,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(5, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishSyntheticCatalogsAsync(dataSource, 5);
     var support = await ReadSupportSelectionsAsync(
         dataSource,
@@ -265,7 +265,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(5, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishSyntheticCatalogsAsync(
         dataSource,
         5,
@@ -306,7 +306,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(5, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishSyntheticCatalogsAsync(dataSource, 5);
     var support = await ReadSupportSelectionsAsync(
         dataSource,
@@ -395,7 +395,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(5, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishSyntheticCatalogsAsync(dataSource, 5);
     var support = await ReadSupportSelectionsAsync(
         dataSource,
@@ -438,7 +438,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(5, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishSyntheticCatalogsAsync(
         dataSource,
         5,
@@ -487,7 +487,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(5, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishSyntheticCatalogsAsync(dataSource, 192);
     var support = await ReadSupportSelectionsAsync(
         dataSource,
@@ -1679,7 +1679,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
             "NIKKE_LAB_TEST_DB is required for PostgreSQL integration tests.");
     var validated = PostgreSqlConnectionPolicy.Validate(connectionString);
     var builder = new NpgsqlConnectionStringBuilder(validated);
-    Assert.Equal("nikke_local_lab_test", builder.Database);
+    PostgreSqlTestDatabaseGuard.RequireDisposableDatabase(builder);
     return PostgreSqlDataSourceFactory.Create(validated);
   }
 
@@ -1695,6 +1695,8 @@ public sealed class PostgreSqlLocalAccountProfileTests
 
     await using var command = dataSource.CreateCommand(
         """
+        DROP SCHEMA IF EXISTS lab_private_server CASCADE;
+        DROP SCHEMA IF EXISTS lab_local_game CASCADE;
         DROP SCHEMA IF EXISTS lab_profile CASCADE;
         DROP SCHEMA IF EXISTS lab_combat_support CASCADE;
         DROP SCHEMA IF EXISTS lab_raid CASCADE;

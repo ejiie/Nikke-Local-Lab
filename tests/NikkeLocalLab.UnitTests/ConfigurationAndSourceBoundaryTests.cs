@@ -32,6 +32,73 @@ public sealed class ConfigurationAndSourceBoundaryTests
     Assert.Equal(sourceRoot, resolved.GameRoot);
     Assert.Equal(runtimeRoot, resolved.RuntimeRoot);
     Assert.Equal("NIKKE_LAB_DB", resolved.DatabaseConnectionStringEnvironmentVariable);
+    Assert.Equal("127.0.0.1", resolved.BindAddress);
+    Assert.Equal(17878, resolved.AdminPort);
+    Assert.Equal(17879, resolved.PrivateServerPort);
+    Assert.Equal(
+        "challenge-operational-policy/unresolved/v1",
+        resolved.ChallengeOperationalPolicy.PolicyId);
+    Assert.Null(resolved.ChallengeOperationalPolicy.DailyEntryLimit);
+  }
+
+  [Fact]
+  public void FullyExplicitVersionedChallengeOperationalPolicyCanBeConfigured()
+  {
+    using var temporary = new TemporaryDirectory();
+    var sourceRoot = temporary.CreateDirectory("source");
+    var repositoryRoot = temporary.CreateDirectory("repository");
+    var runtimeRoot = System.IO.Path.Combine(temporary.Path, "runtime-home");
+    var configPath = WriteConfig(temporary.Path, sourceRoot);
+    var document = JsonNode.Parse(File.ReadAllText(configPath))?.AsObject()
+        ?? throw new InvalidOperationException("The synthetic configuration is invalid.");
+    var policy = document["soloRaid"]!["challengeOperationalPolicy"]!.AsObject();
+    policy["policyId"] = "challenge-operational-policy/local-explicit/v1";
+    policy["resolutionStatus"] = "configured";
+    policy["dailyEntryLimit"] = 3;
+    policy["entryConsumptionPoint"] = "run_opened";
+    policy["activeRunAtReset"] = "pin_opening_raid_day";
+    policy["dailyCounterScope"] = "per_season";
+    policy["mockBattleCapability"] = "unsupported";
+    policy["localRankingCapability"] = "unsupported";
+    File.WriteAllText(configPath, document.ToJsonString());
+
+    var resolved = LabConfigurationLoader.Load(
+        configPath,
+        repositoryRoot,
+        new FakeEnvironment(runtimeRoot, null));
+
+    Assert.Equal("configured", resolved.ChallengeOperationalPolicy.ResolutionStatus);
+    Assert.Equal(3, resolved.ChallengeOperationalPolicy.DailyEntryLimit);
+    Assert.Equal("run_opened", resolved.ChallengeOperationalPolicy.EntryConsumptionPoint);
+  }
+
+  [Fact]
+  public void ReservedUnresolvedPolicyIdentityCannotClaimConfiguredFacts()
+  {
+    using var temporary = new TemporaryDirectory();
+    var sourceRoot = temporary.CreateDirectory("source");
+    var repositoryRoot = temporary.CreateDirectory("repository");
+    var runtimeRoot = System.IO.Path.Combine(temporary.Path, "runtime-home");
+    var configPath = WriteConfig(temporary.Path, sourceRoot);
+    var document = JsonNode.Parse(File.ReadAllText(configPath))?.AsObject()
+        ?? throw new InvalidOperationException("The synthetic configuration is invalid.");
+    var policy = document["soloRaid"]!["challengeOperationalPolicy"]!.AsObject();
+    policy["resolutionStatus"] = "configured";
+    policy["dailyEntryLimit"] = 3;
+    policy["entryConsumptionPoint"] = "run_opened";
+    policy["activeRunAtReset"] = "pin_opening_raid_day";
+    policy["dailyCounterScope"] = "per_season";
+    policy["mockBattleCapability"] = "unsupported";
+    policy["localRankingCapability"] = "unsupported";
+    File.WriteAllText(configPath, document.ToJsonString());
+
+    var exception = Assert.Throws<LabConfigurationException>(() =>
+        LabConfigurationLoader.Load(
+            configPath,
+            repositoryRoot,
+            new FakeEnvironment(runtimeRoot, null)));
+
+    Assert.Equal("solo_raid_configuration_invalid", exception.Code);
   }
 
   [Fact]
@@ -49,6 +116,79 @@ public sealed class ConfigurationAndSourceBoundaryTests
     soloRaid["unionRaidEnabled"] = true;
     File.WriteAllText(configPath, document.ToJsonString());
 
+    var exception = Assert.Throws<LabConfigurationException>(() =>
+        LabConfigurationLoader.Load(configPath, repositoryRoot, new FakeEnvironment(runtimeRoot, null)));
+
+    Assert.Equal("solo_raid_configuration_invalid", exception.Code);
+  }
+
+  [Fact]
+  public void AdminAndPrivateServerPortsMustBeDistinctLoopbackPorts()
+  {
+    using var temporary = new TemporaryDirectory();
+    var sourceRoot = temporary.CreateDirectory("source");
+    var repositoryRoot = temporary.CreateDirectory("repository");
+    var runtimeRoot = System.IO.Path.Combine(temporary.Path, "runtime-home");
+    var configPath = WriteConfig(temporary.Path, sourceRoot);
+    var document = JsonNode.Parse(File.ReadAllText(configPath))?.AsObject()
+        ?? throw new InvalidOperationException("The synthetic configuration is invalid.");
+    document["network"]!["privateServerPort"] = 17878;
+    File.WriteAllText(configPath, document.ToJsonString());
+
+    var exception = Assert.Throws<LabConfigurationException>(() =>
+        LabConfigurationLoader.Load(configPath, repositoryRoot, new FakeEnvironment(runtimeRoot, null)));
+
+    Assert.Equal("unsafe_configuration_rejected", exception.Code);
+  }
+
+  [Theory]
+  [InlineData("challenge_locked")]
+  [InlineData("quick_battle_enabled")]
+  [InlineData("season_expiring")]
+  [InlineData("season_directory_changed")]
+  [InlineData("selection_scope_changed")]
+  [InlineData("daily_reset_changed")]
+  [InlineData("operational_policy_guessed")]
+  public void PermanentChallengePolicyMutationFailsClosed(string mutation)
+  {
+    using var temporary = new TemporaryDirectory();
+    var sourceRoot = temporary.CreateDirectory("source");
+    var repositoryRoot = temporary.CreateDirectory("repository");
+    var runtimeRoot = System.IO.Path.Combine(temporary.Path, "runtime-home");
+    var configPath = WriteConfig(temporary.Path, sourceRoot);
+    var document = JsonNode.Parse(File.ReadAllText(configPath))?.AsObject()
+        ?? throw new InvalidOperationException("The synthetic configuration is invalid.");
+    var soloRaid = document["soloRaid"]?.AsObject()
+        ?? throw new InvalidOperationException("The synthetic Solo Raid section is missing.");
+
+    switch (mutation)
+    {
+      case "challenge_locked":
+        soloRaid["challengeUnlocked"] = false;
+        break;
+      case "quick_battle_enabled":
+        soloRaid["quickBattleSupported"] = true;
+        break;
+      case "season_expiring":
+        soloRaid["seasonEndsAt"] = "2099-01-01T00:00:00Z";
+        break;
+      case "season_directory_changed":
+        soloRaid["publishedSeasonNumbers"] = new JsonArray(7, 13, 26, 29, 34);
+        break;
+      case "selection_scope_changed":
+        soloRaid["oneSelectedSeasonPerClientContext"] = false;
+        break;
+      case "daily_reset_changed":
+        soloRaid["dailyReset"]!["hour"] = 4;
+        break;
+      case "operational_policy_guessed":
+        soloRaid["challengeOperationalPolicy"]!["dailyEntryLimit"] = 3;
+        break;
+      default:
+        throw new InvalidOperationException("Unknown synthetic mutation.");
+    }
+
+    File.WriteAllText(configPath, document.ToJsonString());
     var exception = Assert.Throws<LabConfigurationException>(() =>
         LabConfigurationLoader.Load(configPath, repositoryRoot, new FakeEnvironment(runtimeRoot, null)));
 
@@ -229,7 +369,8 @@ public sealed class ConfigurationAndSourceBoundaryTests
       network = new
       {
         bindAddress = "127.0.0.1",
-        port = 17878,
+        adminPort = 17878,
+        privateServerPort = 17879,
         lanEnabled = false,
         allowedCidrs = Array.Empty<string>(),
         localAuthenticationRequiredForLan = true,
@@ -309,7 +450,29 @@ public sealed class ConfigurationAndSourceBoundaryTests
           unlockStateOnly = true,
           lastClearLevel = 7
         },
-        oneActiveSeasonAtATime = true,
+        publishedSeasonNumbers = new[] { 7, 13, 26, 29, 34, 40 },
+        oneSelectedSeasonPerClientContext = true,
+        challengeUnlocked = true,
+        quickBattleSupported = false,
+        seasonAvailability = "permanent",
+        seasonEndsAt = (string?)null,
+        dailyReset = new
+        {
+          timeZoneId = "Asia/Seoul",
+          hour = 5,
+          minute = 0
+        },
+        challengeOperationalPolicy = new
+        {
+          policyId = "challenge-operational-policy/unresolved/v1",
+          resolutionStatus = "unresolved",
+          dailyEntryLimit = (int?)null,
+          entryConsumptionPoint = "unresolved",
+          activeRunAtReset = "unresolved",
+          dailyCounterScope = "unresolved",
+          mockBattleCapability = "unresolved",
+          localRankingCapability = "unresolved"
+        },
         unionRaidEnabled = false,
         requireRuntimeMatchForOriginalClientExecution = true
       },

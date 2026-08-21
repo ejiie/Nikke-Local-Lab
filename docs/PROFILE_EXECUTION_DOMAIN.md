@@ -2,15 +2,30 @@
 
 ## 목적
 
-별도 관리 도구에서 합성 local account의 캐릭터 빌드와 계정 전역 전투 상태를 수정하고, 재현 가능한 실행 환경과 함께 Solo Raid Challenge 전투에 연결합니다.
+제한된 Local Lab private server가 원본 NIKKE client에 투영할 합성 local account, 캐릭터 빌드, lobby 상태와 Solo Raid Challenge 실행 context를 관리합니다. 별도 관리 도구는 이 값을 편집하는 sidecar일 뿐 원본 게임 UI가 아닙니다.
 
-이 기능은 Local Lab PostgreSQL과 loopback API만 수정합니다. 공식 계정, `C:\NIKKE`, BlaBla, 공식 API·서버로 write하지 않습니다. 원본 UI에 반영하는 경로는 `FEASIBILITY_GATES.md`가 해제된 경우에만 별도 adapter가 담당합니다.
+이 기능은 Local Lab PostgreSQL과 loopback API만 수정합니다. 공식 계정, `C:\NIKKE`, BlaBla, 공식 API·서버로 write하지 않습니다. 원본 UI에 반영하는 경로는 [FEASIBILITY_GATES.md](FEASIBILITY_GATES.md)와 [PHASE3AR.md](PHASE3AR.md)의 disposable local-experiment 조건을 통과한 별도 adapter가 담당합니다. 첫 target은 시즌 26 원본 클래식 Solo Raid Challenge이며 Museum 경로는 사용하지 않습니다.
 
 ## 개체 경계
 
 ### LocalAccount
 
 Local Lab이 발급한 무작위 자체 UID만 사용합니다. 실제 계정 UID, 토큰, 세션 식별자를 저장하거나 export하지 않습니다.
+
+### LobbyPresentationRevision과 WalletRevision
+
+원본 lobby에서 유지할 profile과 재화는 combat build와 다른 변경 주기를 가지므로 별도 immutable revision으로 저장합니다.
+
+- local display name과 commander level
+- lab-owned profile icon/frame와 lobby character/background selection UID. Gate가 열린 뒤 client-local original asset reference로 변환하며 Local Lab이 원본 asset을 복사하거나 새 asset으로 사칭하지 않습니다.
+- 표시할 synthetic local currency balance
+- presentation content hash와 provenance
+
+실제 account nickname, official profile identity와 공식 재화를 가져오거나 동기화하지 않습니다. raw sanitizer의 기존 비전투 allowlist를 조용히 넓히지 않고 synthetic/admin input 또는 명시적으로 승인된 별도 allowlist만 사용합니다.
+
+### ClientFeatureManifest와 inventory projection
+
+각 화면·route는 `supported`, `hidden`, `visible_no_op`, `not_supported` 중 하나로 versioning합니다. 니케는 roster/build, 스쿼드는 저장 team, 인벤토리는 Local Lab이 지원하는 전투 항목의 read-only subset만 투영합니다. Phase 2A1의 장착 상태를 전체 원본 inventory라고 주장하지 않습니다. 대원모집은 `visible_no_op`이며 click acknowledgement 뒤 page transition이 없습니다.
 
 ### AccountCombatStateRevision
 
@@ -69,12 +84,14 @@ auto combat과 auto burst는 초기 완성 조건이 아닙니다. 지원할 경
 
     raid_snapshot_uid
     account_combat_state_revision_uid
-    squad_revision_uid
+    squad_revision_uid[]
     character_build_revision_uid[]
     runtime_execution_profile_revision_uid
     combat_control_profile_revision_uid
 
 요청한 frame-rate만으로 60 FPS 실행을 주장하지 않습니다. 실제 render frame, behavior tick, fixed update, wall-clock duration, frame-time median/p95/p99와 dropped/stalled frame 관측치를 별도 telemetry로 저장합니다.
+
+Challenge run은 순차적으로 1~5개 `SquadRevision`을 결박하며 run 전체에서 character 재사용을 금지합니다. 단일 `SquadRevision` 또는 profile의 active squad는 한 팀만 나타냅니다. 각 팀의 original-client observed damage와 최종 누적 damage를 보존하고 backend는 같은 session 안의 합계를 검산합니다.
 
 설정은 영향 범위를 `scheduler_critical`, `simulation_path`, `asset_selection`, `presentation_load`로 분류합니다. 예를 들어 target FPS와 fixed delta는 scheduler critical, `max_per_shot_correct`는 simulation path, mesh quality처럼 prefab/addressable 선택에 쓰이는 값은 asset selection입니다. 나머지 그래픽 값도 부하와 frame drop에 영향을 줄 수 있어 presentation load로 보존합니다.
 
@@ -82,7 +99,7 @@ Phase 1C의 behavior/timeline 근거는 `behavior_tick`, `render_frame`, `fixed_
 
 ### In-battle ESC and execution segments
 
-전투 중 ESC 화면에서 누적 damage와 전투 중 노출되는 설정을 확인할 수 있어야 합니다. 원본 UI의 damage는 현재 client `StatisticsContext`에서 계산되므로 backend가 재계산해 화면에 공급하는 값이 아닙니다. Local Lab은 이 원본 경로를 막지 않고, 검증과 저장을 위해 다음 live snapshot을 관찰·보존합니다.
+전투 중 ESC 화면에서 누적 damage와 전투 중 노출되는 설정을 확인할 수 있어야 합니다. 원본 UI의 damage는 현재 client `StatisticsContext`에서 계산되므로 backend가 재계산해 화면에 공급하는 값이 아닙니다. Local Lab은 original-client observed damage를 권위 있는 실행 관측으로 받고, sidecar simulation은 별도 provenance의 비교값으로만 저장합니다. 검증과 저장을 위해 다음 live snapshot을 관찰·보존합니다.
 
 - battle run UID
 - 관측 battle frame/tick과 wall-clock
@@ -186,7 +203,7 @@ OL은 장비별 line `1..3`의 sparse 좌표로 보존합니다. `{1, 3}`처럼 
 
 ### Export and import
 
-`Save As`와 portable export는 다른 동작입니다. export에는 schema version, catalog manifest hash, canonical payload hash와 normalized value만 포함합니다. 실제 계정 식별자, 원본 ID, 파일 경로, 자격증명, raw payload는 금지합니다. dataset이 다르면 자동 이름 매칭하지 않고 명시적 mapping/rebase를 요구합니다.
+`Save As`와 portable export는 다른 동작입니다. Phase 2A2는 Save As와 source-free sanitized import/rebase까지만 구현하며 portable export는 아직 제공하지 않습니다. 향후 구체적인 소비자가 생겨 export를 구현한다면 schema version, catalog manifest hash, canonical payload hash와 normalized value만 포함해야 합니다. 실제 계정 식별자, 원본 ID, 파일 경로, 자격증명, raw payload는 금지하며 dataset이 다르면 자동 이름 매칭하지 않고 명시적 mapping/rebase를 요구합니다.
 
 ## 별도 관리 도구
 
@@ -194,12 +211,18 @@ OL은 장비별 line `1..3`의 sparse 좌표로 보존합니다. `{1, 3}`처럼 
 
 필수 화면은 profile/account 선택, roster/build 편집, synchro/console 편집, execution/control profile 편집, validation 상태, Save/Save As/Apply diff입니다. 모든 write command는 새 revision을 만들고 audit receipt에는 자체 UID와 controlled code만 남깁니다.
 
+이 관리 도구는 원본 client lobby, 니케/스쿼드/인벤토리 또는 Solo Raid 화면의 대체 UI가 아닙니다. client-facing read model과 admin write model은 같은 revision을 참조하되 presentation 책임을 섞지 않습니다.
+
 ## 구현 순서
 
 1. Phase 1C — Challenge snapshot importer와 `V0003__raid_snapshot.sql`
 2. Phase 1D — Tier 9·10 equipment, cube, collection/favorite, console, OL option 전투 보조 catalog와 `V0004__combat_support_catalog.sql` — 완료
 3. Phase 2A1 — local account, account combat state, character build/profile revision과 `V0005__local_account_profile.sql` — 완료
-4. Phase 2A2 — offline legacy importer, export, loopback API와 별도 editor
-5. Phase 2B — runtime/control profile, Challenge session과 `V0006__battle_execution_context.sql`
+4. Phase 2A2 — offline sanitizer/import, Save As, loopback API/editor와 lobby/profile/wallet/inventory read model
+5. Phase 2B — private-server boot/lobby, permanent season directory, KST daily state, runtime/control profile와 1~5팀 Challenge run
+6. Phase 3A/3A-R — 역사적 승인 증거 감사와 operator-authorized local rebaseline
+7. Phase 3B-0/1/2 — 시즌 26 closure, classic selected-manager와 isolated live proof
+8. Phase 3C/3D/3E — Local Lab shadow bridge, 시즌 26 end-to-end sealing과 후속 시즌 확장
+9. Phase 4 — 1~5팀 사용자 실플레이, regroup/recovery와 original-runtime telemetry/result parity
 
-Phase 2A1의 단위 및 live PostgreSQL gate를 통과한 자체 UUID profile persistence 위에 다음 Phase 2A2의 credential-bearing raw offline sanitizer를 연결합니다. 최신 raw는 계정/build seed일 뿐 graphics/control/ESC runtime 관측을 대체하지 않습니다.
+Phase 2A1의 단위 및 live PostgreSQL gate를 통과한 자체 UUID profile persistence 위에 후속 aggregate를 additive migration으로 연결합니다. V0001~V0005를 수정하지 않습니다. 최신 raw는 account/build seed일 뿐 lobby presentation, synthetic wallet, graphics/control/ESC runtime 관측을 대체하지 않습니다.

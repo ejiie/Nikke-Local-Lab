@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:season26-classic-selected-manager:v1",
+  "title": "Season26ClassicSelectedManagerAssessment",
+  "description": "Source-free Phase 3B-1 receipt for the external EpinelPS selected-manager patch. It contains no raw game identifiers, local paths, decoded rows, credentials, certificates, native binaries, or patched game files.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "assessmentUid",
+    "assessedAtUtc",
+    "verdict",
+    "target",
+    "dependencyPin",
+    "integrationPin",
+    "targetBinding",
+    "routePolicy",
+    "selectionAndRunPin",
+    "dispatchIsolation",
+    "classicPersistence",
+    "verification",
+    "staticGuards",
+    "sourceFreeDigests",
+    "remainingBoundary",
+    "blockingReasonCodes",
+    "nextStepRequirementCodes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "nll/season26-classic-selected-manager/v1" },
+    "assessmentUid": { "$ref": "#/$defs/uuid" },
+    "assessedAtUtc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])T([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+    },
+    "verdict": { "const": "ready_for_isolated_season26_reference_run" },
+    "target": {
+      "const": {
+        "clientBuildVersion": "150.6.9",
+        "seasonNumber": 26,
+        "modeCode": "classic_solo_raid_challenge",
+        "wireModeCode": "trial",
+        "challengeRaidLevel": 8,
+        "museumAllowed": false,
+        "fallbackPolicyCode": "none"
+      }
+    },
+    "dependencyPin": {
+      "const": {
+        "repositoryCode": "epinelps_epinelps",
+        "upstreamCommitSha": "28b2f5413a0a1e3521a11ae162f91851335c8b40",
+        "licenseCode": "agpl-3.0-only",
+        "sourceBoundaryCode": "external_checkout"
+      }
+    },
+    "integrationPin": {
+      "const": {
+        "dispatchSourceCommitSha": "cf43e6bc361a4b812b24bda1c03f20d276cf78c6",
+        "selectionSourceCommitSha": "01392b3f864c3dffdb55606ab6f155d83236bf4d",
+        "routeSourceCommitSha": "36161dee8924c6309468acce108c803910dd9aca",
+        "integrationCommitSha": "92a6ca228aeb580988907b96189b2857dff2c62d",
+        "integrationTreeSha": "ab0d9e69ed5da68157666682d0ecbdee021b2971",
+        "commitCountAfterBase": 5,
+        "worktreeStatusCode": "clean"
+      }
+    },
+    "targetBinding": {
+      "const": {
+        "contractId": "nll/season26-classic-target-observation/v1",
+        "canonicalizationCode": "role_path_type_value_tsv_lf/v1",
+        "canonicalLineCount": 150,
+        "canonicalByteLength": 6684,
+        "sha256": "ed3a8682d0bbb2b49394db1c862da74a8c44cab097188cad3d5b5851dc5f50ba",
+        "sourceObservationRoleCode": "staticdata_archive_target",
+        "recomputedFromGameData": true,
+        "callerSuppliedDigestTrusted": false,
+        "knownNonTargetAccepted": false
+      }
+    },
+    "routePolicy": {
+      "const": {
+        "classicHandlerCount": 19,
+        "legacyRequestManagerPathCount": 6,
+        "legacyLatestFallbackPathCount": 9,
+        "legacyManagerStatelessPathCount": 4,
+        "selectedChallengeRouteCount": 7,
+        "controlledUnsupportedRouteCount": 10,
+        "managerIndependentRouteCount": 2,
+        "getLogsOutcomeCode": "trial_logs_projection_ban_success",
+        "getLogsClientCompatibilityCode": "unverified_until_phase3b2",
+        "getRankingOutcomeCode": "manager_independent_empty_projection",
+        "routeCoverageMissingCount": 0,
+        "routeCoverageDuplicateCount": 0
+      }
+    },
+    "selectionAndRunPin": {
+      "const": {
+        "selectionScopeCode": "account",
+        "sessionIsolationCode": "not_available_account_scoped",
+        "sessionOverrideAllowed": false,
+        "bootstrapExecutionModeCode": "prelisten_startup",
+        "listenerStartedDuringBinding": false,
+        "runtimeSelectionMutationCount": 0,
+        "activeRunCardinalityCode": "zero_or_one",
+        "activeRunManagerImmutable": true,
+        "wrongModeOrLevelQuarantined": true,
+        "restartOutcomeCode": "restored_exact_or_quarantined_fail_closed",
+        "latestFallbackAfter": 0
+      }
+    },
+    "dispatchIsolation": {
+      "const": {
+        "perRequestHandlerInstance": true,
+        "classicRouteAccountSerialization": true,
+        "classicSerializedRouteCount": 19,
+        "concurrentIdentityMixCount": 0,
+        "museumSerializedByClassicCoordinator": false,
+        "serverWideSessionIsolationClaimed": false
+      }
+    },
+    "classicPersistence": {
+      "const": {
+        "scopeCode": "classic_solo_raid_only",
+        "mutationSnapshotAtomicReplace": true,
+        "rolloverPersisted": true,
+        "lostUpdateObservedCount": 0,
+        "serverWideWriterSafetyClaimed": false
+      }
+    },
+    "verification": {
+      "const": {
+        "toolchainCode": "dotnet_sdk_10_0_400_repo_local",
+        "releaseBuildErrorCount": 0,
+        "releaseBuildWarningCount": 22,
+        "selectedManagerTestCaseCount": 58,
+        "handlerIsolationTestCaseCount": 5,
+        "focusedTestCaseCount": 63,
+        "focusedTestFailureCount": 0,
+        "focusedTestSkippedCount": 0,
+        "sidecarBaselineTestCaseCount": 170,
+        "sidecarBaselineFailureCount": 0,
+        "negativeControlDetected": true
+      }
+    },
+    "staticGuards": {
+      "const": {
+        "latestFallbackOccurrenceCount": 0,
+        "trackedRawTargetIdentifierOccurrenceCount": 0,
+        "classicMuseumReferenceOccurrenceCount": 0,
+        "banResultBannedOccurrenceCount": 0,
+        "solutionTestProjectCount": 2,
+        "diffCheckStatusCode": "passed"
+      }
+    },
+    "sourceFreeDigests": {
+      "const": {
+        "classicRouteTreeGitSha1": "e519a37d9dc4a3b59e20648abfbd8f078e221e10",
+        "selectedManagerTestsTreeGitSha1": "f0224481e51fb21abd9948014753d5bacaff086b",
+        "handlerIsolationTestsTreeGitSha1": "cb8448f7495fa5ac2475582782011fb34c1a4cf4",
+        "routePolicyCanonicalizationCode": "path_policy_outcome_tsv_lf_ordinal/v1",
+        "routePolicyMemberCount": 19,
+        "routePolicyCanonicalByteLength": 1208,
+        "routePolicySha256": "a0e8339529d4b48c985013711ccfc31d6b3ff2acffd24d5e2694b89134d714b4"
+      }
+    },
+    "remainingBoundary": {
+      "const": {
+        "originalClientExecuted": false,
+        "battleHudResultVerified": false,
+        "localLabBridgeImplemented": false,
+        "nativeSchedulerRebound": false,
+        "nextPhaseCode": "phase3b2_isolated_season26_reference_run"
+      }
+    },
+    "blockingReasonCodes": { "const": [] },
+    "nextStepRequirementCodes": {
+      "const": [
+        "disposable_vm_or_separate_os_required",
+        "isolated_season26_reference_run_required",
+        "non_loopback_process_tree_egress_block_required"
+      ]
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Admin.Api\NikkeLocalLab.Admin.Api.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Application.PrivateServer\NikkeLocalLab.Application.PrivateServer.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Application.ProfileManagement\NikkeLocalLab.Application.ProfileManagement.csproj" />
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Domain.PrivateServer\NikkeLocalLab.Domain.PrivateServer.csproj" />
+  </ItemGroup>
+</Project>

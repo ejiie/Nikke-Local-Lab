@@ -17,6 +17,27 @@
 - `NikkeLocalLab.Import.RaidCatalog`: strict Challenge FK chain과 source-ID-free evidence reader
 - `NikkeLocalLab.Domain.Profile`: 자체 local account/session, account state, character build, squad와 profile template revision
 
-다음 단계에서는 offline sanitizer와 loopback profile API/editor를 추가한 뒤 Challenge session, harness 및 허용된 원본 client adapter를 순서대로 확장합니다.
+Phase 2A2에서는 다음 모듈을 구현했고 단위 및 live PostgreSQL gate로 검증했습니다.
 
-원본 client adapter는 최종 목표에 필수지만 현재 disabled입니다. harness는 이를 대체하지 않습니다.
+- `NikkeLocalLab.Import.Profile`: strict raw parser, canonical sanitized draft codec, typed catalog rebase와 reviewed bond/manufacturer override
+- `NikkeLocalLab.Domain.LocalGameState`: lobby presentation, synthetic `jewel|credit` wallet과 feature manifest
+- `NikkeLocalLab.Application.ProfileManagement`: typed edit/import/create/rebase command와 bootstrap/read-model port
+- `NikkeLocalLab.Persistence.PostgreSql`: V0006 local state, 별도 sanitized draft/editor candidate, diff, recoverable application intent/ledger와 inventory projection
+- `NikkeLocalLab.Admin.Api`: loopback-only API, process-local admin session과 no-CDN/no-inline editor
+- `NikkeLocalLab.Import.Cli`: aggregate-only `profile-source-inspect`와 source-free `profile-draft-import`
+
+Import는 bond `0`/missing manufacturer 같은 보존 가능한 의미 미해결을 Research fact로 materialize하고 readiness를 낮출 수 있지만 identity/catalog/shape/coordinate/level-authority failure는 write 전에 차단합니다. 빈 DB의 최초 profile은 target account가 없는 explicit create-preview/create command로만 생성합니다. raw `nll/sanitized-profile-draft/v1`과 editor `nll/profile-edit-candidate/v1`은 서로 바꿔 읽지 않습니다.
+
+Phase 2B source-free backend/harness는 구현을 완료했고 단위 및 live PostgreSQL gate로 검증했습니다.
+
+- `NikkeLocalLab.Domain.PrivateServer`: fixed Solo Raid capability, six-season directory, KST raid day, operational policy, runtime/control revision과 1~5팀 Challenge state machine
+- `NikkeLocalLab.Application.PrivateServer`: boot/session/context, lobby/Solo Raid, policy/profile/run command/query port
+- `NikkeLocalLab.Persistence.PostgreSql`: V0007 private-server bootstrap, exact context history, selection/daily/profile/run/result/recovery
+- `NikkeLocalLab.PrivateServer.Api`: loopback-only strict JSON lab API, process-local HMAC bearer token과 controlled unsupported/no-op route
+- `NikkeLocalLab.Admin.Api`: 여섯 축 Challenge policy publish/next-day activation과 full runtime/control fact preview/save
+
+checked-in `challenge-operational-policy/unresolved/v1`은 Challenge unlock projection을 유지하면서 새 run만 fail closed합니다. 여섯 축을 모두 명시한 configured policy는 빈 DB의 초기 raid day에 활성화할 수 있고, 이후 admin 전환은 다음 raid day로만 예약합니다. 단일 `SquadRevision`은 한 팀이고 multi-team run aggregate가 아닙니다.
+
+Phase 2B는 `lab_harness_observation/v1`만 수락하고 damage를 계산하지 않습니다. 최종 권위는 `original_client_runtime`이지만 현재 원본 runtime observation은 `blocked_by_gate`입니다. 같은 process의 같은 Open operation replay는 exact token byte를 재사용하지만 restart 간 token byte 동일성은 보장하지 않습니다.
+
+후속 제품 경계는 Phase 3A-R 재기준화, 3B-0 시즌 26 closure, 3B-1 classic selected-manager, 3B-2 isolated live proof, 3C shadow bridge, 3D end-to-end sealing, 3E 후속 시즌 확장과 Phase 4 multi-team/runtime parity로 분리합니다. 역사적 3A evidence audit verdict는 `blocked_insufficient_evidence`였지만, [3A-R](../docs/PHASE3AR.md)은 EpinelPS를 별도 process로 평가하는 `ready_for_local_compatibility_spike`를 기록했습니다. 문서 변경 시점의 adapter/config는 여전히 disabled이며 harness와 editor는 이를 대체하지 않습니다.

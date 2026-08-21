@@ -1,0 +1,86 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #0b0e14;
+  color: #e8edf7;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; min-height: 100vh; }
+
+header, main, footer { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
+
+header { padding: 48px 0 22px; }
+
+h1 { margin: 4px 0 8px; font-size: clamp(2rem, 5vw, 4rem); }
+
+h2 { margin-top: 0; }
+
+.eyebrow { margin: 0; color: #54d8ff; font-weight: 800; letter-spacing: .18em; }
+
+main { display: grid; gap: 20px; padding-bottom: 32px; }
+
+section {
+  border: 1px solid #293347;
+  border-radius: 14px;
+  padding: 22px;
+  background: #111722;
+  box-shadow: 0 14px 32px rgb(0 0 0 / 20%);
+}
+
+.row { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 14px 0; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+
+label { display: grid; gap: 6px; color: #b9c5d8; font-size: .9rem; }
+
+input, select, textarea, button {
+  min-height: 40px;
+  border: 1px solid #34425b;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #0b111b;
+  color: inherit;
+}
+
+input { min-width: 260px; }
+
+textarea { width: 100%; resize: vertical; font: inherit; }
+
+button { cursor: pointer; border-color: #278eb2; background: #123747; font-weight: 700; }
+
+button:disabled { cursor: not-allowed; opacity: .42; }
+
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, pre:focus-visible {
+  outline: 3px solid #54d8ff;
+  outline-offset: 2px;
+}
+
+pre {
+  min-height: 76px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 14px;
+  border-radius: 8px;
+  background: #080c12;
+  color: #b8e9ff;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+table { width: 100%; border-collapse: collapse; margin: 14px 0; }
+
+caption { text-align: left; color: #b9c5d8; margin-bottom: 8px; }
+
+th, td { border-bottom: 1px solid #293347; padding: 9px; text-align: left; }
+
+.notice { border-left: 4px solid #f3c969; padding-left: 10px; color: #f3d993; }
+
+footer { padding: 0 0 42px; color: #9fb0c8; }
+
+@media (max-width: 620px) {
+  input { min-width: 100%; }
+  section { padding: 16px; }
+  table { font-size: .78rem; }
+}

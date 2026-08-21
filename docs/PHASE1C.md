@@ -72,6 +72,19 @@ manager, preset, wave, monster, spot behavior, part, skill의 원본 key는 impo
 
 시즌 40의 partial timeline은 증거로 보존할 수 있지만 runtime scheduler와 모든 clock basis를 완결하지 않습니다. 따라서 `asset_exact_runtime_current`나 `historical_runtime_exact`로 승격하지 않습니다.
 
+### Phase 3B-0 focused 시즌 26 diagnostic
+
+후속 [Phase 3B-0](PHASE3B0.md)은 시즌 26 실행 준비를 판정하기 위해 별도의 focused behavior/timeline extraction을 사용했습니다. Artifact 자체는 prior local reference archive에서 생성했고, target pack의 시즌 26 monster-skill row `15/15` exact decode와 complete monster-parts entry byte equality로 equivalence를 검증했습니다. 그 결과 manager → Challenge preset → wave → 단일 boss/model/stat → current behavior/asset root가 닫혔고, behavior node `917`개와 active cast site `109`개가 exact하게 해소됐습니다.
+
+이 결과는 Phase 1C publish 결과를 소급 변경하지 않습니다.
+
+- focused artifact는 `promotion_eligible=false`입니다.
+- 기존 시즌 26 RaidSnapshot의 tier는 계속 `static_exact`입니다.
+- 기존 snapshot JSON, V0003 row와 canonical hash를 수정하지 않습니다.
+- `behavior_exact` 승격은 Phase 1C 정식 publication invariant를 별도로 통과할 때만 가능합니다.
+
+3B-0의 aggregate verdict `ready_for_selected_manager_patch_with_timing_analysis_blocker`는 실행 준비 gate입니다. graph 순서는 exact하지만 event timing `7`개와 client `150.6.9` native scheduler contract가 미해소이므로 absolute frame/ms timing을 주장하지 않습니다.
+
 ## PostgreSQL 게시
 
 V0003은 immutable RaidSnapshot과 다음 provenance를 저장합니다.
@@ -82,7 +95,7 @@ V0003은 immutable RaidSnapshot과 다음 provenance를 저장합니다.
 - compatibility/readiness warning
 - dataset membership과 canonical content hash
 
-Import ledger 완료와 여섯 snapshot 게시를 한 transaction으로 처리합니다. 동일 request는 기존 publish 결과를 재사용하고, 중간 실패·hash 불일치·tier invariant 위반은 전체 transaction을 rollback합니다. 활성 시즌 포인터와 실제 session 실행은 이 단계의 범위가 아닙니다.
+Import ledger 완료와 여섯 snapshot 게시를 한 transaction으로 처리합니다. 동일 request는 기존 publish 결과를 재사용하고, 중간 실패·hash 불일치·tier invariant 위반은 전체 transaction을 rollback합니다. permanent season directory, account/session별 selected season과 실제 session 실행은 이 단계의 범위가 아닙니다.
 
 ## 검증
 
@@ -99,6 +112,10 @@ Import ledger 완료와 여섯 snapshot 게시를 한 transaction으로 처리�
 
 - Phase 1D에서 equipment, cube, collection/favorite, console, OL option catalog를 게시합니다.
 - Phase 2에서 account/profile/build write와 Challenge session backend를 구현합니다.
-- 원본 client gate는 계속 blocked입니다. 지원·승인된 local/test route 없이 원본 실행 파일, 인증, endpoint 또는 보호 기능을 변경하지 않습니다.
-- `compatibility_map_uid`는 이 단계에서 raw ID map 파일을 뜻하지 않습니다. 원본 client adapter용 매핑은 gate 해제 후 정확한 dataset으로 Git 밖에서 재생성·검증합니다.
+- Phase 1C 자체는 원본 client 실행을 계속 증명하지 않습니다. 후속 [Phase 3A-R](PHASE3AR.md)는
+  고정한 EpinelPS 경로와 disposable 환경에서 local compatibility spike를 허용하지만, 이
+  정책 변경이 `static_exact` snapshot을 runtime-exact evidence로 승격하지는 않습니다.
+- `compatibility_map_uid`는 이 단계에서 raw ID map 파일을 뜻하지 않습니다. 원본 client
+  adapter용 매핑은 Phase 3A-R 경계 안에서 정확한 dataset으로 Git 밖에서 재생성·검증합니다.
+- lobby의 localized boss name, icon과 banner presentation은 RaidSnapshot identity/evidence와 별도입니다. Phase 3의 build-bound Git 비추적 presentation binding 또는 lab-owned presentation version이 해소하며 이름만으로 snapshot을 연결하지 않습니다.
 - 역사 시즌의 완전한 behavior/timeline/runtime 근거를 추가로 확보하면 새 evidence로 tier를 재평가하되, 현재 snapshot을 근거 없이 승격하지 않습니다.

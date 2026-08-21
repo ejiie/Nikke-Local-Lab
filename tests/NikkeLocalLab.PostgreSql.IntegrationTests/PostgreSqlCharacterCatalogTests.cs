@@ -27,7 +27,7 @@ public sealed class PostgreSqlCharacterCatalogTests
     var concurrentResults = await Task.WhenAll(
         Enumerable.Range(0, 4)
             .Select(_ => new PostgreSqlMigrationRunner().MigrateAsync(dataSource)));
-    Assert.Equal(5, concurrentResults.Sum());
+    Assert.Equal(7, concurrentResults.Sum());
     Assert.Equal(0, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     var uidGenerator = new RandomEntityUidGenerator();
@@ -406,7 +406,7 @@ public sealed class PostgreSqlCharacterCatalogTests
             "NIKKE_LAB_TEST_DB is required for PostgreSQL integration tests.");
     var validated = PostgreSqlConnectionPolicy.Validate(connectionString);
     var builder = new NpgsqlConnectionStringBuilder(validated);
-    Assert.Equal("nikke_local_lab_test", builder.Database);
+    PostgreSqlTestDatabaseGuard.RequireDisposableDatabase(builder);
     return PostgreSqlDataSourceFactory.Create(validated);
   }
 
@@ -422,6 +422,8 @@ public sealed class PostgreSqlCharacterCatalogTests
 
     await using var command = dataSource.CreateCommand(
         """
+        DROP SCHEMA IF EXISTS lab_private_server CASCADE;
+        DROP SCHEMA IF EXISTS lab_local_game CASCADE;
         DROP SCHEMA IF EXISTS lab_profile CASCADE;
         DROP SCHEMA IF EXISTS lab_combat_support CASCADE;
         DROP SCHEMA IF EXISTS lab_raid CASCADE;

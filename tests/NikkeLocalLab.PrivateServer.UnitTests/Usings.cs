@@ -1,0 +1,10 @@
+global using NikkeLocalLab.Application.PrivateServer;
+global using NikkeLocalLab.Domain.Character;
+global using NikkeLocalLab.Domain.CombatSupport;
+global using NikkeLocalLab.Domain.LocalGameState;
+global using NikkeLocalLab.Domain.PrivateServer;
+global using NikkeLocalLab.Domain.Profile;
+global using NikkeLocalLab.Identity;
+global using NikkeLocalLab.Provenance;
+global using NikkeLocalLab.Profile.UnitTests;
+global using Xunit;

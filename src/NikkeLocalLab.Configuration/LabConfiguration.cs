@@ -31,7 +31,9 @@ public sealed record LabNetworkOptions
 {
   public required string BindAddress { get; init; }
 
-  public required int Port { get; init; }
+  public required int AdminPort { get; init; }
+
+  public required int PrivateServerPort { get; init; }
 
   public required bool LanEnabled { get; init; }
 
@@ -127,6 +129,34 @@ public sealed record SoloRaidNormalStageOptions
   public required int LastClearLevel { get; init; }
 }
 
+public sealed record SoloRaidDailyResetOptions
+{
+  public required string TimeZoneId { get; init; }
+
+  public required int Hour { get; init; }
+
+  public required int Minute { get; init; }
+}
+
+public sealed record SoloRaidChallengeOperationalPolicyOptions
+{
+  public required string PolicyId { get; init; }
+
+  public required string ResolutionStatus { get; init; }
+
+  public required int? DailyEntryLimit { get; init; }
+
+  public required string EntryConsumptionPoint { get; init; }
+
+  public required string ActiveRunAtReset { get; init; }
+
+  public required string DailyCounterScope { get; init; }
+
+  public required string MockBattleCapability { get; init; }
+
+  public required string LocalRankingCapability { get; init; }
+}
+
 public sealed record SoloRaidOptions
 {
   public required bool Enabled { get; init; }
@@ -139,7 +169,21 @@ public sealed record SoloRaidOptions
 
   public required SoloRaidNormalStageOptions NormalStages { get; init; }
 
-  public required bool OneActiveSeasonAtATime { get; init; }
+  public required int[] PublishedSeasonNumbers { get; init; }
+
+  public required bool OneSelectedSeasonPerClientContext { get; init; }
+
+  public required bool ChallengeUnlocked { get; init; }
+
+  public required bool QuickBattleSupported { get; init; }
+
+  public required string SeasonAvailability { get; init; }
+
+  public required string? SeasonEndsAt { get; init; }
+
+  public required SoloRaidDailyResetOptions DailyReset { get; init; }
+
+  public required SoloRaidChallengeOperationalPolicyOptions ChallengeOperationalPolicy { get; init; }
 
   public required bool UnionRaidEnabled { get; init; }
 
@@ -188,7 +232,11 @@ public sealed record ResolvedLabConfiguration(
     string GameRoot,
     string RuntimeRoot,
     string DatabaseConnectionStringEnvironmentVariable,
-    string IdentitySecretEnvironmentVariable);
+    string IdentitySecretEnvironmentVariable,
+    string BindAddress,
+    int AdminPort,
+    int PrivateServerPort,
+    SoloRaidChallengeOperationalPolicyOptions ChallengeOperationalPolicy);
 
 public interface ILabEnvironment
 {
@@ -265,7 +313,11 @@ public static class LabConfigurationLoader
         gameRoot,
         runtimeRoot,
         document.Database.ConnectionStringEnvironmentVariable,
-        document.Identity.HmacSecretEnvironmentVariable);
+        document.Identity.HmacSecretEnvironmentVariable,
+        document.Network.BindAddress,
+        document.Network.AdminPort,
+        document.Network.PrivateServerPort,
+        document.SoloRaid.ChallengeOperationalPolicy);
   }
 
   private static string ResolveDefaultRuntimeRoot(ILabEnvironment environment)
@@ -312,7 +364,9 @@ public static class LabConfigurationLoader
         document.Sources.AllowRepositoryAssetCopies ||
         document.Network.AllowOfficialOutbound ||
         document.Network.LanEnabled ||
-        document.Network.Port is < 1 or > 65535 ||
+        document.Network.AdminPort is < 1 or > 65535 ||
+        document.Network.PrivateServerPort is < 1 or > 65535 ||
+        document.Network.AdminPort == document.Network.PrivateServerPort ||
         document.Network.AllowedCidrs is null ||
         document.Network.AllowedCidrs.Length != 0 ||
         !document.Network.LocalAuthenticationRequiredForLan ||
@@ -372,6 +426,9 @@ public static class LabConfigurationLoader
         options.SupportPolicy.Rules is null ||
         options.ChallengeCompatibility is null ||
         options.NormalStages is null ||
+        options.PublishedSeasonNumbers is null ||
+        options.DailyReset is null ||
+        options.ChallengeOperationalPolicy is null ||
         !options.Enabled ||
         !options.SupportedModes.SequenceEqual(["challenge"], StringComparer.Ordinal) ||
         !string.Equals(
@@ -385,7 +442,16 @@ public static class LabConfigurationLoader
         options.NormalStages.Implemented ||
         !options.NormalStages.UnlockStateOnly ||
         options.NormalStages.LastClearLevel != 7 ||
-        !options.OneActiveSeasonAtATime ||
+        !options.PublishedSeasonNumbers.SequenceEqual([7, 13, 26, 29, 34, 40]) ||
+        !options.OneSelectedSeasonPerClientContext ||
+        !options.ChallengeUnlocked ||
+        options.QuickBattleSupported ||
+        !string.Equals(options.SeasonAvailability, "permanent", StringComparison.Ordinal) ||
+        options.SeasonEndsAt is not null ||
+        !string.Equals(options.DailyReset.TimeZoneId, "Asia/Seoul", StringComparison.Ordinal) ||
+        options.DailyReset.Hour != 5 ||
+        options.DailyReset.Minute != 0 ||
+        !IsValidChallengeOperationalPolicy(options.ChallengeOperationalPolicy) ||
         options.UnionRaidEnabled ||
         !options.RequireRuntimeMatchForOriginalClientExecution ||
         !HasExpectedSoloRaidRules(options.SupportPolicy.Rules))
@@ -393,6 +459,73 @@ public static class LabConfigurationLoader
       throw new LabConfigurationException("solo_raid_configuration_invalid");
     }
   }
+
+  private static bool IsUnresolvedChallengeOperationalPolicy(
+      SoloRaidChallengeOperationalPolicyOptions policy) =>
+      string.Equals(
+          policy.PolicyId,
+          "challenge-operational-policy/unresolved/v1",
+          StringComparison.Ordinal) &&
+      string.Equals(policy.ResolutionStatus, "unresolved", StringComparison.Ordinal) &&
+      policy.DailyEntryLimit is null &&
+      string.Equals(policy.EntryConsumptionPoint, "unresolved", StringComparison.Ordinal) &&
+      string.Equals(policy.ActiveRunAtReset, "unresolved", StringComparison.Ordinal) &&
+      string.Equals(policy.DailyCounterScope, "unresolved", StringComparison.Ordinal) &&
+      string.Equals(policy.MockBattleCapability, "unresolved", StringComparison.Ordinal) &&
+      string.Equals(policy.LocalRankingCapability, "unresolved", StringComparison.Ordinal);
+
+  private static bool IsValidChallengeOperationalPolicy(
+      SoloRaidChallengeOperationalPolicyOptions policy) =>
+      IsUnresolvedChallengeOperationalPolicy(policy) || IsConfiguredChallengeOperationalPolicy(policy);
+
+  private static bool IsConfiguredChallengeOperationalPolicy(
+      SoloRaidChallengeOperationalPolicyOptions policy)
+  {
+    const string prefix = "challenge-operational-policy/";
+    if (!string.Equals(policy.ResolutionStatus, "configured", StringComparison.Ordinal) ||
+        policy.PolicyId is null ||
+        string.Equals(
+            policy.PolicyId,
+            "challenge-operational-policy/unresolved/v1",
+            StringComparison.Ordinal) ||
+        !policy.PolicyId.StartsWith(prefix, StringComparison.Ordinal) ||
+        policy.PolicyId.Length > 96 ||
+        policy.DailyEntryLimit is < 1 or > 1_000_000 ||
+        !IsOneOf(
+            policy.EntryConsumptionPoint,
+            "run_opened",
+            "first_team_entered",
+            "run_closed") ||
+        !IsOneOf(
+            policy.ActiveRunAtReset,
+            "pin_opening_raid_day",
+            "reject_post_boundary_progress") ||
+        !IsOneOf(policy.DailyCounterScope, "per_season", "shared_across_directory") ||
+        !IsOneOf(policy.MockBattleCapability, "unsupported", "lab_owned_only") ||
+        !IsOneOf(policy.LocalRankingCapability, "unsupported", "local_records_only"))
+    {
+      return false;
+    }
+
+    var suffix = policy.PolicyId.AsSpan(prefix.Length);
+    var versionMarker = suffix.LastIndexOf("/v", StringComparison.Ordinal);
+    if (versionMarker <= 0 || versionMarker + 2 >= suffix.Length)
+    {
+      return false;
+    }
+
+    var name = suffix[..versionMarker];
+    var version = suffix[(versionMarker + 2)..];
+    return name.Length <= 48 &&
+        name[0] is >= 'a' and <= 'z' &&
+        name.IndexOfAnyExcept(
+            "abcdefghijklmnopqrstuvwxyz0123456789._-".AsSpan()) < 0 &&
+        version[0] is >= '1' and <= '9' &&
+        version.IndexOfAnyExceptInRange('0', '9') < 0;
+  }
+
+  private static bool IsOneOf(string value, params string[] allowed) =>
+      allowed.Contains(value, StringComparer.Ordinal);
 
   private static bool HasExpectedSoloRaidRules(IReadOnlyList<SoloRaidSupportRuleOptions> rules)
   {

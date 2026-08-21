@@ -50,7 +50,7 @@ dataset 입력 manifest는 UTF-8, LF, 마지막 LF 없음으로 직렬화합니�
     $env:NIKKE_LAB_TEST_RESET_TOKEN = 'allow-phase1a-disposable-schema-reset'
     pwsh -NoProfile -File scripts/verify-phase1a.ps1 -Integration
 
-reset token은 `nikke_local_lab_test` 일회성 DB의 `lab_import`/`lab_meta` schema 삭제를 명시적으로 허용합니다. GitHub Actions는 Windows 경로/단위 검사와 digest-pinned PostgreSQL service에서 합성 파일 → path-opaque adapter → extractor → coordinator → PostgreSQL 전체 경로 검사를 모두 통과해야 자동 병합합니다.
+reset token은 기본 `nikke_local_lab_test` 일회성 DB의 `lab_import`/`lab_meta` schema 삭제를 명시적으로 허용합니다. 로컬 병렬 검증은 `NIKKE_LAB_TEST_EXPECTED_DATABASE`에 `nikke_local_lab_` prefix의 전용 disposable DB 이름을 명시하고 connection string의 DB와 정확히 일치할 때만 같은 reset을 허용합니다. GitHub Actions는 기본 DB 이름을 유지하며 Windows 경로/단위 검사와 digest-pinned PostgreSQL service에서 합성 파일 → path-opaque adapter → extractor → coordinator → PostgreSQL 전체 경로 검사를 모두 통과해야 자동 병합합니다.
 
 ## 명시적 한계
 

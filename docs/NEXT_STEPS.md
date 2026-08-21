@@ -1,122 +1,248 @@
 # Next steps
 
-최종 목표는 허용된 원본 NIKKE UI와 실제 전투 runtime이 local backend에 연결되어 지원 Challenge를 실행하는 것입니다. 다음 작업은 이 목표에 직접 필요한 순서만 포함합니다.
+최종 목표는 원본 NIKKE client가 제한된 Local Lab private server에 접속하여 지원 Solo Raid Challenge를 원본 UI·asset·전투 runtime으로 실행하는 것입니다. Phase 2B source-free backend/harness, Phase 3B-0 시즌 26 static/runtime closure와 Phase 3B-1 selected-manager patch를 완료했습니다. approval-first Phase 3A의 `blocked_insufficient_evidence`는 역사 기록으로 보존하지만 현행 기술 작업을 차단하지 않습니다. 현재 verdict는 `ready_for_isolated_season26_reference_run`입니다.
 
-## 1. Phase 1A — 프로젝트 골격과 import ledger — 완료
+바로 다음 기술 목표는 **client build `150.6.9`에서 시즌 26의 원본 클래식 `SoloRaid` Challenge를 단일 팀으로 실행하는 것**입니다. 공식 별도 모드인 `SoloRaidMuseum`은 결과에 영향을 주는 전용 버프가 있으므로 고려·fallback·acceptance 대상에서 제외합니다. 자세한 rebaseline은 [PHASE3AR.md](PHASE3AR.md), selected-manager 완료 결과는 [PHASE3B1.md](PHASE3B1.md), 제품 계약은 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md), 전체 단계는 [PHASE3.md](PHASE3.md)와 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)를 따릅니다.
 
-- .NET 8 solution과 모듈 경계를 생성했습니다.
-- PostgreSQL migration runner와 local configuration loader를 구현했습니다.
-- `%LOCALAPPDATA%\NikkeLocalLab` runtime root 경계를 초기화합니다.
-- `source_artifact`, `dataset_snapshot`, membership, `import_run`, `import_diagnostic` schema를 구현했습니다.
-- source read-only capability와 repository 밖 runtime/staging 경계를 테스트합니다.
-- source, dataset, extractor, request, output hash의 canonical 규칙을 구현했습니다.
+## 완료 기반
 
-완료 기준: 합성 source fixture를 import해 자체 UUID snapshot을 만들고, source path·원본 ID·복호물이 DB API와 Git에 나타나지 않아야 합니다.
+### Phase 1A — import foundation
 
-## 2. Phase 1B — 캐릭터 catalog importer — 완료
+- 자체 UUID/HMAC identity, provenance와 path-free import ledger
+- checksummed PostgreSQL migration과 read-only source capability
+- loopback/network/repository data boundary
 
-- CharacterDefinition과 snapshot version을 import한다.
-- 돌파·코어, 호감도, 장비, 큐브, 스킬, 소장품·애장품 applicability를 정규화한다.
-- 결손값은 `unresolved`, 미지원은 `not_applicable`로 분리한다.
-- authoritative maximum을 `combat-max/v1` factory가 해소할 수 있게 만든다.
+### Phase 1B — character catalog
 
-완료 기준: 합성 캐릭터와 실제 local snapshot을 같은 domain contract로 검증하되 실제 데이터는 Git 밖에 남아야 합니다.
+- immutable character definition/version과 catalog manifest
+- character capability, maximum과 `combat-max/v1` seed
+- source alias 격리와 atomic publish
 
-구현 결과:
+### Phase 1C — Challenge RaidSnapshot
 
-- CharacterDefinition/version과 combat-max/v1 도메인 계약을 구현했습니다.
-- StaticData와 sd.bin을 같은 immutable dataset으로 관찰하는 strict reader를 구현했습니다.
-- source alias는 private HMAC registry로 격리하고 공개 entity/version에는 lab UUID만 사용합니다.
-- ledger 완료와 catalog publish를 한 PostgreSQL transaction으로 묶었습니다.
-- 실제 설치본에 전체 캐릭터 StaticData가 없음을 확인했으며, 보관된 과거 pack과 현재 config의 혼합 입력은 검증 전용으로만 취급합니다.
+- authoritative Challenge chain과 `challenge-boss-support/v1`
+- 지원 시즌 `7, 13, 26, 29, 34, 40`
+- immutable `RaidSnapshot v2`, source-free part/skill-slot 관계와 evidence tier
 
-## 3. Phase 1C — Challenge snapshot importer — 완료
+현재 증거 상한은 시즌 7·13·26·29·34가 `static_exact`, 시즌 40이 `behavior_exact`입니다. 이는 service availability나 원본 runtime exact를 뜻하지 않습니다.
 
-- manager→Challenge preset→wave group→wave→target/spawn monster의 authoritative chain과 element/weakness를 최신 StaticData에서 해소합니다.
-- 정규화한 파츠 관계와 스킬 슬롯 개수·순서는 자체 UUID/ordinal로 `RaidSnapshot v2`에 저장합니다. 스킬 정의 identity와 효과 semantics 정규화는 후속 단계입니다.
-- 호환성 tier가 요구하는 증거만 강제합니다. `static_exact`은 미해소 상위 근거를 warning으로 공개하고, `behavior_exact`부터 behavior와 선택 bundle을 요구하며, runtime-exact tier는 runtime·scheduler·관련 clock 근거까지 요구합니다.
-- V0003 migration은 import ledger 완료와 immutable snapshot 게시를 한 transaction으로 처리합니다.
-- 합성 fixture/CI, canonical hash, rollback 및 source-ID-free receipt를 검증했습니다.
-- 최신 실제 StaticData는 원본을 변경하지 않는 local smoke로 읽었으며, 정책상 시즌 `7, 13, 26, 29, 34, 40` 여섯 개만 publish 대상임을 확인했습니다.
+### Phase 1D — combat-support catalog
 
-현재 증거 상한:
+- Tier 9·10 equipment 24개
+- cube, collection/favorite, console과 OL definition/version
+- profile selection readiness와 독립 combat semantics readiness 분리
 
-| 시즌 | 최대 tier | 보존하는 결손 근거 |
-|---:|---|---|
-| 7, 13, 26, 29, 34 | `static_exact` | behavior bundle byte 미확보: `behavior_unresolved` |
-| 40 | `behavior_exact` | timeline partial: `timeline_unresolved`; runtime 미평가: `runtime_not_evaluated` |
+### Phase 2A1 — account/profile/build revision
 
-완료 기준 충족: 여섯 시즌만 publish하며 같은 입력의 canonical hash는 결정적입니다. 여기서 완료는 importer, V0003 원자적 publish, 합성 CI와 실제 read-only smoke의 완료를 뜻합니다. 원본 client 실행, 완전한 timeline, 현재 runtime exact 또는 역사 runtime exact를 뜻하지 않습니다.
+- 자체 local account와 최소 session
+- immutable account state, character build, 5인 squad와 profile template
+- catalog exact membership, CAS Save, lineage, idempotency와 V0005 sealing
+- 부분 관측의 field-level unresolved 무손실 보존
 
-## 4. Phase 1D — 전투 보조 catalog — 완료
+방향 수정 뒤에도 V0001~V0005와 위 도메인은 그대로 재사용합니다. 단일 squad는 한 팀이며 Solo Raid 한 run의 최대 다섯 팀 aggregate가 아닙니다.
 
-- Tier 9·10 장비 24개, cube 17종, collection 12종, favorite 21종, console 9종과 OL option 9종을 자체 definition/version으로 publish한다.
-- 9개 console 좌표별 source-derived 연속 Level 범위와 level당 flat stat 기여를 정규화한다.
-- OL 15개 이산 값과 확률 band를 보존하고, 근거가 없는 동일 옵션 중복 정책만 `unresolved`로 분리한다.
-- V0004 migration은 import ledger 완료와 immutable catalog publish를 한 transaction으로 처리한다.
-- profile editor가 선택할 수 있는 source-ID-free reference를 제공한다.
-- cube·collection·favorite의 item/level 선택은 ready이지만 별도 skill-definition catalog는 아직 없으므로 skill effect semantics는 명시적으로 unresolved다.
+## 완료 — Phase 2A2 관리 계층과 client-facing read model
 
-완료 기준: profile write가 raw ID나 추측값 없이 모든 전투 보조 항목을 자체 UID로 해소할 수 있어야 합니다.
+상태: 완료. 아래 완료 기준과 `scripts/verify-phase2a2.ps1` 단위/live PostgreSQL gate를 모두 통과했습니다.
 
-## 5. Phase 2A1 — account/profile/build revision — 완료
+### 구현
 
-- 합성 local account/session을 구현했습니다.
-- synchro와 console level/EXP fact를 `AccountCombatStateRevision`으로 구현했습니다.
-- 자유 character level과 immutable build revision을 구현했습니다.
-- 미장착 또는 Tier 9·10/+0~5 네 부위, cube 장착·해제 및 자유 level, skill state를 구현했습니다.
-- OL 4×3 고정 좌표의 sparse exact decimal 추가·교체·삭제를 구현했습니다.
-- 배타적인 collection/favorite 선택과 N/A/unresolved 상태를 구현했습니다.
-- 선택적인 5인 squad revision과 draft/combat readiness 분리를 구현했습니다.
-- V0005는 CAS Save, idempotent operation, revision lineage, immutable child graph와 local session lifecycle을 원자적으로 저장합니다.
-- 선택된 definition은 알려졌지만 enhancement/cube/collectible level만 결손인 일반 draft도 field-level `unresolved` reason과 함께 무손실 왕복합니다.
+- credential-bearing raw의 strict allowlist/shape parser와 canonical `nll/sanitized-profile-draft/v1` codec
+- source-free `profile-source-inspect`/`profile-draft-import`, imported draft와 diff
+- raw sanitized draft와 분리된 `nll/profile-edit-candidate/v1`
+- Save, Save As, apply, explicit new-account create와 typed rebase command API/editor
+- bond `0`/missing manufacturer의 Research unresolved materialization과 typed reviewed override
+- identity/catalog membership/shape/coordinate/level-authority failure의 fail-closed 경계
+- lobby local display name, commander level과 profile presentation revision
+- synthetic wallet revision
+- roster/build, 저장 squad와 manufacturer/sparse-OL exact 값을 포함한 제한된 inventory read-only projection
+- 화면별 `supported|hidden|visible_no_op|not_supported` feature manifest
+- V0005 write와 V0006 application link 사이 interruption을 복구하는 immutable intent/ledger
 
-완료 결과: 현재 content가 달라진 write만 다음 revision을 만들고, 동일 content는 기존 revision과 최초 provenance를 재사용하며 과거 전투 결과의 참조가 변하지 않습니다. 최신 계정 JSON은 필드 coverage와 local acceptance에만 사용했고 raw ID·개인값을 fixture나 Git에 넣지 않았습니다.
+하단 UI의 초기 지원 범위는 다음과 같습니다.
 
-## 6. Phase 2A2 — offline import와 profile editor
+| 화면 | backend 범위 |
+|---|---|
+| 니케 | roster와 build 조회 |
+| 스쿼드 | 저장된 5인 squad 조회·선택 |
+| 로비 | lobby bootstrap으로 복귀 |
+| 인벤토리 | Local Lab 지원 전투 항목만 read-only projection |
+| 대원모집 | click acknowledgement 후 navigation 없음 |
 
-- credential-bearing raw에서 허용된 전투 필드만 읽는 offline sanitizer를 구현한다.
-- Save, Save As, local account apply diff를 loopback API와 별도 editor에 구현한다.
-- 사용자가 별도로 갱신한 최신 raw를 네트워크 없이 다시 읽는 refresh command를 구현한다.
+현재 2A1이 보유한 장착 상태와 definition catalog를 원본 전체 inventory라고 부르지 않습니다. 필요한 lab-owned inventory instance projection은 별도 version으로 추가합니다.
 
-완료 기준: raw의 장착 상태와 OL `(slot, line, type, value, unit)`가 source-ID-free draft로 무손실 변환되고, 재가져오기가 local edit를 자동 덮어쓰지 않아야 합니다. Local Lab은 외부 crawler를 실행하지 않습니다.
+### 완료 기준
 
-## 7. Phase 2B — execution profile과 Challenge session backend
+- bootstrap read model이 profile/wallet/roster/squad/inventory subset을 정확한 revision에 결박합니다.
+- raw ID, path, credential과 공식 session이 API·DB·log·fixture에 없습니다.
+- import refresh가 local edit를 자동 덮어쓰지 않습니다.
+- semantic unresolved는 Research/readiness false로 보존되고 identity/catalog/shape/authority failure는 materialization 전에 차단됩니다.
+- raw draft와 editor candidate가 codec/provenance/storage에서 교차 사용되지 않습니다.
+- source/base 없는 create-preview/create가 빈 DB의 최초 LocalAccount/profile을 명시적으로 만듭니다.
+- typed rebase/override가 원관측과 exact catalog binding을 보존하고 이름 기반 자동 매칭을 하지 않습니다.
+- V0005/V0006 interruption replay가 중복 revision 없이 completed application과 유효한 lobby validation으로 수렴합니다.
+- inventory subset이 enhancement/manufacturer와 OL `1..3` state/definition/exact value/unit을 손실하지 않습니다.
+- loopback admin security, source-free CLI와 V0006 전체를 `scripts/verify-phase2a2.ps1 -Integration`으로 검증합니다.
+- editor는 관리 sidecar이고 원본 게임 UI를 대체하지 않습니다.
 
-- 단일 active supported season을 선택한다.
-- 일반 1~7단계는 `lastClearLevel=7` 해금 상태만 제공한다.
-- Challenge begin, squad binding, result, trace 저장 계약을 구현한다.
-- unsupported season과 runtime mismatch를 fail closed 처리한다.
-- target FPS/fixed delta/time scale, graphics와 combat-control profile을 session에 고정한다.
-- graphics/FPS/VSync/resolution과 PC `UsePcAimSync`, 조준 보조·조건부 강도, 감도, `MaxPerShotCorrect`를 필수 입력으로 검증한다.
-- auto combat과 auto burst는 optional로 두고 수동 전투 readiness와 분리한다.
-- 원본 ESC UI의 client-local 누적 damage 경로를 보존하고 관측 snapshot과 현재 setting revision을 저장한다. mid-battle 변경은 요청 frame과 effective resume frame을 구분해 execution segment로 기록한다.
-- 요청 설정과 실제 frame-time telemetry를 분리해 기록한다.
-- harness로 API/DB 계약만 자동 검증한다.
+## 완료 — Phase 2B private server backend/harness
 
-완료 기준: 지원 snapshot과 ready squad만 session을 시작할 수 있고 결과가 정확한 snapshot/build revision을 참조해야 합니다.
+상태: 완료. `scripts/verify-phase2b.ps1`의 단위 및 live PostgreSQL integration gate가 모두 통과했습니다. original-client adapter/UI/runtime 인수는 이 완료 범위에 포함하지 않습니다.
 
-계정 JSON은 roster/build/console seed에 사용합니다. 그래픽 품질, FPS, VSync, 해상도, 마우스 동기화, 조준 보정과 ESC 누적 damage/segment는 JSON에 없으므로 별도 runtime setting adapter와 실제 실행 관측이 필요합니다.
+### Boot와 lobby
 
-## 8. Phase 3 — Original client gate 재감사
+- synthetic local session bootstrap
+- profile/wallet/roster/squad/inventory/feature manifest projection
+- 미지원 route의 controlled no-op/not-supported 처리
 
-- 권리자가 지원·승인한 local/test route의 존재를 재확인한다.
-- 합성 session과 공식 outbound zero를 입증한다.
-- endpoint/auth 변조, 공식 자격증명, 주입·후킹, 보호 기능 우회 없이 연결 가능해야 한다.
+### 영구 season directory
 
-gate가 열리지 않으면 adapter는 blocked이고 최종 인수 조건은 미달입니다. 자체 UI나 harness로 대체하지 않습니다.
+- 여섯 published 지원 시즌을 동시에 나열
+- account/session별 selected season
+- 한 client context와 battle session에는 정확히 한 snapshot 고정
+- 모든 시즌 permanent, `seasonEndsAt=null`
 
-## 9. Phase 4 — 실제 전투 검증
+### 고정 Solo Raid 상태
 
-- 원본 UI의 캐릭터 상태와 squad 표시를 검증한다.
-- 여섯 Challenge의 scene, behavior, animation, QTE, parts를 실제 runtime에서 검증한다.
-- 전투 결과와 서버 저장 결과를 교차검증한다.
-- 시즌별 compatibility tier를 증거에 따라 승격한다.
+```text
+NormalCombatCapability = unsupported
+NormalLastClearLevel = 7
+ChallengeUnlocked = true
+QuickBattleCapability = unsupported
+SeasonAvailability = permanent
+DailyResetZone = Asia/Seoul
+DailyResetLocalTime = 05:00:00
+```
 
-## 보류
+Normal battle/reward/Quick Battle route를 만들지 않습니다. 05:00 KST reset은 operational day key와 lazy idempotent rollover로 구현하고, profile, season selection, snapshot과 영구 record는 초기화하지 않습니다.
 
-Union Raid는 위 흐름이 안정화되고 사용자가 다시 범위를 확장한 뒤 시작합니다. 캠페인, 타워, 아레나, 상점, 전초기지는 계속 제외합니다.
+### Challenge run
 
-## 바로 다음 작업
+- exact raid/account/build/runtime/control admission
+- 한 run에 1~5개 5인 squad를 순차 결박
+- run 전체 character 재사용 금지
+- open → enter → `lab_harness_observation/v1` receipt → regroup/next team → result
+- 팀별 result와 누적 damage, 사용 revision과 telemetry 저장
 
-다음 구현 단계는 **Phase 2A2 offline sanitizer와 profile editor/API**입니다. 최신 raw의 allowlist field를 source-free imported draft로 변환하되 Local Lab이 crawler나 공식 로그인/API replay를 실행하지 않도록 유지합니다.
+일일 attempt quota, 소비 시점, 05:00을 가로지르는 진행 중 run, mock battle과 local ranking 표시 범위는 별도 versioned policy로 확정합니다. 사용자가 정하지 않은 값을 공식 기본값이라는 이유만으로 고정하지 않습니다.
+
+checked-in 기본은 여섯 축이 모두 미해소인 `challenge-operational-policy/unresolved/v1`입니다. 이 정책은 boot/lobby/directory/season selection과 `challengeUnlocked=true`를 유지하면서 새 run admission만 `policy_unresolved`로 fail closed합니다. 빈 DB bootstrap에서 여섯 축을 모두 명시한 configured policy를 주입하면 현재 raid day에 초기 활성화할 수 있지만, 이후 admin policy 전환은 다음 raid day에만 효력을 가집니다.
+
+### 완료 기준
+
+- 신규 local account에서 Challenge unlock projection이 즉시 열리고, 실제 run admission은 exact configured operational policy를 따릅니다.
+- season expiry와 Quick Battle이 없습니다.
+- 04:59:59/05:00:00 KST 경계와 동시 rollover가 결정적입니다.
+- 최대 다섯 팀과 팀 간 중복 금지, result revision pinning이 검증됩니다.
+- harness green은 original-client 완료로 표시하지 않습니다.
+
+Phase 2B result transport는 `lab_harness_observation/v1`입니다. backend는 damage를 계산하지 않고 exact 팀별 receipt와 누적 합계만 검산합니다. boot의 최종 권위는 `original_client_runtime`, 관측 상태는 `blocked_by_gate`로 남으며 Phase 3C/3D의 최소 one-team observation adapter가 실제 client mapping을 봉인하기 전에 이 harness receipt를 original-runtime 증거로 승격하지 않습니다.
+
+private-server access token은 process-local signing key를 사용합니다. 같은 process의 같은 Open operation replay는 exact token byte를 재사용하지만, restart 후에는 영속 session/context/time을 복원하더라도 새 process key로 재서명할 수 있습니다.
+
+## 완료 — 3A-R 문서·정책 rebaseline
+
+상태: 문서·정책 재기준화 완료 / `ready_for_local_compatibility_spike`. 실제 compatibility 실행은 아직 시작하지 않았습니다. 문서 작업 실적은 약 `1.5~2.5시간`입니다.
+
+- Phase 3A의 `blocked_insufficient_evidence`를 당시 approval-first 정책의 역사적 결과로 보존
+- 공개 upstream을 권리자 승인 증거로 표현하지 않으면서 operator-authorized local-only lane을 별도로 정의
+- EpinelPS reviewed commit `28b2f5413a0a1e3521a11ae162f91851335c8b40`, AGPL 외부 process 경계와 client `150.6.9` 고정
+- snapshot 가능한 disposable VM/별도 OS, dummy local account, `127.0.0.1` exact bind, 전 process tree non-loopback block와 backup/rollback 계약 정렬
+- classic `SoloRaid` only, Museum 제외와 시즌 26 first proof를 전 문서에 반영
+
+이 단계가 끝나도 client compatibility가 입증된 것은 아닙니다.
+
+## 완료 — 3B-0 시즌 26 static/runtime closure
+
+상태: `ready_for_selected_manager_patch_with_timing_analysis_blocker`
+
+다음 exact chain을 client 실행 전에 닫았습니다.
+
+```text
+season 26 manager
+  -> preset
+  -> Challenge wave
+  -> monster/stat
+  -> client-loadable asset/content
+```
+
+Static/content 축은 `ready_for_selected_manager_patch`입니다. pinned upstream pack과 인접 local reference pack의 필수 entry `7/7`, selected season row `6/6`를 exact하게 대조했고, manager → Challenge preset → wave → 단일 boss/model/stat → current behavior/asset root를 닫았습니다. Focused behavior/timeline artifact 자체는 prior local reference archive에서 생성했으며, target의 시즌 26 monster-skill row `15/15` exact decode와 complete monster-parts entry byte equality로 equivalence를 검증했습니다. 최신 manager, 다른 시즌과 Museum fallback은 사용하지 않았습니다.
+
+시즌 26에는 패턴 순서가 있지만 고정된 한 줄 script는 아닙니다. exact behavior graph는 node `917`개와 active cast site `109`개를 가지며 조건·random selector·파츠 상태에 따라 분기합니다. active skill type `14`개 중 `7`개가 exact Timeline marker를 가지며 AttackMarker는 `9`개입니다. event timing `7`개와 client `150.6.9` native scheduler contract가 미해소이므로 absolute frame/ms timing 분석만 blocked입니다. focused evidence는 `promotion_eligible=false`이므로 Phase 1C의 published 시즌 26 `static_exact` tier를 올리지 않습니다. 상세와 공개 영상 trace의 구분은 [PHASE3B0.md](PHASE3B0.md)를 따릅니다.
+
+## 완료 — 3B-1 external selected-manager patch와 focused test
+
+상태는 **완료 / `ready_for_isolated_season26_reference_run`**입니다.
+
+통합 external commit은 `92a6ca228aeb580988907b96189b2857dff2c62d`입니다.
+
+EpinelPS classic Solo Raid의 max/latest-manager 선택 동작을 account별 explicit selection으로 바꿨습니다. Baseline 감사값 `19/6/9/4`를 보존하고 최종 policy를 `7 selected Challenge / 10 controlled unsupported / 2 manager-independent`로 고정했습니다. Listener 시작 전에 startup binding으로 synthetic account의 target을 write-once 저장하고, JsonDb restart 복원과 immutable active-run pin을 구현했습니다.
+
+`B1a baseline/characterization -> B1x dispatch isolation -> B1b resolver/persistence -> B1c route wiring -> B1d adversarial tests -> B1e source-free receipt`를 모두 완료했습니다. Wire `Trial`은 classic Challenge 경로로 유지하고 Museum·Normal·Practice·FastBattle/Quick은 범위 밖입니다. Release rebuild 오류 `0`, focused test `63/63`이며 상세 receipt는 [PHASE3B1.md](PHASE3B1.md)를 따릅니다.
+
+## 다음 1 — isolated season 26 live proof
+
+예상 `2~4시간`입니다.
+
+```text
+disposable launch
+  -> synthetic local login
+  -> lobby
+  -> original classic Solo Raid
+  -> season 26 Challenge ready
+  -> one squad battle
+  -> original client result
+```
+
+primary 설치본과 공식 계정을 사용하지 않습니다. snapshot 가능한 disposable VM/별도 OS에서만 system hosts와 root CA를 바꿉니다. client-local native compatibility 변경은 before hash, backup과 rollback manifest를 먼저 만들고, client, launcher, EpinelPS/server와 관련 child process 전체의 non-loopback 통신을 차단·관측합니다. 모든 local service는 `127.0.0.1`에만 bind합니다.
+
+첫 exit gate는 **Museum 버프 없이 시즌 26 클래식 Challenge 전투가 시작되고 client result를 반환하는 것**입니다. 3A-R을 시작할 때의 총견적 `6.5~12.5시간`은 역사적 초기값이고, 3B-1 완료 뒤 현재 남은 3B-2 engineering estimate는 `2~4시간`입니다.
+
+## 이후 — shadow bridge와 확장
+
+3B live proof 뒤에만 진행하고 다시 견적합니다.
+
+1. 시즌 26 external façade ↔ Phase 2B shadow bridge: 초기 `3~6시간`
+2. 시즌 26 open/enter/observation/result end-to-end sealing: 초기 `4~7시간`
+3. 나머지 시즌 `7, 13, 29, 34, 40` 확장: 시즌 26 성공 뒤 시즌별 재견적
+4. 1~5팀, regroup/result/recovery와 runtime integrity: Phase 4에서 별도 재견적
+
+bridge는 먼저 read-compare/shadow mode로 시작합니다. Local Lab은 exact account/snapshot/squad/build/runtime/control identity와 durable run state를 보존하고, damage 계산의 권위는 원본 client에 둡니다. 한 시즌씩 별도 closure/proof batch로 닫으며 Museum을 fallback으로 사용하지 않습니다.
+
+## 이후 — Phase 4 1~5팀 actual-play와 runtime parity
+
+- Phase 3C/3D에서 봉인한 one-team original-runtime observation provenance/adapter의 1~5팀 확장
+- exact build/context/snapshot/squad/build/runtime/control pinning
+- observation → regroup → next-team → close/result wire와 ESC/frame telemetry
+- 실행 → 로딩 → 로컬 접속 → 로비
+- profile/재화와 lobby keep/remove/replace 명세
+- 니케·스쿼드·인벤토리 core projection
+- 각 지원 시즌의 클래식 Solo Raid 선택과 Challenge 즉시 개방
+- 1~5팀 전투, 사용 캐릭터 잠금과 재정비
+- 원본 HUD/ESC 누적 damage와 result
+- backend 팀별/누적 result 일치
+- 05:00 KST rollover
+- 시즌별 scene, behavior, QTE, part, animation과 timing
+- `SoloRaidMuseum` 및 Museum 전용 버프 미사용
+
+사용자가 custom presentation을 채택한 경우에만 Recruit no-op, season countdown/Quick Battle button 부재, widget 재배치와 six-season folder를 별도 acceptance로 추가합니다. 이 optional presentation의 부재는 core actual-play acceptance를 막지 않습니다.
+
+완료 판정은 전역 boolean이 아니라 `(client build, season, raid snapshot)`별 증거로 남깁니다.
+
+## Phase 2A1 영향 요약
+
+수정하지 않는 것:
+
+- V0001~V0005와 적용된 migration checksum
+- identity/provenance와 세 catalog
+- `RaidSnapshot`, account state, build, 5인 squad와 profile revision
+- CAS/lineage/idempotency와 기존 canonical hash
+
+후속 additive migration으로 추가한 것:
+
+- lobby presentation, wallet, feature manifest와 inventory subset
+- permanent season directory와 selected season
+- KST operational day와 daily state
+- 1~5팀 Challenge run/result와 execution segment
+
+Phase 2A2 config 계약에는 이미 `oneSelectedSeasonPerClientContext`, `challengeUnlocked=true`, `lastClearLevel=7`, permanent/no-quick/05:00 KST가 명시되어 있습니다. Phase 2B V0007/state machine/API는 이 확정 의미와 별도 operational-policy 권위를 구현하며 V0001~V0006 checksum을 바꾸지 않습니다.

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nikke Local Lab 관리 Editor</title>
+  <link rel="stylesheet" href="/editor/editor.css">
+  <script src="/editor/editor.js" defer></script>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">NIKKE LOCAL LAB</p>
+    <h1>관리 Editor</h1>
+    <p>합성 local account와 source-free draft만 다룹니다. 원본 client UI나 raw importer가 아닙니다.</p>
+  </header>
+
+  <main>
+    <section aria-labelledby="access-title">
+      <h2 id="access-title">Process-local admin access</h2>
+      <p>호스트가 한 번만 전달한 bootstrap code는 5분 안에 교환되며 다시 표시되지 않습니다.</p>
+      <div class="row">
+        <label>One-time bootstrap code
+          <input id="bootstrap-code" type="password" autocomplete="off" spellcheck="false">
+        </label>
+        <button id="admin-login" type="button">Admin session 시작</button>
+      </div>
+    </section>
+
+    <section aria-labelledby="account-title">
+      <h2 id="account-title">Account snapshot</h2>
+      <div class="row">
+        <label>Local account UID <input id="account-uid" autocomplete="off" spellcheck="false"></label>
+        <button id="load-account" type="button" disabled>불러오기</button>
+        <button id="load-bootstrap" type="button" disabled>Bootstrap snapshot</button>
+        <button id="load-features" type="button" disabled>Feature manifest</button>
+      </div>
+      <pre id="account-output" tabindex="0"></pre>
+    </section>
+
+    <section aria-labelledby="profile-title">
+      <h2 id="profile-title">Profile edit / Save / Save As</h2>
+      <p>서로 의존하는 장비·OL 필드는 한 candidate에 함께 추가합니다. 빈 candidate는 현재 profile을 그대로 Save As할 때 사용합니다.</p>
+      <div class="grid">
+        <label>Field code <input id="edit-field" value="character_level" autocomplete="off"></label>
+        <label>Subject UID <input id="edit-subject" autocomplete="off"></label>
+        <label>Value kind
+          <select id="edit-kind">
+            <option value="integer">integer</option>
+            <option value="boolean">boolean</option>
+            <option value="reference">reference</option>
+            <option value="exact_decimal">exact decimal</option>
+            <option value="controlled">controlled</option>
+          </select>
+        </label>
+        <label>Value <input id="edit-value" autocomplete="off"></label>
+        <label>Decimal scale <input id="edit-scale" type="number" min="0" max="12" value="0"></label>
+      </div>
+      <div class="row">
+        <button id="add-edit" type="button" disabled>작업 추가</button>
+        <button id="clear-edits" type="button" disabled>작업 비우기</button>
+        <button id="preview-edit" type="button" disabled>Candidate Preview</button>
+        <button id="save-profile" type="button" disabled>Save</button>
+        <button id="save-as-profile" type="button" disabled>Save As</button>
+      </div>
+      <pre id="operation-output" tabindex="0">[]</pre>
+      <pre id="profile-output" tabindex="0"></pre>
+    </section>
+
+    <section aria-labelledby="import-title">
+      <h2 id="import-title">Sanitized import draft</h2>
+      <div class="row">
+        <label>Draft UID <input id="draft-uid" autocomplete="off" spellcheck="false"></label>
+        <button id="load-draft" type="button" disabled>Draft 불러오기</button>
+      </div>
+      <p class="notice">raw bytes, 파일 경로, credential은 이 API에 전송할 수 없습니다.</p>
+      <table>
+        <caption>Level observations — authority를 선택하기 전에는 Apply할 수 없습니다.</caption>
+        <thead><tr><th>Character UID</th><th>Roster observation</th><th>Detail observation</th></tr></thead>
+        <tbody id="observation-body"></tbody>
+      </table>
+      <div class="grid">
+        <label>Level authority
+          <select id="level-authority">
+            <option value="unresolved/no_apply">선택 필요 (Apply 불가)</option>
+            <option value="roster_observation/v1">roster observation</option>
+            <option value="detail_observation/v1">detail observation</option>
+          </select>
+        </label>
+        <label>Apply scope
+          <select id="import-scope">
+            <option value="full_profile">full profile</option>
+            <option value="builds_only">builds only</option>
+            <option value="account_state_only">account state only</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <button id="preview-import" type="button" disabled>Diff Preview</button>
+        <button id="apply-import" type="button" disabled>Apply</button>
+        <button id="preview-create-import" type="button" disabled>신규 계정 Preview</button>
+        <button id="create-from-import" type="button" disabled>신규 로컬 계정 생성</button>
+      </div>
+      <p class="notice">신규 계정 생성은 full profile과 명시적 level authority만 허용하며, 생성 뒤 lobby/wallet 상태는 별도로 초기화합니다.</p>
+      <h3>Catalog rebase</h3>
+      <p class="notice">target catalog과 검토한 source-free UID mapping을 명시해야 하며 자동 추정하지 않습니다.</p>
+      <div class="grid">
+        <label>Character catalog UID <input id="rebase-character-catalog" autocomplete="off"></label>
+        <label>Character dataset UID <input id="rebase-character-dataset" autocomplete="off"></label>
+        <label>Character manifest SHA-256 <input id="rebase-character-manifest" autocomplete="off"></label>
+        <label>Support catalog UID <input id="rebase-support-catalog" autocomplete="off"></label>
+        <label>Support dataset UID <input id="rebase-support-dataset" autocomplete="off"></label>
+        <label>Support manifest SHA-256 <input id="rebase-support-manifest" autocomplete="off"></label>
+      </div>
+      <label>Explicit UID mappings (JSON array)
+        <textarea id="rebase-mappings" rows="4" spellcheck="false">[]</textarea>
+      </label>
+      <div class="row">
+        <button id="preview-rebase" type="button" disabled>Rebase Preview</button>
+        <button id="apply-rebase" type="button" disabled>Rebase</button>
+      </div>
+      <h3>Reviewed override</h3>
+      <p class="notice">bond level 또는 장비 manufacturer-match만 근거와 함께 새 immutable draft로 파생합니다.</p>
+      <label>Typed overrides (JSON array)
+        <textarea id="review-overrides" rows="5" spellcheck="false">[]</textarea>
+      </label>
+      <div class="row">
+        <button id="preview-review" type="button" disabled>Override Preview</button>
+        <button id="apply-review" type="button" disabled>Override 적용</button>
+      </div>
+      <pre id="import-output" tabindex="0"></pre>
+    </section>
+
+    <section aria-labelledby="local-state-title">
+      <h2 id="local-state-title">Lobby / wallet projection</h2>
+      <div class="grid">
+        <label>Display name <input id="display-name" autocomplete="off"></label>
+        <label>Commander level <input id="commander-level" type="number" min="1" value="1"></label>
+        <label>Jewel <input id="jewel-balance" type="number" min="0" value="0"></label>
+        <label>Credit <input id="credit-balance" type="number" min="0" value="0"></label>
+      </div>
+      <div class="row">
+        <button id="load-local-state" type="button" disabled>현재 값</button>
+        <button id="initialize-local-state" type="button" disabled>최초 상태 생성</button>
+        <button id="save-lobby" type="button" disabled>Lobby Save</button>
+        <button id="save-wallet" type="button" disabled>Wallet Save</button>
+      </div>
+      <p class="notice">정수 입력은 이 editor에서 JavaScript safe-integer 범위만 허용하며 범위를 넘으면 저장하지 않습니다.</p>
+      <pre id="local-state-output" tabindex="0"></pre>
+    </section>
+  </main>
+
+  <footer><p id="status" role="status" aria-live="polite">초기화 중…</p></footer>
+</body>
+</html>

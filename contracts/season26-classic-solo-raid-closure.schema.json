@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:season26-classic-solo-raid-closure:v1",
+  "title": "Season26ClassicSoloRaidClosureAssessment",
+  "description": "Source-free Phase 3B-0 receipt for the exact pinned season 26 classic Solo Raid closure. This receipt does not contain raw game identifiers, names, paths, decoded rows, or asset member names.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "assessmentUid",
+    "assessedAtUtc",
+    "verdict",
+    "target",
+    "dependencyPin",
+    "staticClosure",
+    "behaviorGraph",
+    "timingClosure",
+    "routeAudit",
+    "observations",
+    "canonicalManifest",
+    "staticClosureBlockingReasonCodes",
+    "timingAnalysisBlockingReasonCodes",
+    "nextStepRequirementCodes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "nll/season26-classic-solo-raid-closure/v1" },
+    "assessmentUid": { "$ref": "#/$defs/uuid" },
+    "assessedAtUtc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])T([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+    },
+    "verdict": { "const": "ready_for_selected_manager_patch_with_timing_analysis_blocker" },
+    "target": {
+      "const": {
+        "clientBuildVersion": "150.6.9",
+        "seasonNumber": 26,
+        "modeCode": "classic_solo_raid",
+        "museumAllowed": false,
+        "fallbackPolicyCode": "none"
+      }
+    },
+    "dependencyPin": {
+      "const": {
+        "dependencyCode": "epinelps_external_facade",
+        "repositoryCode": "epinelps_epinelps",
+        "commitSha": "28b2f5413a0a1e3521a11ae162f91851335c8b40",
+        "licenseCode": "agpl-3.0-only",
+        "sourceBoundaryCode": "external_checkout"
+      }
+    },
+    "staticClosure": {
+      "const": {
+        "statusCode": "exact",
+        "targetPackBindingStatusCode": "exact_from_pinned_upstream",
+        "comparisonStatusCode": "required_entries_byte_identical",
+        "targetArchiveEntryCount": 9380,
+        "requiredStaticEntryCount": 7,
+        "byteIdenticalRequiredStaticEntryCount": 7,
+        "selectedRowCount": 6,
+        "exactSelectedRowCount": 6,
+        "managerStatusCode": "exact_unique",
+        "challengeSelectorCode": "classic_challenge_difficulty2_wave_order8",
+        "presetStatusCode": "exact_unique",
+        "waveStatusCode": "exact_unique",
+        "bossModelStatStatusCode": "exact_unique",
+        "behaviorCatalogStatusCode": "exact",
+        "assetCatalogStatusCode": "exact",
+        "currentClientAssetStatusCode": "exact_unique",
+        "sameTargetContentSet": true,
+        "latestManagerFallbackUsed": false,
+        "alternateSeasonFallbackUsed": false,
+        "museumFallbackUsed": false
+      }
+    },
+    "behaviorGraph": {
+      "const": {
+        "statusCode": "exact",
+        "nodeCount": 917,
+        "activeSkillReferenceCount": 109,
+        "exactActiveSkillReferenceCount": 109,
+        "ambiguousActiveSkillReferenceCount": 0,
+        "unresolvedActiveSkillReferenceCount": 0,
+        "rootShapeCode": "repeater_sequence",
+        "orderingKindCode": "conditional_random_graph",
+        "derivationStaticArchiveRoleCode": "staticdata_archive_comparison",
+        "targetStaticArchiveRoleCode": "staticdata_archive_target",
+        "targetEquivalenceStatusCode": "season_rows_and_parts_entry_exact",
+        "seasonMonsterSkillRowCount": 15,
+        "exactEquivalentSeasonMonsterSkillRowCount": 15,
+        "monsterPartsTableEntryCount": 1,
+        "byteIdenticalMonsterPartsTableEntryCount": 1,
+        "targetBehaviorBundleStatusCode": "exact",
+        "targetClientBundleStatusCode": "exact",
+        "fixedLinearOrderClaimed": false,
+        "fixedSeedUsed": false
+      }
+    },
+    "timingClosure": {
+      "const": {
+        "statusCode": "analysis_blocked_native_scheduler_rebind_required",
+        "activeSkillCount": 14,
+        "exactTimelineMarkerSkillCount": 7,
+        "attackMarkerCount": 9,
+        "unresolvedRuntimeCallbackActiveSkillCount": 5,
+        "routedWithoutExactAttackMarkerSkillCount": 2,
+        "absoluteBattleTimingStatusCode": "native_scheduler_rebind_required",
+        "blocksStaticClosure": false,
+        "blocksAbsoluteBattleTimingAnalysis": true
+      }
+    },
+    "routeAudit": {
+      "const": {
+        "statusCode": "selected_manager_patch_required",
+        "classicLatestManagerFallbackPresent": true,
+        "selectedManagerPatchRequired": true,
+        "classicHandlerCount": 19,
+        "requestManagerSelectionPathCount": 6,
+        "latestManagerFallbackPathCount": 9,
+        "managerStatelessPathCount": 4,
+        "museumRouteRequired": false,
+        "nextStepCode": "phase3b1_classic_selected_manager_patch"
+      }
+    },
+    "observations": {
+      "const": [
+        {
+          "roleCode": "behavior_bundle",
+          "artifactKind": "asset_bundle_observation",
+          "byteLength": 2415189,
+          "sha256": "4adb06ddb6b325a64c536377c5f7554c26b89524af920f0bf9e4208f9935819a"
+        },
+        {
+          "roleCode": "challenge_behavior_graph",
+          "artifactKind": "normalized_behavior_graph",
+          "byteLength": 915929,
+          "sha256": "5a730e21ef76856763552ef200b64cf405ba7f1798420f120f793549f2b90e72"
+        },
+        {
+          "roleCode": "challenge_catalog",
+          "artifactKind": "normalized_challenge_catalog",
+          "byteLength": 84078,
+          "sha256": "5158f410eae7ec806501ff047b21fbad3c9cc97385cc8f1a0cd95fbc4535a3f9"
+        },
+        {
+          "roleCode": "challenge_timeline_routes",
+          "artifactKind": "normalized_timeline_routes",
+          "byteLength": 91354,
+          "sha256": "b7b08e489701f300317821baeeba0100f17ca13f5abae42023fd027298ecf835"
+        },
+        {
+          "roleCode": "client_catalog_core",
+          "artifactKind": "addressables_catalog_observation",
+          "byteLength": 10552026,
+          "sha256": "a1dc8425ca034447a1e495d02f02e10fcbf92a772453aebfc214c3a88dd21d52"
+        },
+        {
+          "roleCode": "client_catalog_data_pack",
+          "artifactKind": "addressables_catalog_observation",
+          "byteLength": 8630492,
+          "sha256": "326c029414ccf06ff429dd2e017a8bbae6dc39fd295682c67f333a8611a6e5cb"
+        },
+        {
+          "roleCode": "client_catalog_field",
+          "artifactKind": "addressables_catalog_observation",
+          "byteLength": 337379,
+          "sha256": "af0307449ddb4455357c7d2e4e9bf363f5bb2d4a8615e11e37939629b2acc04c"
+        },
+        {
+          "roleCode": "client_executable",
+          "artifactKind": "executable_observation",
+          "byteLength": 794152,
+          "sha256": "2cfaa12b7d708aa6a741faee17c3ac14d8e9cd6be1b5e4e773ee1535b6ddaa30"
+        },
+        {
+          "roleCode": "client_runtime_binary",
+          "artifactKind": "runtime_binary_observation",
+          "byteLength": 265846312,
+          "sha256": "a4f0b9560ab0c00c9ab4f7ac64eb8e2631c7b70ab9e92ec18bb4944ce3c66954"
+        },
+        {
+          "roleCode": "client_unity_runtime",
+          "artifactKind": "runtime_binary_observation",
+          "byteLength": 29605288,
+          "sha256": "3f696bcf12b9bc6a4efe26193bdc7f209aee48d9a717e415c773cc5de155b5b3"
+        },
+        {
+          "roleCode": "spotmonster_bundle",
+          "artifactKind": "asset_bundle_observation",
+          "byteLength": 16240238,
+          "sha256": "080b8ec6a0e1829bffa35fadce729a92ec8d06612f754ed6d315d0eaaf361f0e"
+        },
+        {
+          "roleCode": "staticdata_archive_comparison",
+          "artifactKind": "staticdata_archive_observation",
+          "byteLength": 17176417,
+          "sha256": "ebfc46d57cdbe1414553bf7891c734c018236ed924daf5b98f713de7b2809ae9"
+        },
+        {
+          "roleCode": "staticdata_archive_target",
+          "artifactKind": "staticdata_archive_observation",
+          "byteLength": 17176616,
+          "sha256": "925762cd3ef56601916b2e2ae58f929d4dd389055b0d8bcd2176e9abd9b29e69"
+        },
+        {
+          "roleCode": "staticdata_package_target",
+          "artifactKind": "staticdata_package_observation",
+          "byteLength": 17177168,
+          "sha256": "8c0dfdcaf17446d0d25ecf2c5910272b1c1fc906191e6926037a81d94ef858e3"
+        }
+      ]
+    },
+    "canonicalManifest": {
+      "const": {
+        "contractId": "nll/dataset-input-manifest/v1",
+        "canonicalizationCode": "role_kind_sha256_length_lf_ordinal/v1",
+        "memberCount": 14,
+        "canonicalByteLength": 1775,
+        "sha256": "b358e284fc18953c65f50a3799c8efeb27f5a99b6a3f375303152b46388a2b09"
+      }
+    },
+    "staticClosureBlockingReasonCodes": { "const": [] },
+    "timingAnalysisBlockingReasonCodes": { "const": ["native_scheduler_rebind_required"] },
+    "nextStepRequirementCodes": { "const": ["classic_selected_manager_patch_required"] }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    }
+  }
+}

@@ -4,8 +4,15 @@
 
 - 별도 신규 저장소이며 기존 Git history를 상속하지 않는다.
 - 최종 목표는 자체 local backend에 연결된 원본 NIKKE UI와 실제 전투 runtime으로 검증하는 것이다.
+- 제품 형태는 원본 client에 필요한 기능만 공급하는 제한된 local private server다. 별도 UI, harness 또는 damage simulator를 최종 client로 만들지 않는다.
+- 원본 client는 UI·asset·animation·전투 simulation·damage 계산과 표시의 권위이고, Local Lab은 local session·profile projection·기능 개방·Solo Raid session/result의 권위다.
 - lab-owned harness는 개발·계약 검증 도구이며 최종 인수 조건을 대체하지 않는다.
 - 실제 계정이 아닌 자체 계정·자체 ID만 사용한다.
+- Phase 3 원본 client 연구는 운영자가 승인한 개인·비상업·비배포·로컬 전용 범위다. 권리자 승인은 주장하지 않으며 법적 상태는 `not_determined`로 둔다.
+- public EpinelPS commit `28b2f5413a0a1e3521a11ae162f91851335c8b40`은 exact `150.6.9` client에 대한 기술적 prior art/reference로 고정한다. 공개 저장소의 존재를 Shift Up의 승인·묵인·비집행 약속으로 해석하지 않는다.
+- EpinelPS는 Local Lab source tree에 vendor하지 않고 별도 checkout/process로 먼저 평가한다. generated protocol source, game data, certificate와 patched binary는 이 저장소에 넣지 않는다.
+- `C:\NIKKE` 주 설치본은 read-only로 보존한다. original-client live 실험은 exact hash를 고정한 snapshot 가능한 disposable VM/별도 OS와 synthetic dummy account에서만 수행한다. 단순 디렉터리 복제본은 정적 검산용이다.
+- system hosts/root CA는 disposable VM/OS에서만 바꾸고, client-local certificate bundle/native compatibility shim은 사전 backup, 원본·적용 SHA-256과 검증 가능한 rollback을 갖춘 경우에만 허용한다.
 - 캐릭터 빌드는 revision 기반이며 과거 revision은 불변이다.
 - 생성 기본 프리셋은 `combat-max/v1`이다.
 - 캐릭터 레벨은 사용자 명시값으로 자유 설정한다.
@@ -15,16 +22,29 @@
 - 오버로드는 `research` 모드에서 exact 값 자유 write를 지원한다.
 - 원본 데이터와 런타임 DB는 저장소 밖에 둔다.
 - Solo Raid는 Challenge만 지원한다.
+- 목표 콘텐츠는 원본 시즌제/classic `SoloRaid`다. 결과에 영향을 주는 별도 공식 buff가 있는 `SoloRaidMuseum`은 구현·검증·fallback 대상이 아니다.
+- 첫 live compatibility target은 시즌 26 프로비던스다. manager→preset→Challenge wave→monster/stat→client asset closure가 닫히지 않으면 `runtime_blocked_season_26`으로 기록하고 다른 시즌이나 Museum으로 자동 대체하지 않는다.
+- Phase 3B-0에서 시즌 26 manager→Challenge preset→wave→단일 boss/model/stat→current behavior/asset root closure를 exact하게 닫았다. Focused behavior/timeline artifact는 prior local reference archive에서 생성하고 target pack과의 required-entry/selected-row/skill-row/parts-entry equivalence를 별도로 검증했다. aggregate verdict는 `ready_for_selected_manager_patch_with_timing_analysis_blocker`이며 static/content는 통과, absolute timing 분석만 native scheduler contract 부재로 blocked다. focused artifact는 `promotion_eligible=false`이므로 Phase 1C의 published `static_exact` tier는 유지한다.
 - 보스 admission은 `challenge-boss-support/v1`을 따른다.
 - 현재 지원 시즌은 `7, 13, 26, 29, 34, 40`이다.
 - 시즌 14와 39는 전격·철갑 조건을 만족해도 명시적으로 제외한다.
-- 일반 1~7단계는 `lastClearLevel=7` 해금 stub이며 전투 구현 대상이 아니다.
+- 일반 1~7단계는 `lastClearLevel=7` 해금 stub이고 `challengeUnlocked=true`가 기본이며 전투 구현 대상이 아니다.
+- published 지원 시즌은 종료되지 않는 local content다. `SeasonAvailability=permanent`, `seasonEndsAt=null`이고 만료·정산 job을 만들지 않는다.
+- lobby season directory는 여러 지원 시즌을 표시하며, 선택된 한 시즌만 클래식 Solo Raid 실행 context에 투영한다.
+- Quick Battle은 지원하지 않으며 endpoint, reward와 persistence를 만들지 않는다.
+- Challenge daily state는 IANA `Asia/Seoul`의 매일 05:00에 초기화한다.
+- 공식 global ranking, reward mail과 live-service 시즌 정산은 모방하지 않는다. 필요한 경우 자체 local record만 별도 계약으로 표시한다.
+- 첫 시즌 26 수직 proof에서는 custom widget 제거·six-season folder를 요구하지 않는다. proof 뒤 presentation을 별도 평가해, 안전한 client variant가 확인되고 사용자가 채택할 때만 기존 홍보·상점·social widget 제거와 좌측 Solo Raid season folder를 구현한다. 하단 니케·스쿼드·로비·인벤토리·대원모집 유지 및 대원모집 controlled no-op도 같은 후속 presentation 결정에 속한다.
 - Union Raid는 비활성 확장 지점이다.
-- 원본 리테일 클라이언트 연결은 `docs/FEASIBILITY_GATES.md`가 해제될 때까지 blocked다.
+- 주 설치본, 공식 계정과 공식 서비스 경로는 계속 blocked다. modified-local 연구 lane은 [PHASE3AR.md](PHASE3AR.md)의 `ready_for_local_compatibility_spike` 판정과 [FEASIBILITY_GATES.md](FEASIBILITY_GATES.md)의 disposable 환경 조건을 따른다.
+- Phase 3A의 `blocked_insufficient_evidence`는 rights-holder-approved route를 전제로 한 역사적 정상 종료로 보존한다. Phase 3A-R은 이를 성공으로 덮어쓰지 않고 operator-authorized modified-local lane을 별도 재기준화한다.
+- Phase 3은 3B-0 시즌 26 closure, 3B-1 classic selected-manager extension, 3B-2 disposable reference run, 3C Local Lab shadow bridge, 3D exact authority correlation의 작은 수직 단계로 진행한다. custom six-season lobby는 첫 classic proof 뒤에 평가한다.
+- 3B-1 v1의 선택 권위는 external EpinelPS account다. Listener 시작 전 account-specific startup binding으로 write-once 저장하고 session override는 두지 않으며, account당 하나의 active classic run이 immutable manager pin을 가진다. `Trial` wire는 Challenge이고 Museum·Normal·Practice·FastBattle/Quick은 범위 밖이다. `GetLogs`의 exact target projection/denial은 B1a characterization gate다.
 - raid 호환성 tier는 `static_exact`, `behavior_exact`, `asset_exact_runtime_current`, `historical_runtime_exact` 네 단계다.
 - published raid snapshot 계약은 v2이며 `ready` 상태와 non-null dataset-scoped compatibility binding marker를 강제한다. raw client mapping은 이 단계에서 materialize하지 않으며 불완전 후보는 import diagnostic으로 분리한다.
 - 현재 시즌 목록은 dataset에서 정책으로 파생한 문서화 결과이지 config에 고정된 두 번째 allowlist가 아니다.
-- 공개 제재가 보이지 않는다는 정황은 permission 또는 gate 해제 근거로 사용하지 않는다.
+- v1 lobby directory는 review된 시즌 `7, 13, 26, 29, 34, 40`으로 versioning한다. 새 dataset candidate는 자동 노출하지 않고 evidence review와 directory contract revision 뒤에 추가한다.
+- 공개 구현과 활동 이력은 기술적 feasibility 근거로 사용할 수 있지만 permission의 근거로 사용하지 않는다.
 - Phase 1A source 보호는 importer capability 수준의 read-only 보장이다. OS 전체 쓰기 방지로 표현하지 않는다.
 - source path, file name, raw ID, decoded payload, exception text는 import ledger schema에 두지 않는다.
 - dataset snapshot은 경로가 없는 canonical source manifest hash로 식별하고, 동일 입력은 기존 snapshot을 재사용한다.
@@ -64,6 +84,13 @@
 - 소장품·애장품의 단계/레벨 표현과 스킬 변형 모델
 - client graphics/control setting의 authoritative local capture 위치와 적용 경로
 - 각 지원 시즌의 runtime exact 증거 확보 범위
-- 원본 client gate를 충족할 수 있는 권리자 지원 interface의 존재 여부
+- pinned EpinelPS의 per-request handler factory와 account-keyed serialization을 기존 JsonDb/dispatch에 가장 작게 넣을 exact 구현 shape
+- 시즌 26 client `150.6.9` native scheduler contract와 미해소 event timing `7`개의 absolute frame/ms mapping
+- disposable environment에서 시즌 26 classic runtime이 실제 battle/result를 반환하는지 여부
+- custom client UI variant가 고정 lobby widget 제거, season folder와 영구 시즌 표시를 지원할 수 있는지
+- 권리자 또는 법률 전문가의 별도 검토가 필요한지 여부. 이는 현재 local technical spike의 선행 기술 gate가 아니며 배포·제3자 접속·상업화 시 반드시 다시 결정
+- Challenge 일일 entry 수, 소비 시점과 `per_season`/`shared_directory` counter 범위
+- 05:00을 가로지르는 active run 처리
+- Mock Battle과 local record/ranking 표시 범위
 
 미정값은 임의 기본값으로 채우지 않고 contract에서 `unresolved`로 표현합니다.
