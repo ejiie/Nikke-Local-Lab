@@ -1,0 +1,551 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:season26-classic-reference-run:v1",
+  "title": "Season26ClassicReferenceRunAssessment",
+  "description": "Source-free Phase 3B-2 live outcome contract for the pinned disposable season 26 classic Solo Raid reference run. Preflight state and live outcome are separate. No raw identifiers, paths, credentials, certificates, keys, payloads, decoded data, or binary bytes are accepted.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "assessmentUid",
+    "assessedAtUtc",
+    "verdict",
+    "target",
+    "externalLineage",
+    "preflightBinding",
+    "execution",
+    "classicRouteBoundary",
+    "originalClientResult",
+    "rollback",
+    "prohibitedMaterial",
+    "downstreamBoundaries",
+    "blockingReasonCodes",
+    "nextStepRequirementCodes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "nll/season26-classic-reference-run/v1" },
+    "assessmentUid": { "$ref": "#/$defs/uuid" },
+    "assessedAtUtc": { "$ref": "#/$defs/utcInstant" },
+    "verdict": {
+      "enum": [
+        "not_executed_contract_scaffold_only",
+        "verified_isolated_season26_original_client_result",
+        "blocked_environment_violation",
+        "blocked_museum_route_observed",
+        "runtime_blocked_season_26",
+        "blocked_original_result_missing",
+        "blocked_rollback_failure"
+      ]
+    },
+    "target": { "$ref": "#/$defs/target" },
+    "externalLineage": { "$ref": "#/$defs/externalLineage" },
+    "preflightBinding": { "$ref": "#/$defs/preflightBinding" },
+    "execution": { "$ref": "#/$defs/execution" },
+    "classicRouteBoundary": { "$ref": "#/$defs/classicRouteBoundary" },
+    "originalClientResult": { "$ref": "#/$defs/originalClientResult" },
+    "rollback": { "$ref": "#/$defs/rollback" },
+    "prohibitedMaterial": { "$ref": "#/$defs/prohibitedMaterial" },
+    "downstreamBoundaries": { "$ref": "#/$defs/downstreamBoundaries" },
+    "blockingReasonCodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/controlledCode" }
+    },
+    "nextStepRequirementCodes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/controlledCode" }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "verdict": { "const": "verified_isolated_season26_original_client_result" }
+        },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "preflightBinding": { "$ref": "#/$defs/exactPreflightBinding" },
+          "execution": { "$ref": "#/$defs/completedExecution" },
+          "classicRouteBoundary": { "$ref": "#/$defs/verifiedClassicRouteBoundary" },
+          "originalClientResult": { "$ref": "#/$defs/verifiedOriginalClientResult" },
+          "rollback": { "$ref": "#/$defs/verifiedRollback" },
+          "blockingReasonCodes": { "maxItems": 0 }
+        }
+      },
+      "else": {
+        "properties": {
+          "blockingReasonCodes": { "minItems": 1 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verdict": { "const": "not_executed_contract_scaffold_only" }
+        },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "preflightBinding": { "$ref": "#/$defs/unboundPreflightBinding" },
+          "execution": { "$ref": "#/$defs/notExecuted" },
+          "classicRouteBoundary": { "$ref": "#/$defs/unobservedClassicRouteBoundary" },
+          "originalClientResult": { "$ref": "#/$defs/unobservedOriginalClientResult" },
+          "rollback": { "$ref": "#/$defs/notStartedRollback" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verdict": { "const": "blocked_museum_route_observed" }
+        },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "classicRouteBoundary": {
+            "properties": {
+              "statusCode": { "const": "violation" }
+            },
+            "anyOf": [
+              { "properties": { "museumRouteObserved": { "const": true } } },
+              { "properties": { "museumStageObserved": { "const": true } } },
+              { "properties": { "museumBuffObserved": { "const": true } } }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verdict": { "const": "blocked_original_result_missing" }
+        },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "originalClientResult": {
+            "properties": {
+              "statusCode": { "const": "missing_after_runtime" },
+              "battleRuntimeStarted": { "const": true },
+              "resultReturned": { "const": false }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verdict": { "const": "blocked_rollback_failure" }
+        },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "rollback": {
+            "properties": {
+              "statusCode": { "const": "failed" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verdict": { "const": "blocked_environment_violation" }
+        },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "execution": {
+            "properties": {
+              "environmentViolationObserved": { "const": true }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nullableSha256": {
+      "oneOf": [
+        { "$ref": "#/$defs/sha256" },
+        { "type": "null" }
+      ]
+    },
+    "nullableUuid": {
+      "oneOf": [
+        { "$ref": "#/$defs/uuid" },
+        { "type": "null" }
+      ]
+    },
+    "utcInstant": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])T([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+    },
+    "nullableUtcInstant": {
+      "oneOf": [
+        { "$ref": "#/$defs/utcInstant" },
+        { "type": "null" }
+      ]
+    },
+    "controlledCode": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]{0,95}$"
+    },
+    "target": {
+      "const": {
+        "clientBuildVersion": "150.6.9",
+        "seasonNumber": 26,
+        "modeCode": "classic_solo_raid_challenge",
+        "wireModeCode": "trial",
+        "challengeRaidLevel": 8,
+        "museumAllowed": false,
+        "fallbackPolicyCode": "none"
+      }
+    },
+    "externalLineage": {
+      "const": {
+        "repositoryCode": "epinelps_epinelps",
+        "licenseCode": "agpl-3.0-only",
+        "sourceBoundaryCode": "external_agpl_checkout",
+        "upstreamBaseCommitSha": "28b2f5413a0a1e3521a11ae162f91851335c8b40",
+        "selectedManagerIntegrationCommitSha": "92a6ca228aeb580988907b96189b2857dff2c62d",
+        "preflightSealCommitSha": "e32e5f900775974d5736e7fb2b50f8c62638a004",
+        "preflightHardeningCommitSha": "4f7bd5b5eb2b9a6e03af503f1c09adc4c4f7f16f",
+        "latestExternalTreeCommitSha": "ce353eeebee3c76672e483c6f735bb27f0227815"
+      }
+    },
+    "sourceFreeManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contractId",
+        "canonicalizationCode",
+        "memberCount",
+        "canonicalByteLength",
+        "sha256"
+      ],
+      "properties": {
+        "contractId": {
+          "type": "string",
+          "pattern": "^nll/[a-z0-9._/-]{1,91}/v[1-9][0-9]*$"
+        },
+        "canonicalizationCode": { "$ref": "#/$defs/controlledCode" },
+        "memberCount": { "type": "integer", "minimum": 1, "maximum": 4096 },
+        "canonicalByteLength": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "preflightBinding": {
+      "oneOf": [
+        { "$ref": "#/$defs/unboundPreflightBinding" },
+        { "$ref": "#/$defs/exactPreflightBinding" }
+      ]
+    },
+    "unboundPreflightBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statusCode", "assessmentUid", "assessmentSha256", "preflightVerdictCode"],
+      "properties": {
+        "statusCode": { "const": "unbound" },
+        "assessmentUid": { "type": "null" },
+        "assessmentSha256": { "type": "null" },
+        "preflightVerdictCode": { "type": "null" }
+      }
+    },
+    "exactPreflightBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statusCode", "assessmentUid", "assessmentSha256", "preflightVerdictCode"],
+      "properties": {
+        "statusCode": { "const": "exact" },
+        "assessmentUid": { "$ref": "#/$defs/uuid" },
+        "assessmentSha256": { "$ref": "#/$defs/sha256" },
+        "preflightVerdictCode": { "const": "ready_to_start_isolated_season26_reference_run" }
+      }
+    },
+    "execution": {
+      "oneOf": [
+        { "$ref": "#/$defs/notExecuted" },
+        { "$ref": "#/$defs/completedExecution" }
+      ]
+    },
+    "notExecuted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statusCode",
+        "startedAtUtc",
+        "completedAtUtc",
+        "environmentViolationObserved",
+        "observationCount",
+        "canonicalManifest"
+      ],
+      "properties": {
+        "statusCode": { "const": "not_executed" },
+        "startedAtUtc": { "type": "null" },
+        "completedAtUtc": { "type": "null" },
+        "environmentViolationObserved": { "const": false },
+        "observationCount": { "const": 0 },
+        "canonicalManifest": { "type": "null" }
+      }
+    },
+    "completedExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statusCode",
+        "startedAtUtc",
+        "completedAtUtc",
+        "environmentViolationObserved",
+        "observationCount",
+        "canonicalManifest"
+      ],
+      "properties": {
+        "statusCode": { "const": "executed" },
+        "startedAtUtc": { "$ref": "#/$defs/utcInstant" },
+        "completedAtUtc": { "$ref": "#/$defs/utcInstant" },
+        "environmentViolationObserved": { "type": "boolean" },
+        "observationCount": { "type": "integer", "minimum": 1, "maximum": 4096 },
+        "canonicalManifest": { "$ref": "#/$defs/sourceFreeManifest" }
+      }
+    },
+    "classicRouteBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statusCode",
+        "classicSoloRaidObserved",
+        "season26Observed",
+        "challengeObserved",
+        "trialWireObserved",
+        "latestManagerFallbackObserved",
+        "alternateSeasonFallbackObserved",
+        "museumRouteObserved",
+        "museumStageObserved",
+        "museumBuffObserved"
+      ],
+      "properties": {
+        "statusCode": { "enum": ["not_observed", "verified", "violation"] },
+        "classicSoloRaidObserved": { "type": "boolean" },
+        "season26Observed": { "type": "boolean" },
+        "challengeObserved": { "type": "boolean" },
+        "trialWireObserved": { "type": "boolean" },
+        "latestManagerFallbackObserved": { "type": "boolean" },
+        "alternateSeasonFallbackObserved": { "type": "boolean" },
+        "museumRouteObserved": { "type": "boolean" },
+        "museumStageObserved": { "type": "boolean" },
+        "museumBuffObserved": { "type": "boolean" }
+      }
+    },
+    "unobservedClassicRouteBoundary": {
+      "allOf": [
+        { "$ref": "#/$defs/classicRouteBoundary" },
+        {
+          "properties": {
+            "statusCode": { "const": "not_observed" },
+            "classicSoloRaidObserved": { "const": false },
+            "season26Observed": { "const": false },
+            "challengeObserved": { "const": false },
+            "trialWireObserved": { "const": false },
+            "latestManagerFallbackObserved": { "const": false },
+            "alternateSeasonFallbackObserved": { "const": false },
+            "museumRouteObserved": { "const": false },
+            "museumStageObserved": { "const": false },
+            "museumBuffObserved": { "const": false }
+          }
+        }
+      ]
+    },
+    "verifiedClassicRouteBoundary": {
+      "allOf": [
+        { "$ref": "#/$defs/classicRouteBoundary" },
+        {
+          "properties": {
+            "statusCode": { "const": "verified" },
+            "classicSoloRaidObserved": { "const": true },
+            "season26Observed": { "const": true },
+            "challengeObserved": { "const": true },
+            "trialWireObserved": { "const": true },
+            "latestManagerFallbackObserved": { "const": false },
+            "alternateSeasonFallbackObserved": { "const": false },
+            "museumRouteObserved": { "const": false },
+            "museumStageObserved": { "const": false },
+            "museumBuffObserved": { "const": false }
+          }
+        }
+      ]
+    },
+    "originalClientResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statusCode",
+        "authorityCode",
+        "battleRuntimeStarted",
+        "hudObserved",
+        "damageObserved",
+        "resultReturned",
+        "serverDamageRecalculationUsed",
+        "labHarnessResultUsed",
+        "sourceFreeResultDigest"
+      ],
+      "properties": {
+        "statusCode": {
+          "enum": ["not_observed", "verified", "missing_after_runtime"]
+        },
+        "authorityCode": { "const": "original_client_runtime" },
+        "battleRuntimeStarted": { "type": "boolean" },
+        "hudObserved": { "type": "boolean" },
+        "damageObserved": { "type": "boolean" },
+        "resultReturned": { "type": "boolean" },
+        "serverDamageRecalculationUsed": { "const": false },
+        "labHarnessResultUsed": { "const": false },
+        "sourceFreeResultDigest": { "$ref": "#/$defs/nullableSha256" }
+      }
+    },
+    "unobservedOriginalClientResult": {
+      "allOf": [
+        { "$ref": "#/$defs/originalClientResult" },
+        {
+          "properties": {
+            "statusCode": { "const": "not_observed" },
+            "battleRuntimeStarted": { "const": false },
+            "hudObserved": { "const": false },
+            "damageObserved": { "const": false },
+            "resultReturned": { "const": false },
+            "sourceFreeResultDigest": { "type": "null" }
+          }
+        }
+      ]
+    },
+    "verifiedOriginalClientResult": {
+      "allOf": [
+        { "$ref": "#/$defs/originalClientResult" },
+        {
+          "properties": {
+            "statusCode": { "const": "verified" },
+            "battleRuntimeStarted": { "const": true },
+            "hudObserved": { "const": true },
+            "damageObserved": { "const": true },
+            "resultReturned": { "const": true },
+            "sourceFreeResultDigest": { "$ref": "#/$defs/sha256" }
+          }
+        }
+      ]
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statusCode",
+        "primaryInstallIntegrityStatusCode",
+        "mutationRollbackStatusCode",
+        "canonicalManifest"
+      ],
+      "properties": {
+        "statusCode": { "enum": ["not_started", "verified", "failed"] },
+        "primaryInstallIntegrityStatusCode": {
+          "enum": ["not_measured", "unchanged", "drift_detected"]
+        },
+        "mutationRollbackStatusCode": {
+          "enum": ["not_performed", "verified", "failed"]
+        },
+        "canonicalManifest": {
+          "oneOf": [
+            { "$ref": "#/$defs/sourceFreeManifest" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "notStartedRollback": {
+      "allOf": [
+        { "$ref": "#/$defs/rollback" },
+        {
+          "properties": {
+            "statusCode": { "const": "not_started" },
+            "primaryInstallIntegrityStatusCode": { "const": "not_measured" },
+            "mutationRollbackStatusCode": { "const": "not_performed" },
+            "canonicalManifest": { "type": "null" }
+          }
+        }
+      ]
+    },
+    "verifiedRollback": {
+      "allOf": [
+        { "$ref": "#/$defs/rollback" },
+        {
+          "properties": {
+            "statusCode": { "const": "verified" },
+            "primaryInstallIntegrityStatusCode": { "const": "unchanged" },
+            "mutationRollbackStatusCode": { "const": "verified" },
+            "canonicalManifest": { "$ref": "#/$defs/sourceFreeManifest" }
+          }
+        }
+      ]
+    },
+    "prohibitedMaterial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rawGameIdentifiersIncluded",
+        "localPathsIncluded",
+        "officialCredentialsIncluded",
+        "officialSessionMaterialIncluded",
+        "certificateMaterialIncluded",
+        "privateKeysIncluded",
+        "rawPayloadsIncluded",
+        "decodedRowsIncluded",
+        "originalAssetsIncluded",
+        "patchedBinaryBytesIncluded",
+        "wireCapturesIncluded"
+      ],
+      "properties": {
+        "rawGameIdentifiersIncluded": { "const": false },
+        "localPathsIncluded": { "const": false },
+        "officialCredentialsIncluded": { "const": false },
+        "officialSessionMaterialIncluded": { "const": false },
+        "certificateMaterialIncluded": { "const": false },
+        "privateKeysIncluded": { "const": false },
+        "rawPayloadsIncluded": { "const": false },
+        "decodedRowsIncluded": { "const": false },
+        "originalAssetsIncluded": { "const": false },
+        "patchedBinaryBytesIncluded": { "const": false },
+        "wireCapturesIncluded": { "const": false }
+      }
+    },
+    "downstreamBoundaries": {
+      "const": {
+        "localLabShadowBridgeVerified": false,
+        "phase3cVerified": false,
+        "phase3dVerified": false,
+        "phase4Verified": false,
+        "multiTeamParityVerified": false,
+        "runtimeTelemetryParityVerified": false
+      }
+    }
+  }
+}

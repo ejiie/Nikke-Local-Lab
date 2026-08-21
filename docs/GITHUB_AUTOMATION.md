@@ -29,7 +29,7 @@
 
 검증 job이 실패하거나 취소되면 publish job은 실행되지 않습니다.
 
-현재 workflow는 Windows에서 `scripts/verify-phase3b1.ps1`을 실행합니다. 이 gate는 3B-0→3A→완료된 Phase 2B baseline chain을 먼저 보존한 뒤, source-free selected-manager receipt와 최종 `7/10/2` route policy를 검증합니다. pinned PostgreSQL service에서는 `scripts/verify-phase2b.ps1 -Integration`을 실행합니다. Phase 3A script의 checked-in verdict `blocked_insufficient_evidence`는 **승인 우선 정책의 역사적 계약**으로 계속 유지됩니다. 3B-1의 `ready_for_isolated_season26_reference_run`도 이 fixture를 성공으로 바꾸거나 original-client adapter를 활성화하지 않습니다. Phase 2B script는 완료된 Phase 2A2 gate를 먼저 호출한 뒤 permanent six-season directory, 05:00 KST boundary, Normal/Quick Battle unsupported, policy/profile과 1~5팀 Challenge contract를 추가로 검증합니다. 두 host `Program.cs`가 config policy를 source-free domain policy로 materialize하여 runtime의 initial policy로 전달하는 composition과, `MigrateAsync` integration test가 `lab_private_server` schema를 누락 없이 reset하는지를 static guard로 고정합니다.
+현재 workflow는 Windows에서 `scripts/verify-phase3b1.ps1`을 실행합니다. 이 gate는 3B-0→3A→완료된 Phase 2B baseline chain을 먼저 보존한 뒤, source-free selected-manager receipt와 최종 `7/10/2` route policy를 검증합니다. 3B-2 Wave 0의 `scripts/verify-phase3b2.ps1 -ContractOnly`은 로컬 pre-commit에서만 실행합니다. 아직 measured preflight receipt가 없으므로 이를 Actions live-proof gate로 승격하지 않으며 automation contract가 그 비승격을 검사합니다. pinned PostgreSQL service에서는 `scripts/verify-phase2b.ps1 -Integration`을 실행합니다. Phase 3A script의 checked-in verdict `blocked_insufficient_evidence`는 **승인 우선 정책의 역사적 계약**으로 계속 유지됩니다. 3B-1의 `ready_for_isolated_season26_reference_run`도 이 fixture를 성공으로 바꾸거나 original-client adapter를 활성화하지 않습니다. Phase 2B script는 완료된 Phase 2A2 gate를 먼저 호출한 뒤 permanent six-season directory, 05:00 KST boundary, Normal/Quick Battle unsupported, policy/profile과 1~5팀 Challenge contract를 추가로 검증합니다. 두 host `Program.cs`가 config policy를 source-free domain policy로 materialize하여 runtime의 initial policy로 전달하는 composition과, `MigrateAsync` integration test가 `lab_private_server` schema를 누락 없이 reset하는지를 static guard로 고정합니다.
 
 credential-bearing raw profile, original client와 실제 game asset은 Actions 입력이 아닙니다. CI가 보는 result는 `lab_harness_observation/v1` backend 계약이며 `original_client_runtime` damage/HUD/result, wire/presentation adapter와 Phase 3·4 증거를 대신하지 않습니다. 시즌 26 classic Solo Raid compatibility spike는 disposable local 환경의 수동·로컬 gate이며 GitHub Actions green으로 실행 성공을 주장하지 않습니다. 새 경로의 정책과 exact upstream pin은 [PHASE3AR.md](PHASE3AR.md)를 따릅니다.
 
@@ -70,6 +70,7 @@ push 이후에는 Actions run이 PR과 merge를 담당합니다. 실패 시 원�
     pwsh -NoProfile -File scripts/verify-phase3a.ps1
     pwsh -NoProfile -File scripts/verify-phase3b0.ps1
     pwsh -NoProfile -File scripts/verify-phase3b1.ps1
+    pwsh -NoProfile -File scripts/verify-phase3b2.ps1 -ContractOnly
     pwsh -NoProfile -File scripts/verify-actions-contract.ps1
 
 live PostgreSQL까지 같은 gate로 검증할 때는 폐기 가능한 DB의 `NIKKE_LAB_TEST_DB`와 reviewed reset token을 설정한 뒤 다음을 실행합니다.
@@ -78,4 +79,4 @@ live PostgreSQL까지 같은 gate로 검증할 때는 폐기 가능한 DB의 `NI
 
 GitHub 저장소 설정 변경이나 workflow 수정 후에는 실제 synthetic branch로 end-to-end push→PR→merge를 다시 검증합니다.
 
-이 검사 목록은 현재 code/config의 fail-closed 상태를 검증합니다. 완료된 3B-1 source-free receipt도 compatibility route를 CI 또는 production composition에서 자동 시작하지 않습니다. External selected-manager patch 결과는 [PHASE3B1.md](PHASE3B1.md), disposable client proof는 [PHASE3.md](PHASE3.md)의 별도 exit gate를 따릅니다.
+이 검사 목록은 현재 code/config의 fail-closed 상태를 검증합니다. 완료된 3B-1 source-free receipt도 compatibility route를 CI 또는 production composition에서 자동 시작하지 않습니다. 3B-2의 blocked/not-executed 합성 fixture도 실행 증거가 아닙니다. External selected-manager patch 결과는 [PHASE3B1.md](PHASE3B1.md), Wave 0 계약과 disposable client proof는 [PHASE3B2.md](PHASE3B2.md)의 별도 gate를 따릅니다.

@@ -14,6 +14,7 @@ Phase 3의 현행 목표는 **격리된 로컬 환경에서 원본 NIKKE 클라�
 - Phase 3B-0 시즌 26 static/runtime closure: 완료 / `ready_for_selected_manager_patch_with_timing_analysis_blocker`
 - Phase 3B-1 selected-manager: 완료 / `ready_for_isolated_season26_reference_run`
 - EpinelPS 기반 external compatibility façade: selected-manager·active-run pin·19-route policy와 focused test 완료
+- Phase 3B-2 Wave 0: preflight/reference-run source-free 계약 scaffold 완료 / blocked·not-executed 합성 fixture만 존재
 - 시즌 26 원본 Solo Raid live proof: 미실행
 
 ## 채택할 구조
@@ -116,6 +117,8 @@ Pinned EpinelPS의 baseline route 감사값 `19 = request manager 6 + latest fal
 ## 3B-2 — isolated live season 26 proof
 
 예상 시간: `2~4시간`
+
+현재 Wave 0에서는 실행 전·후를 분리하는 두 source-free 계약과 전용 verifier만 고정했습니다. Checked-in fixture는 각각 `blocked_preflight_incomplete`, `not_executed_contract_scaffold_only`이며 measured ready receipt나 actual-client 성공 증거가 아닙니다. 판정 우선순위, 증거 강도와 GO/STOP/rollback 절차의 단일 권위는 [PHASE3B2.md](PHASE3B2.md)입니다.
 
 진입 조건:
 

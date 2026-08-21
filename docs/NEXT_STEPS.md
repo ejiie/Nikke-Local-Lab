@@ -1,8 +1,8 @@
 # Next steps
 
-최종 목표는 원본 NIKKE client가 제한된 Local Lab private server에 접속하여 지원 Solo Raid Challenge를 원본 UI·asset·전투 runtime으로 실행하는 것입니다. Phase 2B source-free backend/harness, Phase 3B-0 시즌 26 static/runtime closure와 Phase 3B-1 selected-manager patch를 완료했습니다. approval-first Phase 3A의 `blocked_insufficient_evidence`는 역사 기록으로 보존하지만 현행 기술 작업을 차단하지 않습니다. 현재 verdict는 `ready_for_isolated_season26_reference_run`입니다.
+최종 목표는 원본 NIKKE client가 제한된 Local Lab private server에 접속하여 지원 Solo Raid Challenge를 원본 UI·asset·전투 runtime으로 실행하는 것입니다. Phase 2B source-free backend/harness, Phase 3B-0 시즌 26 static/runtime closure와 Phase 3B-1 selected-manager patch를 완료했습니다. Phase 3B-1의 `ready_for_isolated_season26_reference_run`은 유지되지만, Phase 3B-2 Wave 0은 실행 계약 scaffold만 완료했으며 checked-in 환경 판정은 blocked preflight와 not-executed reference run입니다. approval-first Phase 3A의 `blocked_insufficient_evidence`는 역사 기록으로 보존하지만 현행 기술 작업을 차단하지 않습니다.
 
-바로 다음 기술 목표는 **client build `150.6.9`에서 시즌 26의 원본 클래식 `SoloRaid` Challenge를 단일 팀으로 실행하는 것**입니다. 공식 별도 모드인 `SoloRaidMuseum`은 결과에 영향을 주는 전용 버프가 있으므로 고려·fallback·acceptance 대상에서 제외합니다. 자세한 rebaseline은 [PHASE3AR.md](PHASE3AR.md), selected-manager 완료 결과는 [PHASE3B1.md](PHASE3B1.md), 제품 계약은 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md), 전체 단계는 [PHASE3.md](PHASE3.md)와 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)를 따릅니다.
+바로 다음 기술 목표는 **[PHASE3B2.md](PHASE3B2.md)의 preflight 계약을 실제 disposable 환경 측정으로 채워 ready 판정을 봉인한 뒤, client build `150.6.9`에서 시즌 26의 원본 클래식 `SoloRaid` Challenge를 단일 팀으로 실행하는 것**입니다. 공식 별도 모드인 `SoloRaidMuseum`은 결과에 영향을 주는 전용 버프가 있으므로 고려·fallback·acceptance 대상에서 제외합니다. 자세한 rebaseline은 [PHASE3AR.md](PHASE3AR.md), selected-manager 완료 결과는 [PHASE3B1.md](PHASE3B1.md), 제품 계약은 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md), 전체 단계는 [PHASE3.md](PHASE3.md)와 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)를 따릅니다.
 
 ## 완료 기반
 

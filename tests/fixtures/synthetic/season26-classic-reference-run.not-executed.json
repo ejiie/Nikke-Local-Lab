@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "contractId": "nll/season26-classic-reference-run/v1",
+  "assessmentUid": "3b200000-0000-4000-8000-000000000002",
+  "assessedAtUtc": "2026-08-21T00:00:00Z",
+  "verdict": "not_executed_contract_scaffold_only",
+  "target": {
+    "clientBuildVersion": "150.6.9",
+    "seasonNumber": 26,
+    "modeCode": "classic_solo_raid_challenge",
+    "wireModeCode": "trial",
+    "challengeRaidLevel": 8,
+    "museumAllowed": false,
+    "fallbackPolicyCode": "none"
+  },
+  "externalLineage": {
+    "repositoryCode": "epinelps_epinelps",
+    "licenseCode": "agpl-3.0-only",
+    "sourceBoundaryCode": "external_agpl_checkout",
+    "upstreamBaseCommitSha": "28b2f5413a0a1e3521a11ae162f91851335c8b40",
+    "selectedManagerIntegrationCommitSha": "92a6ca228aeb580988907b96189b2857dff2c62d",
+    "preflightSealCommitSha": "e32e5f900775974d5736e7fb2b50f8c62638a004",
+    "preflightHardeningCommitSha": "4f7bd5b5eb2b9a6e03af503f1c09adc4c4f7f16f",
+    "latestExternalTreeCommitSha": "ce353eeebee3c76672e483c6f735bb27f0227815"
+  },
+  "preflightBinding": {
+    "statusCode": "unbound",
+    "assessmentUid": null,
+    "assessmentSha256": null,
+    "preflightVerdictCode": null
+  },
+  "execution": {
+    "statusCode": "not_executed",
+    "startedAtUtc": null,
+    "completedAtUtc": null,
+    "environmentViolationObserved": false,
+    "observationCount": 0,
+    "canonicalManifest": null
+  },
+  "classicRouteBoundary": {
+    "statusCode": "not_observed",
+    "classicSoloRaidObserved": false,
+    "season26Observed": false,
+    "challengeObserved": false,
+    "trialWireObserved": false,
+    "latestManagerFallbackObserved": false,
+    "alternateSeasonFallbackObserved": false,
+    "museumRouteObserved": false,
+    "museumStageObserved": false,
+    "museumBuffObserved": false
+  },
+  "originalClientResult": {
+    "statusCode": "not_observed",
+    "authorityCode": "original_client_runtime",
+    "battleRuntimeStarted": false,
+    "hudObserved": false,
+    "damageObserved": false,
+    "resultReturned": false,
+    "serverDamageRecalculationUsed": false,
+    "labHarnessResultUsed": false,
+    "sourceFreeResultDigest": null
+  },
+  "rollback": {
+    "statusCode": "not_started",
+    "primaryInstallIntegrityStatusCode": "not_measured",
+    "mutationRollbackStatusCode": "not_performed",
+    "canonicalManifest": null
+  },
+  "prohibitedMaterial": {
+    "rawGameIdentifiersIncluded": false,
+    "localPathsIncluded": false,
+    "officialCredentialsIncluded": false,
+    "officialSessionMaterialIncluded": false,
+    "certificateMaterialIncluded": false,
+    "privateKeysIncluded": false,
+    "rawPayloadsIncluded": false,
+    "decodedRowsIncluded": false,
+    "originalAssetsIncluded": false,
+    "patchedBinaryBytesIncluded": false,
+    "wireCapturesIncluded": false
+  },
+  "downstreamBoundaries": {
+    "localLabShadowBridgeVerified": false,
+    "phase3cVerified": false,
+    "phase3dVerified": false,
+    "phase4Verified": false,
+    "multiTeamParityVerified": false,
+    "runtimeTelemetryParityVerified": false
+  },
+  "blockingReasonCodes": [
+    "measured_preflight_receipt_missing",
+    "live_reference_run_not_started"
+  ],
+  "nextStepRequirementCodes": [
+    "complete_preflight_before_execution",
+    "do_not_claim_original_client_result"
+  ]
+}
