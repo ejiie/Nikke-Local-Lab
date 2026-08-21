@@ -25,6 +25,7 @@
 21. `docs/PHASE3AR.md`
 22. `docs/PHASE3B0.md`
 23. `docs/PHASE3B1.md`
+24. `docs/HANDOFF.md`
 
 ## 불변 규칙
 
