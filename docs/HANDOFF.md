@@ -59,7 +59,10 @@ EpinelPS source는 AGPL-3.0 별도 checkout이며 Local Lab에 vendor하지 않�
 | Phase 3B-1 integrated patch | `92a6ca228aeb580988907b96189b2857dff2c62d` |
 | Phase 3B-2 local-only preflight seal | `e32e5f900775974d5736e7fb2b50f8c62638a004` |
 | latest preflight hardening | `4f7bd5b5eb2b9a6e03af503f1c09adc4c4f7f16f` |
-| latest external tree | `ce353eeebee3c76672e483c6f735bb27f0227815` |
+| measured target-projection HEAD | `6473a41fcdbc7cb4cb5919c31f9b2d1f04b4b5b6` |
+| local-only HTTP/3 disable hardening | `9d22e68d069ec3d832bc3ece084952906c169d79` |
+| local-only asset-cache log hardening | `519c3db51ec24ca19307e93e85acde7885928a72` |
+| latest external tree | `b9e8bfb1b1e065427a48d40cb2bcf2f30215436a` |
 
 Latest external branch는 `codex/phase3b2-live-preflight`이고 확인 시 working tree가 clean이었습니다. 이
 checkout과 마지막 두 commit은 Local Lab GitHub `main`에 포함되지 않습니다. 다른 기기에서 계속하려면
@@ -69,21 +72,129 @@ Local Lab의 source-free receipt만으로 external source commit을 복원할 �
 Latest preflight patch에서 확인한 코드 상태는 다음과 같습니다.
 
 - HTTP `80`과 HTTPS `443`은 모두 loopback에만 bind합니다.
+- `--headless --local-only`에서는 MsQuic IPv6 wildcard UDP socket을 제거하기 위해 HTTP/3를 비활성화하고
+  HTTPS TCP HTTP/1.1+2를 유지합니다.
 - `--headless --local-only`에서 official asset auto-fetch, locale startup download, Git update와 interactive
   command surface를 비활성화합니다.
 - local-only mode에서 `update-server` 등록과 직접 resource update 호출을 차단합니다.
+- local-only asset cache 요청은 absolute path 대신 `local_only_asset_cache_request` controlled code로
+  기록하며 일반 upstream mode의 기존 요청 로그는 보존합니다.
 - 원본 client를 실행하거나 battle/result를 관측한 증거는 아직 없습니다.
 
+### 2026-08-22 local bootstrap 전환 상태
+
+Private-switch/no-gateway Hyper-V assessment에서 합성 launcher 인증 home까지는 성공했지만, 공식 launcher의
+`실행` 버튼은 P0가 변경한 game certificate/native shim을 pre-launch integrity 검사에서 거부했습니다.
+표시 code는 `1400003`이었고 `nikke.exe`와 launcher child ACE process는 시작되지 않았습니다. 이 실패는
+Git 밖 `nll/phase3b2-private-reference-run-failure/v6` receipt로 보존하며 같은 assessment에서 재시도하거나
+launcher repair를 실행하지 않습니다.
+
+보호 검사를 우회하거나 ACE를 대체하는 대신, public `EpinelPSLauncher`의 game-owned Sail ABI bootstrap
+부분만 source pin에서 별도 빌드하는 좁은 lane을 준비했습니다.
+
+- public upstream HEAD: `3d680453c0a4ca5ab2cdf3eb60e09b4160cb1bb3`
+- public upstream tree: `54b85eb6fbaa74feae0c6b441d66a5a703073ba3`
+- .NET SDK: `10.0.400`, locked restore
+- local source manifest: 4 members, SHA-256
+  `422e38d0357f1042e287f7cc90b1078fd9d5d28d16c45584b0ba175f9367044a`
+- output manifest: 5 members, SHA-256
+  `b323d1c3f2957b21cf02e163c11c406162cd11de2401a895b600de16d7270d70`
+- build receipt: 1,200 bytes, SHA-256
+  `5b22169e01d395966baee89e2a74f6a54fa8033786e7de46917709febedf3d11`
+
+이 output에는 직접 만든 managed bootstrap, 그 runtime metadata와 source-built `sail_api_impl64.dll`만
+있습니다. `EpinelPSLauncher.exe`, `HelperDll.dll`, `UnityInit.dll`, official repair/downloader surface는 없고
+process injection/hook/memory patch API도 사용하지 않습니다. Bootstrap은 합성 credential/token을
+process-local로만 유지하고, local TLS endpoint에서 auth data를 받은 뒤 shared memory와 named pipe로
+원본 client executable을 시작합니다. 별도 firewall program rule과 no-default-route gate는 계속 적용합니다.
+
+v6 실패는 exact extraction 뒤 checkpoint 9로 복원됐고, P0/P1 v5와 새 assessment
+`31afe0ed-c4a8-4825-b467-f5954d760f09`가 source-free ready receipt로 봉인됐습니다. 기준 checkpoint 10은
+`NLL-P3B2-W1-P0-Private-LocalBootstrap-v1-*`, identity SHA-256
+`2c605c1600a089f0eec6a13c5be561c46b600202cc965536d23b33babb7deb3b`입니다.
+
+이 assessment의 one-shot bootstrap은 local account/auth까지 통과하고 `nikke.exe` process를 생성했지만,
+원본 client가 Sail named pipe 연결 전에 Hyper-V virtual environment 실행을 자체 거부했습니다. 표시 UI는
+controlled code `virtual_environment_execution_not_permitted`, error components `3/1053/4227072`로만
+기록하고 raw screenshot은 Git 밖에 둡니다. 이는 bootstrap transport 실패나 season 26 content 실패가 아니라
+`runtime_blocked_virtualized_environment` 환경 판정입니다. 보호 검사를 숨기거나 patch/hook/injection으로
+우회하지 않으며 같은 VM assessment에서 재시도하지 않습니다. 실패 증거를 Git 밖에 추출한 뒤 checkpoint 10을
+정확히 복원하고, 다음 actual-client lane은 snapshot/rollback 가능한 별도 물리 Windows OS로 전환합니다.
+Original-client loading/login/lobby/battle/result는 여전히 관측되지 않았습니다.
+
+별도 물리 OS의 현재 host storage 계획은 다음과 같습니다. Host에는 512 GB NVMe system disk가 있지만
+`C:` 여유 공간은 약 33.5 GiB라 Windows와 26.7 GB client를 함께 둘 admission 여유가 없습니다. 1 TB
+TOSHIBA HDD의 `D:`에는 약 249 GiB가 남아 있지만 실행 disk로 쓰면 로딩·검증 시간이 크게 늘고 기존 DATA
+partition 축소도 별도 destructive approval이 필요합니다. 따라서 `D:`는 full-disk rollback image와 Git-external
+evidence 보관에만 사용하고, actual-client separate-OS lane은 전용 256 GB 이상 SSD(512 GB 권장)에 physical
+Windows를 새로 설치하는 것이 기본안입니다. 그 OS에는 Hyper-V/Windows Sandbox/VBS를 켜지 않고, 주 OS나
+`C:\NIKKE`를 mount·변경하지 않습니다. Client/tool/input staging과 before image를 먼저 봉인한 뒤 NIC를
+no-default-route private mode로 전환하고, 실패·성공과 관계없이 full-disk image 또는 전용 disk 교체로
+rollback합니다.
+
 ## 바로 다음 단계 — Phase 3B-2
+
+### 2026-08-24 physical P2 catalog blocker와 승인된 다음 lane
+
+Micron 별도 물리 Windows의 dedicated `nlloperator` profile에서 원본 client는 Sail handoff와 server selection을 통과해 loading `4/7`까지 직접 관측됐습니다. 반복 실패는 local exact content-version/catalog closure 결손으로 분류됐고, Samsung의 read-only 전체 검색에서는 필요한 `core`/`dp`/`fd` signed NKDB pair가 하나도 확인되지 않았습니다. 이 상태에서는 같은 Micron client retry를 더 소비하지 않습니다.
+
+운영자는 Samsung runtime-cold 환경에서 static asset CDN의 exact `catalog.db`/`.nds` 여섯 객체만 인증 없이 수집하는 좁은 예외를 승인했습니다. 다음 순서는 `request manifest 검산 -> Samsung Git-external sealed acquisition -> offline catalog parse/resource closure -> Micron offline staging -> 한 번의 local-only retry`입니다. Client/EpinelPS auto-fetch, official API/login/telemetry, 일반 asset 수집과 실행 중 outbound는 계속 금지됩니다. 범용 수집기는 `scripts/invoke-phase3b2-static-catalog-acquisition-on-samsung.ps1`, 복구 가능한 quarantine rollback은 `scripts/rollback-phase3b2-static-catalog-acquisition-on-samsung.ps1`이 소유합니다.
+
+이 lane의 six-member acquisition과 offline staging은 완료됐습니다. Acquisition assessment는
+`3307c851-bd77-4f38-8808-91ddb3b7800d`, source-free receipt SHA-256은
+`87d22ab630bea3851ad3af6b8a2b3be009c7f49b9320529186261bb38c24ae92`입니다. 세 NKDB body와 세
+96-byte detached signature의 총 길이는 19,520,185 bytes이고, deployment UID는
+`bf669c3c-fcc8-4d57-9f18-32fee1288862`, deployment receipt SHA-256은
+`27ec27253b56fae39967a5714a315a862908a268a62a7083d45f85df9de592f6`입니다. Micron offline cache의
+여섯 target은 모두 exact digest로 재검산됐고 physical client/primary install/official launcher는 수정하지
+않았습니다.
+
+Catalog SQLite의 `entry_data.hash`와 물리 client local cache를 비교한 full resource closure는 아직
+완료되지 않았습니다. 40,281 catalog role/hash 중 34,621개는 exact local member, 5,631개는 이름 결손,
+29개는 길이 불일치이며 결손 선언 길이 합계는 14,596,209,860 bytes입니다. 따라서 이번 one-shot은
+`4/7`에서 직접 관측된 exact catalog-file 404를 제거하는 제한된 검증이며 이후 resource 단계 성공을 미리
+주장하지 않습니다. Exact-catalog 전용 실행기 배포 receipt SHA-256은
+`6d181c40d7da412de9f7861f6e12814a304e848adcb4ebe7b1ab2b69ec6dec19`이고, 기존 실행기는 별도 backup과
+rollback으로 보존됐습니다. 다음 동작은 Micron `nlloperator`에서 이 승인된 retry를 한 번 실행하는 것입니다.
+
+첫 실행 시 catalog 검증에 들어가기 전 `physical_boundary_profile_and_contract_preflight`가
+`phase3b2_physical_p2_v2_runtime_pin_mismatch`로 fail-closed됐습니다. 원인은 이전 실패 복구가 `hosts`와
+P2-v2 extension firewall을 원복했지만 오래된 preparation receipt를 보존하여 wrapper가 준비 재적용을
+건너뛴 상태 불일치였습니다. Assessment `1797ba14-cdd4-45e7-9002-b77ddbee3227`의 failure receipt SHA-256은
+`03a6021e6d84d83ad967b5ce4cb6e74abfc01d28fa902ed45aa4182769fdcc76`이며 server/client는 시작되지 않았고
+exact-catalog retry도 소비되지 않았습니다. Samsung에서 offline Micron에 재무장 wrapper를 배포했고 deployment
+receipt SHA-256은 `59721268949df5cb2cb553f54f673f2987ec5fb3eb45aa4f83f1df8ec20ed52d`입니다. 새 wrapper는 이 exact
+상태에서만 기존 hosts mapping 1개와 bootstrap outbound block 1개를 재적용하고 같은 one-shot으로 이어집니다.
+배포 뒤 catalog target은 6/6 exact, `hosts`는 base digest, retry-consumption과 active-run pointer는 모두 absent로
+재검증됐습니다.
+
+재무장 뒤 assessment `29083a6a-3f4e-4eec-a57a-4d28b1459524`는 six-member catalog를 exact로 읽었지만
+동일한 `4/7` UI에서 종료됐습니다. 이번에는 client `Player.log`와 비민감 server request-stage를 오프라인으로
+교차 검산해 실제 첫 결손 요청을 `prdenv/.../pck/latest-651.txt`의 local HTTP 404로 확정했습니다. Six-member
+catalog 가설만으로 충분하다는 판정은 폐기합니다. 설치된 `.lcv.dat`와 pinned `gameconfig.json`에서 이미
+결정적으로 투영한 139-byte header의 SHA-256은
+`5914cb58fd2146fe761ab531ecb4e321300527186a54b455e59de962ff6c044a`입니다.
+
+Samsung offline repair `nll/phase3b2-exact-catalog-header-followup/v1`은 실패 실행의 DB/SQLite를 기준 상태로
+복원하고 active pointer와 retry consumption을 원본 digest로 해당 run root에 보존한 뒤 이 header를 Micron
+local cache에 배치했습니다. Receipt SHA-256은
+`38f757559f5e70f9f185bc54b4917aab5c538ad9a0500e7d05fddff1e55f7c4d`입니다. Exact catalog 6/6,
+header 139 bytes, baseline DB, SQLite 0개와 Windows PowerShell 5.1 tool parse를 독립 재검산했습니다. 과거
+`latest-completion.pointer.json`이 존재하면 새 active run의 completion을 무조건 거부하던 도구 결함도 수정해,
+과거 pointer를 새 run evidence에 보존한 뒤 최신 pointer를 갱신합니다. 다음 동작은 Micron `nlloperator`에서
+catalog+header follow-up을 한 번 실행하는 것입니다. 이 repair는 전체 14.6 GB resource closure나 `5/7`
+이후 성공을 주장하지 않습니다.
 
 다음 작업은 [PHASE3B2.md](PHASE3B2.md)의 Wave 1 preflight 계약을 disposable VM 또는 별도 disposable
 OS의 실측값으로 봉인하는 것입니다. Client를 실제로 시작하는 시즌 26 reference run은 Wave 2입니다.
 단순 client 디렉터리 복제본이나 주 Windows 설치본에서는 실행하지 않습니다.
 
-현재 host에서는 Windows Sandbox 기능 활성화가 예약됐고 적용을 위한 재부팅이 필요합니다. 재부팅 뒤
-networking disabled Sandbox를 `separate_disposable_os`로 검산하고, 같은 Sandbox session 안에서 P0와 P1을
-완료합니다. Sandbox 종료·server 재시작·pin 또는 manifest 변경 뒤에는 기존 ready candidate를 재사용하지
-않고 새 assessment를 봉인합니다.
+현재 실행 환경은 snapshot 가능한 Hyper-V VM `NLL-Phase3B2-Client150.6.9`입니다. VM NIC는 Hyper-V
+switch에서 분리되어 있고 Guest Service는 필요한 파일 전달 직후 다시 비활성화합니다. P0 mutation과
+rollback은 검증됐습니다. P1 diagnostic은 HTTP/3 UDP `[::]:443`, 측정기 `conhost.exe` 분류, local cache
+absolute-path log를 차례로 실패-폐쇄하고 매번 server/DB/audit를 자동 복원했습니다. 최신 v4 build manifest
+SHA-256은 `ab67db81070949781c2802b86e6b411eb020fc59e4f1dc9dd48afd19378d5a37`이며, 이 pin으로
+P0 v3를 재결박한 뒤 P1을 새 assessment로 다시 봉인해야 합니다.
 
 실행 전 필수 gate는 다음과 같습니다.
 
@@ -98,9 +209,9 @@ networking disabled Sandbox를 `separate_disposable_os`로 검산하고, 같은 
    byte length와 SHA-256을 Git 비추적 trusted manifest에 기록합니다. 공식 endpoint에서 자동 취득하지 않습니다.
 8. reviewed locale input 네 파일의 exact byte length와 SHA-256을 별도 4-role로 기록하고 VM copy에서
    재계산합니다. 현재 validator의 `NKDB` magic 확인만으로는 충분하지 않습니다.
-9. P0 trusted observation set을 server 시작 전에 봉인하고, server만 시작해 HTTP 80, HTTPS 443과 HTTP/3
-   UDP 443이 모두 IPv4 `127.0.0.1`에만 존재하며 process-tree non-loopback 시도·성공이 0인지 P1에서
-   측정합니다. Client는 계속 cold 상태여야 합니다.
+9. P0 trusted observation set을 server 시작 전에 봉인하고, server만 시작해 HTTP 80과 HTTPS 443이
+   IPv4 `127.0.0.1`에만 존재하고 local-only HTTP/3/UDP 443 listener가 `0`이며 process-tree
+   non-loopback 시도·성공이 0인지 P1에서 측정합니다. Client는 계속 cold 상태여야 합니다.
 10. P0/P1 18-role observation set과 source-free ready candidate의 canonical digest binding이 검증된 뒤에만
     Wave 2 client 시작을 허용합니다.
 
@@ -141,6 +252,18 @@ pwsh -NoProfile -File scripts/verify-actions-contract.ps1
 
 Branch 완료 전에는 `verify-phase3b2.ps1`을 `-ContractOnly` 없이 실행하고, PostgreSQL live integration은
 Actions 또는 명시적으로 보호된 disposable test DB에서 실행합니다.
+
+## 2026-08-24 physical lane 현재 계획
+
+Hyper-V reference run은 original client의 virtualized-environment 거부로 종료했고, 현재 actual-client lane은
+별도 Micron Windows에서 수행합니다. Samsung Windows가 대화·개발·빌드·Micron 오프라인 수정 환경입니다.
+
+반복된 Physical P2 catalogue projection 실험은 중단했습니다. 현재 authoritative 실행 계획, exact pin,
+포함/제외 변경, rollback 및 stop rule은
+[`PHASE3B2_EPINEL_MINIMAL_PLAN.md`](PHASE3B2_EPINEL_MINIMAL_PLAN.md)에 기록합니다. 새 작업은 그 문서의
+`519c3db…` clean EpinelPS base, Micron `150.6.b15 / 651`, 봉인된 raw NKDB 3개와 `.nds` 3개를 기준으로
+재개합니다. SQLite projection, Samsung b22 cache 및 기존 증상별 repair chain은 새 baseline에 포함하지
+않습니다.
 
 ## 새 ChatGPT/Codex 대화 시작 문구
 

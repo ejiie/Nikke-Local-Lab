@@ -1,0 +1,271 @@
+# Phase 3B-2 Epinel 최소 통합 계획
+
+## 목적
+
+원본 NIKKE PC client `150.6.9`에서 classic Solo Raid 시즌 26 Challenge를 실제 전투·HUD·결과까지 검증한다.
+
+이번 작업선은 EpinelPS의 이미 동작하는 client bootstrap, asset cache, API 및 original-client runtime 경로를 최대한 유지한다. 이전 Physical P2의 증상별 projection 패치는 더 이상 누적하지 않는다. 시즌 26 selected-manager patch와 Micron client의 정확한 resource version만 최소한으로 결합한다.
+
+## 실행 환경
+
+- 대화·개발·빌드·Micron 오프라인 수정: **Samsung Windows**
+- 원본 client 실행: **Micron Windows**, 전용 사용자 `nlloperator`
+- Micron 물리 client 복제본: `C:\NLL\Clients\NIKKE-150.6.9-Physical`
+- 주 설치본과 기존 `ccccc` LocalLow cache: 읽기 전용, 수정 금지
+- 공식 launcher, 공식 로그인, 공식 API, 공식 계정 및 외부 outbound: 사용 금지
+
+명령을 제시할 때마다 `Samsung` 또는 `Micron` 실행 위치를 명시한다.
+
+## 고정 입력
+
+### EpinelPS source 기준
+
+- clean base commit: `519c3db51ec24ca19307e93e85acde7885928a72`
+- clean base tree: `b9e8bfb1b1e065427a48d40cb2bcf2f30215436a`
+- selected-manager integration ancestor: `92a6ca228aeb580988907b96189b2857dff2c62d`
+- 작업 branch: `agent/phase3b2-season26-epinel-minimal`
+
+`519c3db…`를 기준으로 새 branch를 만들며, 그 이후의 catalogue SQLite projection, parser probe, b22 projection, request tracing 및 증상별 repair commit은 가져오지 않는다.
+
+### Micron client/resource 기준
+
+- client build: `150.6.9`
+- client executable SHA-256: `2cfaa12b7d708aa6a741faee17c3ac14d8e9cd6be1b5e4e773ee1535b6ddaa30`
+- resource base: `https://cloud.nikke-kr.com/prdenv/150-b059c3f36c/StandaloneWindows64/pck/`
+- core version: `150.6.b15`
+- data-pack version: `651`
+- latest postfix: `1c27990`
+- core postfix: `b15`
+- data-pack postfix: `1d5645e`
+- feature-data postfix: `85b12fc`
+- SAUS postfix: `19e939d`
+
+### 봉인된 catalog set
+
+- raw NKDB body 3개와 detached `.nds` signature 3개, 총 6개
+- acquisition receipt SHA-256: `87d22ab630bea3851ad3af6b8a2b3be009c7f49b9320529186261bb38c24ae92`
+- canonical set SHA-256: `d64ca266d6c1e7ee1f373a4092e777802d2a5186a243c099108c5efa3f95efd9`
+- 기존 deployment UID: `bf669c3c-fcc8-4d57-9f18-32fee1288862`
+- 기존 deployment receipt SHA-256: `27ec27253b56fae39967a5714a315a862908a268a62a7083d45f85df9de592f6`
+
+NKDB body는 복호화하거나 SQLite로 변환하지 않는다. EpinelPS asset route가 봉인된 원본 byte를 그대로 반환하도록 한다. `.nds`도 이름과 byte를 그대로 보존한다.
+
+## 확인된 원인과 폐기할 가설
+
+### 확인된 원인
+
+clean base의 `AssetDownloadUtil`은 cache file을 원본 byte 그대로 stream한다. 그러나 `SystemController.GetResourceHosts`는 base URL과 요청 version만 반환하고 `CoreVersionMap`과 `DataPackVersionMap`을 채우지 않는다. Micron client가 기대하는 `150.6.b15 / 651`을 명시적으로 반환하는 최소 패치가 필요하다.
+
+### 폐기한 가설
+
+- NKDB를 일반 SQLite로 변환해야 한다: 폐기
+- 별도 key/version sidecar가 누락되었다: 공식 cache와 전용 cache 비교 결과 근거 없음
+- Samsung의 후속 b22 cache를 Micron에 맞춰야 한다: 폐기
+- 단계별 오류마다 새로운 transport/projection layer를 추가한다: 중단
+
+## 포함 변경
+
+clean base 위에서 다음 네 항목만 변경한다.
+
+1. `GameConfigRoot`에 `ResourceCoreVersion` 추가
+2. `gameconfig.json`에 `ResourceCoreVersion: 150.6.b15` 고정
+3. `/v1/resourcehosts2` 응답에 target build의 core/data-pack version map 추가
+4. handler-isolation test로 `150.6.b15 / 651` 응답을 고정
+
+local-only 실행에 이미 필요한 `519c3db…`의 설정은 그대로 유지한다.
+
+- headless/local-only mode
+- official asset/locale/git update 차단
+- local-only HTTP/3 비활성
+- 민감 cache path logging 비활성
+- selected-manager season 26 patch
+- raw cache byte streaming
+
+## 제외 변경
+
+- NKDB 복호화 또는 SQLite projection
+- catalogue parser/probe runtime
+- b22 core pin
+- live request-stage tracing 확대
+- 공식 launcher 실행
+- 공식 outbound fallback
+- anti-cheat 우회, process injection, hooking, memory patch
+- primary install 또는 기존 `ccccc` cache 수정
+
+## 실행 순서
+
+### A. Samsung: clean external build 확정
+
+1. external EpinelPS에서 `519c3db…` 기반 branch 생성
+2. 위 네 항목만 적용
+3. selected-manager, handler-isolation focused test 실행
+4. local-only build 생성
+5. HEAD/tree/build manifest와 binary hash를 receipt로 봉인
+
+중단 조건: base ancestry, checkout cleanliness, test count, exact version pin 또는 raw-stream 계약이 다르면 Micron을 수정하지 않는다.
+
+### B. Samsung: Micron 오프라인 복구
+
+1. 실행 중 process가 없는 cold state 확인
+2. 마지막 P2 실패의 DB 복구 및 SQLite runtime 제거
+3. P2 hosts/firewall extension rollback
+4. 기존 잘못된 SQLite transport/projection authorization을 archive
+5. P0/P1 backup과 rollback chain 검증
+
+중단 조건: runtime이 cold가 아니거나 backup/hash chain이 불일치하면 자동 변경하지 않는다.
+
+### C. Samsung: 최소 bundle과 raw catalog staging
+
+1. clean external build만 Micron runtime에 배치
+2. 기존 sealed b15 six-member set의 body/signature를 Epinel cache path에 원본 그대로 배치
+3. body/signature SHA-256, file count, relative path를 다시 검증
+4. gameconfig의 build/base/core/data-pack pin 검증
+5. hosts, root CA, client-local certificate bundle, sodium shim 및 firewall rollback manifest 재봉인
+
+중단 조건: Micron client hash, b15 set, version map 또는 rollback manifest 중 하나라도 불일치하면 client를 시작하지 않는다.
+
+### D. Samsung: source-free preflight
+
+server/client를 시작하지 않은 상태에서 다음을 검증한다.
+
+- exact build/hash
+- local-only mode와 wildcard/LAN 차단
+- official outbound 차단
+- `resourcehosts2`의 `150.6.b15 / 651`
+- raw NKDB와 `.nds` byte 보존
+- 시즌 26 selected manager exact selection
+- DB baseline과 rollback 가능성
+
+### E. Micron: 단일 reference run
+
+`nlloperator`로 부팅한 뒤 승인된 start wrapper를 한 번만 실행한다.
+
+1. client 1회 시작
+2. 30초 interactive health measurement
+3. 4/7 catalogue path 통과 관측
+4. lobby 진입 관측
+5. Solo Raid → classic 시즌 26 → Challenge 진입
+6. 실제 전투, HUD, damage, 결과 화면 관측
+7. 즉시 completion/rollback 도구 실행
+
+기존 10분 baseline receipt가 있으므로 매 interactive retry마다 10분을 반복하지 않는다. 운영자가 조작해야 하는 시점과 완료 도구 실행 시점을 콘솔에서 명확히 표시한다.
+
+### F. Micron/Samsung: 종료 및 증거 봉인
+
+- client/bootstrap/server 순서로 정상 종료; 필요 시 bounded 강제 종료
+- DB baseline 복구와 SQLite runtime 제거
+- hosts/firewall extension rollback
+- raw secret, token, identity, raw proprietary asset를 evidence에 복사하지 않음
+- Samsung 복귀 후 receipt/hash와 화면 단계만 보호 위치에 봉인
+
+## 성공 조건
+
+다음 조건을 모두 만족해야 actual-play 성공으로 판정한다.
+
+- 원본 client build/hash 일치
+- 공식 outbound, 공식 identity/credential, official launcher 사용 없음
+- 4/7 및 lobby 통과
+- classic 시즌 26 selected manager가 선택한 Challenge wave 실행
+- original client의 실제 battle runtime, HUD, damage, result 관측
+- Museum 미사용
+- primary install과 기존 `ccccc` cache 미수정
+- completion 후 DB/network/client mutation rollback 검증
+
+## 현재 상태와 다음 작업
+
+- 현재 부팅: Samsung Windows
+- main repository branch: `agent/phase3b2-wave1-sandbox`
+- external EpinelPS branch: `agent/phase3b2-season26-epinel-minimal`
+- external HEAD: `504968cb7800a154f0f8e9aab6d171d640651192`
+- external tree: `5752ffa481f1b619bc6ef4c1a065272892c1282c`
+- checkout clean: `true`
+- .NET SDK: `10.0.400`
+- selected-manager test: `64/64` passed
+- handler-isolation test: `6/6` passed
+- Micron deployment build file count: `577`
+- deployment build content byte length: `193938533`
+- canonical build manifest SHA-256: `a2ad30f684b4697266557a86a22dd770b39c6ce3ef90af740e86ea17f8308cc0`
+- deployment `EpinelPS.exe` byte length: `162304`
+- deployment `EpinelPS.exe` SHA-256: `f7aa2dc342e93157b620408b887603f62188c8d4a3ad75e94ab3b5b76547bc2d`
+- deployment `EpinelPS.dll` byte length: `15364608`
+- deployment `EpinelPS.dll` SHA-256: `25b7251f860518418ae8f50c59c311f25cf3a2615ded34a12f07ab845168bb38`
+- deployment `gameconfig.json` SHA-256: `c3154538fb69a8fc6f2b23cea73fd1a8667acd0317a05c93c96bae84a6dcf945`
+- deployment build receipt path: `%LOCALAPPDATA%\NikkeLocalLab\Evidence\Phase3B2\Physical\EpinelMinimalBuild-v2\build.receipt.json`
+- deployment build receipt SHA-256: `6e83b0c13da61712e6505f9e2a8779db5c112e74d6ebc2c5adcc1fb3d6081092`
+- 먼저 생성한 self-contained publish v1 receipt는 보존하지만 Micron 배치에는 사용하지 않는다.
+- Micron offline recovery contract: `nll/phase3b2-epinel-minimal-p2-offline-recovery/v1`
+- recovered failed assessment UID: `8a38765e-4d53-4bc2-9207-df8b0e6bcba5`
+- restored DB baseline SHA-256: `c103b44b7bc3dc4f1a317fd272253e2c8d827ca3ff174f07e0ecb6dfc298e194`
+- archived post-failure DB SHA-256: `e524a3c8967af6bb8447fda0c50fc8a86ebccd02e1d1a45df73b2625430acc8d`
+- archived SQLite runtime member count: `3`
+- raw catalog member count verified during recovery: `6`
+- Micron recovery receipt path: `E:\NLL\Evidence\Phase3B2\Physical\epinel-minimal-recovery-v1\recovery.receipt.json`
+- Samsung recovery receipt path: `%LOCALAPPDATA%\NikkeLocalLab\Evidence\Phase3B2\Physical\EpinelMinimalRecovery-v1\recovery.receipt.json`
+- recovery receipt SHA-256: `fcf155d15936c02796bbfbe8bbac37df9e2afecab6c9a2b40006f7049233ba41`
+- recovery backup manifest SHA-256: `978454fc54e9c8669f6ae15b6d5c0ef47ee2b927789c26f3d67b3c133b9d0244`
+- Samsung에서 실행 중이던 공식 NIKKE/launcher process는 Micron offline file의 exclusive-read 검증과 분리했으며 변경하거나 종료하지 않았다.
+- minimal deployment contract: `nll/phase3b2-epinel-minimal-offline-deployment/v1`
+- deployed build file count/content bytes: `577 / 193938533`
+- deployed build manifest SHA-256: `a2ad30f684b4697266557a86a22dd770b39c6ce3ef90af740e86ea17f8308cc0`
+- deployed `EpinelPS.dll` SHA-256: `25b7251f860518418ae8f50c59c311f25cf3a2615ded34a12f07ab845168bb38`
+- preserved cache member count/content bytes: `11 / 43007317`
+- preserved cache manifest SHA-256: `2f26e48f2243955d377a93bf4fcb6875b34d65aa0feb529eb2921801c3febf2e`
+- raw catalogue member count: `6`
+- prior server root backup manifest SHA-256: `542a042d94b85758dcbdc10574029f7d8debc1b79b7f5a44e289e8bd326fc6b7`
+- Micron deployment receipt path: `E:\NLL\Evidence\Phase3B2\Physical\epinel-minimal-deployment-v1\deployment.receipt.json`
+- Samsung deployment receipt path: `%LOCALAPPDATA%\NikkeLocalLab\Evidence\Phase3B2\Physical\EpinelMinimalDeployment-v1\deployment.receipt.json`
+- deployment receipt SHA-256: `101a43a90791bf79f62ac661f35802ed53261cda37d22d7d68b6d4bff487befa`
+- rollback tool SHA-256: `f219bafa459b645149298f8906ba364050faf2b3808fb1ceda550c62d2976990`
+- source-free preflight contract: `nll/phase3b2-epinel-minimal-source-free-preflight/v1`
+- preflight verdict: `ready_to_stage_single_micron_reference_run_tools`
+- Micron preflight receipt path: `E:\NLL\Evidence\Phase3B2\Physical\epinel-minimal-preflight-v1\preflight.receipt.json`
+- Samsung preflight receipt path: `%LOCALAPPDATA%\NikkeLocalLab\Evidence\Phase3B2\Physical\EpinelMinimalPreflight-v1\preflight.receipt.json`
+- preflight receipt SHA-256: `f6699da26a55c95ab0d5ed250930910896b098b245907ac73d852fd700f36b0a`
+- source-free preflight에서 build 577개, cache 11개, raw catalogue 6개, DB baseline, P0/P1, physical client/certificate/shim, dedicated operator와 rollback tool을 다시 검증했다.
+- reference tool deployment contract: `nll/phase3b2-epinel-minimal-reference-tool-deployment/v1`
+- deployed tool member count: `4`
+- tool manifest SHA-256: `d7ddd8872d709690c2b25f82478543e554938831e95ed88e8a5c51f9d1ed0b6f`
+- Micron tool deployment receipt path: `E:\NLL\Evidence\Phase3B2\Physical\epinel-minimal-reference-tools-v1\tool-deployment.receipt.json`
+- Samsung tool deployment receipt path: `%LOCALAPPDATA%\NikkeLocalLab\Evidence\Phase3B2\Physical\EpinelMinimalReferenceTools-v1\tool-deployment.receipt.json`
+- tool deployment receipt SHA-256: `1d1081031ec706381d752f5eba5b61784b0f55e228eec6694ed5446b2d2f00ec`
+- start/completion 도구는 기존 파일을 덮어쓰지 않고 배치됐으며, source와 Micron copy의 네 SHA-256이 모두 일치한다.
+- Samsung 단계 A-D와 Micron 도구 staging이 완료됐다. 서버·bootstrap·client는 실행하지 않았다.
+- repository tracked policy(`-AllowRemote`), Phase 0, Phase 2A1, Phase 2A2, Phase 2B unit, Phase 3A, Phase 3B-0, Phase 3B-1, Phase 3B-2 contract-only 및 Actions contract 검증이 통과했다.
+- Samsung에 PostgreSQL service가 없으므로 Phase 2B live PostgreSQL integration gate는 이번 staging에서 실행하지 않았다. 이 미실행은 original-client reference run 성공을 대신하거나 약화하지 않으며, PostgreSQL 환경을 복구한 뒤 별도 gate로 수행한다.
+- `verify-repository.ps1 -Mode working`은 기존 `origin` remote와 이전 도구가 남긴 untracked `.tmp-dotnet-cli-home` telemetry 때문에 실패했다. 사용자 소유 상태를 임의 삭제·변경하지 않았으며, tracked policy는 통과했다.
+- Samsung에 이미 실행 중이던 공식 `nikke` process 1개는 종료·수정하지 않았다. 위 `serverExecutionStarted/clientExecutionStarted = false`는 이번 Epinel 최소 staging 작업이 새 runtime을 시작하지 않았다는 뜻이다.
+- 다음 작업: Micron Windows를 `nlloperator`로 부팅하여 아래 단일 reference run을 수행한다.
+
+### 다음 Micron 실행 명령
+
+관리자 Windows PowerShell에서 한 번만 실행한다.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+& 'C:\NLL\Tools\Start-Phase3B2-Epinel-Minimal.ps1'
+```
+
+- 서버 선택 화면이 나오면 `Global`을 선택한다.
+- 진행 가능한 만큼 원본 client를 관측하거나 플레이한다.
+- 오류 또는 목표 단계 관측 후에는 **먼저 NIKKE 창을 직접 닫는다**.
+- start wrapper를 반복 실행하지 않는다.
+
+client 종료 후 실제 관측 단계와 결과를 기록하며 completion을 한 번 실행한다. 예를 들어 4/7 System Error라면:
+
+```powershell
+& 'C:\NLL\Tools\Complete-Phase3B2-Epinel-Minimal.ps1' `
+    -ObservedStageCode catalogue_path `
+    -OutcomeCode system_error
+```
+
+전투 결과 화면까지 성공했다면:
+
+```powershell
+& 'C:\NLL\Tools\Complete-Phase3B2-Epinel-Minimal.ps1' `
+    -ObservedStageCode battle_result `
+    -OutcomeCode success
+```
+
+허용되는 단계 값은 `startup_only`, `server_selection`, `catalogue_path`, `lobby`, `solo_raid_menu`, `season26_challenge_battle`, `battle_result`이다. 허용되는 결과 값은 `success`, `system_error`, `operator_abort`, `client_exit`이다.
+
+이 문서의 pin, 포함/제외 변경, 중단 조건을 바꾸는 경우에는 변경 이유와 새 hash/receipt를 먼저 기록한다.
