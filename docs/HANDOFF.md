@@ -179,6 +179,15 @@ digest는 source checkout의 line-ending normalization에도 달라질 수 있�
 `eaf339d04519010b8379ad2c30ef4321d5e6e2623a5d90116f350f0eac32bba3`을 fail-closed로 고정합니다. 실제 build DLL
 digest는 receipt에 관측값으로 남고 cache 권위는 private manifest에 대한 member별 SHA-256 검증입니다.
 
+Native cache offline deployment `bc753164-afa2-41f2-9df1-09ea13a2d2a1`은 prior staging 재복사 없이
+성공했습니다. Deployment receipt SHA-256은 `14bf845aec4cded1d80e8efb57a3eb4f4639ef68bd1fdf7a8d9de462689aae7d`,
+active cache는 40,108개, 39,030,629,947 bytes, canonical SHA-256
+`9c2874cd3c811609b4c8d6c34caf393aaf3e24b09825294a66b063e4fe1b521b`입니다. 이전 11-file cache는 rollback으로
+보존됐고 DB/SQLite/hosts는 cold baseline입니다. 배치 후 audit에서 start wrapper에도 PowerShell 5.1
+`Get-ChildItem -Recurse` 검사가 남아 있음을 발견했습니다. 다음 Samsung 작업은 cache를 재복사·변경하지 않고
+8-member .NET 10 verifier bundle과 long-path-safe wrapper를 offline 배치하는 것입니다. 현재 active cache의
+read-only long-path inspection은 1.3초, 40,108개/39,030,629,947 bytes/partial 0으로 통과했습니다.
+
 첫 실행 시 catalog 검증에 들어가기 전 `physical_boundary_profile_and_contract_preflight`가
 `phase3b2_physical_p2_v2_runtime_pin_mismatch`로 fail-closed됐습니다. 원인은 이전 실패 복구가 `hosts`와
 P2-v2 extension firewall을 원복했지만 오래된 preparation receipt를 보존하여 wrapper가 준비 재적용을

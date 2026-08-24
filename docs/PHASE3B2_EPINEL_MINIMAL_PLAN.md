@@ -245,20 +245,22 @@ server/client를 시작하지 않은 상태에서 다음을 검증한다.
 - `scripts/recover-phase3b2-epinel-native-cache-baseline-offline.ps1`은 실패 run을 cold baseline으로 복구하고, `scripts/deploy-phase3b2-epinel-native-cache-offline.ps1`은 Samsung에서 그 복구를 확인한 뒤 39 GB cache를 staging 검산·directory swap하며 backup과 rollback을 남긴다. Codex 비승격 process에서는 Micron ACL 때문에 baseline move가 거부됐으므로 실제 배치는 Samsung 관리자 PowerShell에서 수행한다.
 - 첫 관리자 배포는 robocopy 완료 뒤 Windows PowerShell 5.1 `Get-ChildItem -Recurse`가 260자를 넘는 cache path를 열거하지 못해 swap 전에 중단됐다. 활성 cache는 11-file 기준선을 유지했고, 40,108-file staging은 `staging-failed-*`로 보존됐다. .NET 10 long-path verifier로 이 staging의 39,030,629,947 bytes 전체를 manifest와 SHA-256 대조한 결과 누락·추가·digest mismatch가 모두 0이고 active canonical SHA-256은 `9c2874cd3c811609b4c8d6c34caf393aaf3e24b09825294a66b063e4fe1b521b`였다. 수정된 배포기는 이 검증된 staging을 재복사 없이 재사용하고 swap 후 long-path tree shape를 다시 확인한다.
 - Long-path verifier를 포함한 external EpinelPS 도구 commit은 `6abf39b8daa1b7ee04da651e14941a2ece1ca29b`이다. 첫 재실행은 이전 clean build DLL digest를 고정한 사전검사에서 중단됐으며 cache 또는 staging은 이동되지 않았다. DLL은 source checkout의 line-ending normalization 등 비의미적 build 입력에도 digest가 달라질 수 있으므로, 수정된 배포기는 .NET SDK `10.0.400`과 Program/csproj/global.json/연결 소스/참조 SQLite binary 11개의 compile-input canonical SHA-256 `eaf339d04519010b8379ad2c30ef4321d5e6e2623a5d90116f350f0eac32bba3`을 fail-closed로 고정한다. 실제 build DLL digest는 receipt에 관측값으로 남기고 cache 검증 권위는 private manifest에 대한 member별 SHA-256 대조에 둔다.
+- Native cache offline deployment `bc753164-afa2-41f2-9df1-09ea13a2d2a1`은 검증된 prior staging을 재복사 없이 사용해 완료됐다. Deployment receipt SHA-256은 `14bf845aec4cded1d80e8efb57a3eb4f4639ef68bd1fdf7a8d9de462689aae7d`, active cache는 40,108개, 39,030,629,947 bytes, canonical SHA-256 `9c2874cd3c811609b4c8d6c34caf393aaf3e24b09825294a66b063e4fe1b521b`이다. 이전 11-file cache는 `cache-before` rollback으로 보존됐고 DB/SQLite/hosts는 cold baseline이다.
+- 배치 후 audit에서 Micron start wrapper에도 Windows PowerShell 5.1 `Get-ChildItem -Recurse` shape 검사가 남아 있음을 발견했다. 이는 client 시작 전 fail-closed 지점이지만 불필요한 boot round trip을 만들 수 있다. 다음 Samsung 단계는 39 GB cache를 변경·재복사하지 않고, 8-member .NET 10 verifier bundle과 long-path-safe wrapper를 offline 배치하는 것이다. Read-only long-path inspection은 현재 active cache에서 1.3초, 40,108개/39,030,629,947 bytes/partial 0으로 통과했다.
 - repository tracked policy(`-AllowRemote`), Phase 0, Phase 2A1, Phase 2A2, Phase 2B unit, Phase 3A, Phase 3B-0, Phase 3B-1, Phase 3B-2 contract-only 및 Actions contract 검증이 통과했다.
 - Samsung에 PostgreSQL service가 없으므로 Phase 2B live PostgreSQL integration gate는 이번 staging에서 실행하지 않았다. 이 미실행은 original-client reference run 성공을 대신하거나 약화하지 않으며, PostgreSQL 환경을 복구한 뒤 별도 gate로 수행한다.
 - `verify-repository.ps1 -Mode working`은 기존 `origin` remote와 이전 도구가 남긴 untracked `.tmp-dotnet-cli-home` telemetry 때문에 실패했다. 사용자 소유 상태를 임의 삭제·변경하지 않았으며, tracked policy는 통과했다.
 - Samsung에 이미 실행 중이던 공식 `nikke` process 1개는 종료·수정하지 않았다. 위 `serverExecutionStarted/clientExecutionStarted = false`는 이번 Epinel 최소 staging 작업이 새 runtime을 시작하지 않았다는 뜻이다.
-- 다음 작업: Samsung 관리자 PowerShell에서 baseline 복구와 native cache offline deployment를 한 번 수행한다. 이 명령은 client/server를 시작하지 않는다.
+- 다음 작업: Samsung 관리자 PowerShell에서 native-cache start long-path repair를 한 번 수행한다. 이 명령은 cache를 재복사·변경하지 않고 client/server도 시작하지 않는다.
 
 ### 다음 Samsung 실행 명령
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
-& 'C:\Users\zih44\Documents\Github\Nikke-Local-Lab\scripts\deploy-phase3b2-epinel-native-cache-offline.ps1'
+& 'C:\Users\zih44\Documents\Github\Nikke-Local-Lab\scripts\repair-phase3b2-epinel-native-cache-start-long-path-offline.ps1'
 ```
 
-배치 receipt가 `nativeCacheDeploymentVerified=true`, `activeCacheFileCount=40108`, `stagingSourceCode=verified_prior_failed_staging_reused_without_recopy`를 출력한 뒤에만 Micron으로 부팅한다.
+수리 receipt가 `activeCacheLongPathInspectionVerified=true`, `cacheRecopyPerformed=false`, `cacheMutationPerformed=false`를 출력한 뒤에만 Micron으로 부팅한다.
 
 ### 다음 Micron 실행 명령
 
