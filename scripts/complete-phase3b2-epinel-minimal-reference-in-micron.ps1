@@ -54,7 +54,22 @@ function Write-AtomicUtf8NoBom {
     [IO.File]::WriteAllText(
         $temporary, $Text, [Text.UTF8Encoding]::new($false)
     )
-    Move-Item -LiteralPath $temporary -Destination $Path
+    Move-Item -LiteralPath $temporary -Destination $Path -Force
+}
+
+function Protect-ServerLog {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return 0 }
+    $text = [IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8)
+    $pattern = '(?m)^(?<prefix>\s*authtoken:\s*)\S+\s*$'
+    $matchCount = [regex]::Matches($text, $pattern).Count
+    if ($matchCount -gt 0) {
+        $protected = [regex]::Replace(
+            $text, $pattern, '${prefix}[REDACTED]'
+        )
+        Write-AtomicUtf8NoBom $Path $protected
+    }
+    return $matchCount
 }
 
 $expectedDbSha256 = `
@@ -129,6 +144,8 @@ Assert-True (
         'NikkeLocalLab.Phase3B2.PhysicalBootstrap') -and
     $null -eq (Get-PinnedProcess $serverId 'EpinelPS')
 ) 'phase3b2_epinel_minimal_completion_runtime_stop_failed'
+
+$redactedServerLogMatchCount = Protect-ServerLog $stdoutPath
 
 $databaseAfterByteLength = (Get-Item -LiteralPath $dbPath).Length
 $databaseAfterSha256 = Get-Sha256Hex $dbPath
@@ -205,6 +222,8 @@ $receipt = [ordered]@{
     serverForcedStop = $serverForcedStop
     serverStdoutByteLength = $stdoutLength
     serverStdoutSha256 = $stdoutSha256
+    redactedServerLogMatchCount = $redactedServerLogMatchCount
+    rawSensitiveServerLogPersisted = $false
     serverStderrByteLength = $stderrLength
     serverStderrSha256 = $stderrSha256
     playerLogPresent = $playerLogPresent

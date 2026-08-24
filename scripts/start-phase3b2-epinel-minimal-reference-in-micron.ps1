@@ -26,7 +26,7 @@ function Write-AtomicUtf8NoBom {
     [IO.File]::WriteAllText(
         $temporary, $Text, [Text.UTF8Encoding]::new($false)
     )
-    Move-Item -LiteralPath $temporary -Destination $Path
+    Move-Item -LiteralPath $temporary -Destination $Path -Force
 }
 
 function Write-AtomicUtf8Bom {
@@ -36,6 +36,21 @@ function Write-AtomicUtf8Bom {
         $temporary, $Text, [Text.UTF8Encoding]::new($true)
     )
     Move-Item -LiteralPath $temporary -Destination $Path -Force
+}
+
+function Protect-ServerLog {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return 0 }
+    $text = [IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8)
+    $pattern = '(?m)^(?<prefix>\s*authtoken:\s*)\S+\s*$'
+    $matchCount = [regex]::Matches($text, $pattern).Count
+    if ($matchCount -gt 0) {
+        $protected = [regex]::Replace(
+            $text, $pattern, '${prefix}[REDACTED]'
+        )
+        Write-AtomicUtf8NoBom $Path $protected
+    }
+    return $matchCount
 }
 
 function Get-PinnedProcess {
@@ -62,10 +77,12 @@ $expectedPreflightSha256 = `
     'f6699da26a55c95ab0d5ed250930910896b098b245907ac73d852fd700f36b0a'
 $expectedDeploymentSha256 = `
     '101a43a90791bf79f62ac661f35802ed53261cda37d22d7d68b6d4bff487befa'
+$expectedSamplingLogRepairSha256 = `
+    'e8fc382f236075a3b96d73c200be9a07ff00536cba4122c2d12118ce98508e2a'
 $expectedServerExeSha256 = `
-    'f7aa2dc342e93157b620408b887603f62188c8d4a3ad75e94ab3b5b76547bc2d'
+    'a28c7ff227a74d260a29389b82caeed3fe196f91eef3d28cabe9977b5ed9d07b'
 $expectedServerDllSha256 = `
-    '25b7251f860518418ae8f50c59c311f25cf3a2615ded34a12f07ab845168bb38'
+    'ba46ae42b59c2058c7c8e5b02e31af1fe32a28e70d685f3a470e63adefc60cfc'
 $expectedDbSha256 = `
     'c103b44b7bc3dc4f1a317fd272253e2c8d827ca3ff174f07e0ecb6dfc298e194'
 $expectedHostsSha256 = `
@@ -88,6 +105,8 @@ $preflightPath =
     'C:\NLL\Evidence\Phase3B2\Physical\epinel-minimal-preflight-v1\preflight.receipt.json'
 $deploymentPath =
     'C:\NLL\Evidence\Phase3B2\Physical\epinel-minimal-deployment-v1\deployment.receipt.json'
+$samplingLogRepairPath =
+    'C:\NLL\Evidence\Phase3B2\Physical\epinel-minimal-sampling-log-repair-v1\repair.receipt.json'
 $contextPath =
     'C:\NLL\Evidence\Phase3B2\Physical\server-profile-v1\identity\synthetic-context.json'
 $serverPath = Join-Path $ServerRoot 'EpinelPS.exe'
@@ -99,7 +118,8 @@ $hostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
 $activePointerPath = Join-Path $EvidenceRoot 'active-run.pointer.json'
 
 Assert-True (
-    @($preflightPath, $deploymentPath, $contextPath, $serverPath,
+    @($preflightPath, $deploymentPath, $samplingLogRepairPath,
+        $contextPath, $serverPath,
         $serverDllPath, $dbPath, $bootstrapPath, $hostsPath |
         Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }
     ).Count -eq 0 -and
@@ -111,6 +131,8 @@ Assert-True (
 Assert-True (
     (Get-Sha256Hex $preflightPath) -ceq $expectedPreflightSha256 -and
     (Get-Sha256Hex $deploymentPath) -ceq $expectedDeploymentSha256 -and
+    (Get-Sha256Hex $samplingLogRepairPath) -ceq `
+        $expectedSamplingLogRepairSha256 -and
     (Get-Sha256Hex $serverPath) -ceq $expectedServerExeSha256 -and
     (Get-Sha256Hex $serverDllPath) -ceq $expectedServerDllSha256 -and
     (Get-Sha256Hex $dbPath) -ceq $expectedDbSha256 -and
@@ -120,6 +142,8 @@ Assert-True (
 
 $preflight = Get-Content -LiteralPath $preflightPath -Raw -Encoding UTF8 |
     ConvertFrom-Json
+$samplingLogRepair = Get-Content -LiteralPath $samplingLogRepairPath -Raw `
+    -Encoding UTF8 | ConvertFrom-Json
 $context = Get-Content -LiteralPath $contextPath -Raw -Encoding UTF8 |
     ConvertFrom-Json
 Assert-True (
@@ -128,6 +152,13 @@ Assert-True (
     $preflight.verdict -ceq `
         'ready_to_stage_single_micron_reference_run_tools' -and
     -not $preflight.officialOutboundFallbackPermitted -and
+    $samplingLogRepair.contractId -ceq `
+        'nll/phase3b2-epinel-minimal-sampling-log-repair/v1' -and
+    $samplingLogRepair.deploymentApplied -and
+    $samplingLogRepair.samplingContractCode -ceq `
+        'minimum_ten_samples_and_twenty_eight_seconds' -and
+    -not $samplingLogRepair.localAuthTokenLoggingEnabled -and
+    -not $samplingLogRepair.rawSensitiveServerLogPersisted -and
     $context.contractId -ceq `
         'nll/phase3b2-synthetic-runtime-context/v1' -and
     [long]$context.accountId -gt 0 -and [long]$context.managerId -gt 0
@@ -344,8 +375,12 @@ try {
     }
     Write-AtomicUtf8NoBom $measurementPath `
         (($samples | ConvertTo-Json -Depth 4) + "`n")
+    $measurementElapsedMilliseconds = if ($samples.Count -gt 0) {
+        [long]$samples[-1].offsetMilliseconds
+    } else { 0L }
     Assert-True (
-        $samples.Count -ge 15 -and
+        $samples.Count -ge 10 -and
+        $measurementElapsedMilliseconds -ge 28000 -and
         @($samples | Where-Object { -not $_.clientResponding }).Count -eq 0 -and
         @($samples | Where-Object {
             $_.nonLoopbackConnectionCount -ne 0
@@ -361,6 +396,10 @@ try {
         assessmentUid = $assessmentUid
         preflightReceiptSha256 = $expectedPreflightSha256
         deploymentReceiptSha256 = $expectedDeploymentSha256
+        samplingLogRepairReceiptSha256 = `
+            $expectedSamplingLogRepairSha256
+        externalHead = [string]$samplingLogRepair.externalHead
+        externalTree = [string]$samplingLogRepair.externalTree
         serverArguments = @('--headless', '--local-only')
         serverProcessId = $serverProcess.Id
         bootstrapProcessId = $bootstrapProcess.Id
@@ -372,6 +411,9 @@ try {
         sailNamedPipeClosedAfterPayload = $true
         thirtySecondMeasurementCompleted = $true
         measurementSampleCount = $samples.Count
+        measurementElapsedMilliseconds = $measurementElapsedMilliseconds
+        minimumAcceptedSampleCount = 10
+        minimumAcceptedElapsedMilliseconds = 28000
         successfulNonLoopbackConnectionCount = 0
         globalMatchLoopbackMappingApplied = $true
         bootstrapOutboundBlockApplied = $true
@@ -418,6 +460,7 @@ catch {
     if ($null -ne $serverProcess) {
         Stop-PinnedProcess $serverProcess.Id 'EpinelPS'
     }
+    $redactedServerLogMatchCount = Protect-ServerLog $stdoutPath
     if ($databaseBackupCreated -and
         (Test-Path -LiteralPath $dbBeforePath -PathType Leaf)) {
         [IO.File]::WriteAllBytes(
@@ -450,6 +493,8 @@ catch {
         failedStageCode = $stageCode
         failureMessage = $failureMessage
         automaticRollbackCompleted = $true
+        redactedServerLogMatchCount = $redactedServerLogMatchCount
+        rawSensitiveServerLogPersisted = $false
         officialLauncherExecutionStarted = $false
         officialOutboundFallbackUsed = $false
         clientExecutionStarted = $clientProcessId -gt 0

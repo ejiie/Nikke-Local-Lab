@@ -176,22 +176,22 @@ server/client를 시작하지 않은 상태에서 다음을 검증한다.
 - 현재 부팅: Samsung Windows
 - main repository branch: `agent/phase3b2-wave1-sandbox`
 - external EpinelPS branch: `agent/phase3b2-season26-epinel-minimal`
-- external HEAD: `504968cb7800a154f0f8e9aab6d171d640651192`
-- external tree: `5752ffa481f1b619bc6ef4c1a065272892c1282c`
+- external HEAD: `116c35fb2d31ae4738142cc5f7a08b935e7a693d`
+- external tree: `9a308834300373c88b1ed1083d4484214fd43a00`
 - checkout clean: `true`
 - .NET SDK: `10.0.400`
 - selected-manager test: `64/64` passed
 - handler-isolation test: `6/6` passed
 - Micron deployment build file count: `577`
-- deployment build content byte length: `193938533`
-- canonical build manifest SHA-256: `a2ad30f684b4697266557a86a22dd770b39c6ce3ef90af740e86ea17f8308cc0`
+- deployment build content byte length: `193938021`
+- canonical build manifest SHA-256: `44a5d022389d21138c79b7003173581ec5ddb0b4c7126cd4c52778f31f554e39`
 - deployment `EpinelPS.exe` byte length: `162304`
-- deployment `EpinelPS.exe` SHA-256: `f7aa2dc342e93157b620408b887603f62188c8d4a3ad75e94ab3b5b76547bc2d`
-- deployment `EpinelPS.dll` byte length: `15364608`
-- deployment `EpinelPS.dll` SHA-256: `25b7251f860518418ae8f50c59c311f25cf3a2615ded34a12f07ab845168bb38`
+- deployment `EpinelPS.exe` SHA-256: `a28c7ff227a74d260a29389b82caeed3fe196f91eef3d28cabe9977b5ed9d07b`
+- deployment `EpinelPS.dll` byte length: `15364096`
+- deployment `EpinelPS.dll` SHA-256: `ba46ae42b59c2058c7c8e5b02e31af1fe32a28e70d685f3a470e63adefc60cfc`
 - deployment `gameconfig.json` SHA-256: `c3154538fb69a8fc6f2b23cea73fd1a8667acd0317a05c93c96bae84a6dcf945`
-- deployment build receipt path: `%LOCALAPPDATA%\NikkeLocalLab\Evidence\Phase3B2\Physical\EpinelMinimalBuild-v2\build.receipt.json`
-- deployment build receipt SHA-256: `6e83b0c13da61712e6505f9e2a8779db5c112e74d6ebc2c5adcc1fb3d6081092`
+- deployment build receipt path: `%LOCALAPPDATA%\NikkeLocalLab\Evidence\Phase3B2\Physical\EpinelMinimalBuild-v3\build.receipt.json`
+- deployment build receipt SHA-256: `9fc554705e3d9778bf0d56e2bd5ea8399909bb8acf53ae39ba61668cd02af98d`
 - 먼저 생성한 self-contained publish v1 receipt는 보존하지만 Micron 배치에는 사용하지 않는다.
 - Micron offline recovery contract: `nll/phase3b2-epinel-minimal-p2-offline-recovery/v1`
 - recovered failed assessment UID: `8a38765e-4d53-4bc2-9207-df8b0e6bcba5`
@@ -205,9 +205,9 @@ server/client를 시작하지 않은 상태에서 다음을 검증한다.
 - recovery backup manifest SHA-256: `978454fc54e9c8669f6ae15b6d5c0ef47ee2b927789c26f3d67b3c133b9d0244`
 - Samsung에서 실행 중이던 공식 NIKKE/launcher process는 Micron offline file의 exclusive-read 검증과 분리했으며 변경하거나 종료하지 않았다.
 - minimal deployment contract: `nll/phase3b2-epinel-minimal-offline-deployment/v1`
-- deployed build file count/content bytes: `577 / 193938533`
-- deployed build manifest SHA-256: `a2ad30f684b4697266557a86a22dd770b39c6ce3ef90af740e86ea17f8308cc0`
-- deployed `EpinelPS.dll` SHA-256: `25b7251f860518418ae8f50c59c311f25cf3a2615ded34a12f07ab845168bb38`
+- initial v1 deployed build file count/content bytes: `577 / 193938533`
+- initial v1 deployed build manifest SHA-256: `a2ad30f684b4697266557a86a22dd770b39c6ce3ef90af740e86ea17f8308cc0`
+- initial v1 deployed `EpinelPS.dll` SHA-256: `25b7251f860518418ae8f50c59c311f25cf3a2615ded34a12f07ab845168bb38`
 - preserved cache member count/content bytes: `11 / 43007317`
 - preserved cache manifest SHA-256: `2f26e48f2243955d377a93bf4fcb6875b34d65aa0feb529eb2921801c3febf2e`
 - raw catalogue member count: `6`
@@ -229,7 +229,12 @@ server/client를 시작하지 않은 상태에서 다음을 검증한다.
 - Samsung tool deployment receipt path: `%LOCALAPPDATA%\NikkeLocalLab\Evidence\Phase3B2\Physical\EpinelMinimalReferenceTools-v1\tool-deployment.receipt.json`
 - tool deployment receipt SHA-256: `1d1081031ec706381d752f5eba5b61784b0f55e228eec6694ed5446b2d2f00ec`
 - start/completion 도구는 기존 파일을 덮어쓰지 않고 배치됐으며, source와 Micron copy의 네 SHA-256이 모두 일치한다.
-- Samsung 단계 A-D와 Micron 도구 staging이 완료됐다. 서버·bootstrap·client는 실행하지 않았다.
+- 첫 Micron reference run `eae0f37c-6939-446f-93f6-d88c1c447311`은 client와 local login까지 정상 실행됐지만, 30초 벽시계 동안 관측 연산이 포함되어 13개 표본만 생성된 것을 고정 최소 15개 표본 조건이 실패로 오판했다. 13개 표본은 모두 응답 정상이고 non-loopback 연결은 0건이었다.
+- 실패 rollback은 자동 완료됐고 DB baseline 복구, SQLite runtime 제거, active pointer 부재를 검증했다. 따라서 뒤이어 실행한 completion의 `pointer_missing`은 별도 장애가 아니라 start 실패 rollback 후의 예상 결과다.
+- 실패 증거의 server stdout에서 발견된 local synthetic auth token 한 줄은 원문 백업 없이 `[REDACTED]`로 교체했다. recovery receipt SHA-256은 `4b37cac89e123351a25ba9f705cc6a3ddbecd488ef627f49e27a004bc20bf8e1`이다.
+- Epinel source의 local auth token console logging을 제거하고 64개 selected-manager test와 6개 handler-isolation test를 다시 통과했다. start는 이제 최소 10개 표본과 최소 28,000 ms 경과를 함께 요구하며, start 실패 및 정상 completion 모두 server stdout에 방어적 비식별화를 적용한다.
+- Micron sampling/log repair contract는 `nll/phase3b2-epinel-minimal-sampling-log-repair/v1`, receipt SHA-256은 `e8fc382f236075a3b96d73c200be9a07ff00536cba4122c2d12118ce98508e2a`이다. 기존 cache 11개와 DB baseline은 보존했고 이전 server root와 도구는 rollback용으로 보존했다.
+- 최종 reference tool deployment contract는 `nll/phase3b2-epinel-minimal-reference-tool-deployment/v2`, tool manifest SHA-256은 `fa845bf5c43ad6587c2d06b5a140b332636a0dc21ffd977ea4988c061f005a2d`, receipt SHA-256은 `df7b7102096961d9cb9aad5f70957262b9f880477faec6a6cef0c8dc6acbb88b`이다.
 - repository tracked policy(`-AllowRemote`), Phase 0, Phase 2A1, Phase 2A2, Phase 2B unit, Phase 3A, Phase 3B-0, Phase 3B-1, Phase 3B-2 contract-only 및 Actions contract 검증이 통과했다.
 - Samsung에 PostgreSQL service가 없으므로 Phase 2B live PostgreSQL integration gate는 이번 staging에서 실행하지 않았다. 이 미실행은 original-client reference run 성공을 대신하거나 약화하지 않으며, PostgreSQL 환경을 복구한 뒤 별도 gate로 수행한다.
 - `verify-repository.ps1 -Mode working`은 기존 `origin` remote와 이전 도구가 남긴 untracked `.tmp-dotnet-cli-home` telemetry 때문에 실패했다. 사용자 소유 상태를 임의 삭제·변경하지 않았으며, tracked policy는 통과했다.
@@ -249,6 +254,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 - 진행 가능한 만큼 원본 client를 관측하거나 플레이한다.
 - 오류 또는 목표 단계 관측 후에는 **먼저 NIKKE 창을 직접 닫는다**.
 - start wrapper를 반복 실행하지 않는다.
+- start가 예외를 출력한 경우 자동 rollback으로 active pointer가 제거되므로 completion을 실행하지 않는다. start receipt가 정상 출력되고 PowerShell prompt가 돌아온 경우에만, NIKKE 창을 닫은 뒤 completion을 실행한다.
 
 client 종료 후 실제 관측 단계와 결과를 기록하며 completion을 한 번 실행한다. 예를 들어 4/7 System Error라면:
 

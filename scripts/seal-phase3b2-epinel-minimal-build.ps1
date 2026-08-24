@@ -8,7 +8,7 @@ param(
     ),
     [string]$OutputRoot = (
         Join-Path $env:LOCALAPPDATA `
-            'NikkeLocalLab\Evidence\Phase3B2\Physical\EpinelMinimalBuild-v2'
+            'NikkeLocalLab\Evidence\Phase3B2\Physical\EpinelMinimalBuild-v3'
     ),
     [int]$SelectedManagerPassedCount = 64,
     [int]$HandlerIsolationPassedCount = 6
@@ -42,15 +42,15 @@ function Get-BytesSha256Hex {
 }
 
 $expectedBase = '519c3db51ec24ca19307e93e85acde7885928a72'
-$expectedHead = '504968cb7800a154f0f8e9aab6d171d640651192'
-$expectedTree = '5752ffa481f1b619bc6ef4c1a065272892c1282c'
+$expectedHead = '116c35fb2d31ae4738142cc5f7a08b935e7a693d'
+$expectedTree = '9a308834300373c88b1ed1083d4484214fd43a00'
 $expectedBranch = 'agent/phase3b2-season26-epinel-minimal'
 $expectedManifestSha256 = `
-    'a2ad30f684b4697266557a86a22dd770b39c6ce3ef90af740e86ea17f8308cc0'
+    '44a5d022389d21138c79b7003173581ec5ddb0b4c7126cd4c52778f31f554e39'
 $expectedExeSha256 = `
-    'f7aa2dc342e93157b620408b887603f62188c8d4a3ad75e94ab3b5b76547bc2d'
+    'a28c7ff227a74d260a29389b82caeed3fe196f91eef3d28cabe9977b5ed9d07b'
 $expectedDllSha256 = `
-    '25b7251f860518418ae8f50c59c311f25cf3a2615ded34a12f07ab845168bb38'
+    'ba46ae42b59c2058c7c8e5b02e31af1fe32a28e70d685f3a470e63adefc60cfc'
 
 $externalRepositoryRoot = (
     Resolve-Path -LiteralPath $ExternalRepositoryRoot
@@ -171,7 +171,7 @@ Assert-True (
 
 $parent = Split-Path -Parent $OutputRoot
 $partialRoot = Join-Path $parent (
-    '.EpinelMinimalBuild-v2.partial-' + [Guid]::NewGuid().ToString('N')
+    '.EpinelMinimalBuild-v3.partial-' + [Guid]::NewGuid().ToString('N')
 )
 New-Item -ItemType Directory -Path $partialRoot -Force | Out-Null
 
@@ -181,7 +181,7 @@ try {
 
     $receipt = [ordered]@{
         schemaVersion = 1
-        contractId = 'nll/phase3b2-epinel-minimal-build/v2'
+        contractId = 'nll/phase3b2-epinel-minimal-build/v3'
         sealedAtUtc = [DateTimeOffset]::UtcNow.ToString(
             "yyyy-MM-dd'T'HH:mm:ss'Z'"
         )
@@ -197,6 +197,8 @@ try {
         selectedManagerPassedCount = $SelectedManagerPassedCount
         handlerIsolationPassedCount = $HandlerIsolationPassedCount
         focusedTestFailedCount = 0
+        localAuthTokenLoggingEnabled = $false
+        rawSensitiveServerLogExpected = $false
         rawCatalogTransportCode = 'opaque_file_stream_no_projection'
         deploymentShapeCode = 'release_build_output_excluding_runtime_state'
         buildFileCount = $files.Count
@@ -217,7 +219,7 @@ try {
         officialOutboundUsed = $false
         serverExecutionStarted = $false
         clientExecutionStarted = $false
-        nextStepCode = 'recover_micron_p2_cold_then_stage_raw_b15_catalog'
+        nextStepCode = 'stage_sampling_and_sensitive_log_repair_to_micron'
     }
 
     $receiptPath = Join-Path $partialRoot 'build.receipt.json'
