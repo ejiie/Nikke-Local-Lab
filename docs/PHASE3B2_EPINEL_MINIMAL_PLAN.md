@@ -48,7 +48,7 @@
 - 기존 deployment UID: `bf669c3c-fcc8-4d57-9f18-32fee1288862`
 - 기존 deployment receipt SHA-256: `27ec27253b56fae39967a5714a315a862908a268a62a7083d45f85df9de592f6`
 
-NKDB body는 복호화하거나 SQLite로 변환하지 않는다. EpinelPS asset route가 봉인된 원본 byte를 그대로 반환하도록 한다. `.nds`도 이름과 byte를 그대로 보존한다.
+Micron runtime의 EpinelPS asset route는 NKDB body를 변환하지 않고 봉인된 원본 byte와 `.nds`를 그대로 반환한다. 별도의 Samsung cold materializer만 Epinel 자체 NKDB parser로 body를 메모리에서 해석해 remote bundle closure를 계산하며, 복호화 SQLite를 disk나 Git에 저장하지 않는다.
 
 ## 확인된 원인과 폐기할 가설
 
@@ -114,15 +114,18 @@ local-only 실행에 이미 필요한 `519c3db…`의 설정은 그대로 유지
 
 중단 조건: runtime이 cold가 아니거나 backup/hash chain이 불일치하면 자동 변경하지 않는다.
 
-### C. Samsung: 최소 bundle과 raw catalog staging
+### C. Samsung: Epinel native cache materialization
 
-1. clean external build만 Micron runtime에 배치
-2. 기존 sealed b15 six-member set의 body/signature를 Epinel cache path에 원본 그대로 배치
-3. body/signature SHA-256, file count, relative path를 다시 검증
-4. gameconfig의 build/base/core/data-pack pin 검증
-5. hosts, root CA, client-local certificate bundle, sodium shim 및 firewall rollback manifest 재봉인
+1. 기존 sealed b15 six-member set을 Epinel NKDB parser로 in-memory 해석
+2. role host token이 정확히 하나인 remote bundle만 materialization plan에 포함
+3. provider metadata와 `RuntimePath` row는 `not_applicable_local_runtime_asset`으로 분리
+4. Micron `naps` exact identity+length member는 Samsung protected cache에 read-only 복사
+5. 결손 또는 size mismatch member만 Samsung cold materializer가 exact static CDN path로 획득
+6. 전체 native cache의 declared length와 canonical SHA-256 manifest를 봉인
+7. 완성 뒤에만 clean external build, raw catalog/signature와 cache를 Micron에 offline staging
+8. gameconfig pin, hosts, CA, certificate bundle, sodium shim과 firewall rollback manifest 재봉인
 
-중단 조건: Micron client hash, b15 set, version map 또는 rollback manifest 중 하나라도 불일치하면 client를 시작하지 않는다.
+중단 조건: Micron client hash, b15 set, native cache member count/length, version map 또는 rollback manifest 중 하나라도 불일치하면 client를 시작하지 않는다. 전체 cache materialization 전에는 추가 Micron retry를 소비하지 않는다.
 
 ### D. Samsung: source-free preflight
 
@@ -235,11 +238,25 @@ server/client를 시작하지 않은 상태에서 다음을 검증한다.
 - Epinel source의 local auth token console logging을 제거하고 64개 selected-manager test와 6개 handler-isolation test를 다시 통과했다. start는 이제 최소 10개 표본과 최소 28,000 ms 경과를 함께 요구하며, start 실패 및 정상 completion 모두 server stdout에 방어적 비식별화를 적용한다.
 - Micron sampling/log repair contract는 `nll/phase3b2-epinel-minimal-sampling-log-repair/v1`, receipt SHA-256은 `e8fc382f236075a3b96d73c200be9a07ff00536cba4122c2d12118ce98508e2a`이다. 기존 cache 11개와 DB baseline은 보존했고 이전 server root와 도구는 rollback용으로 보존했다.
 - 최종 reference tool deployment contract는 `nll/phase3b2-epinel-minimal-reference-tool-deployment/v2`, tool manifest SHA-256은 `fa845bf5c43ad6587c2d06b5a140b332636a0dc21ffd977ea4988c061f005a2d`, receipt SHA-256은 `df7b7102096961d9cb9aad5f70957262b9f880477faec6a6cef0c8dc6acbb88b`이다.
+- 첫 minimal reference run `0f37da44-dc19-4f5e-b7a8-25556a9f52b3`은 server selection을 통과했지만 `4/7 catalogue_path`에서 `system_error`로 정지했다. client를 닫지 않은 상태에서 completion을 호출해 pointer는 아직 active이고, DB/SQLite/hosts는 실행 후 상태다. 추가 Micron retry 전에 Samsung offline baseline recovery가 필수다.
+- Samsung native-cache materialization assessment는 `24ddf43f-ad59-464a-ae1b-c527441c203b`이다. Remote materialization member 40,097개와 fixed catalog 6개를 합한 40,103개, 39,007,142,815 bytes를 모두 declared length와 SHA-256으로 검증했다. local exact copy는 34,624개, static CDN GET 완료는 5,479개이고 network attempt는 transient retry 1회를 포함해 5,480회다.
+- materialization receipt SHA-256은 `89a76b1e5237ea3864d87303418e638d9ad7de0570ad456182568a17c5ead921`, private manifest SHA-256은 `c1223ee05fec7cf3780171ead9a3e5da7f2942f129e0014995f10fabee0782a1`, canonical SHA-256은 `95000d45cb52f4bdd81b6ca9caf7e2e13eeae7bbddfa67e33ed8ef8896f22ffe`이다. Quarantine member는 0개이고 이 단계에서 Micron/server/client는 변경·실행하지 않았다.
+- 현재 Micron Epinel cache 기준선은 11개, 43,007,317 bytes, canonical SHA-256 `2f26e48f2243955d377a93bf4fcb6875b34d65aa0feb529eb2921801c3febf2e`이다. Materialized set과 겹치는 raw catalog 6개를 한 번만 세면 배치 후 기대 shape는 40,108개, 39,030,629,947 bytes다.
+- `scripts/recover-phase3b2-epinel-native-cache-baseline-offline.ps1`은 실패 run을 cold baseline으로 복구하고, `scripts/deploy-phase3b2-epinel-native-cache-offline.ps1`은 Samsung에서 그 복구를 확인한 뒤 39 GB cache를 staging 검산·directory swap하며 backup과 rollback을 남긴다. Codex 비승격 process에서는 Micron ACL 때문에 baseline move가 거부됐으므로 실제 배치는 Samsung 관리자 PowerShell에서 수행한다.
 - repository tracked policy(`-AllowRemote`), Phase 0, Phase 2A1, Phase 2A2, Phase 2B unit, Phase 3A, Phase 3B-0, Phase 3B-1, Phase 3B-2 contract-only 및 Actions contract 검증이 통과했다.
 - Samsung에 PostgreSQL service가 없으므로 Phase 2B live PostgreSQL integration gate는 이번 staging에서 실행하지 않았다. 이 미실행은 original-client reference run 성공을 대신하거나 약화하지 않으며, PostgreSQL 환경을 복구한 뒤 별도 gate로 수행한다.
 - `verify-repository.ps1 -Mode working`은 기존 `origin` remote와 이전 도구가 남긴 untracked `.tmp-dotnet-cli-home` telemetry 때문에 실패했다. 사용자 소유 상태를 임의 삭제·변경하지 않았으며, tracked policy는 통과했다.
 - Samsung에 이미 실행 중이던 공식 `nikke` process 1개는 종료·수정하지 않았다. 위 `serverExecutionStarted/clientExecutionStarted = false`는 이번 Epinel 최소 staging 작업이 새 runtime을 시작하지 않았다는 뜻이다.
-- 다음 작업: Micron Windows를 `nlloperator`로 부팅하여 아래 단일 reference run을 수행한다.
+- 다음 작업: Samsung 관리자 PowerShell에서 baseline 복구와 native cache offline deployment를 한 번 수행한다. 이 명령은 client/server를 시작하지 않는다.
+
+### 다음 Samsung 실행 명령
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+& 'C:\Users\zih44\Documents\Github\Nikke-Local-Lab\scripts\deploy-phase3b2-epinel-native-cache-offline.ps1'
+```
+
+배치 receipt가 `nativeCacheDeploymentVerified=true`, `activeCacheFileCount=40108`을 출력한 뒤에만 Micron으로 부팅한다.
 
 ### 다음 Micron 실행 명령
 
@@ -247,7 +264,7 @@ server/client를 시작하지 않은 상태에서 다음을 검증한다.
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
-& 'C:\NLL\Tools\Start-Phase3B2-Epinel-Minimal.ps1'
+& 'C:\NLL\Tools\Start-Phase3B2-Epinel-NativeCache.ps1'
 ```
 
 - 서버 선택 화면이 나오면 `Global`을 선택한다.

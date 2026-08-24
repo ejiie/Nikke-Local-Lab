@@ -7,13 +7,14 @@
 - loopback에서 실행되는 API와 관리 UI
 - 계약 검증용으로 프로젝트가 소유한 test harness
 - 운영자가 명시적으로 승인한 비배포·개인 로컬 compatibility 연구
+- 아래의 좁은 정적 catalog 수집 예외에 한정된, Samsung 콜드 환경의 인증 없는 HTTPS asset-CDN 요청
 - exact build/content hash를 고정한 snapshot 가능한 disposable VM/별도 OS와 `127.0.0.1`-only Local Lab/EpinelPS process
 - commit `28b2f5413a0a1e3521a11ae162f91851335c8b40`에 pin한 public EpinelPS source의 read-only 감사와 별도 local checkout 실행
 - disposable VM/OS에서만 수행하는 system hosts/root CA 변경과, client-local certificate bundle/native compatibility shim 변경. 사전 backup, 원본·적용 SHA-256, 변경 목록과 검증 가능한 rollback이 필수
 
 ## 제외
 
-- 공식 서버·공식 API로의 자동 요청
+- 아래 정적 catalog 수집 예외를 벗어난 공식 서버·공식 API 자동 요청
 - 공식 로그인, 계정 세션, 쿠키, 토큰 재사용
 - live 공식 traffic의 가로채기, credential-bearing capture 또는 공식 session/request replay
 - 게임 프로세스 메모리 읽기·쓰기, 코드 주입, 후킹
@@ -41,6 +42,24 @@ modified-local lane의 허용은 무제한 client 변경 허가가 아닙니다.
 - `0.0.0.0` 공개 bind와 인터넷 포트 포워딩을 금지합니다.
 - 외부 텔레메트리를 사용하지 않습니다.
 - client, launcher, EpinelPS/server와 관련 child process 전체의 non-loopback 통신은 fail-closed입니다. upstream이 StaticData/locale을 외부에서 자동 취득하려 하면 client를 실행하기 전에 중단하고 저장소 밖의 검토된 local input으로 전환합니다.
+
+## 운영자 승인 정적 catalog 및 native cache 수집 예외
+
+Phase 3B-2의 `4/7` local exact-content 결손을 닫기 위해 운영자는 **Samsung Windows에서 runtime이 완전히 cold인 동안** 정적 asset CDN의 exact catalog 여섯 객체와, 그 catalog를 Epinel 자체 방식으로 해석해 얻은 exact native cache closure를 준비하는 별도 lane을 승인했습니다. 이는 EpinelPS나 client의 runtime auto-fetch를 켜는 허가가 아니며 다음 전부를 만족해야 합니다.
+
+- host는 `cloud.nikke-kr.com` 하나, scheme은 HTTPS 하나이고 redirect, proxy, query와 alternate host를 허용하지 않음
+- 최초 객체는 reviewed external request manifest가 지정한 `core`, `dp`, `fd`의 `catalog.db`와 `catalog.db.nds` 정확히 여섯 개임
+- 후속 bundle은 봉인된 catalog row 중 role별 host token과 32-hex identity가 정확히 하나의 상대 경로로 해소되고 catalog-declared byte length가 있는 객체만 허용함
+- provider metadata와 `RuntimePath` 항목, catalog에 없는 경로, wildcard·directory listing·discovery 요청은 허용하지 않음
+- Micron `naps`의 identity와 declared length가 모두 같은 member를 우선 read-only 복사하고 결손 또는 size mismatch member만 GET함
+- cookie, authorization header, official account/session/token, default credential과 client/launcher/server process를 사용하지 않음
+- system certificate validation과 hostname validation을 비활성화하거나 우회하지 않음
+- 수집 전 private materialization plan과 source-free plan receipt를 봉인하고 실행 시 같은 SHA-256을 다시 요구함
+- 수집 byte, URL과 relative path는 Samsung의 Git-external protected root에만 두고, source-free receipt에는 role, byte length, SHA-256과 controlled status만 기록함
+- catalog body의 `NKDB` magic, signature file의 96-byte shape, bundle별 declared length, 전체 member count와 canonical SHA-256 manifest를 검산한 뒤에만 sealed 상태로 승격함
+- 성공 전과 offline staging 전에는 Micron을 수정하지 않으며, rollback은 sealed assessment 전체를 Git-external quarantine으로 이동함
+
+이 예외는 catalog가 exact 경로로 지시하지 않은 locale·일반 resource, official API, telemetry, 로그인 또는 client 실행 중 on-demand fetch로 확대되지 않습니다. 모든 네트워크 요청은 Samsung의 별도 materializer process에서만 발생하며 client, launcher와 Epinel server는 cold여야 합니다. Micron의 P0/P1과 실제 client 실행에서는 기존과 같이 official asset/locale auto-fetch가 비활성이고 non-loopback 성공 연결 수가 `0`이어야 합니다.
 
 ## Phase 1A source 보장 범위
 

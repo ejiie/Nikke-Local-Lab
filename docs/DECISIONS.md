@@ -76,6 +76,7 @@
 - OL line은 장비별 고정 좌표 `1..3`의 sparse subset이다. 중간 빈 line을 보존하며 삭제 시 뒤 line을 당기지 않는다.
 - console EXP는 nullable 숫자가 아니라 `ready|unresolved|not_applicable` fact로 저장한다. level이 있어도 EXP가 유실되면 full-fidelity readiness만 미완료다.
 - roster level과 detail level은 별도 observation이다. 의미가 확정되기 전에는 하나의 character level로 자동 병합하지 않는다.
+- Phase 3B-2의 `4/7` resource closure는 독자적인 catalogue projection을 더 만들지 않고 Epinel의 NKDB decrypt와 Addressables host-token 해석을 권위로 사용한다. Samsung cold environment에서 catalog가 exact remote path로 지시한 bundle만 Git-external native cache로 materialize하고, provider metadata와 `RuntimePath` row는 원격 수집 대상에서 제외한다. 전체 cache가 봉인되기 전에는 Micron retry를 소비하지 않는다.
 
 ## 남은 미정사항
 

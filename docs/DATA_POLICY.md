@@ -54,6 +54,10 @@ EpinelPS는 Local Lab repository에 vendor하지 않고 기본적으로 별도 l
 
 복호물, compatibility map, 런타임 DB, cache와 log는 모두 Git 외부에 둡니다. 저장소 fixture에는 자체 UUID와 합성 hash만 사용합니다.
 
+운영자가 승인한 Phase 3B-2 정적 catalog 수집 예외로 얻은 `core`/`dp`/`fd`의 여섯 catalog byte도 원본 game content로 분류합니다. 여섯 catalog를 Epinel 자체 NKDB parser로 해석해 도출한 **native cache materialization closure**의 bundle byte도 같은 분류와 보관 경계를 적용합니다. 이 closure는 catalog의 role host token과 32-hex bundle identity가 정확히 하나의 CDN 상대 경로를 만드는 row만 포함합니다. provider metadata와 `{UnityEngine.AddressableAssets.Addressables.RuntimePath}` 항목은 원격 객체로 취급하지 않습니다.
+
+요청 manifest, raw URL, relative path, catalog와 bundle byte는 Samsung의 Git-external protected root에만 보관하고 Git/Actions/remote로 복사하지 않습니다. 저장소에는 host·method·count·byte limit를 제한하는 범용 수집기, source-free receipt 계약과 비가역 digest만 둘 수 있습니다. Micron 복제본의 `naps`에서 identity와 catalog-declared byte length가 모두 같은 member는 read-only source로 재사용하고, 결손 또는 size mismatch member만 정적 CDN에서 획득합니다. 각 최종 member는 catalog-declared length와 별도 SHA-256 manifest로 봉인합니다. 수집 실패는 resumable `Pending`, 검산 성공은 `Sealed`, rollback은 별도 Git-external `Quarantine`으로 이동하여 복구 가능성을 보존합니다. Micron runtime cache에는 전체 closure를 offline 검증하고 별도 staging gate를 통과하기 전까지 복사하지 않습니다.
+
 original-client wire/presentation adapter가 client-local content reference를 요구하면 정확한 disposable client build에 결박된 Git 비추적 compatibility binding에서 실행 중에만 변환합니다. 해당 원본 reference, localized asset, icon, prefab 또는 patch output을 public domain/API, receipt, log, fixture와 Git에 복사하지 않습니다. source-free receipt에는 lab UID, controlled role, byte length와 비가역 hash만 남깁니다.
 
 Phase 1A의 `database\` 디렉터리는 경계만 초기화하며 PostgreSQL cluster나 dump를 자동 생성하지 않습니다. `staging\`은 import 실행 중 임시 데이터용이며 source 또는 repository와 겹칠 수 없습니다. Phase 1B character reader는 archive를 메모리에서만 해석하고 decoded file을 만들지 않습니다. 향후 staging을 쓰는 importer는 성공·실패·취소 후 이를 비워야 합니다.

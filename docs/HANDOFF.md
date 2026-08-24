@@ -149,13 +149,22 @@ Micron 별도 물리 Windows의 dedicated `nlloperator` profile에서 원본 cli
 여섯 target은 모두 exact digest로 재검산됐고 physical client/primary install/official launcher는 수정하지
 않았습니다.
 
-Catalog SQLite의 `entry_data.hash`와 물리 client local cache를 비교한 full resource closure는 아직
-완료되지 않았습니다. 40,281 catalog role/hash 중 34,621개는 exact local member, 5,631개는 이름 결손,
-29개는 길이 불일치이며 결손 선언 길이 합계는 14,596,209,860 bytes입니다. 따라서 이번 one-shot은
-`4/7`에서 직접 관측된 exact catalog-file 404를 제거하는 제한된 검증이며 이후 resource 단계 성공을 미리
-주장하지 않습니다. Exact-catalog 전용 실행기 배포 receipt SHA-256은
+Catalog SQLite의 `entry_data.hash`를 전부 remote member로 간주한 초기 집계는 provider metadata와
+`RuntimePath` row를 잘못 포함했으므로 폐기했습니다. Epinel native host-token mapping으로 재계산한 권위
+closure는 catalog row 40,281개 중 remote materialization member 40,097개와 non-remote row 184개입니다.
+Remote set은 exact local 34,618개, missing 5,450개, size mismatch 29개이며 전체 declared length는
+38,987,622,630 bytes입니다. Samsung native-cache materialization은 완료됐습니다. Remote 40,097개와 fixed
+catalog 6개를 합한 40,103개, 39,007,142,815 bytes를 전부 length/SHA-256으로 검증했고, local exact copy는
+34,624개, static CDN GET 완료는 5,479개입니다. Materialization receipt SHA-256은
+`89a76b1e5237ea3864d87303418e638d9ad7de0570ad456182568a17c5ead921`, private manifest SHA-256은
+`c1223ee05fec7cf3780171ead9a3e5da7f2942f129e0014995f10fabee0782a1`, canonical SHA-256은
+`95000d45cb52f4bdd81b6ca9caf7e2e13eeae7bbddfa67e33ed8ef8896f22ffe`입니다. 이 결과는 cache 완성만
+증명하며 `4/7` 이후 성공을 미리 주장하지 않습니다. Exact-catalog 전용 실행기 배포 receipt SHA-256은
 `6d181c40d7da412de9f7861f6e12814a304e848adcb4ebe7b1ab2b69ec6dec19`이고, 기존 실행기는 별도 backup과
-rollback으로 보존됐습니다. 다음 동작은 Micron `nlloperator`에서 이 승인된 retry를 한 번 실행하는 것입니다.
+rollback으로 보존됐습니다. Minimal assessment `0f37da44-dc19-4f5e-b7a8-25556a9f52b3`의 실패 실행은
+active pointer와 DB/SQLite/hosts 실행 후 상태가 남아 있습니다. 다음 동작은 Micron 재실행이 아니라 Samsung
+관리자 PowerShell에서 offline baseline recovery와 40,108-file combined cache의 staging 검산·directory swap을
+수행하는 것입니다. 기존 11-file cache는 rollback용 `cache-before`로 보존합니다.
 
 첫 실행 시 catalog 검증에 들어가기 전 `physical_boundary_profile_and_contract_preflight`가
 `phase3b2_physical_p2_v2_runtime_pin_mismatch`로 fail-closed됐습니다. 원인은 이전 실패 복구가 `hosts`와

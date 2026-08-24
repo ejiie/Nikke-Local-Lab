@@ -30,12 +30,12 @@ preflight이며, 실제 client reference run은 Wave 2입니다. 이 문서는 �
 
 따라서 현재 checked-in evidence는 `GO`를 발행하지 않으며, `ready_for_3c`, `reference_run_passed`,
 `original_client_result_observed_one_team` 또는 runtime parity를 주장하지 않습니다.
-[PHASE3B1.md](PHASE3B1.md)의 `ready_for_isolated_season26_reference_run`은 Wave 0에 들어갈 수 있는
+[PHASE3B1.md](PHASE3B1.md)의 `ready_for_isolated_season26_reference_run`은 Wave 1에 들어갈 수 있는
 external selected-manager 입력의 판정이지, 이 문서의 VM/client proof가 이미 존재한다는 뜻이 아닙니다.
 
 ## 권위와 범위
 
-이 문서는 Phase 3B-2 **Wave 0 한 번**의 preflight와 reference run 계약에 대한 사람용 단일 권위입니다.
+이 문서는 Phase 3B-2 **Wave 1 measured preflight 한 번과 그 receipt에 결박된 Wave 2 reference run** 계약에 대한 사람용 단일 권위입니다.
 목표는 snapshot 가능한 disposable VM/별도 OS에서 synthetic local account 하나와 client 하나로 다음
 최소 전이를 관측하는 것입니다.
 
@@ -49,7 +49,7 @@ local loading/login
   -> one-team client damage/result return
 ```
 
-Wave 0은 다음을 소유하지 않습니다.
+Phase 3B-2 Wave 1·2는 다음을 소유하지 않습니다.
 
 - Local Lab Phase 2B run/context/profile/squad revision과의 durable bridge 또는 correlation
 - 다섯 팀 전체 clear, regroup, next-team, raid-wide aggregate와 recovery parity
@@ -58,7 +58,7 @@ Wave 0은 다음을 소유하지 않습니다.
 - 다른 시즌, Normal, Practice, Fast Battle/Quick Battle 또는 `SoloRaidMuseum`
 - custom multi-season lobby, 배포, 공식 계정 또는 공식 traffic replay
 
-Wave 0의 direct client observation은 후속 3C/3D의 identity sealing과 Phase 4의 1~5팀 parity를
+Wave 2의 direct client observation은 후속 3C/3D의 identity sealing과 Phase 4의 1~5팀 parity를
 대체하지 않습니다. Lab harness receipt는 이 문서의 original-client evidence로 승격하지 않습니다.
 
 ## 동결된 machine contract ID
@@ -79,7 +79,7 @@ Wave 1의 Git-external P0/P1 관측을 deterministic stream으로 검증하기 �
 
 | code | 소유 contract | 의미 |
 |---|---|---|
-| `wave0_envelope` | 양쪽 | 같은 Wave 0 identity와 predecessor receipt 결박 |
+| `wave0_envelope` | 양쪽 | 동결된 wire 이름; 같은 Wave 1/2 assessment pair와 predecessor receipt 결박 |
 | `preflight_receipt` | live preflight | cold environment와 server-start/client-cold 관측 |
 | `reference_run_receipt` | reference run | original-client transition과 한 팀 result 관측 |
 | `getlogs_observation` | reference run | classic `GetLogs` 사용 여부와 wire outcome |
@@ -108,7 +108,7 @@ fixture를 통과시켜도 live readiness나 reference-run 성공으로 승격�
 
 ## 외부 dependency pin chain
 
-Wave 0은 다음 외부 EpinelPS chain 전체가 exact하게 일치할 때만 같은 대상이라고 판정합니다.
+Wave 1은 다음 외부 EpinelPS chain 전체가 exact하게 일치할 때만 같은 대상이라고 판정합니다.
 
 ```text
 reviewed upstream base
@@ -119,15 +119,21 @@ reviewed upstream base
             e32e5f900775974d5736e7fb2b50f8c62638a004
               -> preflight hardening HEAD
                  4f7bd5b5eb2b9a6e03af503f1c09adc4c4f7f16f
-                   -> Git tree
-                      ce353eeebee3c76672e483c6f735bb27f0227815
+                   -> measured target-projection HEAD
+                      6473a41fcdbc7cb4cb5919c31f9b2d1f04b4b5b6
+                         -> local-only HTTP/3 disable hardening
+                            9d22e68d069ec3d832bc3ece084952906c169d79
+                              -> local-only asset-cache log hardening
+                                 519c3db51ec24ca19307e93e85acde7885928a72
+                                   -> Git tree
+                                      b9e8bfb1b1e065427a48d40cb2bcf2f30215436a
 ```
 
 필수 pin 규칙은 다음과 같습니다.
 
 1. commit ancestry는 위 순서를 만족해야 합니다.
-2. hardening HEAD의 tree object는 exact
-   `ce353eeebee3c76672e483c6f735bb27f0227815`여야 합니다.
+2. local-only asset-cache log hardening HEAD의 tree object는 exact
+   `b9e8bfb1b1e065427a48d40cb2bcf2f30215436a`여야 합니다.
 3. checkout은 tracked/untracked 변경이 없는 clean 상태여야 하며 submodule 또는 generated input이 있으면
    별도로 exact pin을 기록합니다.
 4. 실행 binary와 runtime input은 hardening HEAD에서 documented toolchain으로 새로 build/검산한 byte여야
@@ -140,9 +146,9 @@ reviewed upstream base
 또는 target observation이 다르면 `blocked_runtime_input_mismatch`로 STOP합니다.
 다른 commit, prebuilt binary, 최신 manager 또는 다른 시즌으로 자동 대체하지 않습니다.
 
-## Wave 0 실행 단위
+## Wave 1/2 실행 단위
 
-한 Wave 0은 다음 identity를 시작 전에 고정하고 실행 중 바꾸지 않습니다.
+한 Wave 1은 다음 identity를 시작 전에 고정하고, 결박된 Wave 2가 끝날 때까지 바꾸지 않습니다.
 
 - lab-owned random live-preflight `assessmentUid`와 reference-run `assessmentUid`
 - reference-run `preflightBinding`의 exact preflight assessment UID/SHA-256/verdict 결박
@@ -151,7 +157,7 @@ reviewed upstream base
 - external commit/tree와 server build artifact digest
 - reviewed locale/runtime input manifest digest
 - synthetic account observation digest
-- target binding contract `nll/season26-classic-target-observation/v1`과 trusted digest
+- target binding contract `nll/season26-classic-target-observation/v2`과 trusted digest
 - firewall/listener policy digest
 - change/backup/rollback manifest digest
 
@@ -159,7 +165,66 @@ reviewed upstream base
 snapshot 복원, pin 변경, manifest 변경이나 failure 뒤 재시도는 같은 실행의 연장이 아니라 새 assessment
 pair입니다. 실패 원인을 고치기 위해 여러 변경을 한 번에 적용하지 않습니다.
 
+Phase 3B-1의 `nll/season26-classic-target-observation/v1` receipt와 schema는 당시의 source-free
+역사 증거로 보존합니다. 실제 `150.6.9` decoded archive 검산에서는 원본 wave 전체가 118 canonical
+line인 반면 v1 wave role은 13 line으로 고정되어 실측 입장에 사용할 수 없었습니다. v2는 exact target
+monster와 그 monster를 포함하는 spawn만 source-relative order로 투영하여 150 line, 6689 bytes,
+SHA-256 `095eebce4f244f9326aa558302318f85547697b165eb6458735527bd2b0f6d10`으로 재계산합니다.
+v1 receipt를 소급 수정하거나 v2 성공으로 승격하지 않습니다.
+
 ## Preflight contract
+
+### P0 이전 — exact static catalog acquisition gate
+
+물리 OS P2에서 client가 `4/7` catalog resource 단계에 도달했지만 exact local `core`/`dp`/`fd` catalog pair가 없어서 종료되는 경우, 운영자가 승인한 별도 Samsung 콜드 수집 lane을 사용할 수 있습니다. 이 gate는 client reference run이나 P1 server measurement가 아니며 다음 순서를 고정합니다.
+
+1. Samsung Windows가 system/boot disk이고 Micron Windows가 offline data disk인지 확인합니다.
+2. client, launcher, EpinelPS/server와 physical bootstrap process가 모두 없는 cold 상태를 확인합니다.
+3. Git-external request manifest에 exact `catalog.db`/`.nds` 여섯 URI만 기록하고 그 SHA-256을 운영자가 승인합니다.
+4. redirect·proxy·cookie·credential 없이 system-default TLS hostname validation으로 static asset CDN GET 여섯 회만 수행합니다.
+5. 세 body의 `NKDB` magic, 세 signature의 96-byte shape, member byte length/SHA-256과 canonical manifest를 검증해 Samsung `Sealed` root에 둡니다.
+6. sealed byte를 Epinel의 NKDB parser로 해석해 role host token이 정확히 하나인 remote bundle closure를 계산하고 provider metadata와 `RuntimePath` row를 제외합니다.
+7. Micron `naps`의 exact identity+length member는 Samsung protected cache로 복사하고, 결손 또는 size mismatch member만 동일 host의 exact HTTPS GET으로 획득합니다.
+8. 전체 member의 declared length와 canonical SHA-256 manifest를 봉인한 뒤에만 Micron staging으로 복사합니다.
+
+수집기는 server/client를 시작하지 않고 materialization 완료 전에는 Micron을 수정하지 않습니다. URL, 상대 경로, catalog와 bundle byte는 Git에 들어가지 않으며 source-free receipt만 생성합니다. 실제 Micron P0/P1에서는 `official asset/locale auto-fetch=false`와 non-loopback success `0`을 계속 요구합니다. Catalog가 exact remote path로 지시하지 않은 resource·locale, API 또는 telemetry 요청은 이 gate로 허용되지 않습니다.
+
+현재 Git-external 실측에서는 exact six-member acquisition과 Micron offline staging까지 완료됐습니다.
+Acquisition receipt SHA-256은
+`87d22ab630bea3851ad3af6b8a2b3be009c7f49b9320529186261bb38c24ae92`, deployment receipt SHA-256은
+`27ec27253b56fae39967a5714a315a862908a268a62a7083d45f85df9de592f6`입니다. 세 body는 모두 in-memory
+NKDB decrypt 뒤 SQLite header/schema를 통과했고 raw decrypted DB는 저장하지 않았습니다. 전체 catalog
+초기 resource closure의 `40,281` 집계는 provider metadata와 `RuntimePath` row를 원격 객체로 오인했으므로
+권위 집계로 사용하지 않습니다. Epinel native path mapping으로 재계산한 결과는 catalog row 40,281개 중
+remote materialization member 40,097개와 non-remote row 184개입니다. Remote set은 local exact 34,618개,
+missing 5,450개, size mismatch 29개이며 전체 declared byte length는 38,987,622,630입니다. 이 전체 closure가
+Samsung에서 봉인되기 전에는 Micron retry를 수행하지 않습니다.
+
+첫 Micron retry 진입은 catalog member 결손이 아니라 stale preparation state 때문에 client/server 시작 전에
+fail-closed됐습니다. 이전 자동 복구 뒤 base `hosts`와 extension firewall 0개가 관측됐지만 기존 preparation
+receipt는 applied `hosts`와 extension firewall 1개를 요구했습니다. Failure receipt SHA-256은
+`03a6021e6d84d83ad967b5ce4cb6e74abfc01d28fa902ed45aa4182769fdcc76`입니다. Exact-catalog retry는 소비되지
+않았으며, Samsung offline repair deployment receipt SHA-256
+`59721268949df5cb2cb553f54f673f2987ec5fb3eb45aa4f83f1df8ec20ed52d`가 이 한 상태에서만 P2-v2 hosts/firewall을
+재적용하도록 wrapper를 보강했습니다. 이 repair는 physical client와 six-member catalog set을 변경하지 않습니다.
+
+재무장 뒤 실제 실행은 six-member catalog 6/6을 exact로 검증했지만 `4/7`에서 다시 종료됐습니다. Client
+`Player.log`의 exact failed URI와 server request-stage의 단일 `asset_prdenv` 404를 함께 검산한 결과, 첫 결손은
+catalog body가 아니라 같은 PCK root의 `latest-651.txt`였습니다. Assessment UID는
+`29083a6a-3f4e-4eec-a57a-4d28b1459524`, run-start SHA-256은
+`4481b1186a9b17fbe06c70bcf2639860439423a76b300e2309710cfe55d4f10f`입니다. Raw Player.log는 Git이나
+Samsung 보호 evidence에 복사하지 않았습니다.
+
+Samsung offline follow-up은 설치 client의 3,775-byte `.lcv.dat`와 pinned `gameconfig.json`에서 투영된
+8-line/no-terminal-LF header를 exact 139 bytes, SHA-256
+`5914cb58fd2146fe761ab531ecb4e321300527186a54b455e59de962ff6c044a`로 Micron local cache에 배치했습니다.
+Repair receipt SHA-256은 `38f757559f5e70f9f185bc54b4917aab5c538ad9a0500e7d05fddff1e55f7c4d`입니다. 실패
+실행의 DB는 baseline SHA-256
+`c103b44b7bc3dc4f1a317fd272253e2c8d827ca3ff174f07e0ecb6dfc298e194`로 복원됐고 SQLite runtime member는
+0개입니다. Active pointer/retry consumption은 삭제 전 run root에 원본 digest로 보존됐으며 exact catalog
+6개는 변경하지 않았습니다. 시작 gate는 catalog+header 합성 closure를 검증하고, completion은 과거 latest
+pointer를 충돌로 보지 않고 새 run evidence에 보존한 뒤 갱신합니다. 이 변경은 공식 outbound/API/login을
+사용하지 않으며 `5/7` 이후 resource closure를 선결 주장하지 않는 단일 follow-up retry만 허용합니다.
 
 ### P0 — cold environment admission
 
@@ -187,6 +252,7 @@ Server나 client process를 시작하기 전에 다음을 모두 확인합니다
 Server만 먼저 시작한 뒤 client를 시작하기 전에 다음을 직접 관측합니다.
 
 - HTTP `80`과 HTTPS `443`의 effective listener가 필요한 경우 모두 `127.0.0.1` exact bind
+- `--local-only`에서는 HTTP/3가 비활성이고 UDP `443` listener 수가 `0`
 - wildcard, LAN 또는 예상 밖 listener 수 `0`
 - official asset/locale auto-fetch, Git update와 interactive update surface가 비활성
 - startup 동안 non-loopback connection attempt와 successful connection 모두 `0`
@@ -195,6 +261,16 @@ Server만 먼저 시작한 뒤 client를 시작하기 전에 다음을 직접 �
   mutation 또는 latest fallback이 `0`
 - active run 상태가 없거나 exact resumable target 하나이며 quarantine/multiple/wrong-mode/non-8 상태가 없음
 - server log와 receipt에 raw account, manager ID, credential, local path 또는 decoded payload가 노출되지 않음
+
+최초 실측에서 TCP `80/443`은 IPv4 loopback이었지만 Kestrel/MsQuic의 UDP `443` 소켓이 IPv6 wildcard
+`::`로 관측되어 P1을 실패-폐쇄했습니다. 이 결과를 loopback 성공으로 해석하지 않습니다. 외부 hardening
+`9d22e68d069ec3d832bc3ece084952906c169d79`부터 local-only HTTPS는 HTTP/1.1+2만 허용하며, P1은
+HTTP/3 비활성 및 UDP `443` listener `0`을 요구합니다. 일반 모드의 upstream HTTP/3 동작은 보존합니다.
+
+후속 P1에서 local cache hit가 `Game is requesting <absolute-path>`로 기록되어 log-safety gate가
+실패-폐쇄됐습니다. `519c3db51ec24ca19307e93e85acde7885928a72`부터 local-only asset cache 요청은
+`local_only_asset_cache_request` controlled code만 기록하며 일반 upstream 모드의 기존 요청 로그는
+보존합니다. P1은 `localOnlyAssetCachePathLoggingEnabled=false`와 local path value `0`을 함께 요구합니다.
 
 전부 통과하고 P0 receipt와 P1 observation이 같은 pin/manifest에 결박될 때만 `GO_CLIENT_START`를 발행할 수
 있습니다. 이 GO는 exact preflight assessment와 그 digest에 결박된 reference-run assessment 한 번에만
@@ -225,7 +301,7 @@ Museum route, stage 또는 buff sentinel이 한 번이라도 관측되면 기술
 
 ### `one-team client result`의 정확한 의미
 
-Wave 0의 `one-team client result`는 **첫 5인 squad 한 팀의 battle attempt가 원본 client runtime에서 끝나고,
+Wave 2의 `one-team client result`는 **첫 5인 squad 한 팀의 battle attempt가 원본 client runtime에서 끝나고,
 그 client가 산출·표시한 team damage/result가 classic Challenge wire로 돌아온 것을 직접 관측했다**는 뜻입니다.
 
 이 판정을 발행하려면 다음이 모두 필요합니다.
@@ -254,7 +330,7 @@ Wave 0의 `one-team client result`는 **첫 5인 squad 한 팀의 battle attempt
 ## `GetLogs` observation contract
 
 3B-1은 classic `GetLogs`의 target Trial projection을 선택 route에 포함했지만 client compatibility는 3B-2까지
-미검증으로 남겼습니다. Wave 0은 `GetLogs`를 result authority가 아닌 별도 보조 관측으로 기록합니다.
+미검증으로 남겼습니다. Wave 2는 `GetLogs`를 result authority가 아닌 별도 보조 관측으로 기록합니다.
 
 `getlogs_observation` section의 필수 outcome enum은 다음과 같습니다.
 
@@ -371,6 +447,37 @@ classic UI와 GetLogs 세부 원인은 별도 machine verdict를 발명하지 �
 
 ## GO, STOP과 rollback gate
 
+### Source-built Sail ABI local bootstrap admission
+
+공식 launcher가 disposable client의 reviewed P0 certificate/native shim mutation을 pre-launch integrity
+검사에서 거부해도 그 검사를 patch, hook, injection 또는 repair로 우회하지 않습니다. Client가 아직 시작되지
+않았고 exact failure receipt와 rollback checkpoint가 있을 때만 다음의 별도 admission을 검토할 수 있습니다.
+
+1. public bootstrap source의 exact HEAD/tree와 clean checkout을 고정합니다.
+2. game-owned shared-memory/plugin ABI와 named pipe에 필요한 최소 native output만 source build합니다.
+3. Lab-owned managed bootstrap은 합성 local auth, exact client path와 Sail ABI handoff만 수행합니다.
+4. official launcher executable, downloader/repair surface, ACE substitute, `HelperDll.dll`, `UnityInit.dll`과
+   process memory read/write, injection, hook API는 build·stage·run에서 모두 제외합니다.
+5. source/artifact manifest, firewall program rule, backup·rollback과 snapshot을 P0의 새 assessment에
+   결박하고 P1을 다시 측정합니다.
+6. ready receipt는 `clientBootstrapModeCode=source_built_sail_abi_local_bootstrap`인 Git 밖 projection에서
+   생성하며 official launcher가 실행되지 않았음을 별도 negative sentinel로 유지합니다.
+7. Client start는 VM의 interactive console에서 한 번만 수행하고, local account/auth acceptance,
+   shared-memory creation, named-pipe connection과 `nikke.exe` start receipt가 모두 생겨야 다음 transition을
+   관측합니다.
+
+이 lane은 launcher/ACE protection bypass가 아니며, original client runtime 자체의 성공을 미리 주장하지
+않습니다. Client가 ABI 연결 전에 종료되거나 manifest 밖 process가 나타나면
+`runtime_blocked_season_26`으로 STOP하고 같은 assessment에서 다른 start 방법을 재시도하지 않습니다.
+
+Hyper-V assessment에서 원본 client가 process 생성 직후 virtual environment 실행을 자체 거부하고 Sail
+named pipe에 연결하지 않은 경우에는 content/runtime 호환성 실패와 구분해
+`runtime_blocked_virtualized_environment`로 STOP합니다. 이 판정은 `clientProcessCreationObserved=true`,
+`originalClientRuntimeEntered=false`, `referenceRunExecuted=false`를 함께 기록합니다. Hypervisor 감지를
+숨기거나 client/ACE를 patch·hook·inject하지 않고, source-free 실패 증거를 추출한 뒤 exact P0 checkpoint를
+복원합니다. 다음 실행 환경은 같은 VM의 다른 bootstrap이 아니라 snapshot/rollback 가능한 별도 물리 Windows
+OS여야 합니다.
+
 ### GO 규칙
 
 GO는 누적이며 앞 gate를 모두 통과해야 합니다.
@@ -399,7 +506,7 @@ local evidence를 source-free하게 seal한 뒤 rollback으로 이동합니다.
 
 ### Rollback contract
 
-Rollback은 성공·실패와 관계없이 모든 Wave 0의 필수 마지막 단계입니다.
+Rollback은 성공·실패와 관계없이 모든 Wave 2의 필수 마지막 단계입니다.
 
 1. client, launcher, server와 관련 child process가 모두 종료됐음을 확인합니다.
 2. active synthetic run/state를 manifest가 정한 disposable 절차로 닫거나 snapshot과 함께 폐기합니다.
@@ -414,7 +521,7 @@ Rollback은 성공·실패와 관계없이 모든 Wave 0의 필수 마지막 단
 `rollback.statusCode=failed`로 종료하고 VM/OS를 quarantine합니다. 이 상태에서는 후속 단계를 승인하지
 않습니다.
 
-## Wave 0 종료 판정
+## Wave 2 종료 판정
 
 성공 후보는 다음을 모두 만족해야 합니다.
 
@@ -426,7 +533,7 @@ Rollback은 성공·실패와 관계없이 모든 Wave 0의 필수 마지막 단
 - reference-run `preflightBinding`이 ready preflight의 assessment UID/SHA-256/verdict에 exact하게 연결됨
 - rollback이 완전히 검증되고 primary install이 불변
 
-그때의 machine verdict는 `verified_isolated_season26_original_client_result`, 사람용 evidence strength는 Wave 0
+그때의 machine verdict는 `verified_isolated_season26_original_client_result`, 사람용 evidence strength는 Wave 2
 한정 `original_client_result_observed_one_team`입니다. 후속 3C 설계를 검토할 증거가 생긴다는 뜻일 뿐
 자동으로 Phase 3 완료 또는 Local Lab integration 성공이 되지 않습니다.
 
