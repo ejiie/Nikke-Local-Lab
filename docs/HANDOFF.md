@@ -166,6 +166,15 @@ active pointer와 DB/SQLite/hosts 실행 후 상태가 남아 있습니다. 다�
 관리자 PowerShell에서 offline baseline recovery와 40,108-file combined cache의 staging 검산·directory swap을
 수행하는 것입니다. 기존 11-file cache는 rollback용 `cache-before`로 보존합니다.
 
+첫 관리자 배포는 39 GB robocopy가 끝난 뒤 Windows PowerShell 5.1의 long-path recursive enumeration에서
+swap 전에 중단됐습니다. 활성 cache는 11-file 기준선 그대로이고 배포 receipt는 생성되지 않았습니다. 보존된
+`staging-failed-20260824T114137Z`는 .NET 10 verifier로 40,108개, 39,030,629,947 bytes 전부를 private
+manifest와 SHA-256 대조했으며 누락·추가·digest mismatch는 0입니다. Combined active canonical SHA-256은
+`9c2874cd3c811609b4c8d6c34caf393aaf3e24b09825294a66b063e4fe1b521b`입니다. 수정된 deployment script는
+이 staging을 재복사 없이 재사용하므로 다음 동작은 같은 Samsung 관리자 명령을 한 번 다시 실행하는 것입니다.
+Long-path verifier source commit은 external EpinelPS `6abf39b8daa1b7ee04da651e14941a2ece1ca29b`, clean build
+DLL SHA-256은 `5b3c941374a68fa9090481de0e96d479f6bc40601776c98bfe1d64ac78d9b5fb`입니다.
+
 첫 실행 시 catalog 검증에 들어가기 전 `physical_boundary_profile_and_contract_preflight`가
 `phase3b2_physical_p2_v2_runtime_pin_mismatch`로 fail-closed됐습니다. 원인은 이전 실패 복구가 `hosts`와
 P2-v2 extension firewall을 원복했지만 오래된 preparation receipt를 보존하여 wrapper가 준비 재적용을

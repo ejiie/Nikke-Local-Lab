@@ -84,6 +84,20 @@ function Invoke-RobocopyChecked {
     return $exitCode
 }
 
+function Invoke-NativeCacheVerifierJson {
+    param(
+        [string]$DotnetPath,
+        [string]$VerifierDllPath,
+        [string[]]$CommandArguments
+    )
+
+    $output = & $DotnetPath $VerifierDllPath @CommandArguments 2>&1
+    $exitCode = $LASTEXITCODE
+    Assert-True ($exitCode -eq 0) `
+        'phase3b2_native_cache_deployment_long_path_verifier_failed'
+    return (($output | Out-String) | ConvertFrom-Json)
+}
+
 $expectedMaterializationReceiptSha256 =
     '89a76b1e5237ea3864d87303418e638d9ad7de0570ad456182568a17c5ead921'
 $expectedPrivateManifestSha256 =
@@ -92,6 +106,8 @@ $expectedMaterializationCanonicalSha256 =
     '95000d45cb52f4bdd81b6ca9caf7e2e13eeae7bbddfa67e33ed8ef8896f22ffe'
 $expectedBaselineCacheCanonicalSha256 =
     '2f26e48f2243955d377a93bf4fcb6875b34d65aa0feb529eb2921801c3febf2e'
+$expectedLongPathVerifierDllSha256 =
+    '5b3c941374a68fa9090481de0e96d479f6bc40601776c98bfe1d64ac78d9b5fb'
 $expectedDatabaseSha256 =
     'c103b44b7bc3dc4f1a317fd272253e2c8d827ca3ff174f07e0ecb6dfc298e194'
 $expectedHostsSha256 =
@@ -135,6 +151,20 @@ $nativeStartTemplate = Join-Path $PSScriptRoot `
     'Start-Phase3B2-Epinel-NativeCache.ps1'
 $rollbackTemplate = Join-Path $PSScriptRoot `
     'rollback-phase3b2-epinel-native-cache-offline.ps1'
+$verifierProject = Join-Path $PSScriptRoot (
+    '..\.external\EpinelPS\tools\Phase3B2.NativeCacheMaterializer\' +
+    'Phase3B2.NativeCacheMaterializer.csproj'
+)
+$verifierWorkingRoot = Join-Path $PSScriptRoot '..\.external\EpinelPS'
+$verifierDll = Join-Path (Split-Path -Parent $verifierProject) `
+    'bin\Release\net10.0\Phase3B2.NativeCacheMaterializer.dll'
+$dotnetCandidates = @(
+    (Join-Path $micronDrive 'Program Files\dotnet\dotnet.exe'),
+    (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe')
+)
+$dotnetPath = @($dotnetCandidates | Where-Object {
+        Test-Path -LiteralPath $_ -PathType Leaf
+    } | Select-Object -First 1)
 $materializationReceiptPath = Join-Path $MaterializationRoot `
     'materialization.receipt.json'
 $privateManifestPath = Join-Path $MaterializationRoot `
@@ -175,6 +205,20 @@ $stagingRoot = Join-Path $serverRoot (
     '.cache-native-materialization-staging-' +
     [Guid]::NewGuid().ToString('N')
 )
+$reusedFailedStaging = $false
+if (Test-Path -LiteralPath $backupRoot -PathType Container) {
+    $backupChildren = @(Get-ChildItem -LiteralPath $backupRoot -Force)
+    $failedStagingCandidates = @($backupChildren | Where-Object {
+            $_.PSIsContainer -and $_.Name -like 'staging-failed-*'
+        })
+    Assert-True (
+        $backupChildren.Count -eq 1 -and
+        $failedStagingCandidates.Count -eq 1 -and
+        -not (Test-Path -LiteralPath $backupCacheRoot)
+    ) 'phase3b2_native_cache_deployment_prior_failure_shape_invalid'
+    $stagingRoot = $failedStagingCandidates[0].FullName
+    $reusedFailedStaging = $true
+}
 $micronToolsRoot = Join-Path $micronDrive 'NLL\Tools'
 $nativeStartDestination = Join-Path $micronToolsRoot `
     'Start-Phase3B2-Epinel-NativeCache.ps1'
@@ -183,20 +227,43 @@ $rollbackDestination = Join-Path $micronToolsRoot `
 
 Assert-True (
     @(@($recoveryTool, $nativeStartTemplate, $rollbackTemplate,
+            $verifierProject,
             $materializationReceiptPath, $privateManifestPath) |
         Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }
-    ).Count -eq 0 -and
+    ).Count -eq 0 -and $dotnetPath.Count -eq 1 -and
     (Test-Path -LiteralPath $sourceCacheRoot -PathType Container) -and
     (Test-Path -LiteralPath $activeCacheRoot -PathType Container) -and
     (Test-Path -LiteralPath $databasePath -PathType Leaf) -and
     (Test-Path -LiteralPath $hostsPath -PathType Leaf)
 ) 'phase3b2_native_cache_deployment_input_missing'
 Assert-True (
-    -not (Test-Path -LiteralPath $backupRoot) -and
     -not (Test-Path -LiteralPath $deploymentEvidenceRoot) -and
     -not (Test-Path -LiteralPath $protectedDeploymentRoot) -and
-    -not (Test-Path -LiteralPath $stagingRoot)
+    (($reusedFailedStaging -and
+            (Test-Path -LiteralPath $stagingRoot -PathType Container)) -or
+        (-not $reusedFailedStaging -and
+            -not (Test-Path -LiteralPath $backupRoot) -and
+            -not (Test-Path -LiteralPath $stagingRoot)))
 ) 'phase3b2_native_cache_deployment_destination_exists'
+
+$previousLocation = Get-Location
+try {
+    Set-Location -LiteralPath $verifierWorkingRoot
+    & $dotnetPath[0] build $verifierProject -c Release --no-restore `
+        --nologo | Out-Null
+    $verifierBuildExitCode = $LASTEXITCODE
+}
+finally {
+    Set-Location -LiteralPath $previousLocation
+}
+Assert-True (
+    $verifierBuildExitCode -eq 0 -and
+    (Test-Path -LiteralPath $verifierDll -PathType Leaf)
+) 'phase3b2_native_cache_deployment_long_path_verifier_build_failed'
+$verifierDllSha256 = Get-Sha256Hex $verifierDll
+Assert-True (
+    $verifierDllSha256 -ceq $expectedLongPathVerifierDllSha256
+) 'phase3b2_native_cache_deployment_long_path_verifier_digest_invalid'
 
 if (-not (Test-Path -LiteralPath $baselineReceiptPath -PathType Leaf)) {
     & $recoveryTool -MicronDriveLetter $MicronDriveLetter `
@@ -288,57 +355,44 @@ $activeInstalled = $false
 $createdEvidence = $false
 $createdProtectedEvidence = $false
 try {
-    New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
-    $stagingCreated = $true
-    $baselineRobocopyExitCode = Invoke-RobocopyChecked `
-        $activeCacheRoot $stagingRoot
-    $materializationRobocopyExitCode = Invoke-RobocopyChecked `
-        $sourceCacheRoot $stagingRoot
+    $baselineRobocopyExitCode = $null
+    $materializationRobocopyExitCode = $null
+    if (-not $reusedFailedStaging) {
+        New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
+        $stagingCreated = $true
+        $baselineRobocopyExitCode = Invoke-RobocopyChecked `
+            $activeCacheRoot $stagingRoot
+        $materializationRobocopyExitCode = Invoke-RobocopyChecked `
+            $sourceCacheRoot $stagingRoot
+    }
 
-    $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse)
+    $stagedVerification = Invoke-NativeCacheVerifierJson `
+        -DotnetPath $dotnetPath[0] `
+        -VerifierDllPath $verifierDll `
+        -CommandArguments @(
+            'verify-combined-cache', $stagingRoot,
+            $privateManifestPath, $activeCacheRoot
+        )
     Assert-True (
-        $stagedFiles.Count -eq $expectedActiveCacheFileCount -and
-        [long](($stagedFiles | Measure-Object Length -Sum).Sum) -eq `
+        $stagedVerification.contractId -ceq `
+            'nll/phase3b2-native-cache-combined-cache-verification/v1' -and
+        $stagedVerification.verified -and
+        $stagedVerification.longPathSafeEnumerationUsed -and
+        $stagedVerification.memberDigestVerificationPerformed -and
+        $stagedVerification.materializedMemberCount -eq `
+            $expectedMaterializedMemberCount -and
+        $stagedVerification.baselineMemberCount -eq `
+            $expectedBaselineCacheFileCount -and
+        $stagedVerification.overlappingBaselineMemberCount -eq 6 -and
+        $stagedVerification.expectedMemberCount -eq `
+            $expectedActiveCacheFileCount -and
+        $stagedVerification.observedMemberCount -eq `
+            $expectedActiveCacheFileCount -and
+        [long]$stagedVerification.observedContentByteLength -eq `
             $expectedActiveCacheByteLength
     ) 'phase3b2_native_cache_deployment_staged_shape_invalid'
-
-    $activeCanonicalLines = [Collections.Generic.List[string]]::new()
-    foreach ($member in @($privateManifest.members)) {
-        $relative = [string]$member.cacheRelativePath
-        $target = Join-Path $stagingRoot $relative.Replace('/', '\')
-        Assert-True (
-            (Test-Path -LiteralPath $target -PathType Leaf) -and
-            (Get-Item -LiteralPath $target).Length -eq `
-                [long]$member.declaredByteLength
-        ) 'phase3b2_native_cache_deployment_staged_member_shape_invalid'
-        $sha256 = Get-Sha256Hex $target
-        Assert-True ($sha256 -ceq [string]$member.contentSha256) `
-            'phase3b2_native_cache_deployment_staged_member_digest_invalid'
-        $activeCanonicalLines.Add(
-            "$relative`t$([long]$member.declaredByteLength)`t$sha256"
-        )
-    }
-    foreach ($file in $baselineFiles) {
-        $relative = Get-RelativeCachePath $activeCacheRoot $file.FullName
-        if (-not $materializedPaths.Contains($relative)) {
-            $target = Join-Path $stagingRoot $relative.Replace('/', '\')
-            $sha256 = Get-Sha256Hex $target
-            Assert-True (
-                (Get-Item -LiteralPath $target).Length -eq $file.Length -and
-                $sha256 -ceq (Get-Sha256Hex $file.FullName)
-            ) 'phase3b2_native_cache_deployment_baseline_member_drifted'
-            $activeCanonicalLines.Add(
-                "$relative`t$($file.Length)`t$sha256"
-            )
-        }
-    }
-    Assert-True (
-        $activeCanonicalLines.Count -eq $expectedActiveCacheFileCount
-    ) 'phase3b2_native_cache_deployment_active_manifest_count_invalid'
-    $activeCanonicalText = (
-        @($activeCanonicalLines | Sort-Object) -join "`n"
-    ) + "`n"
-    $activeCanonicalSha256 = Get-TextSha256Hex $activeCanonicalText
+    $activeCanonicalSha256 = `
+        [string]$stagedVerification.activeCanonicalSha256
 
     New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
     Move-Item -LiteralPath $activeCacheRoot -Destination $backupCacheRoot
@@ -347,15 +401,18 @@ try {
     $stagingCreated = $false
     $activeInstalled = $true
 
-    $activeFiles = @(Get-ChildItem -LiteralPath $activeCacheRoot `
-        -File -Recurse)
+    $activeInspection = Invoke-NativeCacheVerifierJson `
+        -DotnetPath $dotnetPath[0] `
+        -VerifierDllPath $verifierDll `
+        -CommandArguments @('inspect-cache-tree', $activeCacheRoot)
     Assert-True (
-        $activeFiles.Count -eq $expectedActiveCacheFileCount -and
-        [long](($activeFiles | Measure-Object Length -Sum).Sum) -eq `
+        $activeInspection.contractId -ceq `
+            'nll/phase3b2-native-cache-tree-inspection/v1' -and
+        $activeInspection.longPathSafeEnumerationUsed -and
+        $activeInspection.fileCount -eq $expectedActiveCacheFileCount -and
+        [long]$activeInspection.contentByteLength -eq `
             $expectedActiveCacheByteLength -and
-        @($activeFiles | Where-Object {
-                $_.Name -like '*.partial-*'
-            }).Count -eq 0
+        $activeInspection.partialMemberCount -eq 0
     ) 'phase3b2_native_cache_deployment_post_swap_shape_invalid'
 
     New-Item -ItemType Directory -Path $deploymentEvidenceRoot -Force |
@@ -411,6 +468,14 @@ try {
         baselineRobocopyExitCode = $baselineRobocopyExitCode
         materializationRobocopyExitCode = `
             $materializationRobocopyExitCode
+        stagingSourceCode = if ($reusedFailedStaging) {
+            'verified_prior_failed_staging_reused_without_recopy'
+        } else {
+            'fresh_robocopy_staging'
+        }
+        longPathSafeVerifierDllSha256 = $verifierDllSha256
+        longPathSafeEnumerationUsed = $true
+        stagedMemberDigestVerificationPerformed = $true
         targetCachePathAtMicronBoot = `
             'C:\NLL\EpinelPS\EpinelPS\bin\Release\net10.0\win-x64\cache'
         databaseRestored = $true

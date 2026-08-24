@@ -243,6 +243,8 @@ server/client를 시작하지 않은 상태에서 다음을 검증한다.
 - materialization receipt SHA-256은 `89a76b1e5237ea3864d87303418e638d9ad7de0570ad456182568a17c5ead921`, private manifest SHA-256은 `c1223ee05fec7cf3780171ead9a3e5da7f2942f129e0014995f10fabee0782a1`, canonical SHA-256은 `95000d45cb52f4bdd81b6ca9caf7e2e13eeae7bbddfa67e33ed8ef8896f22ffe`이다. Quarantine member는 0개이고 이 단계에서 Micron/server/client는 변경·실행하지 않았다.
 - 현재 Micron Epinel cache 기준선은 11개, 43,007,317 bytes, canonical SHA-256 `2f26e48f2243955d377a93bf4fcb6875b34d65aa0feb529eb2921801c3febf2e`이다. Materialized set과 겹치는 raw catalog 6개를 한 번만 세면 배치 후 기대 shape는 40,108개, 39,030,629,947 bytes다.
 - `scripts/recover-phase3b2-epinel-native-cache-baseline-offline.ps1`은 실패 run을 cold baseline으로 복구하고, `scripts/deploy-phase3b2-epinel-native-cache-offline.ps1`은 Samsung에서 그 복구를 확인한 뒤 39 GB cache를 staging 검산·directory swap하며 backup과 rollback을 남긴다. Codex 비승격 process에서는 Micron ACL 때문에 baseline move가 거부됐으므로 실제 배치는 Samsung 관리자 PowerShell에서 수행한다.
+- 첫 관리자 배포는 robocopy 완료 뒤 Windows PowerShell 5.1 `Get-ChildItem -Recurse`가 260자를 넘는 cache path를 열거하지 못해 swap 전에 중단됐다. 활성 cache는 11-file 기준선을 유지했고, 40,108-file staging은 `staging-failed-*`로 보존됐다. .NET 10 long-path verifier로 이 staging의 39,030,629,947 bytes 전체를 manifest와 SHA-256 대조한 결과 누락·추가·digest mismatch가 모두 0이고 active canonical SHA-256은 `9c2874cd3c811609b4c8d6c34caf393aaf3e24b09825294a66b063e4fe1b521b`였다. 수정된 배포기는 이 검증된 staging을 재복사 없이 재사용하고 swap 후 long-path tree shape를 다시 확인한다.
+- Long-path verifier를 포함한 external EpinelPS 도구 commit은 `6abf39b8daa1b7ee04da651e14941a2ece1ca29b`이며 clean .NET 10 build의 verifier DLL SHA-256은 `5b3c941374a68fa9090481de0e96d479f6bc40601776c98bfe1d64ac78d9b5fb`이다.
 - repository tracked policy(`-AllowRemote`), Phase 0, Phase 2A1, Phase 2A2, Phase 2B unit, Phase 3A, Phase 3B-0, Phase 3B-1, Phase 3B-2 contract-only 및 Actions contract 검증이 통과했다.
 - Samsung에 PostgreSQL service가 없으므로 Phase 2B live PostgreSQL integration gate는 이번 staging에서 실행하지 않았다. 이 미실행은 original-client reference run 성공을 대신하거나 약화하지 않으며, PostgreSQL 환경을 복구한 뒤 별도 gate로 수행한다.
 - `verify-repository.ps1 -Mode working`은 기존 `origin` remote와 이전 도구가 남긴 untracked `.tmp-dotnet-cli-home` telemetry 때문에 실패했다. 사용자 소유 상태를 임의 삭제·변경하지 않았으며, tracked policy는 통과했다.
@@ -256,7 +258,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 & 'C:\Users\zih44\Documents\Github\Nikke-Local-Lab\scripts\deploy-phase3b2-epinel-native-cache-offline.ps1'
 ```
 
-배치 receipt가 `nativeCacheDeploymentVerified=true`, `activeCacheFileCount=40108`을 출력한 뒤에만 Micron으로 부팅한다.
+배치 receipt가 `nativeCacheDeploymentVerified=true`, `activeCacheFileCount=40108`, `stagingSourceCode=verified_prior_failed_staging_reused_without_recopy`를 출력한 뒤에만 Micron으로 부팅한다.
 
 ### 다음 Micron 실행 명령
 
