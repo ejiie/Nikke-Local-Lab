@@ -172,8 +172,12 @@ swap 전에 중단됐습니다. 활성 cache는 11-file 기준선 그대로이�
 manifest와 SHA-256 대조했으며 누락·추가·digest mismatch는 0입니다. Combined active canonical SHA-256은
 `9c2874cd3c811609b4c8d6c34caf393aaf3e24b09825294a66b063e4fe1b521b`입니다. 수정된 deployment script는
 이 staging을 재복사 없이 재사용하므로 다음 동작은 같은 Samsung 관리자 명령을 한 번 다시 실행하는 것입니다.
-Long-path verifier source commit은 external EpinelPS `6abf39b8daa1b7ee04da651e14941a2ece1ca29b`, clean build
-DLL SHA-256은 `5b3c941374a68fa9090481de0e96d479f6bc40601776c98bfe1d64ac78d9b5fb`입니다.
+Long-path verifier source commit은 external EpinelPS `6abf39b8daa1b7ee04da651e14941a2ece1ca29b`입니다. 첫
+재실행은 이전 clean build DLL digest를 고정한 사전검사에서 중단됐고 cache/staging 이동은 없었습니다. DLL
+digest는 source checkout의 line-ending normalization에도 달라질 수 있으므로 수정된 배포기는 .NET SDK
+`10.0.400`과 Program/csproj/global.json/연결 소스/참조 SQLite binary 11개의 compile-input canonical SHA-256
+`eaf339d04519010b8379ad2c30ef4321d5e6e2623a5d90116f350f0eac32bba3`을 fail-closed로 고정합니다. 실제 build DLL
+digest는 receipt에 관측값으로 남고 cache 권위는 private manifest에 대한 member별 SHA-256 검증입니다.
 
 첫 실행 시 catalog 검증에 들어가기 전 `physical_boundary_profile_and_contract_preflight`가
 `phase3b2_physical_p2_v2_runtime_pin_mismatch`로 fail-closed됐습니다. 원인은 이전 실패 복구가 `hosts`와

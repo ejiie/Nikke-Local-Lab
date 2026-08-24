@@ -106,8 +106,10 @@ $expectedMaterializationCanonicalSha256 =
     '95000d45cb52f4bdd81b6ca9caf7e2e13eeae7bbddfa67e33ed8ef8896f22ffe'
 $expectedBaselineCacheCanonicalSha256 =
     '2f26e48f2243955d377a93bf4fcb6875b34d65aa0feb529eb2921801c3febf2e'
-$expectedLongPathVerifierDllSha256 =
-    '5b3c941374a68fa9090481de0e96d479f6bc40601776c98bfe1d64ac78d9b5fb'
+$expectedLongPathVerifierSdkVersion = '10.0.400'
+$expectedLongPathVerifierCompileInputCount = 11
+$expectedLongPathVerifierCompileInputCanonicalSha256 =
+    'eaf339d04519010b8379ad2c30ef4321d5e6e2623a5d90116f350f0eac32bba3'
 $expectedDatabaseSha256 =
     'c103b44b7bc3dc4f1a317fd272253e2c8d827ca3ff174f07e0ecb6dfc298e194'
 $expectedHostsSha256 =
@@ -156,8 +158,31 @@ $verifierProject = Join-Path $PSScriptRoot (
     'Phase3B2.NativeCacheMaterializer.csproj'
 )
 $verifierWorkingRoot = Join-Path $PSScriptRoot '..\.external\EpinelPS'
+$verifierRuntimeRoot = Join-Path $verifierWorkingRoot `
+    'EpinelPS\bin\Release\net10.0\win-x64'
 $verifierDll = Join-Path (Split-Path -Parent $verifierProject) `
     'bin\Release\net10.0\Phase3B2.NativeCacheMaterializer.dll'
+$verifierCompileInputs = [ordered]@{
+    program = Join-Path $verifierWorkingRoot `
+        'tools\Phase3B2.NativeCacheMaterializer\Program.cs'
+    project = $verifierProject
+    global_json = Join-Path $verifierWorkingRoot 'global.json'
+    nkdb_decryptor = Join-Path $verifierWorkingRoot `
+        'EpinelPS\Data\NkdbDecryptor.cs'
+    ofb_stream = Join-Path $verifierWorkingRoot `
+        'EpinelPS\Data\OfbStream.cs'
+    zero_stream = Join-Path $verifierWorkingRoot `
+        'EpinelPS\Data\ZeroStream.cs'
+    microsoft_data_sqlite = Join-Path $verifierRuntimeRoot `
+        'Microsoft.Data.Sqlite.dll'
+    sqlitepclraw_core = Join-Path $verifierRuntimeRoot `
+        'SQLitePCLRaw.core.dll'
+    sqlitepclraw_batteries_v2 = Join-Path $verifierRuntimeRoot `
+        'SQLitePCLRaw.batteries_v2.dll'
+    sqlitepclraw_provider_e_sqlite3 = Join-Path $verifierRuntimeRoot `
+        'SQLitePCLRaw.provider.e_sqlite3.dll'
+    e_sqlite3 = Join-Path $verifierRuntimeRoot 'e_sqlite3.dll'
+}
 $dotnetCandidates = @(
     (Join-Path $micronDrive 'Program Files\dotnet\dotnet.exe'),
     (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe')
@@ -227,7 +252,9 @@ $rollbackDestination = Join-Path $micronToolsRoot `
 
 Assert-True (
     @(@($recoveryTool, $nativeStartTemplate, $rollbackTemplate,
-            $verifierProject,
+            @($verifierCompileInputs.GetEnumerator() | ForEach-Object {
+                    $_.Value
+                }),
             $materializationReceiptPath, $privateManifestPath) |
         Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }
     ).Count -eq 0 -and $dotnetPath.Count -eq 1 -and
@@ -246,24 +273,66 @@ Assert-True (
             -not (Test-Path -LiteralPath $stagingRoot)))
 ) 'phase3b2_native_cache_deployment_destination_exists'
 
+$verifierCompileInputRecords = @(
+    $verifierCompileInputs.GetEnumerator() | ForEach-Object {
+        $item = Get-Item -LiteralPath $_.Value
+        [pscustomobject]@{
+            roleCode = $_.Key
+            byteLength = $item.Length
+            sha256 = Get-Sha256Hex $item.FullName
+        }
+    }
+)
+$verifierCompileInputCanonicalText = (
+    @($verifierCompileInputRecords | Sort-Object roleCode |
+        ForEach-Object {
+            $_.roleCode + "`t" + $_.byteLength + "`t" + $_.sha256
+        }) -join "`n"
+) + "`n"
+$verifierCompileInputCanonicalByteLength =
+    [Text.UTF8Encoding]::new($false).GetByteCount(
+        $verifierCompileInputCanonicalText
+    )
+$verifierCompileInputCanonicalSha256 = Get-TextSha256Hex `
+    $verifierCompileInputCanonicalText
+Assert-True (
+    $verifierCompileInputRecords.Count -eq `
+        $expectedLongPathVerifierCompileInputCount -and
+    $verifierCompileInputCanonicalSha256 -ceq `
+        $expectedLongPathVerifierCompileInputCanonicalSha256
+) 'phase3b2_native_cache_deployment_long_path_verifier_source_invalid'
+
 $previousLocation = Get-Location
 try {
     Set-Location -LiteralPath $verifierWorkingRoot
-    & $dotnetPath[0] build $verifierProject -c Release --no-restore `
-        --nologo | Out-Null
-    $verifierBuildExitCode = $LASTEXITCODE
+    $verifierSdkVersion = (& $dotnetPath[0] --version 2>&1 | Out-String).
+        Trim()
+    $verifierSdkExitCode = $LASTEXITCODE
+    if (
+        $verifierSdkExitCode -eq 0 -and
+        $verifierSdkVersion -ceq $expectedLongPathVerifierSdkVersion
+    ) {
+        & $dotnetPath[0] build $verifierProject -c Release --no-restore `
+            --nologo | Out-Null
+        $verifierBuildExitCode = $LASTEXITCODE
+    }
+    else {
+        $verifierBuildExitCode = -1
+    }
 }
 finally {
     Set-Location -LiteralPath $previousLocation
 }
 Assert-True (
+    $verifierSdkExitCode -eq 0 -and
+    $verifierSdkVersion -ceq $expectedLongPathVerifierSdkVersion
+) 'phase3b2_native_cache_deployment_long_path_verifier_sdk_invalid'
+Assert-True (
     $verifierBuildExitCode -eq 0 -and
     (Test-Path -LiteralPath $verifierDll -PathType Leaf)
 ) 'phase3b2_native_cache_deployment_long_path_verifier_build_failed'
 $verifierDllSha256 = Get-Sha256Hex $verifierDll
-Assert-True (
-    $verifierDllSha256 -ceq $expectedLongPathVerifierDllSha256
-) 'phase3b2_native_cache_deployment_long_path_verifier_digest_invalid'
+$verifierDllByteLength = (Get-Item -LiteralPath $verifierDll).Length
 
 if (-not (Test-Path -LiteralPath $baselineReceiptPath -PathType Leaf)) {
     & $recoveryTool -MicronDriveLetter $MicronDriveLetter `
@@ -473,6 +542,16 @@ try {
         } else {
             'fresh_robocopy_staging'
         }
+        longPathVerifierTrustCode = `
+            'source_toolchain_and_compile_input_closure_v1'
+        longPathVerifierSdkVersion = $verifierSdkVersion
+        longPathVerifierCompileInputCount = `
+            $verifierCompileInputRecords.Count
+        longPathVerifierCompileInputCanonicalByteLength = `
+            $verifierCompileInputCanonicalByteLength
+        longPathVerifierCompileInputCanonicalSha256 = `
+            $verifierCompileInputCanonicalSha256
+        longPathSafeVerifierDllByteLength = $verifierDllByteLength
         longPathSafeVerifierDllSha256 = $verifierDllSha256
         longPathSafeEnumerationUsed = $true
         stagedMemberDigestVerificationPerformed = $true
