@@ -76,24 +76,38 @@ $oldByteExpression = '[long]$inspection.contentByteLength -eq ' +
     [string]$CacheContentByteLengthBefore + 'L -and'
 $newByteExpression = '[long]$inspection.contentByteLength -eq ' +
     [string]$CacheContentByteLengthAfter + 'L -and'
+$oldBindingExpression = '$sausToolBinding.wrapperToolSha256 -ceq ' +
+    '(Get-Sha256Hex $PSCommandPath)'
+$newBindingExpression = '$sausToolBinding.wrapperToolSha256 -ceq ' +
+    "'$expectedGoldenStartSha256'"
 
 Assert-True (
     (Get-ExactOccurrenceCount $goldenText $oldFileExpression) -eq 1 -and
     (Get-ExactOccurrenceCount $goldenText $oldByteExpression) -eq 1 -and
+    (Get-ExactOccurrenceCount $goldenText $oldBindingExpression) -eq 1 -and
     (Get-ExactOccurrenceCount $goldenText $newFileExpression) -eq 0 -and
-    (Get-ExactOccurrenceCount $goldenText $newByteExpression) -eq 0
+    (Get-ExactOccurrenceCount $goldenText $newByteExpression) -eq 0 -and
+    (Get-ExactOccurrenceCount $goldenText $newBindingExpression) -eq 0
 ) 'phase3b2_locale_overlay_start_template_shape_invalid'
 
 $derivedText = $goldenText.Replace($oldFileExpression, $newFileExpression)
 $derivedText = $derivedText.Replace($oldByteExpression, $newByteExpression)
+$derivedText = $derivedText.Replace(
+    $oldBindingExpression, $newBindingExpression
+)
 $reversedText = $derivedText.Replace($newFileExpression, $oldFileExpression)
 $reversedText = $reversedText.Replace($newByteExpression, $oldByteExpression)
+$reversedText = $reversedText.Replace(
+    $newBindingExpression, $oldBindingExpression
+)
 Assert-True (
     $reversedText -ceq $goldenText -and
     (Get-ExactOccurrenceCount $derivedText $newFileExpression) -eq 1 -and
     (Get-ExactOccurrenceCount $derivedText $newByteExpression) -eq 1 -and
+    (Get-ExactOccurrenceCount $derivedText $newBindingExpression) -eq 1 -and
     (Get-ExactOccurrenceCount $derivedText $oldFileExpression) -eq 0 -and
-    (Get-ExactOccurrenceCount $derivedText $oldByteExpression) -eq 0
+    (Get-ExactOccurrenceCount $derivedText $oldByteExpression) -eq 0 -and
+    (Get-ExactOccurrenceCount $derivedText $oldBindingExpression) -eq 0
 ) 'phase3b2_locale_overlay_start_reverse_projection_invalid'
 
 Write-AtomicUtf8NoBom $DerivedStartPath $derivedText
@@ -124,8 +138,10 @@ if ($goldenBytes.Length -eq $derivedBytes.Length) {
     cacheFileCountAfter = $CacheFileCountAfter
     cacheContentByteLengthBefore = $CacheContentByteLengthBefore
     cacheContentByteLengthAfter = $CacheContentByteLengthAfter
-    exactExpressionReplacementCount = 2
+    exactExpressionReplacementCount = 3
     reverseProjectionVerified = $true
     goldenStartUnchanged = $true
+    derivedSelfHashCheckRemoved = $true
+    parentGoldenBindingPreserved = $true
     changedByteCount = $changedByteCount
 } | ConvertTo-Json -Depth 5

@@ -556,9 +556,11 @@ try {
     Assert-True (
         $derivation.contractId -ceq
             'nll/phase3b2-epinel-locale-overlay-start-derivation/v1' -and
-        $derivation.exactExpressionReplacementCount -eq 2 -and
+        $derivation.exactExpressionReplacementCount -eq 3 -and
         $derivation.reverseProjectionVerified -and
         $derivation.goldenStartUnchanged -and
+        $derivation.derivedSelfHashCheckRemoved -and
+        $derivation.parentGoldenBindingPreserved -and
         (Get-Sha256Hex $derivedStartPath) -ceq
             [string]$derivation.derivedStartSha256
     ) 'phase3b2_locale_overlay_derived_start_invalid'
@@ -630,8 +632,10 @@ try {
         derivedStartLeaf = $derivedStartLeaf
         derivedStartByteLength = [long]$derivation.derivedStartByteLength
         derivedStartSha256 = [string]$derivation.derivedStartSha256
-        exactExpressionReplacementCount = 2
+        exactExpressionReplacementCount = 3
         reverseProjectionVerified = $true
+        derivedSelfHashCheckRemoved = $true
+        parentGoldenBindingPreserved = $true
         goldenStartModified = $false
         innerStartModified = $false
         completionToolsModified = $false

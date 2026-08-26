@@ -32,6 +32,8 @@ function Invoke-DerivationCase {
         "`$inspection = Get-SyntheticInspection"
         "Assert-True (`$inspection.fileCount -eq 40111 -and"
         "    [long]`$inspection.contentByteLength -eq 39030643658L -and"
+        "`$sausToolBinding.wrapperToolSha256 -ceq " +
+            '(Get-Sha256Hex $PSCommandPath)'
         "    `$inspection.partialMemberCount -eq 0) 'invalid'"
     ) -join "`r`n"
     Write-Utf8NoBom $goldenPath ($goldenText + "`r`n")
@@ -52,9 +54,11 @@ function Invoke-DerivationCase {
     Assert-True (
         $receipt.contractId -ceq
             'nll/phase3b2-epinel-locale-overlay-start-derivation/v1' -and
-        $receipt.exactExpressionReplacementCount -eq 2 -and
+        $receipt.exactExpressionReplacementCount -eq 3 -and
         $receipt.reverseProjectionVerified -and
         $receipt.goldenStartUnchanged -and
+        $receipt.derivedSelfHashCheckRemoved -and
+        $receipt.parentGoldenBindingPreserved -and
         (Get-Sha256Hex $goldenPath) -ceq $goldenSha256 -and
         $derivedText.Contains(
             '$inspection.fileCount -eq ' + [string]$AfterCount + ' -and'
@@ -62,6 +66,10 @@ function Invoke-DerivationCase {
         $derivedText.Contains(
             '[long]$inspection.contentByteLength -eq ' +
             [string]$AfterBytes + 'L -and'
+        ) -and
+        $derivedText.Contains(
+            '$sausToolBinding.wrapperToolSha256 -ceq ' +
+            "'$goldenSha256'"
         )
     ) 'phase3b2_locale_overlay_test_valid_derivation_failed'
 }
@@ -85,6 +93,8 @@ try {
             $duplicateLine
             $duplicateLine
             '[long]$inspection.contentByteLength -eq 39030643658L -and'
+            '$sausToolBinding.wrapperToolSha256 -ceq ' +
+                '(Get-Sha256Hex $PSCommandPath)'
         ) -join "`n")
     $observedFailure = ''
     try {

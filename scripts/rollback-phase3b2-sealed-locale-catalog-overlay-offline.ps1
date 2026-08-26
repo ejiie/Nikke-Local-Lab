@@ -8,6 +8,8 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[0-9a-fA-F]{64}$')]
     [string]$ExpectedDeploymentReceiptSha256,
+    [ValidatePattern('^(?:|[0-9a-fA-F]{64})$')]
+    [string]$ExpectedStartCorrectionReceiptSha256 = '',
     [string]$ProtectedDeploymentRoot = (
         'C:\Recovered_OldSSD\NLL_PreWipe_20260822\PhysicalOS\' +
         'Micron-PrePhysicalLane-20260823\PhysicalP2\' +
@@ -134,6 +136,10 @@ $micronReceiptPath = Join-Path $micronLaneRoot `
     'deployment.receipt.json'
 $protectedReceiptPath = Join-Path $protectedLaneRoot `
     'deployment.receipt.json'
+$micronCorrectionReceiptPath = Join-Path $micronLaneRoot `
+    'start-correction.receipt.json'
+$protectedCorrectionReceiptPath = Join-Path $protectedLaneRoot `
+    'start-correction.receipt.json'
 $micronPlanPath = Join-Path $micronLaneRoot 'rollback.plan.json'
 $protectedPlanPath = Join-Path $protectedLaneRoot 'rollback.plan.json'
 $micronRollbackReceiptPath = Join-Path $micronLaneRoot `
@@ -149,6 +155,8 @@ $signatureArchivePath = Join-Path $pairArchiveRoot `
 
 $expectedReceiptSha256 =
     $ExpectedDeploymentReceiptSha256.ToLowerInvariant()
+$expectedCorrectionReceiptSha256 =
+    $ExpectedStartCorrectionReceiptSha256.ToLowerInvariant()
 $expectedGoldenDatabaseSha256 =
     'c103b44b7bc3dc4f1a317fd272253e2c8d827ca3ff174f07e0ecb6dfc298e194'
 $expectedGoldenStartSha256 =
@@ -223,13 +231,16 @@ $deployment = Get-Content -LiteralPath $micronReceiptPath -Raw `
 $plan = Get-Content -LiteralPath $micronPlanPath -Raw -Encoding UTF8 |
     ConvertFrom-Json
 Assert-True (
+    $deployment.exactExpressionReplacementCount -eq 2 -or
+    $deployment.exactExpressionReplacementCount -eq 3
+) 'phase3b2_locale_overlay_rollback_replacement_count_invalid'
+Assert-True (
     $deployment.contractId -ceq
         'nll/phase3b2-epinel-locale-catalog-overlay/v1' -and
     $deployment.deploymentUid -ceq $DeploymentUid -and
     $deployment.localeCode -cmatch '^[a-z]{2}$' -and
     $deployment.revisionCode -cmatch '^[0-9a-f]{7}$' -and
     $deployment.pairAppliedBySameVolumeDirectoryRename -and
-    $deployment.exactExpressionReplacementCount -eq 2 -and
     $deployment.reverseProjectionVerified -and
     -not $deployment.goldenStartModified -and
     -not $deployment.innerStartModified -and
@@ -255,6 +266,56 @@ Assert-True (
         (Get-Sha256Hex $micronPlanPath)
 ) 'phase3b2_locale_overlay_rollback_contract_invalid'
 
+$micronCorrectionPresent = Test-Path -LiteralPath `
+    $micronCorrectionReceiptPath -PathType Leaf
+$protectedCorrectionPresent = Test-Path -LiteralPath `
+    $protectedCorrectionReceiptPath -PathType Leaf
+Assert-True ($micronCorrectionPresent -eq $protectedCorrectionPresent) `
+    'phase3b2_locale_overlay_rollback_correction_shape_invalid'
+$startCorrectionReceiptSha256 = ''
+$activeDerivedStartLeaf = [string]$deployment.derivedStartLeaf
+$activeDerivedStartByteLength = [long]$deployment.derivedStartByteLength
+$activeDerivedStartSha256 = [string]$deployment.derivedStartSha256
+if ($micronCorrectionPresent) {
+    Assert-True (-not [string]::IsNullOrWhiteSpace(
+            $expectedCorrectionReceiptSha256
+        ) -and
+        (Get-Sha256Hex $micronCorrectionReceiptPath) -ceq
+            $expectedCorrectionReceiptSha256 -and
+        (Get-Sha256Hex $protectedCorrectionReceiptPath) -ceq
+            $expectedCorrectionReceiptSha256) `
+        'phase3b2_locale_overlay_rollback_correction_digest_invalid'
+    $correction = Get-Content -LiteralPath $micronCorrectionReceiptPath `
+        -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-True (
+        $correction.contractId -ceq
+            'nll/phase3b2-epinel-locale-overlay-start-correction/v1' -and
+        $correction.deploymentUid -ceq $DeploymentUid -and
+        $correction.deploymentReceiptSha256 -ceq $expectedReceiptSha256 -and
+        $correction.priorDerivedStartLeaf -ceq
+            $deployment.derivedStartLeaf -and
+        $correction.priorDerivedStartSha256 -ceq
+            $deployment.derivedStartSha256 -and
+        $correction.exactExpressionReplacementCount -eq 3 -and
+        $correction.reverseProjectionVerified -and
+        $correction.derivedSelfHashCheckRemoved -and
+        $correction.parentGoldenBindingPreserved -and
+        -not $correction.runtimeToolBindingPerformed
+    ) 'phase3b2_locale_overlay_rollback_correction_contract_invalid'
+    $startCorrectionReceiptSha256 = $expectedCorrectionReceiptSha256
+    $activeDerivedStartLeaf =
+        [string]$correction.correctedDerivedStartLeaf
+    $activeDerivedStartByteLength =
+        [long]$correction.correctedDerivedStartByteLength
+    $activeDerivedStartSha256 =
+        [string]$correction.correctedDerivedStartSha256
+}
+else {
+    Assert-True ([string]::IsNullOrWhiteSpace(
+            $expectedCorrectionReceiptSha256
+        )) 'phase3b2_locale_overlay_rollback_unexpected_correction_hash'
+}
+
 $bodyRelativeWindows = ([string]$plan.bodyRelativePath).Replace('/', '\')
 $signatureRelativeWindows =
     ([string]$plan.signatureRelativePath).Replace('/', '\')
@@ -262,21 +323,20 @@ $bodyPath = Join-Path $cacheRoot $bodyRelativeWindows
 $signaturePath = Join-Path $cacheRoot $signatureRelativeWindows
 $targetRoot = Split-Path -Parent $bodyPath
 $derivedStartPath = Join-Path $micronDrive `
-    ('NLL\Tools\' + [string]$plan.derivedStartLeaf)
+    ('NLL\Tools\' + $activeDerivedStartLeaf)
 Assert-StrictChildPath $cacheRoot $bodyPath `
     'phase3b2_locale_overlay_rollback_target_escaped'
 Assert-StrictChildPath $cacheRoot $signaturePath `
     'phase3b2_locale_overlay_rollback_target_escaped'
 Assert-True (
-    [string]$plan.derivedStartLeaf -cmatch
-        '^Start-Phase3B2-Epinel-LocaleOverlay-[a-z]{2}\.ps1$' -and
+    $activeDerivedStartLeaf -cmatch
+        '^Start-Phase3B2-Epinel-LocaleOverlay-[a-z]{2}(?:-v2)?\.ps1$' -and
     (Test-Digest $bodyPath ([long]$plan.bodyByteLength) `
         ([string]$plan.bodySha256)) -and
     (Test-Digest $signaturePath ([long]$plan.signatureByteLength) `
         ([string]$plan.signatureSha256)) -and
     (Test-Digest $derivedStartPath `
-        ([long]$deployment.derivedStartByteLength) `
-        ([string]$deployment.derivedStartSha256)) -and
+        $activeDerivedStartByteLength $activeDerivedStartSha256) -and
     @(Get-ChildItem -LiteralPath $targetRoot -File -Force).Count -eq 2 -and
     @(Get-ChildItem -LiteralPath $targetRoot -Directory -Force).Count -eq 0
 ) 'phase3b2_locale_overlay_rollback_active_overlay_invalid'
@@ -290,8 +350,7 @@ Assert-True (
 ) 'phase3b2_locale_overlay_rollback_before_cache_shape_invalid'
 
 Copy-AtomicVerified $derivedStartPath $derivedArchivePath `
-    ([long]$deployment.derivedStartByteLength) `
-    ([string]$deployment.derivedStartSha256)
+    $activeDerivedStartByteLength $activeDerivedStartSha256
 New-Item -ItemType Directory -Path $pairArchiveRoot | Out-Null
 $pairMoved = $false
 try {
@@ -350,8 +409,7 @@ Assert-True (
         ([long]$plan.signatureByteLength) `
         ([string]$plan.signatureSha256)) -and
     (Test-Digest $derivedArchivePath `
-        ([long]$deployment.derivedStartByteLength) `
-        ([string]$deployment.derivedStartSha256)) -and
+        $activeDerivedStartByteLength $activeDerivedStartSha256) -and
     (Get-Sha256Hex $goldenStartPath) -ceq $expectedGoldenStartSha256 -and
     (Get-Sha256Hex $innerStartPath) -ceq $expectedInnerStartSha256 -and
     (Get-Sha256Hex $completionWrapperPath) -ceq
@@ -372,6 +430,7 @@ $receipt = [ordered]@{
     )
     deploymentUid = $DeploymentUid
     deploymentReceiptSha256 = $expectedReceiptSha256
+    startCorrectionReceiptSha256 = $startCorrectionReceiptSha256
     rollbackPlanSha256 = Get-Sha256Hex $micronPlanPath
     localeCode = [string]$deployment.localeCode
     revisionCode = [string]$deployment.revisionCode

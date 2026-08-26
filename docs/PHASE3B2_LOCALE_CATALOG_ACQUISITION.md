@@ -87,10 +87,13 @@ script.
 
 The active Golden start, inner start, completion tools, database, server
 binary, hosts, and both LocalLow profiles remain unchanged. The derived start
-is produced from the Golden start by replacing only the expected cache file
-count and content-byte-length expressions. The derivation tool reverses both
-replacements in memory and requires the result to equal the original Golden
-text. This is an additive overlay, not an in-place wrapper binding.
+is produced from the Golden start by replacing the expected cache file count,
+content-byte-length, and inherited wrapper self-hash expressions. The third
+replacement keeps the existing SAUS receipt pinned to the immutable Golden
+parent SHA instead of incorrectly requiring a derived script to equal its
+parent hash. The derivation tool reverses all three replacements in memory and
+requires the result to equal the original Golden text. This is an additive
+overlay, not an in-place wrapper or receipt binding.
 
 The existing Golden completion command remains compatible because it consumes
 the active-run pointer written by the unchanged inner start; it does not bind
@@ -98,6 +101,15 @@ the outer start filename or cache count. The staging receipt prints the only
 authorized Micron start command. Do not run the Golden control start while an
 overlay is active because it intentionally expects the pre-overlay cache
 shape.
+
+The first English overlay receipt with deployment UID
+`d1087737-eae7-4e88-9fb5-9ced3e35aede` was sealed before the inherited SAUS
+self-hash condition was included in derivation. Its two-expression start must
+not be executed. `repair-phase3b2-epinel-locale-overlay-start-offline.ps1`
+archives that rejected start and creates a three-expression `-v2` start while
+leaving the already verified locale pair and every Golden artifact unchanged.
+The correction receipt supersedes only the start command; it does not rewrite
+the original deployment receipt.
 
 ## Rollback
 
