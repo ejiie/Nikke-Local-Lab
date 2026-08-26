@@ -63,15 +63,53 @@ map. Never copy the English revision into the Korean manifest or relabel an
 English/SAUS catalog as Korean. The validator recomputes the selected revision
 from the version map and rejects such drift.
 
+Only one locale overlay may be active. To switch from English to Korean, first
+run `rollback-phase3b2-sealed-locale-catalog-overlay-offline.ps1` from Samsung
+with the English deployment UID and reviewed receipt hash. Then acquire, seal,
+and stage the Korean pair through the same parameterized lane. The original
+Golden start remains the derivation parent for either language.
+
 Acquisition does not authorize staging into Micron. After sealing, inspect the
 pair offline and create a separate, hash-bound staging decision. Until then,
 do not retry the original client.
+
+## Golden locale overlay
+
+`stage-phase3b2-sealed-locale-catalog-overlay-offline.ps1` applies one sealed
+locale pair while Samsung is booted and the Micron runtime is cold. It first
+verifies the acquisition receipt, private transport manifest, source-free
+manifest, exact `NKDB` body, 96-byte signature, Golden finalization receipt,
+Golden database and tools, verifier bundle, hosts state, and full cache shape.
+It then writes a dual-copy rollback plan, copies the two members into a
+same-volume temporary directory, renames that directory into the exact
+locale/revision cache location, and creates a new locale-specific start
+script.
+
+The active Golden start, inner start, completion tools, database, server
+binary, hosts, and both LocalLow profiles remain unchanged. The derived start
+is produced from the Golden start by replacing only the expected cache file
+count and content-byte-length expressions. The derivation tool reverses both
+replacements in memory and requires the result to equal the original Golden
+text. This is an additive overlay, not an in-place wrapper binding.
+
+The existing Golden completion command remains compatible because it consumes
+the active-run pointer written by the unchanged inner start; it does not bind
+the outer start filename or cache count. The staging receipt prints the only
+authorized Micron start command. Do not run the Golden control start while an
+overlay is active because it intentionally expects the pre-overlay cache
+shape.
 
 ## Rollback
 
 `rollback-phase3b2-static-locale-catalog-acquisition-on-samsung.ps1` verifies
 the sealed receipt hash and moves the complete assessment to the protected
 quarantine tree. It deletes no content and changes neither Micron nor caches.
+
+That acquisition rollback is distinct from the active overlay rollback.
+`rollback-phase3b2-sealed-locale-catalog-overlay-offline.ps1` accepts only the
+exact deployment receipt and plan, requires a cold Micron runtime, archives
+the exact active pair and derived start, and restores the Golden cache count
+and byte length. It never replaces or rewrites the Golden tools.
 
 If both members were downloaded and passed their individual shape checks but
 the first implementation stopped before receipt sealing,
