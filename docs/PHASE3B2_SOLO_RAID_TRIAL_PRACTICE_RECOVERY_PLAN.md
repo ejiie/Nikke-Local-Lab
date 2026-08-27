@@ -520,10 +520,17 @@ Git-external의 별도 v6 후보는 다음 불변식을 구현한다.
 Focused selected-manager suite는 `106/106` 통과했다. 고정 source manifest는
 20개/SHA-256 `ca72c8933e0cc7f3c037dbca042d78dcdb98cbd2201e569e6ae744d5080fb207`,
 후보 DLL은 15,382,016 bytes/SHA-256
-`a9fcd79c1655fe130a13966dc3bac338ce41ab162e4e8cd32747e5d6487be746`다.
+`f9bb3696e8e2b550cebf01bd0065c3757cc9eb2fb064d93b000885f13fa0dba2`다.
 Samsung read-only audit에서 v5·Micron Golden·D checkpoint 통합 지문
 `9d20896ad82984e90cd63a14bbccc323e3b80678676ef243ab87daea4df7c095`를
 확인했다.
+
+첫 관리자 배포 preflight의 `candidate_dll_drift`는 external source 커밋 뒤
+`AssemblyInformationalVersion`에 새 Git HEAD가 자동 포함되면서 발생했다. 기능
+source와 DLL 길이는 변하지 않았다. v6 빌드는 이제
+`IncludeSourceRevisionInInformationalVersion=false`를 명시하여 repository HEAD와
+artifact identity를 분리한다. 같은 clean source에서 두 번 연속 빌드한 DLL의
+길이와 SHA-256이 위 값으로 동일함을 확인했다.
 
 배포 도구는
 `scripts/deploy-phase3b2-epinel-solo-raid-score-ranking-v6-offline.ps1`이다.

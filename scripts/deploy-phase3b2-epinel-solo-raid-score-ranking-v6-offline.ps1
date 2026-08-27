@@ -169,7 +169,7 @@ $expectedLogConfigSha256 =
     '31b873b3ad156436f0a55f54f1518fde9e2e6c0059cca3ec2e3b181c08c448b9'
 $candidateDllByteLength = 15382016L
 $candidateDllSha256 =
-    'a9fcd79c1655fe130a13966dc3bac338ce41ab162e4e8cd32747e5d6487be746'
+    'f9bb3696e8e2b550cebf01bd0065c3757cc9eb2fb064d93b000885f13fa0dba2'
 $expectedSourceManifestSha256 =
     'ca72c8933e0cc7f3c037dbca042d78dcdb98cbd2201e569e6ae744d5080fb207'
 
@@ -285,7 +285,9 @@ Push-Location $externalRoot
 try {
     $testOutput = (& $DotnetPath test `
         'tests\EpinelPS.SelectedManager.Tests\EpinelPS.SelectedManager.Tests.csproj' `
-        --no-restore --configuration Release 2>&1 | Out-String).Trim()
+        --no-restore --configuration Release `
+        '-p:IncludeSourceRevisionInInformationalVersion=false' `
+        2>&1 | Out-String).Trim()
     $testExitCode = $LASTEXITCODE
 }
 finally {
@@ -308,6 +310,8 @@ $audit = [ordered]@{
     selectedManagerFailedCount = 0
     candidateServerDllByteLength = $candidateDllByteLength
     candidateServerDllSha256 = $candidateDllSha256
+    candidateBuildIdentityCode =
+        'source_revision_excluded_from_informational_version'
     parentFingerprintSha256 = $parentFingerprintBefore
     parentRuntimeCold = $true
     parentV5ReadOnly = $true
@@ -490,6 +494,8 @@ $battleResultClassificationValid = $unsupportedBattleResultCount -eq 0
         parentServerDllSha256 = $expectedParentDllSha256
         appliedServerDllByteLength = $candidateDllByteLength
         appliedServerDllSha256 = $candidateDllSha256
+        candidateBuildIdentityCode =
+            'source_revision_excluded_from_informational_version'
         selectedManagerPassedCount = 106
         selectedManagerFailedCount = 0
         rankingLocalUserCount = 1

@@ -545,7 +545,7 @@ server DLL과 base hosts digest도 교차검증했고 두 active pointer, SQLite
 - external focused suite `106/106`, source manifest 20개 SHA-256
   `ca72c8933e0cc7f3c037dbca042d78dcdb98cbd2201e569e6ae744d5080fb207`,
   DLL 15,382,016 bytes/SHA-256
-  `a9fcd79c1655fe130a13966dc3bac338ce41ab162e4e8cd32747e5d6487be746`다.
+  `f9bb3696e8e2b550cebf01bd0065c3757cc9eb2fb064d93b000885f13fa0dba2`다.
 - Samsung audit는 v5/Micron Golden/D checkpoint 불변 지문
   `9d20896ad82984e90cd63a14bbccc323e3b80678676ef243ab87daea4df7c095`로
   통과했다. 배포 스크립트는
@@ -559,6 +559,10 @@ server DLL과 base hosts digest도 교차검증했고 두 active pointer, SQLite
   `verify-repository.ps1` umbrella만 기존 `origin` remote 및 과거 `.trn` 산출물
   정책 위반 때문에 실패하며, 이는 v6 변경의 회귀가 아니다. v6 배포 스크립트
   syntax error는 0이고 관련 변경의 `git diff --check`도 통과했다.
+- 첫 관리자 배포의 `candidate_dll_drift`는 external commit SHA가 DLL의
+  `AssemblyInformationalVersion`에 자동 포함된 것이 원인이었다. v6 build는 이제
+  source revision 자동 포함을 끄며, 두 번 연속 빌드에서 동일한 위 DLL digest를
+  확인했다. 이 실패는 배포 mutation 전에 발생했다.
 
 ## 새 ChatGPT/Codex 대화 시작 문구
 
