@@ -529,6 +529,37 @@ server DLL과 base hosts digest도 교차검증했고 두 active pointer, SQLite
 - D: backup은 `phase3b2-lobby-en-d830a90d-20260826T103327Z`를 불변 부모로 참조하는 새 detached checkpoint다. 기존 D: 경로를 덮어쓰거나 runtime preflight에 backup receipt를 결박하지 않는다.
 - D: checkpoint `e40c70a0-16a3-4a83-9d30-b16f368ce73a`는 606개/195,874,486 bytes로 봉인됐다. 경로는 `D:\NikkeLocalLab\Backups\phase3b2-season26-challenge-regroup-v5-checkpoint-v1\e40c70a0-16a3-4a83-9d30-b16f368ce73a`, seal receipt SHA-256은 `e69ee9020abf5c77fc61f433ae56729d36c82c10289b385ee1bdde30604e3753`, manifest SHA-256은 `bed4e1ba8a58b42d3ae8e4b1d5409c0966efc19d53f6ec87cd6d426252e82b59`다. 모든 봉인 파일은 read-only이고 기존 parent seal/manifest는 각각 `e4c1f9af…`/`5fbde8b3…`로 유지된다.
 
+## 2026-08-28 합딜·랭킹 v6 후보
+
+- v5 actual play에서 Challenge 5덱 완주와 결과 합계 `31,145,048,111`은
+  성공했지만 High Score 0, 로비의 이전 합계, Ranking 미등록을 관측했다.
+- v6 source 후보는 완료 Challenge의 최고 `TotalDamage`를 GetInfo/High
+  Score/로비/Ranking에 공통 투영하고, 더 낮은 후속 완주가 최고 기록과 다섯
+  로그를 덮어쓰지 않게 한다.
+- Ranking 상세는 `/soloraid/getrankersquad`가 담당한다. Epinel에는 이 classic
+  handler가 없었으므로 새로 추가했으며, 합계를 만든 동일 기록의 5개 로그를
+  덱 순서로 반환한다. `/soloraid/getranking`은 로컬 사용자 한 명을 rank 1로
+  반환하고 공식 backend fallback은 없다.
+- completion 진단은 `BattleResult=1` 완료/소비, `4` retry/비소비,
+  `6` Regroup/비소비로 분류한다.
+- external focused suite `106/106`, source manifest 20개 SHA-256
+  `ca72c8933e0cc7f3c037dbca042d78dcdb98cbd2201e569e6ae744d5080fb207`,
+  DLL 15,382,016 bytes/SHA-256
+  `a9fcd79c1655fe130a13966dc3bac338ce41ab162e4e8cd32747e5d6487be746`다.
+- Samsung audit는 v5/Micron Golden/D checkpoint 불변 지문
+  `9d20896ad82984e90cd63a14bbccc323e3b80678676ef243ab87daea4df7c095`로
+  통과했다. 배포 스크립트는
+  `scripts/deploy-phase3b2-epinel-solo-raid-score-ranking-v6-offline.ps1`이다.
+- Codex 실행 환경은 관리자 권한이 없어 실제 배포가 preflight에서 mutation 전
+  중단됐다. 현재 권위 상태는 `audited_deployable_not_deployed`이며, Samsung
+  관리자 실행 성공 receipt 전에는 Micron v6를 실행하지 않는다.
+- 2026-08-28 배포 직전 재감사에서도 external focused suite `106/106`, 후보 DLL,
+  source manifest, v5 runtime cold, Micron Golden과 D checkpoint 불변성이 모두
+  통과했다. Phase 0/2A1/2A2/2B unit/3A/3B-0/3B-1/3B-2 계약 게이트도 통과했다.
+  `verify-repository.ps1` umbrella만 기존 `origin` remote 및 과거 `.trn` 산출물
+  정책 위반 때문에 실패하며, 이는 v6 변경의 회귀가 아니다. v6 배포 스크립트
+  syntax error는 0이고 관련 변경의 `git diff --check`도 통과했다.
+
 ## 새 ChatGPT/Codex 대화 시작 문구
 
 다음 문구로 시작하면 됩니다.
