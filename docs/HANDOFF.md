@@ -546,13 +546,22 @@ server DLL과 base hosts digest도 교차검증했고 두 active pointer, SQLite
   `ca72c8933e0cc7f3c037dbca042d78dcdb98cbd2201e569e6ae744d5080fb207`,
   DLL 15,382,016 bytes/SHA-256
   `f9bb3696e8e2b550cebf01bd0065c3757cc9eb2fb064d93b000885f13fa0dba2`다.
-- Samsung audit는 v5/Micron Golden/D checkpoint 불변 지문
-  `9d20896ad82984e90cd63a14bbccc323e3b80678676ef243ab87daea4df7c095`로
-  통과했다. 배포 스크립트는
+- Samsung Windows PowerShell 5.1 관리자 배포는 deployment UID
+  `6f14e2f7-b88a-42dd-9e7f-da8b3b51c1ce`로 성공했다. deployment receipt
+  SHA-256은 `3aa96e0002c7661215c4d397f29e4137852d81e31a17353f584f22de75f63791`이며,
+  runtime DLL과 네 start/completion 도구를 실제 E: 대상에서 다시 해시해 receipt와
+  일치함을 확인했다. runtime은 cold이고 validation run은 미소모다.
+- 권위 배포 엔진인 Windows PowerShell 5.1에서 v5/Micron Golden/D checkpoint
+  불변 지문은 `389e9babfe045a336071a73b26adb4c7a1e322ec66b030a9d8bc2787c2fff0b5`다.
+  같은 고정 개별 SHA 집합을 PowerShell 7로 audit하면 `Sort-Object` 문자열 정렬 차이로
+  집계 지문만 `9d20896ad82984e90cd63a14bbccc323e3b80678676ef243ab87daea4df7c095`가 된다.
+  이는 대상 drift가 아니며, 교차 PowerShell canonical ordering 고정은 actual-play 뒤
+  후속 도구 개선으로 남긴다.
+- 배포 스크립트는
   `scripts/deploy-phase3b2-epinel-solo-raid-score-ranking-v6-offline.ps1`이다.
-- Codex 실행 환경은 관리자 권한이 없어 실제 배포가 preflight에서 mutation 전
-  중단됐다. 현재 권위 상태는 `audited_deployable_not_deployed`이며, Samsung
-  관리자 실행 성공 receipt 전에는 Micron v6를 실행하지 않는다.
+  현재 권위 상태는 `deployed_validation_not_consumed`이며, 다음 단계는 Micron의
+  `nlloperator`에서 Challenge 5덱 완주 한 번으로 result 합계, High Score, 로비 합계,
+  Ranking 합계와 Ranking 상세 5덱 합계의 동일성을 검증하는 것이다.
 - 2026-08-28 배포 직전 재감사에서도 external focused suite `106/106`, 후보 DLL,
   source manifest, v5 runtime cold, Micron Golden과 D checkpoint 불변성이 모두
   통과했다. Phase 0/2A1/2A2/2B unit/3A/3B-0/3B-1/3B-2 계약 게이트도 통과했다.
