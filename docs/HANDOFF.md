@@ -7,7 +7,7 @@
 그 문서들이 우선합니다. 새 작업자는 이 파일만 읽고 구현을 시작하지 않고 `AGENTS.md`의 전체 읽기 순서를
 먼저 따릅니다.
 
-최종 갱신일은 `2026-08-21`입니다.
+최종 갱신일은 `2026-08-27`입니다.
 
 ## Local Lab canonical 상태
 
@@ -216,6 +216,23 @@ header 139 bytes, baseline DB, SQLite 0개와 Windows PowerShell 5.1 tool parse�
 catalog+header follow-up을 한 번 실행하는 것입니다. 이 repair는 전체 14.6 GB resource closure나 `5/7`
 이후 성공을 주장하지 않습니다.
 
+이후 Epinel native-cache materialization 40,108개/39,030,629,947 bytes를 Micron에 배치해 재시도했지만,
+assessment `cbce0850-d821-4f0a-99cc-fb3603c4722d`는 동일한 `4/7`에서 종료됐습니다. Offline Micron
+`Player.log`의 exact 실패는 `prdenv/150-b059c3f36c/StandaloneWindows64/pck/latest-651.txt` local HTTP
+404이며, active cache에는 이 member가 없었습니다. 현재 다음 작업은 Samsung 관리자 PowerShell에서
+`scripts/repair-phase3b2-epinel-native-cache-header-closure-offline.ps1`을 실행하는 것입니다. 이 도구는 failed
+run을 cold baseline으로 복구하고, 이미 봉인된 exact 139-byte/SHA-256
+`5914cb58fd2146fe761ab531ecb4e321300527186a54b455e59de962ff6c044a` header 하나만 추가합니다. 새 Micron
+start는 Epinel listener 이후·bootstrap 이전에 해당 local HTTPS GET의 loopback DNS, status 200, length와 digest를
+확인하지 못하면 원본 client를 시작하지 않습니다. 기대 cache shape는 40,109개/39,030,630,086 bytes입니다.
+
+Header closure repair는 완료됐습니다. Repair receipt SHA-256은
+`bc5e9e0f8f45f17c4db0408cee3d8a88389e11d1578670e9733a2563535444ce`, tool-binding receipt SHA-256은
+`06967b54d83af2985c4908b3bc8a83cb246b9a17d43d699482ba542d6f523a18`입니다. Samsung 교차 검산에서
+header 139 bytes/exact SHA-256, cache 40,109개/39,030,630,086 bytes, cold DB/SQLite/hosts와 preflight-enabled
+binding을 확인했습니다. 다음 허용 동작은 Micron `nlloperator` 관리자 세션에서
+`C:\NLL\Tools\Start-Phase3B2-Epinel-NativeCache.ps1`을 한 번 실행하는 것입니다.
+
 다음 작업은 [PHASE3B2.md](PHASE3B2.md)의 Wave 1 preflight 계약을 disposable VM 또는 별도 disposable
 OS의 실측값으로 봉인하는 것입니다. Client를 실제로 시작하는 시즌 26 reference run은 Wave 2입니다.
 단순 client 디렉터리 복제본이나 주 Windows 설치본에서는 실행하지 않습니다.
@@ -293,8 +310,224 @@ Hyper-V reference run은 original client의 virtualized-environment 거부로 �
 포함/제외 변경, rollback 및 stop rule은
 [`PHASE3B2_EPINEL_MINIMAL_PLAN.md`](PHASE3B2_EPINEL_MINIMAL_PLAN.md)에 기록합니다. 새 작업은 그 문서의
 `519c3db…` clean EpinelPS base, Micron `150.6.b15 / 651`, 봉인된 raw NKDB 3개와 `.nds` 3개를 기준으로
-재개합니다. SQLite projection, Samsung b22 cache 및 기존 증상별 repair chain은 새 baseline에 포함하지
-않습니다.
+재개합니다. Samsung b22 cache 및 기존 증상별 repair chain은 새 baseline에 포함하지 않습니다. 이후 header
+closure 실행 `33edfa6a-9b3c-408d-898a-88c9cf34baee`에서 오류 팝업은 사라졌지만 4/7 43%에 머물렀고,
+offline `Player.log`는 세 `catalog.db`에 대해 `database disk image is malformed`와 catalog retry를 반복했습니다.
+따라서 raw cache 저장은 유지하되 local-only `catalog.db` 세 body에만 Epinel `NkdbDecryptor`를 적용해 SQLite
+응답을 만드는 좁은 transport 예외를 승인합니다. `.nds`는 raw이고 복호화 body는 disk/evidence/Git에 저장하지
+않습니다. Client 시작 전 loopback HTTPS에서 세 SQLite body와 세 raw signature를 exact digest로 모두 확인해야
+하며 하나라도 다르면 client를 시작하지 않습니다.
+
+2026-08-25 Samsung offline 단계에서 SAUS pair staging도 완료했습니다. Mapping receipt SHA-256
+`b9f2d7dbb2c266d983c3ff5088c2ca9749d2f13370172bf0dcdd9c80efbd8589`에 결박해 Epinel local-only cache의
+`saus/19e939d/asset-catalog.cat`과 `.nds`에 exact encrypted body/sidecar 두 member만 추가했습니다. Staging
+receipt SHA-256은 `2350aae3ba7320da21bb80a1eb26c118275b39b0678b3d844990742240f019e2`, HTTP pair contract
+SHA-256은 `0a29dc7d5bfbfd53cba8735029f9fbcc708834d678c7e51ea5a84b234fc3a65d`, tool-binding receipt
+SHA-256은 `604ae318c4fefda2371e1e74eb648e008359758e8231ef95fbbbf3ff357c03a5`입니다. Active cache는
+40,111개/39,030,643,658 bytes이고 client/server는 실행하지 않았습니다. 다음 동작은 Micron `nlloperator`에서
+기존 start wrapper를 한 번만 실행하는 것입니다. Wrapper는 bootstrap 전에 새 SAUS body/sidecar의 loopback
+HTTPS status/length/SHA-256/body CRC32와 기존 header/catalog preflight를 모두 통과해야 client를 시작합니다.
+상세 pin과 rollback은 `docs/PHASE3B2_EPINEL_MINIMAL_PLAN.md`의 SAUS staging 절을 따릅니다.
+
+2026-08-25 Micron 단일 retry `e3f33bd6-49bb-4f5f-a0b4-a7646f59108c`에서 original client가 마침내
+`4/7`을 통과해 원본 로비와 NIKKE roster UI에 진입했습니다. Run-start receipt SHA-256은
+`b6f53d34daafd53e133fbd803834ae8d3b043f8b1da268bafb3515f761ef899b`, completion receipt SHA-256은
+`da485e2e0acb72ac6772473b5e7a151be476177071ab8145c4ff1e371c838350`입니다. Completion은 DB, SQLite,
+hosts와 firewall을 복구했고 runtime-cold입니다. Native cache/catalogue transport 병목은 종료합니다.
+
+다음 병목은 account progression입니다. 복구된 local DB에는 character 193명이 있지만 tutorial group,
+contents-open unlock, stage history, campaign last-stage, scenario/quest/field state가 모두 비어 있습니다. 다음
+작업은 (1) Epinel native tutorial completion을 exact table에 맞춰 offline materialize하고 (2) official identity나
+credential을 복사하지 않는 비민감 campaign-progress projection으로 Solo Raid의 exact unlock 조건을 충족하는
+것입니다. Epinel `complete-all-stages`는 reward/currency/level/quest까지 광범위하게 변경하므로 사용하지 않습니다.
+구현 전에 exact build `ContentsOpenTable`의 Solo Raid 조건과 필요한 coherent state 집합을 먼저 봉인합니다.
+
+2026-08-25 tutorial-only 단계도 Samsung offline에서 완료했습니다. 로비 성공 상태는 golden seal
+`15089f3e-92f2-4833-ab1b-348d1463f9fc`, receipt SHA-256
+`ebf5c2f7692e7de7ec9b8bcf3acba112cdb8efbfbb888967acde7e429e877f9c`로 보존했습니다. Exact
+`StaticData.pack`의 tutorial 448 row/40 group을 Epinel native `finish-all-tutorials` 의미로 materialize한 revision은
+`8ba2fb71-913c-4eaf-a56e-55c10c79d5c1`, receipt SHA-256은
+`5685274460cd64bee2391a962ec0988b5938dbb0f3ee98ac64e16c8204e31f00`입니다. DB는 `c103b44b…`에서
+`e8c6c7d2…`로 바뀌었지만 character 193과 campaign/contents-open/stage/scenario/quest/field state는 모두
+그대로이며 private tutorial projection은 남기지 않았습니다. 기존 성공 DB·도구·runtime·소스 bundle과 tutorial
+before/after DB는 Micron 및 Samsung 보호 경로에 이중 보존했습니다.
+
+Inner Start 도구는 새 DB와 tutorial receipt를 fail-closed 검증하도록 bound됐습니다. 새 SHA-256은
+`00270a38140f4ace8e77192e285731909a172e4e587c80394bac7bb55650e7ae`, binding receipt SHA-256은
+`6706cae31a8c3e08426c0470142ad20b3b02726ae39fe655ef911ca5ce591ede`입니다. Cache shape는 여전히
+40,111개/39,030,643,658 bytes이고 partial member는 0입니다. 다음 허용 동작은 Micron `nlloperator`에서
+`C:\NLL\Tools\Start-Phase3B2-Epinel-NativeCache.ps1`을 한 번만 실행해 tutorial 유도 제거와 lobby 진입을
+검증하는 것입니다. 이 run에서 campaign 진행이나 Solo Raid 해금을 기대하지 않으며, 완료 후 client를 직접 닫고
+completion을 실제 lobby outcome으로 한 번 실행합니다.
+
+2026-08-26 첫 tutorial validation은 outer wrapper의 과거 inner-start digest pin 때문에 client 시작 전에
+`phase3b2_epinel_catalog_transport_start_input_missing_or_drifted`로 중단됐습니다. 단일 pin 수정 뒤 발생할 수 있는
+두 번째 SAUS binding 실패도 사전 감사에서 확인했습니다. 과거 SAUS binding과 lobby 성공 wrapper는 수정하지 않고,
+새 tutorial wrapper rebind receipt가 과거 inner/wrapper에서 현재 tutorial inner와 새 wrapper까지의 전이를 증명하도록
+수정했습니다. Read-only audit는 golden/tutorial/SAUS/DB/도구 전체와 cache `40,111개 / 39,030,643,658 bytes /
+partial 0`을 통과했고 candidate wrapper는 `21,624` bytes/SHA-256 `4711bf99…`입니다.
+
+다음 허용 동작은 Samsung 관리자 PowerShell에서 아래 offline repair를 한 번 실행하는 것입니다. Receipt를 검토하기
+전에는 Micron을 부팅하지 않습니다.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+& 'C:\Users\zih44\Documents\Github\Nikke-Local-Lab\scripts\repair-phase3b2-epinel-tutorial-native-cache-rebind-offline.ps1'
+```
+
+이 repair는 outer wrapper 하나만 교체합니다. DB/cache/server binary/inner start는 변경하지 않으며, 실패 시 기존
+wrapper를 자동 복구합니다. 배포 후 문제가 생겨 Samsung offline에서 명시적으로 원복해야 할 때만
+`rollback-phase3b2-epinel-tutorial-native-cache-rebind-offline.ps1`을 사용합니다. Repair receipt가
+`historicalSausEvidencePreserved=true`, `goldenBaselinePreserved=true`, 세 mutation flag가 모두 `false`,
+`clientExecutionStarted=false`를 출력해야만 Micron tutorial validation 한 번을 허용합니다.
+
+위 v1 repair 뒤 Micron start는 client 시작 전 같은 aggregate error로 중단됐습니다. 원인은 v1 wrapper에 잘못
+결박한 catalog transport repair SHA-256 `fcd14693…`와 catalog contract SHA-256 `4e7903b5…`이며, 실제 값은
+각각 `fcd1469e6c348a91f2a9ef5bef02ad52d6a95099b20a3ff354c73fb36d40f430`과
+`4e7903d912b3859691864b22a75a53e80881c744bd0fbee9e375036142d65654`입니다. v1 audit에서 이 두 precursor를
+직접 검사하지 않은 것이 누락이므로 v1 repair는 재사용 금지입니다.
+
+새 v2 audit는 wrapper의 required input 20개를 실제 offline Micron 파일과 길이/SHA-256으로 전수 비교했고
+`20/20` match, runtime cold, active pointer 없음, SQLite runtime 0개, cache `40,111 / 39,030,643,658 /
+partial 0`을 확인했습니다. Corrected wrapper는 `23,779` bytes/SHA-256 `26dccd12…`입니다. 다음 허용 명령은
+Samsung 관리자 Windows PowerShell에서 아래 한 번뿐입니다. Receipt 검토 전에는 Micron을 부팅하지 않습니다.
+
+```powershell
+& 'C:\Users\zih44\Documents\Github\Nikke-Local-Lab\scripts\repair-phase3b2-epinel-tutorial-native-cache-wrapper-correction-v2-offline.ps1'
+```
+
+v2 tutorial validation assessment `de00aafb-bab3-48ca-8caf-49261a49a654`도 `catalogue_path`에서 System Error가
+발생했습니다. 운영자는 이 lane의 추가 증상 patch를 중단하고 실제 lobby 성공 golden seal
+`15089f3e-92f2-4833-ab1b-348d1463f9fc`로 복귀하기로 결정했습니다. Samsung offline 비교에서 golden manifest의
+427개 active 대상 중 drift는 DB, outer wrapper, inner start의 세 개뿐이고 server DLL과 나머지 424개는
+일치합니다. Cache도 `40,111 / 39,030,643,658 / partial 0`입니다.
+
+현재 run은 Micron completion 없이 종료되어 active pointer, applied hosts와 SQLite runtime 3개가 남아 있습니다.
+성공 completion receipt를 만들지 말고 다음 Samsung 관리자 Windows PowerShell 5.1 도구로 offline recovery를
+실행합니다.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+& 'C:\Users\zih44\Documents\Github\Nikke-Local-Lab\scripts\restore-phase3b2-epinel-lobby-golden-baseline-offline.ps1'
+```
+
+이 도구는 실패 run을 backup/archive하고 base hosts 및 golden 세 파일만 복구합니다. Cache/server binary는
+변경하지 않습니다. Receipt 검토 뒤 Micron `nlloperator` 관리자 PowerShell에서 배포된
+`C:\NLL\Tools\Finalize-Phase3B2-Epinel-Lobby-Golden-Restore.ps1`을 한 번 실행해 남은 extension firewall rule을
+제거합니다. 새 Start 또는 validation은 실행하지 않고 다시 Samsung으로 돌아와 golden baseline 위의 progression
+구현을 시작합니다.
+
+Golden restore finalization은 receipt SHA-256 `6d4c9fadd0c500cca3a95f3c2eeae7a141eacacc073167874c1eff2989d4a4e3`로
+완료됐습니다. 현재 Micron DB는 lobby 성공 golden `c103b44b…`이고 기존 start/completion 네 파일도 golden
+digest입니다. Tutorial revision은 active가 아니고 runtime은 cold입니다.
+
+운영자가 제공한 `nikke_full_scroll_result.json`은 원문을 복사·커밋하지 않고 캠페인 진행도 세 필드만 읽었습니다.
+Exact Micron static data 해석 결과는 Normal `48-44`, Hard `48-44`, Story/Easy `48-6`입니다. Capture에는
+tutorial completion이 없으므로 tutorial skip은 exact client table의 40 terminal group을 쓰는 local synthetic
+state로 명시적으로 분리합니다. Solo Raid unlock StageClear는 exact table의 `6-4`이고 Museum은 제외합니다.
+
+Candidate DB는 545,413 bytes/SHA-256 `3009a738fa809d16e4b5026c70ff39fbd71a6c95e5ad1270727aaff02e277f96`이며
+Epinel runtime round-trip을 통과했습니다. `StageClearHistorys`, scenario, quest, reward/currency는 만들지 않았고
+character 193명과 나머지 canonical state는 유지됩니다. Golden 도구는 수정하지 않고 별도 UserProgression
+start/completion 계열을 추가하며, offline rollback은 DB와 이 새 도구만 되돌립니다.
+
+Windows PowerShell 5.1 TEMP generation validation은 staging, 후보 DB, 파생 start/completion 네 파일의 구문·해시
+결박을 모두 통과했습니다. 이 검증은 Micron을 변경하지 않았고 progression 도구도 아직 `0`개입니다.
+
+Deployable staging `ed26dd36-2640-4c79-9f82-790ad3af77bf`는 완료됐습니다. Receipt는 3,166 bytes/SHA-256
+`a327f63b38fd417f920788d30742e0b6f8321785fdacd610832ce38bb753576a`이고 candidate DB는 545,413 bytes/SHA-256
+`3009a738fa809d16e4b5026c70ff39fbd71a6c95e5ad1270727aaff02e277f96`입니다. 보호 pointer와 실제 파일의 digest가
+일치하고 `consumed=false`이며, Micron은 golden DB/wrapper 그대로이고 progression tool count는 `0`입니다.
+
+다음 허용 명령은 Samsung 관리자 Windows PowerShell의 offline apply 한 번입니다. 결과 JSON을 검토하기 전에는
+Micron을 부팅하지 않습니다.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+& 'C:\Users\zih44\Documents\Github\Nikke-Local-Lab\scripts\apply-phase3b2-epinel-user-progression-offline.ps1'
+```
+
+Offline application `072cfb5c-d0a1-4a00-b307-cc78b9c981e2`는 완료됐습니다. Micron receipt는 2,320 bytes/SHA-256
+`c6bfdc4a982d8341b88b03509a9e1252896031b75061388d039539efd95f1fce`이고 applied DB는 candidate
+`3009a738…`입니다. 네 파생 도구의 실제 길이·SHA-256과 PowerShell syntax를 교차검증했고 golden wrapper/inner는
+변경되지 않았습니다. Golden DB backup `c103b44b…`와 rollback plan `00ef55e2…`도 일치합니다. Application
+pointer는 `rolledBack=false`, staging은 `consumed=true`, active pointer와 runtime process는 0입니다.
+
+다음 허용 동작은 Micron `nlloperator` 관리자 세션에서 아래 새 start를 한 번 실행하는 것입니다. 기존
+`Start-Phase3B2-Epinel-NativeCache.ps1`은 사용하지 않습니다.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+& 'C:\NLL\Tools\Start-Phase3B2-Epinel-UserProgression.ps1'
+```
+
+Global 선택 뒤 tutorial 강제 진입 부재와 lobby를 먼저 확인하고, 가능하면 Solo Raid menu까지만 관측합니다. Start가
+정상 receipt를 출력한 경우 NIKKE 창을 직접 닫은 뒤 새 UserProgression completion을 실제 stage/outcome으로 한 번
+실행합니다. Start가 예외를 출력하면 completion이나 start를 반복하지 않습니다.
+
+첫 UserProgression start assessment `ea00cdc1-efea-412a-8ed9-fee4ab6038e3`은 client 시작 전에
+`bootstrap_exited_before_receipt`로 중단됐습니다. 자동 rollback은 완료됐고 active pointer/SQLite runtime은 없으며
+DB `3009a738…`, completion 도구, cache, server DLL과 base hosts는 보존됐습니다. 원인은 파생 inner start가 physical
+bootstrap이 지원하지 않는 evidence lane `epinel-user-progression-client-start-v1`을 전달한 packaging 오류입니다.
+
+수정 범위는 inner lane을 `p2-client-start-v2`로 복원하는 것과 outer wrapper의 expected inner digest를 갱신하는 것,
+정확히 두 runtime 파일뿐입니다. `-ValidateOnly`에서 candidate inner `ba435c45…`, outer `0ff50ecd…`, PS5.1 syntax
+error 0과 두 역치환 exact match를 확인했습니다. Codex의 실제 적용 시도는 비관리자 검사에서 mutation 전에 중단됐으므로
+현재 Micron 도구는 아직 broken digest `397b4b7b…`/`18bbf93e…` 그대로입니다.
+
+Samsung 관리자 Windows PowerShell에서 다음 repair만 한 번 실행합니다. Receipt를 검토하기 전에는 Micron을 부팅하거나
+UserProgression start/completion을 실행하지 않습니다.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+& 'C:\Users\zih44\Documents\Github\Nikke-Local-Lab\scripts\repair-phase3b2-epinel-user-progression-bootstrap-lane-offline.ps1'
+```
+
+Lane repair 뒤 assessment `3e6a398d-b79d-4a77-b049-732d576b264a`는 client를 시작했지만 `catalogue_path`의
+`System Error`로 끝났습니다. 정상 completion receipt는 1,747 bytes/SHA-256
+`bb486bee608f4381002b94433676531706978c125f0a00b36cdd2964326e2852`이며 candidate DB `3009a738…`, base hosts,
+SQLite runtime 0개와 runtime-cold를 복원했습니다.
+
+현재 운영 결정은 progression을 더 패치하지 않고 기존 lobby Golden을 DB-only 대조군으로 재검증하는 것입니다.
+`restore-phase3b2-epinel-progression-to-golden-db-offline.ps1 -AuditOnly`은 Windows PowerShell 5.1에서 Golden backup
+433/433, active 426/427, 유일 drift `runtime_top_level/db.json`, runtime top-level 422/422/unexpected 0, cache
+40,111/39,030,643,658/partial 0을 확인했습니다. 보호 Golden 사본 검사는 관리자 actual 단계에서 mutation 전에 수행됩니다.
+
+다음 허용 명령은 Samsung 관리자 PowerShell의 아래 DB-only recovery 한 번입니다. 이 도구는 활성 `db.json` 한 파일만
+Golden `c103b44b…`로 바꾸며 wrapper, completion tool, server DLL, cache, LocalLow, hosts, progression tool, runtime binding,
+startup preflight를 변경하지 않습니다. Receipt도 runtime에 결박하지 않는 detached evidence입니다. 결과 JSON을 검토하기
+전에는 Micron을 부팅하지 않습니다.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+& 'C:\Users\zih44\Documents\Github\Nikke-Local-Lab\scripts\restore-phase3b2-epinel-progression-to-golden-db-offline.ps1'
+```
+
+Recovery가 `427/427`, drift `0`, runtime mutation `1`, DB `c103b44b…`를 확인한 뒤에만 Micron에서 기존 Golden
+`C:\NLL\Tools\Start-Phase3B2-Epinel-NativeCache.ps1`을 한 번 실행합니다. 현재 `nlloperator` LocalLow는 그대로 둡니다.
+Lobby가 다시 열리면 그때만 D: detached cold backup을 만들며, 그 backup을 wrapper나 preflight에 결박하지 않습니다.
+
+DB-only recovery `30d5a069-1670-4ee8-8651-34dc69336c7f`는 완료됐습니다. Receipt는 2,464 bytes/SHA-256
+`efb7c130a9023d57410cd117e3188eda514e68b54ed2898e8d08a6d86de03138`입니다. Micron/보호 Golden backup은
+433/433, active Golden target은 427/427, drift 0이며 DB는 `c103b44b…`입니다. Golden start/completion 네 파일,
+server DLL과 base hosts digest도 교차검증했고 두 active pointer, SQLite runtime 및 관련 process는 0입니다. Runtime
+변경은 DB 하나뿐이고 LocalLow, wrapper, server, cache, hosts, binding/preflight는 변경하지 않았습니다.
+
+이제 Micron `nlloperator` 관리자 세션에서 기존 Golden NativeCache start를 한 번만 실행합니다. 현재 LocalLow는 그대로
+유지합니다. Start 예외 시 반복하거나 completion을 실행하지 않고 전체 오류를 Samsung으로 가져옵니다. Start receipt가
+정상 출력된 경우에만 실제 관측 결과를 기록하고 client를 직접 닫은 뒤 Golden completion을 한 번 실행합니다.
+
+## 2026-08-27 현재 운영 위치 — Challenge actual-play / Regroup v5
+
+- 시즌 26 클래식 Challenge 실제 전투 진입은 성공했다. Museum과 공식 outbound fallback은 사용하지 않았다.
+- 파생 v5는 v4/Golden/D:를 수정하지 않는다. Server DLL은 SHA-256 `9f350c9ba11df44365d890439f588fd29734e1ded14026934fea1c02bfed4c42`, selected-manager test는 `101/101`이다.
+- Assessment `d7d5b339-4b66-4403-9dda-229cab797abf`에서 marker 결과 `4,4,4,4,6,6`을 관측했다. Regroup은 `6`, legacy non-consuming retry는 `4`다.
+- Regroup 두 번 뒤 `raidJoinCount`, `recordCount`, `totalDamage` delta가 모두 `0`이고 재진입이 성공했다. Inspector verdict는 `observed_regroup_6_is_non_consuming_and_reentry_safe`다.
+- Deployment/completion/marker SHA-256은 각각 `90179010e5c82fba6ff4d699fb0f913fa0f878b1100938e74645a3555752dc8a`, `5817bc8b0c3861532e118570935f396e45175bc9e25edde2f01cd7e07ad36707`, `94e0237ca0e052a64edd2b80473b2a3195346580c19c393f45e1b80c0dcec047`이다. Completion inner의 zero-safe repair SHA-256은 `cbb2fb3dd75ca038e5da8afcd128ef20c07710973eadefa79866353b8b5f1a90`이다.
+- Completion 뒤 DB, base hosts, SQLite runtime과 extension firewall은 복구됐고 runtime은 cold다. Raw request payload/Player.log는 backup 대상이 아니며 runtime app log는 제거됐다.
+- 다음 기술 작업은 실제 전투 완주 result 한 건을 별도 관측하는 것이다. 그 전까지 v5는 `regroup_semantics_candidate`이며 전체 Phase 3B-2 완료로 표현하지 않는다.
+- D: backup은 `phase3b2-lobby-en-d830a90d-20260826T103327Z`를 불변 부모로 참조하는 새 detached checkpoint다. 기존 D: 경로를 덮어쓰거나 runtime preflight에 backup receipt를 결박하지 않는다.
+- D: checkpoint `e40c70a0-16a3-4a83-9d30-b16f368ce73a`는 606개/195,874,486 bytes로 봉인됐다. 경로는 `D:\NikkeLocalLab\Backups\phase3b2-season26-challenge-regroup-v5-checkpoint-v1\e40c70a0-16a3-4a83-9d30-b16f368ce73a`, seal receipt SHA-256은 `e69ee9020abf5c77fc61f433ae56729d36c82c10289b385ee1bdde30604e3753`, manifest SHA-256은 `bed4e1ba8a58b42d3ae8e4b1d5409c0966efc19d53f6ec87cd6d426252e82b59`다. 모든 봉인 파일은 read-only이고 기존 parent seal/manifest는 각각 `e4c1f9af…`/`5fbde8b3…`로 유지된다.
 
 ## 새 ChatGPT/Codex 대화 시작 문구
 

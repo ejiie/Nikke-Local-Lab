@@ -4,6 +4,19 @@
 
 바로 다음 기술 목표는 **[PHASE3B2.md](PHASE3B2.md)의 preflight 계약을 실제 disposable 환경 측정으로 채워 ready 판정을 봉인한 뒤, client build `150.6.9`에서 시즌 26의 원본 클래식 `SoloRaid` Challenge를 단일 팀으로 실행하는 것**입니다. 공식 별도 모드인 `SoloRaidMuseum`은 결과에 영향을 주는 전용 버프가 있으므로 고려·fallback·acceptance 대상에서 제외합니다. 자세한 rebaseline은 [PHASE3AR.md](PHASE3AR.md), selected-manager 완료 결과는 [PHASE3B1.md](PHASE3B1.md), 제품 계약은 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md), 전체 단계는 [PHASE3.md](PHASE3.md)와 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)를 따릅니다.
 
+## 2026-08-27 actual-play checkpoint
+
+위의 초기 Wave 설명 이후 physical Micron lane에서 원본 client `150.6.9`의 시즌 26 클래식 Challenge 실제 전투 진입까지 도달했습니다. v5 marker-only 관측으로 Regroup의 실제 `BattleResult=6`을 확인했고, 기존 비소모 retry `4`와 분리했습니다. Regroup 두 번 뒤에도 join/record/damage delta는 모두 `0`이며 Challenge 재진입이 가능했습니다. 최종 inspector verdict는 `observed_regroup_6_is_non_consuming_and_reentry_safe`입니다.
+
+이 checkpoint는 중요한 actual-play 진척이지만 전체 Phase 3B-2 완료는 아닙니다. 다음 순서는 다음과 같습니다.
+
+1. **완료:** 기존 D: full Golden을 덮어쓰지 않는 detached v5 checkpoint `e40c70a0-16a3-4a83-9d30-b16f368ce73a`를 봉인했습니다. Seal receipt SHA-256은 `e69ee9020abf5c77fc61f433ae56729d36c82c10289b385ee1bdde30604e3753`입니다.
+2. Regroup이 아닌 실제 전투 완주 한 건의 result/result-screen/backend state를 관측합니다.
+3. 완주 결과가 닫힌 뒤 다음 팀 전이와 1~5팀 aggregate를 별도 Phase 4 증거로 확장합니다.
+4. 마지막에 Phase 2B shadow bridge와 original-runtime result authority 경계를 연결합니다.
+
+Museum, Quick Battle, Normal/Union Raid runtime은 계속 범위 밖입니다. v4, Micron lobby Golden과 기존 D: full Golden은 불변 대조군으로 유지합니다.
+
 ## 완료 기반
 
 ### Phase 1A — import foundation
