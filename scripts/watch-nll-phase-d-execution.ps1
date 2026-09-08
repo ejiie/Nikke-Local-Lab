@@ -19,11 +19,26 @@ param(
     [Parameter(Mandatory)] [ValidatePattern('^[A-Z][A-Z0-9_]{2,63}$')]
     [string]$ConnectionStringEnvironmentVariable,
     [Parameter(Mandatory)] [ValidatePattern('^[A-Z][A-Z0-9_]{2,63}$')]
-    [string]$IdentitySecretEnvironmentVariable
+    [string]$IdentitySecretEnvironmentVariable,
+    [string]$ExpectedRunnerBundleSha256 = ''
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$sealedRunner = $null
+if ($ExpectedRunnerBundleSha256) {
+    # Verify the verifier before importing it; the parent supplied the pin.
+    $manifestPath = Join-Path $PSScriptRoot 'runner.bundle.json'
+    if ((Get-FileHash -LiteralPath $manifestPath).Hash.ToLowerInvariant() -cne $ExpectedRunnerBundleSha256) { throw 'phase_d_runner_bundle_invalid' }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $seal = @($manifest.members | Where-Object { $_.name -ceq 'Nll.PhaseDRunnerSeal.ps1' })
+    $sealPath = Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1'
+    if ($seal.Count -ne 1 -or (Get-FileHash -LiteralPath $sealPath).Hash.ToLowerInvariant() -cne $seal[0].sha256) { throw 'phase_d_runner_bundle_invalid' }
+    . $sealPath
+    $sealedRunner = Read-PhaseDRunnerBundle -LaunchRoot $LaunchRoot -ExpectedBundleSha256 $ExpectedRunnerBundleSha256
+    if ([IO.Path]::GetFullPath($sealedRunner.root) -ine [IO.Path]::GetFullPath($PSScriptRoot) -or
+        [IO.Path]::GetFullPath($CompletionScriptPath) -ine (Join-Path $PSScriptRoot 'invoke-nll-phase-d-runner.ps1')) { throw 'phase_d_runner_bundle_invalid' }
+} elseif (Test-Path -LiteralPath (Join-Path $LaunchRoot 'tools/runner')) { throw 'phase_d_runner_binding_missing' }
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDChildProcess.ps1')
 
@@ -324,14 +339,18 @@ try {
         try { $client.WaitForExit() } finally { $client.Dispose() }
     }
 
+    $completionArguments = [ordered]@{
+        ObservedStageCode = 'startup_only'; OutcomeCode = 'client_exit'
+        ServerRoot = $ServerRoot; EvidenceRoot = $EvidenceRoot
+    }
+    if ($null -ne $sealedRunner) {
+        $null = Read-PhaseDRunnerBundle -LaunchRoot $LaunchRoot -ExpectedBundleSha256 $ExpectedRunnerBundleSha256
+        $completionArguments = [ordered]@{ Phase='completion'; LaunchRoot=$LaunchRoot
+            ExpectedBundleSha256=$ExpectedRunnerBundleSha256; ObservedStageCode='startup_only'; OutcomeCode='client_exit' }
+    }
     $completionResult = Invoke-PhaseDChildScript `
         -ScriptPath $CompletionScriptPath `
-        -Arguments ([ordered]@{
-            ObservedStageCode = 'startup_only'
-            OutcomeCode = 'client_exit'
-            ServerRoot = $ServerRoot
-            EvidenceRoot = $EvidenceRoot
-        }) `
+        -Arguments $completionArguments `
         -StandardOutputPath (Join-Path $LaunchRoot 'derived-completion.stdout.log') `
         -StandardErrorPath (Join-Path $LaunchRoot 'derived-completion.stderr.log')
     if ($completionResult.ExitCode -ne 0) { throw 'phase_d_completion_failed' }

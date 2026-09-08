@@ -51,7 +51,10 @@ Invoke-Checked node @((Join-Path $ScriptDirectory "test-nll-phase-d-lifecycle-ui
 Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-ui-reuse-assets.ps1'))
 if ($env:OS -eq 'Windows_NT') {
     $WindowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
-    foreach ($test in @('test-nll-phase-d-preparation.ps1', 'test-nll-phase-d-launch-tools.ps1')) {
+    foreach ($test in @('test-nll-phase-d-preparation.ps1', 'test-nll-phase-d-launch-tools.ps1',
+        'test-nll-phase-d-runner-contract.ps1', 'test-nll-phase-d-runner-seal.ps1',
+        'test-nll-phase-d-runner-behavior.ps1', 'test-nll-phase-d-runner-differential.ps1',
+        'test-nll-phase-d-runner-routing.ps1', 'test-nll-phase-d-runner-dependencies.ps1')) {
         Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory $test))
     }
 } else {

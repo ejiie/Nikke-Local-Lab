@@ -8,6 +8,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# Dispatch before importing mutable runtime helpers. Historical runs without a
+# bundle keep their existing recovery route; invalid new bundles never use it.
+. (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1')
+$recoveryBundle = Read-PhaseDRunnerBundle -LaunchRoot (Join-Path $ExecutionRoot $LaunchContextUid)
+if ($null -ne $recoveryBundle -and
+    [IO.Path]::GetFullPath($PSScriptRoot) -ine [IO.Path]::GetFullPath($recoveryBundle.root)) {
+    & (Join-Path $recoveryBundle.root 'recover-nll-phase-d-orphaned-execution.ps1') `
+        -ExecutionRoot $ExecutionRoot -LaunchContextUid $LaunchContextUid -ConfigurationPath $ConfigurationPath
+    return
+}
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 
 function Assert-Recovery {

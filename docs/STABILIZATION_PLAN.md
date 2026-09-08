@@ -113,6 +113,67 @@
 
 ### S-05 / 높음 — 실행 코드의 문자열을 다른 코드의 인터페이스로 사용함
 
+#### 본격 전환 승인 — 2026-09-08
+
+운영자가 1차 변경 후 계정/약점 준비 표시, S29 차단, 로비 전 종료, S26 1덱 완주,
+종료 후 저장/재실행을 직접 확인하고 문제가 없다고 보고했다. 이는 해당 설치 조합의
+운영자 인수이며 새 자동 actual-play receipt나 S29/모든 전투 조합의 성공이 아니다.
+이후 아래 1~6의 구현을 승인했다. 진행 상태는 실제 gate 완료만 반영한다.
+
+1. 기준선 고정: 부모 v9 원문이 아니라 현재 최종 파생 start/completion을 기준으로 삼는다.
+2. 데이터 전용 실행 입력 계약 및 부작용 없는 부정/행동 검사를 먼저 추가한다.
+3. 고정 Start/Complete 실행기를 구현하고 기존 경로를 기본값으로 유지하며 대조한다.
+4. 실행별 입력/코드 closure를 봉인하고 coordinator/watcher/recovery와 연결한다.
+5. cold 상태에서 검증된 조합을 적용하고 조기 종료/1덱 완주/저장/재실행을 운영자가 인수한다.
+6. 인수 뒤 활성 경로의 부모 템플릿 읽기/치환 의존을 제거한다. 과거 실행 복구와 rollback 자료는 보존한다.
+
+종료 순서는 runtime stop → pending capture → transient restore → management DB start →
+exact persistence → terminal state → pending cleanup이다. 실패 후 legacy 자동 재실행은 없다.
+실행 도중에는 실행기 버전을 바꾸지 않는다. 복원은 정리 완료 후 다음 실행부터 적용하며,
+실행기 rollback을 이유로 운영 DB를 과거 상태로 되돌리지 않는다.
+새 진단 HTTP 계층, client/server DLL 변경, 리소스/음성 정책 변경, P-01~P-09,
+S29 repin, 150 폴더 이동은 제외한다. 기존 seed DB/출처 의존은 코드 템플릿 의존과 구분한다.
+현재: 1~4 소스와 오프라인 검사를 구현했다. coordinator의 기본값은 여전히 `legacy/v1`이고,
+`-RunnerEngine parameterized/v1`에서만 고정 실행기를 선택한다. 5의 실제 설치 입력을 쓰는
+비실행 준비 검사는 통과했지만, 기본 전환·실게임 인수와 6의 기존 경로 제거는 미완료다.
+
+- 기준선은 운영자가 인수한 실행의 최종 `Start-PhaseD-Derived.ps1` / `Complete-PhaseD-Derived.ps1`다.
+  SHA-256은 각각 `0d322821ef27fa2dc9069b004ea4f48cbc3835da072a8d3931ca5ef2d9e2ff74`,
+  `588cd7d0f531eba76761c21c5bd5986f8cf001ee60b9dbe3904da1cf4dff046c`이며 로컬
+  `artifacts/stabilization/2026-09-08-s05-runner/baseline/`에만 보존한다. 계정 입력이 포함된
+  실제 파생 스크립트를 Git에 넣지 않는다. CI에는 시작 receipt/pointer/failure와 완료 후처리의
+  의미 토큰 hash만 고정했다. 이것은 전체 실게임 동등성 증명이 아니다.
+- `Nll.PhaseDRunnerContract`는 37개 명시 필드만 받는다. 스크립트 원문·추가 필드·미지 버전,
+  문자열 boolean, 경로/해시 형식 오류를 거절한다. secret은 환경변수 이름만 참조한다.
+  150 preflight 도구 hash는 EXE 단독 hash가 아니라 기존 **전체 tool-set digest**를 유지한다.
+- `Nll.PhaseDRunnerStart/Complete`는 고정 함수이며 코드 문자열을 생성하지 않는다.
+  사용되지 않던 opt-in HTTP 진단 분기는 새 입력에 노출하지 않고 receipt의 not-requested 값은
+  유지한다. bootstrap 보조 프로세스는 숨겨진 창으로 실행한다. 원본 게임 창은 대상이 아니다.
+- `tools/runner/`에 입력 JSON, 보스 profile 사본, 실행/종료/복구와 공통 helper를 실행별로
+  복사하고 `runner.bundle.json`에 hash를 봉인한다. runtime의 EXE/DLL/deps/runtimeconfig도
+  대조한다. 기존 `launch-context → tool.manifest` 결박에 bundle hash를 추가했다.
+  watcher는 해당 사본을 사용하고 recovery는 실행별 사본으로 먼저 분기한다. 변경·누락된
+  새 bundle을 legacy로 분류하지 않는다. 공개된 `parameterized/v1`의 closure 계약은 나중에
+  임의로 재정의하지 않으며 다음 변경은 과거 실행을 읽을 수 있는 별도 버전으로 다룬다.
+- 검사: 입력/4조합 mapping 61개, 코드 봉인 31개, 전체 Start/Complete 합성 행동 28개,
+  시작 의존성 20개, 실제 coordinator 분기, legacy/봉인 watcher 각각 4종 종료 순서.
+  실제 파생 기준선 의미 토큰 대조와 기존 identity/rollback/recovery 검사를 함께 유지한다.
+- 로컬 S26/151 준비 검사는 작열·전격으로 실행했다. 새 bundle/input을 구성하고 `ValidateOnly`
+  이후 종료했으며 실제 Start/Complete 또는 게임을 실행하지 않았다. 두 경우 모두 속성 파생
+  데이터 사용 조합이다. 계정 연결은 read-only였고 hosts 변경 없음·관리 DB 재종료를 확인했다.
+  근거: `artifacts/stabilization/s05-local-preparation/8c71021b5f6a49be94c51ec6c6cb39fd/receipt.json`.
+- 변경 후 전체 단위 476개, Save UI 12개/실행 상태 UI 6개와 repository/Phase 0/Phase 2B까지의
+  baseline/Phase 3A·3B-0·3B-1/3B-2 contract/약점/Actions 검사를 통과했다.
+  폐기 PostgreSQL 105개도 통과하고 stop/restart checkpoint 및 임시 cluster 제거를 확인했다.
+  근거: `artifacts/stabilization/lifecycle-postgresql/667820ac1bd44d91b03f6a780ac320b4/receipt.json`.
+  후보 소스 사본은 `artifacts/stabilization/2026-09-08-s05-runner/candidate-source/`에 보존한다.
+  기본 실행기 전환과 실게임 시작은 아직 하지 않았다. client/Epinel DLL, 운영 계정 데이터,
+  스키마, 음성 설정은 바꾸지 않았다.
+
+5의 인수 순서는 새 기본 실행기를 cold 상태에서 적용 → 로비 전 종료/재실행 → S26 1덱
+완주/결과창 → 종료 후 영속화/관리도구 Save/재실행이다. 각 실행에서 bundle hash, terminal 상태,
+pending 정리, 관리 DB 가용성, hosts 복원을 확인한다. 이 확인 전 6을 시행하지 않는다.
+
 - 기존 결함: coordinator의 다중 `.Replace()`와 `Nll.PhaseDRuntimeBundle.ps1`은
   과거 start/completion 소스의 특정 문자열,
   hash 및 들여쓰기 anchor를 치환해 새 실행기를 만든다.

@@ -14,7 +14,8 @@ param(
     [string]$WeaknessCode,
     [switch]$ValidateOnly,
     [ValidatePattern('^[0-9a-f]{64}$')] [string]$ExpectedPreparationBindingSha256,
-    [string]$RuntimeSelectionPath = 'C:\NLL\ControlCenter\runtime-selection.private.json'
+    [string]$RuntimeSelectionPath = 'C:\NLL\ControlCenter\runtime-selection.private.json',
+    [ValidateSet('legacy/v1','parameterized/v1')][string]$RunnerEngine = 'legacy/v1'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,6 +25,8 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.PhaseDChildProcess.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDPreparation.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDLaunchTools.ps1')
+. (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerContract.ps1')
+. (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1')
 
 function Assert-PhaseD {
     param([bool]$Condition, [string]$Code)
@@ -895,12 +898,23 @@ try {
         expectedSoloRaidHeadRevisionUid = $expectedSoloRaidHeadRevisionUid
         secretEnvironmentVariable = $secretEnvironmentVariable
     }
-    $launchTools = New-PhaseDLaunchToolText -Specification $launchToolInput
-    $startText = $launchTools.startText
-    $completionText = $launchTools.completionText
-    [IO.File]::WriteAllText($derivedStart, $startText, [Text.UTF8Encoding]::new($false))
-    [IO.File]::WriteAllText(
-        $derivedCompletion, $completionText, [Text.UTF8Encoding]::new($false))
+    $runnerBundle = $null
+    if ($RunnerEngine -ceq 'parameterized/v1') {
+        $runnerSpec = New-PhaseDRunnerSpecification -LaunchInput $launchToolInput `
+            -PreparationBindingSha256 $preparation.bindingSha256 -ProfileSha256 $bossRuntimeVariantProfileSha256 `
+            -SourceManifestSha256 $sourceManifestSha256 -RunIntentCode $ValidationKind
+        $runnerBundle = New-PhaseDRunnerBundle -Specification $runnerSpec -ScriptsRoot $PSScriptRoot
+        $derivedStart = Join-Path $runnerBundle.root 'invoke-nll-phase-d-runner.ps1'
+        $derivedCompletion = $derivedStart
+        $watcher = Join-Path $runnerBundle.root 'watch-nll-phase-d-execution.ps1'
+    } else {
+        $launchTools = New-PhaseDLaunchToolText -Specification $launchToolInput
+        $startText = $launchTools.startText
+        $completionText = $launchTools.completionText
+        [IO.File]::WriteAllText($derivedStart, $startText, [Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText(
+            $derivedCompletion, $completionText, [Text.UTF8Encoding]::new($false))
+    }
 
     $toolManifestPath = Join-Path $launchRoot 'tool.manifest.tsv'
     $toolLines = @(
@@ -910,6 +924,9 @@ try {
         "watcher`t$((Get-Item -LiteralPath $watcher).Length)`t$(Get-Sha256Lower $watcher)"
         "source_manifest`t$((Get-Item -LiteralPath $sourceManifestPath).Length)`t$sourceManifestSha256"
     )
+    if ($null -ne $runnerBundle) {
+        $toolLines += "runner_bundle`t$((Get-Item -LiteralPath $runnerBundle.manifestPath).Length)`t$($runnerBundle.sha256)"
+    }
     [IO.File]::WriteAllText(
         $toolManifestPath,
         (($toolLines -join "`n") + "`n"),
@@ -1007,6 +1024,10 @@ try {
         statusCode = 'validated'
     }
     Write-AtomicJson $contextPath $launchContext
+    if ($null -ne $runnerBundle) {
+        $null = Read-PhaseDRunnerBundle -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
+        Assert-PhaseDRunnerStartDependencies $runnerSpec
+    }
     Set-ExecutionState -StatusCode 'validated'
 
     if ($ValidateOnly) {
@@ -1072,15 +1093,18 @@ try {
         ($bootstrapLane -in @('p2-client-start-v1', 'p2-client-start-v2')) `
         'phase_d_bootstrap_lane_invalid'
     $coordinatorStage = 'derived_start'
+    $startArguments = [ordered]@{
+        ServerRoot = $runtimeRoot; EvidenceRoot = $evidenceRoot
+        BootstrapEvidenceLane = $bootstrapLane
+        DerivedSourceManifestSha256 = $sourceManifestSha256; RunIntentCode = $ValidationKind
+    }
+    if ($null -ne $runnerBundle) {
+        $null = Read-PhaseDRunnerBundle -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
+        $startArguments = [ordered]@{ Phase='start'; LaunchRoot=$launchRoot; ExpectedBundleSha256=$runnerBundle.sha256 }
+    }
     $startToolResult = Invoke-PhaseDChildScript `
         -ScriptPath $derivedStart `
-        -Arguments ([ordered]@{
-            ServerRoot = $runtimeRoot
-            EvidenceRoot = $evidenceRoot
-            BootstrapEvidenceLane = $bootstrapLane
-            DerivedSourceManifestSha256 = $sourceManifestSha256
-            RunIntentCode = $ValidationKind
-        }) `
+        -Arguments $startArguments `
         -StandardOutputPath (Join-Path $launchRoot 'derived-start.stdout.log') `
         -StandardErrorPath (Join-Path $launchRoot 'derived-start.stderr.log')
     Assert-PhaseD ($startToolResult.ExitCode -eq 0) 'phase_d_derived_start_failed'
@@ -1139,6 +1163,10 @@ try {
         '-ConnectionStringEnvironmentVariable', $connectionEnvironmentVariable,
         '-IdentitySecretEnvironmentVariable', $secretEnvironmentVariable
     )
+    if ($null -ne $runnerBundle) {
+        $null = Read-PhaseDRunnerBundle -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
+        $watcherArguments += @('-ExpectedRunnerBundleSha256', $runnerBundle.sha256)
+    }
     $watcherProcess = Start-Process -FilePath $powershell `
         -ArgumentList $watcherArguments -WindowStyle Hidden -PassThru
     # Process creation transfers mutable-runtime ownership immediately. Even if

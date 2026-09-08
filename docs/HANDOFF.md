@@ -101,7 +101,8 @@ Start와 coordinator가 공유하고, 실행문 생성부는 명시적 versioned
 **설치 앱 4개 파일을 반영**했고 나머지 347개 파일을 보존했습니다. 백업·hash는 로컬
 `artifacts/stabilization/2026-09-08-preparation-contract/installed.json`을 따릅니다.
 저장소 coordinator도 새 helper를 읽으므로 앱/스크립트 복원 세트를 혼용하지 않습니다.
-공통 parameterized runner로의 완전 전환과 실게임 인수는 아직 남아 있습니다.
+이 1차 변경의 실검증은 이후 운영자가 문제없다고 확인했습니다. 공통 parameterized runner의
+새 실게임 인수는 별개입니다.
 운영자 화면에서 계정 선택 후 S26/철갑 준비 완료와 S29 기존 불일치 차단을 확인했습니다.
 계정 미선택 시 ‘확인 중’이 남는 UI 문구는 동작 테스트로 재현·수정했으며 editor JS만 추가
 반영했습니다(`account-prompt-installed.json`). 열린 창의 계정 선택은 유지하며 다음 관리도구
@@ -110,6 +111,13 @@ Start와 coordinator가 공유하고, 실행문 생성부는 명시적 versioned
 현재 준비 상태를 제목으로, 과거 완료/실패 결과를 보조 설명으로 표시하고 live 실행/복구 경고는
 우선합니다. 새 동작 검사 6개를 Phase 2A2 gate에 추가했으며, editor JS 단독 배포 근거는
 `artifacts/stabilization/2026-09-08-raid-status-summary/`에 둡니다. 실게임 로직·DB 변경은 없습니다.
+
+S-05 본격 전환 1~6 승인 후 고정 실행기·데이터 계약·실행별 코드 봉인과
+coordinator/watcher/recovery 연결을 구현했습니다. 현재 기본은 `legacy/v1`이며 새 경로는
+명시적 `-RunnerEngine parameterized/v1`에서만 선택합니다. 합성 실행/실패/복구 검사와
+실제 S26/151 입력의 read-only `ValidateOnly` 검사는 통과했습니다. **새 경로의 실게임 인수와
+기존 템플릿 의존 제거는 아직 남아 있습니다.** 단계별 증거·기본 전환과 복원 조건은
+[S-05](STABILIZATION_PLAN.md#s-05--높음--실행-코드의-문자열을-다른-코드의-인터페이스로-사용함)를 따릅니다.
 
 ## 별도 보류
 

@@ -26,6 +26,7 @@
 |---|---|
 | 실행 API·상태 조회·복구 요청 | [PhaseDExecution.cs](../src/NikkeLocalLab.Admin.Api/PhaseDExecution.cs) |
 | 준비·기동 조정 | [invoke-nll-phase-d-execution.ps1](../scripts/invoke-nll-phase-d-execution.ps1) |
+| 실행별 고정 실행기(명시적 opt-in, 실게임 인수 전) | [Runner 입력](../scripts/Nll.PhaseDRunnerContract.ps1), [코드 봉인](../scripts/Nll.PhaseDRunnerSeal.ps1), [고정 entry](../scripts/invoke-nll-phase-d-runner.ps1) |
 | bundle 선택·검증 | [Nll.PhaseDRuntimeBundle.ps1](../scripts/Nll.PhaseDRuntimeBundle.ps1) |
 | 계정·전투 데이터 변환 | [RuntimeMaterializer/Program.cs](../tools/NikkeLocalLab.PhaseD.RuntimeMaterializer/Program.cs) |
 | 종료 감시·복구 | [watcher](../scripts/watch-nll-phase-d-execution.ps1), [orphan recovery](../scripts/recover-nll-phase-d-orphaned-execution.ps1) |
@@ -34,6 +35,11 @@
 | Save claim·checkpoint·계정별 DB 잠금 | [PostgreSqlAccountWorkspaceSaveStore.cs](../src/NikkeLocalLab.Persistence.PostgreSql/PostgreSqlAccountWorkspaceSaveStore.cs) |
 | Save 원문 보존·읽기 전용 복구 조회(미배포 소스) | [요청 codec](../src/NikkeLocalLab.Application.ProfileManagement/WorkspaceSaveRecovery.cs), [recovery store](../src/NikkeLocalLab.Persistence.PostgreSql/PostgreSqlAccountWorkspaceSaveStore.Recovery.cs) |
 | 레이드 기록 영속화 | [ClassicSoloRaidRuntimeStateStore.cs](../src/NikkeLocalLab.Persistence.PostgreSql/ClassicSoloRaidRuntimeStateStore.cs) |
+
+S-05 전환 중에는 기존 문자열 치환 실행기가 기본이며 `parameterized/v1` 경로만 데이터 JSON과
+고정 Start/Complete를 사용합니다. 새 경로는 watcher/recovery도 실행별 사본에 결박하므로
+실행 도중 저장소의 다음 버전과 혼용하지 않습니다. 계약 검사와 비실행 준비 검사 통과를
+실게임 인수로 승격하지 않습니다. 기본 전환·기존 template 의존 제거 gate는 안정화 계획에 있습니다.
 
 ## 관리도구 UI 재사용
 

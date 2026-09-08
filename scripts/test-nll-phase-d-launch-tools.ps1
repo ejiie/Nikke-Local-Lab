@@ -49,11 +49,10 @@ if ($PinnedStartPath -or $PinnedCompletionPath) {
 }
 $referenceBody = $null
 $coordinator = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'invoke-nll-phase-d-execution.ps1'))
-$mapBegin = $coordinator.IndexOf('    $launchToolInput =', [StringComparison]::Ordinal)
-$mapEnd = $coordinator.IndexOf('    [IO.File]::WriteAllText($derivedStart', [StringComparison]::Ordinal)
-Assert-PhaseD ($mapBegin -gt 0 -and $mapEnd -gt $mapBegin) 'coordinator_input_boundary_missing'
-$mappingBody = [scriptblock]::Create($coordinator.Substring($mapBegin, $mapEnd - $mapBegin) +
-    "`n[pscustomobject]@{ startText = `$startText; completionText = `$completionText }")
+$coordinatorAst = [Management.Automation.Language.Parser]::ParseInput($coordinator, [ref]$tokens, [ref]$errors)
+$mapping = @($coordinatorAst.FindAll({ param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -ceq '$launchToolInput' }, $true))
+Assert-PhaseD ($mapping.Count -eq 1) 'coordinator_input_boundary_missing'
+$mappingBody = [scriptblock]::Create($mapping[0].Extent.Text + "`nNew-PhaseDLaunchToolText -Specification `$launchToolInput")
 if ($ReferenceCoordinatorPath) {
     $reference = [IO.File]::ReadAllText($ReferenceCoordinatorPath)
     $begin = $reference.IndexOf('    $expectedParentDbPattern =', [StringComparison]::Ordinal)
