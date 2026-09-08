@@ -133,11 +133,13 @@ exact persistence → terminal state → pending cleanup이다. 실패 후 legac
 실행기 rollback을 이유로 운영 DB를 과거 상태로 되돌리지 않는다.
 새 진단 HTTP 계층, client/server DLL 변경, 리소스/음성 정책 변경, P-01~P-09,
 S29 repin, 150 폴더 이동은 제외한다. 기존 seed DB/출처 의존은 코드 템플릿 의존과 구분한다.
-현재: 1~4 소스와 오프라인 검사를 구현했다. 2026-09-09 운영자의 종료 확인 후 게임·관리도구·PG·
-watcher/recovery 프로세스와 active pointer/pending 부재를 확인하고 coordinator 기본값을
-`parameterized/v1`로 전환했다. 5의 실제 설치 입력을 쓰는 비실행 준비 검사는 통과했지만,
-새 기본 경로의 실게임 인수와 6의 기존 경로 제거는 미완료다. `-RunnerEngine legacy/v1`은
-정리 완료 후 다음 실행의 명시적 rollback 용도로만 유지하며 자동 fallback하지 않는다.
+현재: **1~6 전환 구현 및 운영자 실게임 인수 완료.** 2026-09-09 cold 확인 후 새 기본
+`parameterized/v1`로 실행했고 운영자가 조기 종료, S26 1덱 완주/결과창, 저장/재실행에
+문제없음을 확인했다. 이후 활성 coordinator의 부모 start/completion 경로·hash·읽기,
+legacy 선택 분기와 문자열 생성/저장을 제거했다. 과거 실행 복구와 자료는 보존한다.
+`-RunnerEngine legacy/v1`은 이제 거절한다. rollback은 현재 실행 정리가 끝난 cold 상태에서
+검증된 소스 revision/로컬 checkpoint를 명시적으로 복원해 **다음 실행**에만 적용한다.
+자동 fallback과 운영 DB rollback은 없다.
 
 - 기준선은 운영자가 인수한 실행의 최종 `Start-PhaseD-Derived.ps1` / `Complete-PhaseD-Derived.ps1`다.
   SHA-256은 각각 `0d322821ef27fa2dc9069b004ea4f48cbc3835da072a8d3931ca5ef2d9e2ff74`,
@@ -172,9 +174,32 @@ watcher/recovery 프로세스와 active pointer/pending 부재를 확인하고 c
   위 오프라인 검증 당시에는 기본 실행기 전환과 실게임 시작을 하지 않았다. client/Epinel DLL, 운영 계정 데이터,
   스키마, 음성 설정은 바꾸지 않았다.
 
-5의 인수 순서는 새 기본 실행기를 cold 상태에서 적용 → 로비 전 종료/재실행 → S26 1덱
-완주/결과창 → 종료 후 영속화/관리도구 Save/재실행이다. 각 실행에서 bundle hash, terminal 상태,
-pending 정리, 관리 DB 가용성, hosts 복원을 확인한다. 이 확인 전 6을 시행하지 않는다.
+5의 운영자 인수 및 6의 마감 근거:
+
+- 새 실행기 실행 `83738086-22d9-47ce-b9b0-e5532f2b317b`,
+  `fd92ef41-c9a2-4f6d-898d-9a9a2cf98e68`, `e89c8df5-4bee-45bc-8095-0530e535a525`는
+  모두 bundle 검증·terminal `completed`·영속화·pending/active pointer 정리·runtime 종료를 확인했다.
+  자동 receipt의 관측 단계는 `startup_only`, completed-result 관측은 0이다. **완주·결과창·
+  Save·재진입의 인수 근거는 운영자 보고**이며 자동 전투 관측 증거로 바꾸지 않는다.
+- 실검증된 고정 실행기/종료/복구 및 공통 helper **12개 파일은 byte 변경 없이 유지**했다.
+  세 실행의 봉인을 다시 검증하고 현재 소스와 같은 hash임을 확인했다. 과거 legacy 실행도
+  기존 분류로 읽힌다. 실행별 과거 복구 코드를 현재 코드로 덮어쓰지 않는다.
+- `Nll.PhaseDRuntimeBundle.ps1`에는 bundle 읽기/검증만 남긴다. 문자열 변환 함수는
+  기존 `Nll.PhaseDLaunchTools.ps1`의 역사 비교/복원 adapter로 모았으며 활성 경로가 import하지 않는다.
+  CI는 옛 합성 golden을 보존하면서 현행 데이터 mapping 4조합, legacy/미지 엔진 거절,
+  부모 템플릿 의존 부재와 실패 시 무재시도를 별도로 검사한다. seed DB/서버 출처 pin은 유지한다.
+- 제거 후 실제 S26/151 작열·전격의 **기본 경로** `ValidateOnly`도 통과했다.
+  계정 read-only, 게임/hosts 변경 없음, 관리 DB 재종료를 확인했다.
+  근거: `artifacts/stabilization/s05-local-preparation/822035f7b4ab4132aa474c794e778972/receipt.json`.
+- 마감 검사: 단위 476개, Save UI 12개/실행 상태 UI 6개, runner 계약/봉인/행동/4조합 mapping,
+  기존 종료·복구 검사, 전체 repository/Phase/약점/Actions 및 변경 C# 서식 검사가 통과했다.
+  폐기 PostgreSQL 105개와 재시작 checkpoint/최종 제거도 통과했다.
+  근거: `artifacts/stabilization/lifecycle-postgresql/90d7ad95c473432e813deed69f0cd864/receipt.json`.
+  최초 검사 `0faf09b1080444088bb706afad8ad2fd`는 105개 통과 후 30초 종료 제한을 넘어
+  재시작 gate가 실패했지만 finally 정리는 완료됐다. 기존 테스트 옵션 `-ShutdownTimeoutSeconds 60`으로
+  재검증해 통과했으며 운영 코드의 timeout을 변경하지 않았다. 운영 계정 쓰기/스키마 변경은 없다.
+
+아래는 1차 분리 당시의 결함·전환 이력이며 현행 미완료 판정이 아니다.
 
 - 기존 결함: coordinator의 다중 `.Replace()`와 `Nll.PhaseDRuntimeBundle.ps1`은
   과거 start/completion 소스의 특정 문자열,
@@ -190,9 +215,8 @@ pending 정리, 관리 DB 가용성, hosts 복원을 확인한다. 이 확인 �
 - 변경 전 coordinator와 150/151 × static-data variant 유무 4조합의 start/completion 출력이
   byte-equivalent임을 합성 fixture 및 실제 hash-pinned 부모 템플릿으로 각각 확인했다.
   합성 출력의 고정 hash와 구문·분기·따옴표 검사를 Windows 기본 회귀 gate에 넣었다.
-- **S-05 전체 완료는 아니다.** 치환은 adapter 내부에 격리했지만 과거 문자열/부모 템플릿 의존은
-  남아 있다. 다음 단계는 동일 입력 계약으로 동작하는 parameterized runner를 별도 대조하고,
-  설치 조합 검증 및 운영자 실게임 인수 후 전환하는 것이다. 기존 템플릿 삭제는 하지 않는다.
+- 당시에는 치환을 adapter 내부에 격리한 1차 분리만 완료했고 부모 템플릿 의존이 남아 있었다.
+  이후 위 1~6을 거쳐 현행 고정 실행기로 전환했다. 기존 템플릿 파일 자체는 삭제하지 않았다.
 
 S-04/S-05 이번 검증 근거: `artifacts/stabilization/2026-09-08-preparation-contract/`.
 최초 소스/오프라인 검증에는 설치 앱 배포·실게임·운영 DB 수정을 포함하지 않았다.

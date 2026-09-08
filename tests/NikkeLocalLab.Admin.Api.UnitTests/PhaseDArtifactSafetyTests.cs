@@ -7,9 +7,13 @@ public sealed class PhaseDArtifactSafetyTests
   {
     var root = FindRepositoryRoot();
     var coordinator = File.ReadAllText(Path.Combine(root, "scripts", "invoke-nll-phase-d-execution.ps1"));
-    Assert.Contains("New-PhaseDLaunchToolText -Specification $launchToolInput", coordinator, StringComparison.Ordinal);
+    Assert.Contains("New-PhaseDRunnerSpecification -LaunchInput $runnerLaunchInput", coordinator, StringComparison.Ordinal);
+    Assert.DoesNotContain("Nll.PhaseDLaunchTools.ps1", coordinator, StringComparison.Ordinal);
+    Assert.DoesNotContain("$parentStart", coordinator, StringComparison.Ordinal);
+    Assert.DoesNotContain("$parentCompletion", coordinator, StringComparison.Ordinal);
     Assert.Contains("Get-PhaseDPreparation -RepositoryRoot $RepositoryRoot", coordinator, StringComparison.Ordinal);
-    coordinator += File.ReadAllText(Path.Combine(root, "scripts", "Nll.PhaseDLaunchTools.ps1"));
+    coordinator += File.ReadAllText(Path.Combine(root, "scripts", "Nll.PhaseDRunnerStart.ps1"));
+    coordinator += File.ReadAllText(Path.Combine(root, "scripts", "Nll.PhaseDRunnerComplete.ps1"));
     coordinator += File.ReadAllText(Path.Combine(root, "scripts", "Nll.PhaseDPreparation.ps1"));
     var watcher = File.ReadAllText(Path.Combine(root, "scripts", "watch-nll-phase-d-execution.ps1"));
     var recovery = File.ReadAllText(Path.Combine(
@@ -71,7 +75,7 @@ public sealed class PhaseDArtifactSafetyTests
     Assert.Contains("$rankingWirePrefix = 1130781186L", coordinator,
         StringComparison.Ordinal);
     Assert.Contains("$expectedRankingWireScore", coordinator, StringComparison.Ordinal);
-    Assert.Contains("phase_d_ranking_prefix_tool_contract_invalid", coordinator,
+    Assert.Contains("Assert-PhaseDRunnerStartDependencies $runnerSpec", coordinator,
         StringComparison.Ordinal);
     Assert.Contains("parent_server_dll", coordinator, StringComparison.Ordinal);
     Assert.DoesNotContain("applied_server_dll", coordinator, StringComparison.Ordinal);
@@ -149,7 +153,7 @@ public sealed class PhaseDArtifactSafetyTests
     Assert.Contains("NLL_CONTROL_CENTER_PG_CTL", coordinator, StringComparison.Ordinal);
     Assert.Contains("@('stop', '-D', $controlCenterPgData, '-m', 'fast'", coordinator,
         StringComparison.Ordinal);
-    Assert.Contains("$bootstrapLane = 'p2-client-start-v2'", coordinator, StringComparison.Ordinal);
+    Assert.Contains("$BootstrapEvidenceLane = 'p2-client-start-v2'", coordinator, StringComparison.Ordinal);
     Assert.DoesNotContain("'phase-d-client-start-' + $LaunchContextUid", coordinator,
         StringComparison.Ordinal);
     Assert.Contains("Invoke-PhaseDPgCtl", coordinator, StringComparison.Ordinal);
@@ -290,12 +294,10 @@ public sealed class PhaseDArtifactSafetyTests
         materializer,
         StringComparison.Ordinal);
     Assert.Contains("$materializerFailureCode", coordinator, StringComparison.Ordinal);
-    Assert.Contains("phase_d_tool_source_contract_invalid", coordinator, StringComparison.Ordinal);
-    Assert.Contains("$parentCompletionText, $expectedParentDbPattern", coordinator,
-        StringComparison.Ordinal);
-    Assert.Contains("$completionText, $runtimeDbPattern", coordinator, StringComparison.Ordinal);
-    Assert.DoesNotContain("$completionText, [regex]::Escape($runtimeDbSha256))).Count -eq 2",
-        coordinator, StringComparison.Ordinal);
+    Assert.Contains("ExpectedBundleSha256=$runnerBundle.sha256", coordinator, StringComparison.Ordinal);
+    Assert.Contains("(Get-Sha256Hex $dbPath) -ceq $expectedDbSha256", coordinator, StringComparison.Ordinal);
+    Assert.Contains("'phase3b2_epinel_minimal_start_digest_invalid'", coordinator, StringComparison.Ordinal);
+    Assert.DoesNotContain("$completionText", coordinator, StringComparison.Ordinal);
     Assert.Contains("Physical-P0-v1\\hosts.original.bin", coordinator, StringComparison.Ordinal);
     Assert.Contains("PhysicalP2-v2\\hosts.before.bin", coordinator, StringComparison.Ordinal);
     Assert.Contains("phase_d_hosts_baseline_invalid", coordinator, StringComparison.Ordinal);
@@ -469,27 +471,20 @@ public sealed class PhaseDArtifactSafetyTests
     var coordinator = NormalizeLineEndings(File.ReadAllText(Path.Combine(
         root,
         "scripts",
-        "invoke-nll-phase-d-execution.ps1"))) + NormalizeLineEndings(File.ReadAllText(Path.Combine(root, "scripts", "Nll.PhaseDLaunchTools.ps1")));
-
-    Assert.Contains(
-        "phase3b2_epinel_minimal_completion_runtime_stop_failed",
-        coordinator,
-        StringComparison.Ordinal);
-    Assert.Contains("--capture-solo-raid-state true", coordinator, StringComparison.Ordinal);
-    Assert.Contains("--source-db $dbPath", coordinator, StringComparison.Ordinal);
-    Assert.DoesNotContain(
-        "$captureAnchor =\n        '    [IO.File]::WriteAllBytes($dbPath, " +
-        "[IO.File]::ReadAllBytes($dbBeforePath))'",
-        coordinator,
-        StringComparison.Ordinal);
-    Assert.Contains(
-        "$captureAnchor + \"`r`n\" + $captureCommand",
-        coordinator,
-        StringComparison.Ordinal);
-    Assert.DoesNotContain(
-        "$captureCommand + \"`r`n\" + $captureAnchor",
-        coordinator,
-        StringComparison.Ordinal);
+        "invoke-nll-phase-d-execution.ps1")));
+    var completion = NormalizeLineEndings(File.ReadAllText(Path.Combine(
+        root, "scripts", "Nll.PhaseDRunnerComplete.ps1")));
+    var operations = File.ReadAllText(Path.Combine(root, "scripts", "Nll.PhaseDRunnerOperations.ps1"));
+    var stopped = RequiredIndex(completion, "phase3b2_epinel_minimal_completion_runtime_stop_failed");
+    var capture = RequiredIndex(completion,
+        "Invoke-PhaseDRunnerCapture -Specification $Specification -SourceDatabasePath $dbPath", stopped);
+    var restore = RequiredIndex(completion,
+        "[IO.File]::WriteAllBytes($dbPath, [IO.File]::ReadAllBytes($dbBeforePath))", capture);
+    Assert.True(stopped < capture && capture < restore);
+    Assert.Equal(1, CountOccurrences(completion, "Invoke-PhaseDRunnerCapture -Specification"));
+    Assert.Contains("--capture-solo-raid-state true", operations, StringComparison.Ordinal);
+    Assert.Contains("--source-db $SourceDatabasePath", operations, StringComparison.Ordinal);
+    Assert.DoesNotContain("$captureAnchor", coordinator + completion, StringComparison.Ordinal);
     Assert.Contains(
         "C:\\NLL\\ControlCenter\\state\\phase-d-solo-raid",
         coordinator,

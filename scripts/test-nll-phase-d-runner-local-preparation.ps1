@@ -49,7 +49,7 @@ try {
             -ConfigurationPath (Join-Path $repo 'config/appsettings.example.json') -ExecutionRoot $root -LaunchContextUid $uid `
             -RuntimeCandidatePath (Join-Path $PreviousLaunchRoot 'runtime-candidate.json') `
             -LobbyProjectionPath (Join-Path $PreviousLaunchRoot 'lobby-projection.json') `
-            -SeasonNumber 26 -ValidationKind challenge -WeaknessCode $weakness -RunnerEngine parameterized/v1 -ValidateOnly
+            -SeasonNumber 26 -ValidationKind challenge -WeaknessCode $weakness -ValidateOnly
         $r=($result -join "`n") | ConvertFrom-Json
         if ($r.statusCode -cne 'validated_not_started' -or $r.clientStarted -or $r.systemChanged) { throw 'runner_local_preparation_failed' }
         . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1')

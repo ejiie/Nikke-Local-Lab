@@ -93,7 +93,7 @@ rollback/hosts/DB 실패는 최초 원인과 별도 파일에 남깁니다. 적�
 따릅니다. 이후 운영자가 **“문제 없다”로 확인하고 S-04/S-05 착수를 승인**했습니다.
 이를 모든 보스·속성·종료 시점의 인수로 확대하지 않습니다.
 
-현재 S-04/S-05는 1차 전환입니다. 보스·속성·bundle 구성 판정을 UI 준비 명령,
+2026-09-08 S-04/S-05 1차 전환에서는 보스·속성·bundle 구성 판정을 UI 준비 명령,
 Start와 coordinator가 공유하고, 실행문 생성부는 명시적 versioned 입력을 받는 순수 adapter로
 분리했습니다. S26/151 구성은 통과하고 S29 기존 불일치는 차단합니다. 부모 템플릿과의
 출력 동등성은 합성 및 실제 고정 템플릿의 4조합에서 확인했습니다. 상세·남은 검증은
@@ -102,7 +102,7 @@ Start와 coordinator가 공유하고, 실행문 생성부는 명시적 versioned
 `artifacts/stabilization/2026-09-08-preparation-contract/installed.json`을 따릅니다.
 저장소 coordinator도 새 helper를 읽으므로 앱/스크립트 복원 세트를 혼용하지 않습니다.
 이 1차 변경의 실검증은 이후 운영자가 문제없다고 확인했습니다. 공통 parameterized runner의
-새 실게임 인수는 별개입니다.
+새 실게임 인수는 별개이며 아래 2026-09-09 마감에 기록했습니다.
 운영자 화면에서 계정 선택 후 S26/철갑 준비 완료와 S29 기존 불일치 차단을 확인했습니다.
 계정 미선택 시 ‘확인 중’이 남는 UI 문구는 동작 테스트로 재현·수정했으며 editor JS만 추가
 반영했습니다(`account-prompt-installed.json`). 열린 창의 계정 선택은 유지하며 다음 관리도구
@@ -112,12 +112,13 @@ Start와 coordinator가 공유하고, 실행문 생성부는 명시적 versioned
 우선합니다. 새 동작 검사 6개를 Phase 2A2 gate에 추가했으며, editor JS 단독 배포 근거는
 `artifacts/stabilization/2026-09-08-raid-status-summary/`에 둡니다. 실게임 로직·DB 변경은 없습니다.
 
-S-05 본격 전환 1~6 승인 후 고정 실행기·데이터 계약·실행별 코드 봉인과
-coordinator/watcher/recovery 연결을 구현했습니다. 2026-09-09 운영자의 종료 확인과 cold 검사 후
-기본을 `parameterized/v1`로 전환했습니다. legacy는 정리 완료 뒤 다음 실행의 명시적 rollback만
-허용하며 자동 fallback하지 않습니다. 합성 실행/실패/복구 검사와
-실제 S26/151 입력의 read-only `ValidateOnly` 검사는 통과했습니다. **새 경로의 실게임 인수와
-기존 템플릿 의존 제거는 아직 남아 있습니다.** 단계별 증거·기본 전환과 복원 조건은
+S-05 본격 전환 **1~6을 완료**했습니다. 2026-09-09 새 `parameterized/v1` 실행기의
+조기 종료·S26 1덱 완주/결과창·저장/재실행을 운영자가 인수한 뒤 활성 coordinator의
+부모 템플릿 읽기/치환과 legacy 선택 분기를 제거했습니다. 자동 로그는 `startup_only`이므로
+완주는 운영자 인수로만 기록합니다. 실검증한 봉인 코드 12개는 그대로이며 과거 복구 자료도 보존합니다.
+제거 후 실제 S26/151 기본 경로의 read-only `ValidateOnly`도 통과했습니다.
+현재 `legacy/v1` 옵션은 거절하며 rollback은 cold 상태에서 검증된 소스를 복원한 다음 실행에만
+적용합니다. 운영 DB rollback/자동 fallback은 없습니다. 단계별 증거·복원 조건은
 [S-05](STABILIZATION_PLAN.md#s-05--높음--실행-코드의-문자열을-다른-코드의-인터페이스로-사용함)를 따릅니다.
 
 ## 별도 보류
