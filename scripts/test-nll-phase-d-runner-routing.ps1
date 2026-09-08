@@ -15,7 +15,7 @@ $testScriptsRoot=$PSScriptRoot
 $newBody=[scriptblock]::Create('$PSScriptRoot=$testScriptsRoot;' + $branch[0].Clauses[0].Item2.Extent.Text.TrimStart('{').TrimEnd('}'))
 $oldBody=[scriptblock]::Create($branch[0].ElseClause.Statements[0].Extent.Text)
 $parameter=@($ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -ceq 'RunnerEngine' })[0]
-Assert-Test ($parameter.DefaultValue.Value -ceq 'legacy/v1') # rollout gate not yet accepted
+Assert-Test ($parameter.DefaultValue.Value -ceq 'parameterized/v1') # cold cutover; live acceptance still required
 $launchRoot=Join-Path ([IO.Path]::GetTempPath()) 'synthetic-not-created'
 $launchToolInput=@{synthetic=$true}; $preparation=@{bindingSha256=('a'*64)}
 $bossRuntimeVariantProfileSha256='b'*64; $sourceManifestSha256='c'*64; $ValidationKind='challenge'
@@ -43,4 +43,4 @@ $script:rejectBundle=$true; $failed=$false
 try { . $newBody } catch { $failed=$_.Exception.Message -ceq 'phase_d_runner_bundle_invalid' }
 Assert-Test ($failed -and $script:legacyCalls -eq 1) # must not retry another engine
 Assert-Test (-not (Test-Path -LiteralPath $launchRoot))
-'Runner routing: legacy default, explicit fixed engine, mapping bindings and no automatic fallback passed.'
+'Runner routing: fixed engine default, explicit legacy rollback, mapping bindings and no automatic fallback passed.'

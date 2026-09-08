@@ -15,7 +15,7 @@ param(
     [switch]$ValidateOnly,
     [ValidatePattern('^[0-9a-f]{64}$')] [string]$ExpectedPreparationBindingSha256,
     [string]$RuntimeSelectionPath = 'C:\NLL\ControlCenter\runtime-selection.private.json',
-    [ValidateSet('legacy/v1','parameterized/v1')][string]$RunnerEngine = 'legacy/v1'
+    [ValidateSet('legacy/v1','parameterized/v1')][string]$RunnerEngine = 'parameterized/v1'
 )
 
 $ErrorActionPreference = 'Stop'

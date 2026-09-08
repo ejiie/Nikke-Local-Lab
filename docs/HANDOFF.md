@@ -113,8 +113,9 @@ Start와 coordinator가 공유하고, 실행문 생성부는 명시적 versioned
 `artifacts/stabilization/2026-09-08-raid-status-summary/`에 둡니다. 실게임 로직·DB 변경은 없습니다.
 
 S-05 본격 전환 1~6 승인 후 고정 실행기·데이터 계약·실행별 코드 봉인과
-coordinator/watcher/recovery 연결을 구현했습니다. 현재 기본은 `legacy/v1`이며 새 경로는
-명시적 `-RunnerEngine parameterized/v1`에서만 선택합니다. 합성 실행/실패/복구 검사와
+coordinator/watcher/recovery 연결을 구현했습니다. 2026-09-09 운영자의 종료 확인과 cold 검사 후
+기본을 `parameterized/v1`로 전환했습니다. legacy는 정리 완료 뒤 다음 실행의 명시적 rollback만
+허용하며 자동 fallback하지 않습니다. 합성 실행/실패/복구 검사와
 실제 S26/151 입력의 read-only `ValidateOnly` 검사는 통과했습니다. **새 경로의 실게임 인수와
 기존 템플릿 의존 제거는 아직 남아 있습니다.** 단계별 증거·기본 전환과 복원 조건은
 [S-05](STABILIZATION_PLAN.md#s-05--높음--실행-코드의-문자열을-다른-코드의-인터페이스로-사용함)를 따릅니다.

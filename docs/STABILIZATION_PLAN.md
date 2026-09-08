@@ -133,9 +133,11 @@ exact persistence → terminal state → pending cleanup이다. 실패 후 legac
 실행기 rollback을 이유로 운영 DB를 과거 상태로 되돌리지 않는다.
 새 진단 HTTP 계층, client/server DLL 변경, 리소스/음성 정책 변경, P-01~P-09,
 S29 repin, 150 폴더 이동은 제외한다. 기존 seed DB/출처 의존은 코드 템플릿 의존과 구분한다.
-현재: 1~4 소스와 오프라인 검사를 구현했다. coordinator의 기본값은 여전히 `legacy/v1`이고,
-`-RunnerEngine parameterized/v1`에서만 고정 실행기를 선택한다. 5의 실제 설치 입력을 쓰는
-비실행 준비 검사는 통과했지만, 기본 전환·실게임 인수와 6의 기존 경로 제거는 미완료다.
+현재: 1~4 소스와 오프라인 검사를 구현했다. 2026-09-09 운영자의 종료 확인 후 게임·관리도구·PG·
+watcher/recovery 프로세스와 active pointer/pending 부재를 확인하고 coordinator 기본값을
+`parameterized/v1`로 전환했다. 5의 실제 설치 입력을 쓰는 비실행 준비 검사는 통과했지만,
+새 기본 경로의 실게임 인수와 6의 기존 경로 제거는 미완료다. `-RunnerEngine legacy/v1`은
+정리 완료 후 다음 실행의 명시적 rollback 용도로만 유지하며 자동 fallback하지 않는다.
 
 - 기준선은 운영자가 인수한 실행의 최종 `Start-PhaseD-Derived.ps1` / `Complete-PhaseD-Derived.ps1`다.
   SHA-256은 각각 `0d322821ef27fa2dc9069b004ea4f48cbc3835da072a8d3931ca5ef2d9e2ff74`,
@@ -167,7 +169,7 @@ S29 repin, 150 폴더 이동은 제외한다. 기존 seed DB/출처 의존은 �
   폐기 PostgreSQL 105개도 통과하고 stop/restart checkpoint 및 임시 cluster 제거를 확인했다.
   근거: `artifacts/stabilization/lifecycle-postgresql/667820ac1bd44d91b03f6a780ac320b4/receipt.json`.
   후보 소스 사본은 `artifacts/stabilization/2026-09-08-s05-runner/candidate-source/`에 보존한다.
-  기본 실행기 전환과 실게임 시작은 아직 하지 않았다. client/Epinel DLL, 운영 계정 데이터,
+  위 오프라인 검증 당시에는 기본 실행기 전환과 실게임 시작을 하지 않았다. client/Epinel DLL, 운영 계정 데이터,
   스키마, 음성 설정은 바꾸지 않았다.
 
 5의 인수 순서는 새 기본 실행기를 cold 상태에서 적용 → 로비 전 종료/재실행 → S26 1덱
