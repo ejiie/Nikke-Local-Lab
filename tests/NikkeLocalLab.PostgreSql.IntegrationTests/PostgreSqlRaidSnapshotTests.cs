@@ -19,7 +19,7 @@ public sealed class PostgreSqlRaidSnapshotTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     Assert.Equal(0, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     var staticArtifact = Artifact("synthetic-static-data");

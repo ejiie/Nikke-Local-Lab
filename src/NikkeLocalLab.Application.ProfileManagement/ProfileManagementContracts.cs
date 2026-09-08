@@ -153,7 +153,8 @@ public sealed record SaveAsProfileCommand(
     EntityUid ExpectedSourceProfileRevisionUid,
     EntityUid? CandidateDraftUid,
     Sha256Digest? CandidateSha256,
-    Sha256Digest ExpectedDiffSha256);
+    Sha256Digest ExpectedDiffSha256,
+    string? AccountLabel = null);
 
 public sealed record ProfileWriteReceipt(
     EntityUid OperationUid,
@@ -175,6 +176,80 @@ public sealed record SourceFreeImportDraftProjection(
     string DerivationKind,
     EntityUid? PreviousDraftUid,
     IReadOnlyList<ImportReviewedOverrideProjection> ReviewedOverrides);
+
+public sealed record FetchedAccountSnapshotProjection(
+    EntityUid SnapshotUid,
+    EntityUid TargetAccountUid,
+    EntityUid SanitizedDraftUid,
+    DateTimeOffset CapturedAtUtc,
+    string? DisplayName,
+    int? CommanderLevel,
+    string CompletenessStatusCode,
+    int RosterCount,
+    int CharacterDetailCount,
+    int EquipmentCharacterCount,
+    int MissingCharacterCount,
+    Sha256Digest CanonicalSnapshotSha256,
+    DateTimeOffset ImportedAtUtc,
+    bool IsCurrentWorkspaceSnapshot,
+    FetchedProgressionObservationProjection? Progression);
+
+public sealed record FetchedLobbyFieldDiffProjection(
+    string FieldCode,
+    string ValueKind,
+    string? BeforeText,
+    string? AfterText,
+    int? BeforeInteger,
+    int? AfterInteger);
+
+public sealed record FetchedLobbyDiffProjection(
+    Sha256Digest DiffSha256,
+    EntityUid SnapshotUid,
+    Sha256Digest SnapshotSha256,
+    EntityUid TargetAccountUid,
+    EntityUid ExpectedLobbyRevisionUid,
+    IReadOnlyList<string> Fields,
+    IReadOnlyList<FetchedLobbyFieldDiffProjection> Changes);
+
+public sealed record PreviewFetchedLobbyDiffCommand(
+    EntityUid OperationUid,
+    EntityUid SnapshotUid,
+    EntityUid TargetAccountUid,
+    EntityUid ExpectedLobbyRevisionUid,
+    IReadOnlyList<string> Fields);
+
+public sealed record ApplyFetchedLobbyCommand(
+    EntityUid OperationUid,
+    EntityUid SnapshotUid,
+    EntityUid TargetAccountUid,
+    EntityUid ExpectedLobbyRevisionUid,
+    Sha256Digest ExpectedDiffSha256,
+    IReadOnlyList<string> Fields);
+
+public sealed record ApplyFetchedLobbyProjection(
+    FetchedLobbyDiffProjection Diff,
+    LobbyPresentationProjection Lobby);
+
+public sealed record FetchedProgressionObservationProjection(
+    string ContractId,
+    string CompletenessStatusCode,
+    int AvailableComponentCount,
+    int DerivedComponentCount,
+    int UnavailableComponentCount,
+    int? CompletedScenarioCount,
+    int? MainQuestCompletedCount,
+    int? MainQuestRewardClaimedCount,
+    int? ContentsOpenUnlockedCount,
+    int? StageClearHistoryCount,
+    int? TriggerCount,
+    Sha256Digest CanonicalObservationSha256);
+
+public sealed record RegisterFetchedAccountSnapshotCommand(
+    EntityUid TargetAccountUid,
+    EntityUid ExpectedProfileRevisionUid,
+    string CanonicalSnapshotJson,
+    string CanonicalSanitizedDraftJson,
+    string? CanonicalProgressionObservationJson = null);
 
 public sealed record ProfileObservationProjection(
     EntityUid CharacterUid,
@@ -362,13 +437,19 @@ public sealed record SaveLobbyPresentationCommand
 
 public static class ProfileManagementText
 {
+  public static string NormalizeAccountLabel(string value) =>
+      NormalizeHumanLabel(value, 64, "account_label_invalid");
+
   public static string NormalizeDisplayName(string value)
+      => NormalizeHumanLabel(value, 32, "lobby_presentation_value_invalid");
+
+  private static string NormalizeHumanLabel(string value, int maximumLength, string failureCode)
   {
     if (value is null)
     {
       throw new ProfileManagementException(
           ProfileManagementFailureKind.InvalidRequest,
-          "lobby_presentation_value_invalid");
+          failureCode);
     }
 
     var normalized = value.Trim().Normalize(NormalizationForm.FormC);
@@ -377,7 +458,7 @@ public static class ProfileManagementText
     {
       throw new ProfileManagementException(
           ProfileManagementFailureKind.InvalidRequest,
-          "lobby_presentation_value_invalid");
+          failureCode);
     }
 
     var count = 0;
@@ -389,7 +470,7 @@ public static class ProfileManagementText
       {
         throw new ProfileManagementException(
             ProfileManagementFailureKind.InvalidRequest,
-            "lobby_presentation_value_invalid");
+            failureCode);
       }
 
       var category = Rune.GetUnicodeCategory(rune);
@@ -397,18 +478,18 @@ public static class ProfileManagementText
       {
         throw new ProfileManagementException(
             ProfileManagementFailureKind.InvalidRequest,
-            "lobby_presentation_value_invalid");
+            failureCode);
       }
 
       count++;
       remaining = remaining[consumed..];
     }
 
-    if (count is < 1 or > 32)
+    if (count < 1 || count > maximumLength)
     {
       throw new ProfileManagementException(
           ProfileManagementFailureKind.InvalidRequest,
-          "lobby_presentation_value_invalid");
+          failureCode);
     }
 
     return normalized;
@@ -513,6 +594,39 @@ public sealed record AccountBootstrapProjection(
 
 public interface IProfileManagementService
 {
+  Task<IReadOnlyList<AccountSummaryProjection>> ListAccountsAsync(
+      CancellationToken cancellationToken = default);
+
+  Task<AccountWorkspaceProjection?> GetAccountWorkspaceAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default);
+
+  Task<AccountRevisionHistoryProjection?> GetAccountRevisionHistoryAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default);
+
+  Task<AccountSummaryProjection> RenameAccountAsync(
+      RenameAccountCommand command,
+      CancellationToken cancellationToken = default);
+
+  Task<SaveAccountWorkspaceReceipt> SaveAccountWorkspaceAsync(
+      SaveAccountWorkspaceCommand command,
+      CancellationToken cancellationToken = default);
+
+  Task<IReadOnlyList<WorkspaceSaveRecoveryProjection>> GetWorkspaceSaveRecoveryAsync(
+      EntityUid accountUid, CancellationToken cancellationToken = default);
+
+  Task<SaveAccountWorkspaceReceipt> ResumeWorkspaceSaveAsync(
+      ResumeWorkspaceSaveCommand command, CancellationToken cancellationToken = default);
+
+  Task<RuntimeProjectionCandidate?> ExportRuntimeProjectionCandidateAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default);
+
+  Task<RuntimeProjectionSnapshot?> GetRuntimeProjectionSnapshotAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default);
+
   Task<AccountBootstrapProjection?> GetCurrentBootstrapAsync(
       EntityUid accountUid,
       CancellationToken cancellationToken = default);
@@ -544,6 +658,26 @@ public interface IProfileManagementService
 
   Task<SourceFreeImportDraftProjection?> GetImportDraftAsync(
       EntityUid draftUid,
+      CancellationToken cancellationToken = default);
+
+  Task<FetchedAccountSnapshotProjection> RegisterFetchedAccountSnapshotAsync(
+      RegisterFetchedAccountSnapshotCommand command,
+      CancellationToken cancellationToken = default);
+
+  Task<FetchedAccountSnapshotProjection?> GetFetchedAccountSnapshotAsync(
+      EntityUid snapshotUid,
+      CancellationToken cancellationToken = default);
+
+  Task<FetchedAccountSnapshotProjection?> GetLatestFetchedAccountSnapshotAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default);
+
+  Task<FetchedLobbyDiffProjection> PreviewFetchedLobbyDiffAsync(
+      PreviewFetchedLobbyDiffCommand command,
+      CancellationToken cancellationToken = default);
+
+  Task<ApplyFetchedLobbyProjection> ApplyFetchedLobbyAsync(
+      ApplyFetchedLobbyCommand command,
       CancellationToken cancellationToken = default);
 
   Task<ProfileDiffProjection> PreviewImportDiffAsync(
@@ -604,6 +738,39 @@ public sealed class UnavailableProfileManagementService : IProfileManagementServ
       ProfileManagementFailureKind.Unavailable,
       "profile_management_not_configured");
 
+  public Task<IReadOnlyList<AccountSummaryProjection>> ListAccountsAsync(
+      CancellationToken cancellationToken = default) => throw Unavailable();
+
+  public Task<AccountWorkspaceProjection?> GetAccountWorkspaceAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default) => throw Unavailable();
+
+  public Task<AccountRevisionHistoryProjection?> GetAccountRevisionHistoryAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default) => throw Unavailable();
+
+  public Task<AccountSummaryProjection> RenameAccountAsync(
+      RenameAccountCommand command,
+      CancellationToken cancellationToken = default) => throw Unavailable();
+
+  public Task<SaveAccountWorkspaceReceipt> SaveAccountWorkspaceAsync(
+      SaveAccountWorkspaceCommand command,
+      CancellationToken cancellationToken = default) => throw Unavailable();
+
+  public Task<IReadOnlyList<WorkspaceSaveRecoveryProjection>> GetWorkspaceSaveRecoveryAsync(
+      EntityUid accountUid, CancellationToken cancellationToken = default) => throw Unavailable();
+
+  public Task<SaveAccountWorkspaceReceipt> ResumeWorkspaceSaveAsync(
+      ResumeWorkspaceSaveCommand command, CancellationToken cancellationToken = default) => throw Unavailable();
+
+  public Task<RuntimeProjectionCandidate?> ExportRuntimeProjectionCandidateAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default) => throw Unavailable();
+
+  public Task<RuntimeProjectionSnapshot?> GetRuntimeProjectionSnapshotAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default) => throw Unavailable();
+
   public Task<AccountBootstrapProjection?> GetCurrentBootstrapAsync(
       EntityUid accountUid,
       CancellationToken cancellationToken = default) => throw Unavailable();
@@ -635,6 +802,26 @@ public sealed class UnavailableProfileManagementService : IProfileManagementServ
 
   public Task<SourceFreeImportDraftProjection?> GetImportDraftAsync(
       EntityUid draftUid,
+      CancellationToken cancellationToken = default) => throw Unavailable();
+
+  public Task<FetchedAccountSnapshotProjection> RegisterFetchedAccountSnapshotAsync(
+      RegisterFetchedAccountSnapshotCommand command,
+      CancellationToken cancellationToken = default) => throw Unavailable();
+
+  public Task<FetchedAccountSnapshotProjection?> GetFetchedAccountSnapshotAsync(
+      EntityUid snapshotUid,
+      CancellationToken cancellationToken = default) => throw Unavailable();
+
+  public Task<FetchedAccountSnapshotProjection?> GetLatestFetchedAccountSnapshotAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default) => throw Unavailable();
+
+  public Task<FetchedLobbyDiffProjection> PreviewFetchedLobbyDiffAsync(
+      PreviewFetchedLobbyDiffCommand command,
+      CancellationToken cancellationToken = default) => throw Unavailable();
+
+  public Task<ApplyFetchedLobbyProjection> ApplyFetchedLobbyAsync(
+      ApplyFetchedLobbyCommand command,
       CancellationToken cancellationToken = default) => throw Unavailable();
 
   public Task<ProfileDiffProjection> PreviewImportDiffAsync(

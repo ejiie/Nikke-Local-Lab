@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:runtime-projection-candidate:v1",
+  "title": "RuntimeProjectionCandidateV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "candidateSha256",
+    "accountUid",
+    "accountLabel",
+    "baseRevisions",
+    "validationStatusCode",
+    "validationReasonCodes",
+    "values"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "nll/runtime-projection-candidate/v1" },
+    "candidateSha256": { "$ref": "#/$defs/sha256" },
+    "accountUid": { "$ref": "#/$defs/uuid" },
+    "accountLabel": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "baseRevisions": { "$ref": "account-workspace.schema.json#/$defs/revisions" },
+    "validationStatusCode": { "enum": ["ready", "unresolved", "invalid"] },
+    "validationReasonCodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/controlledCode" }
+    },
+    "values": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fieldCode", "subjectUid", "status"],
+        "properties": {
+          "fieldCode": { "$ref": "#/$defs/controlledCode" },
+          "subjectUid": {
+            "oneOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+          },
+          "status": { "enum": ["ready", "unresolved", "not_applicable"] },
+          "integerValue": { "type": ["integer", "null"] },
+          "booleanValue": { "type": ["boolean", "null"] },
+          "referenceUid": {
+            "oneOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+          },
+          "unscaledValue": { "type": ["integer", "null"] },
+          "decimalScale": { "type": ["integer", "null"], "minimum": 0, "maximum": 12 },
+          "controlledValue": { "type": ["string", "null"] },
+          "reasonCode": {
+            "oneOf": [{ "$ref": "#/$defs/controlledCode" }, { "type": "null" }]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "controlledCode": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,127}$" }
+  }
+}

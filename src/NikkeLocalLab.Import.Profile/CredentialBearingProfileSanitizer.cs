@@ -342,6 +342,7 @@ public sealed class CredentialBearingProfileSanitizer
           "character_alias",
           ProfileImportDiagnosticScope.Catalog);
       if (resolvedCharacter.CharacterUid.Value == Guid.Empty ||
+          !Enum.IsDefined(resolvedCharacter.Rarity) ||
           !Enum.IsDefined(resolvedCharacter.CombatRole) ||
           !Enum.IsDefined(resolvedCharacter.Manufacturer) ||
           !Enum.IsDefined(resolvedCharacter.WeaponClass) ||
@@ -378,7 +379,8 @@ public sealed class CredentialBearingProfileSanitizer
             resolver);
         equipment.Add(resolvedEquipment);
         if (resolvedEquipment.State == ProfileImportAttachmentState.Equipped &&
-            resolvedEquipment.ResolvedManufacturerMatched?.Status != ProfileImportFactStatus.Ready)
+            resolvedEquipment.ResolvedManufacturerMatched?.Status ==
+                ProfileImportFactStatus.Unresolved)
         {
           unresolvedManufacturerCount++;
         }
@@ -387,9 +389,11 @@ public sealed class CredentialBearingProfileSanitizer
       var collection = ResolveCollection(detail, resolvedCharacter, localIdentitySecret, resolver);
       var level = ResolveLevel(roster.Level, detail.Level, options.CharacterLevelAuthority);
       var bond = detail.BondLevel == 0
-          ? ProfileImportFact<int>.Unresolved("bond_level_zero_semantics_unresolved")
+          ? resolvedCharacter.Rarity == ProfileImportRarity.R
+              ? ProfileImportFact<int>.NotApplicable()
+              : ProfileImportFact<int>.Unresolved("bond_level_zero_semantics_unresolved")
           : ProfileImportFact<int>.Ready(detail.BondLevel);
-      if (detail.BondLevel == 0)
+      if (bond.Status == ProfileImportFactStatus.Unresolved)
       {
         unresolvedBondCount++;
       }
@@ -485,10 +489,11 @@ public sealed class CredentialBearingProfileSanitizer
     var isProfileWriteReady = canMaterialize &&
         orderedBuilds.All(static build =>
             build.Level.ResolvedBattleLevel.Status == ProfileImportFactStatus.Ready &&
-            build.ResolvedBondLevel.Status == ProfileImportFactStatus.Ready &&
+            build.ResolvedBondLevel.Status != ProfileImportFactStatus.Unresolved &&
             build.Equipment.All(static equipment =>
                 equipment.State == ProfileImportAttachmentState.Unequipped ||
-                equipment.ResolvedManufacturerMatched?.Status == ProfileImportFactStatus.Ready));
+                equipment.ResolvedManufacturerMatched?.Status !=
+                    ProfileImportFactStatus.Unresolved));
     var draft = new SanitizedProfileDraft(
         provenance,
         resolver.CharacterCatalog,
@@ -591,6 +596,8 @@ public sealed class CredentialBearingProfileSanitizer
         (resolved.Manufacturer.Status == ProfileImportFactStatus.Ready &&
          (!resolved.Manufacturer.Value.HasValue ||
           !Enum.IsDefined(resolved.Manufacturer.Value.Value))) ||
+        (resolved.Tier == 10 &&
+         resolved.Manufacturer.Status != ProfileImportFactStatus.NotApplicable) ||
         resolved.Tier is not (9 or 10) ||
         resolved.MaximumEnhancementLevel is < 0 or > 5)
     {
@@ -600,18 +607,29 @@ public sealed class CredentialBearingProfileSanitizer
     }
 
     var manufacturer = ResolveManufacturer(equipment.ManufacturerCode);
-    if (manufacturer.HasValue &&
-        resolved.Manufacturer.Status == ProfileImportFactStatus.Ready &&
-        resolved.Manufacturer.Value != manufacturer.Value)
+    if ((resolved.Tier == 10 && manufacturer.HasValue) ||
+        (manufacturer.HasValue &&
+         resolved.Manufacturer.Status == ProfileImportFactStatus.Ready &&
+         resolved.Manufacturer.Value != manufacturer.Value))
     {
       throw new ProfileImportFailure(
           "equipment_manufacturer_catalog_mismatch",
           ProfileImportDiagnosticScope.Equipment);
     }
 
-    var matched = manufacturer.HasValue
-        ? ProfileImportFact<bool>.Ready(manufacturer.Value == character.Manufacturer)
-        : ProfileImportFact<bool>.Unresolved("equipment_manufacturer_observation_missing");
+    var matched = resolved.Tier switch
+    {
+      10 when !manufacturer.HasValue =>
+          ProfileImportFact<bool>.NotApplicable(),
+      9 when manufacturer.HasValue =>
+          ProfileImportFact<bool>.Ready(manufacturer.Value == character.Manufacturer),
+      9 when resolved.Manufacturer is
+      { Status: ProfileImportFactStatus.Ready, Value: { } catalogManufacturer } =>
+          ProfileImportFact<bool>.Ready(catalogManufacturer == character.Manufacturer),
+      9 when resolved.Manufacturer.Status == ProfileImportFactStatus.NotApplicable =>
+          ProfileImportFact<bool>.NotApplicable(),
+      _ => ProfileImportFact<bool>.Unresolved("equipment_manufacturer_observation_missing")
+    };
     var lines = new List<SanitizedOverloadLine>(3);
     for (var index = 0; index < equipment.OptionReferences.Count; index++)
     {
@@ -638,10 +656,10 @@ public sealed class CredentialBearingProfileSanitizer
       if (option.SourceRawValue != effect.SourceRawValue ||
           option.OptionDefinitionUid.Value == Guid.Empty ||
           option.Unit != ProfileImportValueUnit.Ratio ||
-          option.SourceRawValue == 0 || option.SourceRawValue < -int.MaxValue ||
-          option.SourceRawValue > int.MaxValue ||
-          option.ApplicationValue.UnscaledValue != option.SourceRawValue ||
-          option.ApplicationValue.DecimalScale != 4)
+          option.SourceRawValue == 0 || option.SourceRawValue == long.MinValue ||
+          Math.Abs(option.SourceRawValue) > int.MaxValue ||
+          option.ApplicationValue.DecimalScale != 4 ||
+          option.ApplicationValue.UnscaledValue != Math.Abs(option.SourceRawValue))
       {
         throw new ProfileImportFailure(
             "overload_exact_value_mismatch",

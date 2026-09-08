@@ -1,0 +1,119 @@
+diff --git a/EpinelPS/LobbyServer/SafeRequestStageTrace.cs b/EpinelPS/LobbyServer/SafeRequestStageTrace.cs
+index 70b1a5a..2d9a81e 100644
+--- a/EpinelPS/LobbyServer/SafeRequestStageTrace.cs
++++ b/EpinelPS/LobbyServer/SafeRequestStageTrace.cs
+@@ -13,6 +13,30 @@ public static class SafeRequestStageTrace
+ 
+     public static long WriteFailureCount => Interlocked.Read(ref writeFailureCount);
+ 
++    public static string GetRequestStageCode(string? path)
++    {
++        if (string.IsNullOrEmpty(path) || path == "/") return "root";
++        if (path.StartsWith("/prdenv/", StringComparison.OrdinalIgnoreCase)) return "asset_prdenv";
++        if (path.StartsWith("/PC/", StringComparison.OrdinalIgnoreCase)) return "asset_pc";
++        if (path.StartsWith("/media/", StringComparison.OrdinalIgnoreCase)) return "asset_media";
++        if (path.StartsWith("/route/", StringComparison.OrdinalIgnoreCase)) return "route_discovery";
++        if (path.StartsWith("/account/", StringComparison.OrdinalIgnoreCase)) return "account_api";
++        if (path.StartsWith("/intl/", StringComparison.OrdinalIgnoreCase)) return "intl_api";
++        if (path.StartsWith("/v1/", StringComparison.OrdinalIgnoreCase)) return "lobby_api";
++        if (path.StartsWith("/rqd/", StringComparison.OrdinalIgnoreCase)) return "rqd_sync";
++        return "other_local_endpoint";
++    }
++
++    public static void WriteRequest(
++        string transitionCode, string requestStageCode, int? httpStatusCode = null)
++    {
++        WriteCore(
++            transitionCode,
++            handlerTypeCode: null,
++            handlerRegistered: null,
++            requestStageCode,
++            httpStatusCode);
++    }
++
+     public static void Write(string transitionCode, Type? handlerType, bool handlerRegistered)
+     {
++        WriteCore(transitionCode, handlerType?.FullName ?? "unregistered_path",
++            handlerRegistered, requestStageCode: null, httpStatusCode: null);
++    }
++
++    private static void WriteCore(string transitionCode, string? handlerTypeCode,
++        bool? handlerRegistered, string? requestStageCode, int? httpStatusCode)
++    {
+         string? outputPath = Environment.GetEnvironmentVariable(
+             OutputPathEnvironmentVariable,
+             EnvironmentVariableTarget.Process);
+@@ -23,7 +47,6 @@ public static class SafeRequestStageTrace
+ 
+         try
+         {
+-            string handlerTypeCode = handlerType?.FullName ?? "unregistered_path";
+             var observation = new
+             {
+                 schemaVersion = 1,
+@@ -31,7 +54,9 @@ public static class SafeRequestStageTrace
+                 ordinal = Interlocked.Increment(ref ordinal),
+                 transitionCode,
+                 handlerTypeCode,
+-                handlerRegistered
++                handlerRegistered,
++                requestStageCode,
++                httpStatusCode
+             };
+             string line = JsonSerializer.Serialize(observation) + "\n";
+             byte[] bytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
+diff --git a/EpinelPS/Program.cs b/EpinelPS/Program.cs
+index 7f5ac1f..02a589c 100644
+--- a/EpinelPS/Program.cs
++++ b/EpinelPS/Program.cs
+@@ -150,6 +150,22 @@ internal class Program
+ 
+ 
+             WebApplication app = builder.Build();
++            app.Use(async (context, next) =>
++            {
++                string requestStageCode = SafeRequestStageTrace.GetRequestStageCode(
++                    context.Request.Path.Value);
++                SafeRequestStageTrace.WriteRequest("request_started", requestStageCode);
++                try
++                {
++                    await next(context);
++                    SafeRequestStageTrace.WriteRequest(
++                        "request_completed", requestStageCode, context.Response.StatusCode);
++                }
++                catch
++                {
++                    SafeRequestStageTrace.WriteRequest(
++                        "request_failed", requestStageCode, context.Response.StatusCode);
++                    throw;
++                }
++            });
+             CreateDbIfNotExists(app);
+             app.UseDefaultFiles();
+             app.UseStaticFiles();
+diff --git a/tests/EpinelPS.HandlerIsolation.Tests/HandlerFactoryIsolationTests.cs b/tests/EpinelPS.HandlerIsolation.Tests/HandlerFactoryIsolationTests.cs
+index 0fae722..e69078e 100644
+--- a/tests/EpinelPS.HandlerIsolation.Tests/HandlerFactoryIsolationTests.cs
++++ b/tests/EpinelPS.HandlerIsolation.Tests/HandlerFactoryIsolationTests.cs
+@@ -104,6 +104,19 @@ public sealed class HandlerFactoryIsolationTests
+             Assert.Equal("EpinelPS.LobbyServer.Soloraid", registration.HandlerType.Namespace));
+     }
+ 
++    [Theory]
++    [InlineData("/prdenv/private/file", "asset_prdenv")]
++    [InlineData("/PC/private/file", "asset_pc")]
++    [InlineData("/media/private/file", "asset_media")]
++    [InlineData("/route/private", "route_discovery")]
++    [InlineData("/account/private", "account_api")]
++    [InlineData("/intl/private", "intl_api")]
++    [InlineData("/v1/private", "lobby_api")]
++    [InlineData("/unknown/private", "other_local_endpoint")]
++    public void Request_stage_classification_never_returns_raw_path(
++        string path, string expected)
++    {
++        Assert.Equal(expected, SafeRequestStageTrace.GetRequestStageCode(path));
++    }
++
+     [Fact]
+     public async Task Opt_in_request_stage_trace_excludes_path_and_account_identity()
+     {

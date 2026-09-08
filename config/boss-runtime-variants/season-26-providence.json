@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "contractId": "nll/boss-runtime-variant-profile/v1",
+  "profileCode": "season-26-providence",
+  "seasonNumber": 26,
+  "displayNameCode": "providence",
+  "selectedManagerObservation": {
+    "contractId": "nll/season26-classic-target-observation/v2",
+    "canonicalizationCode": "role_path_type_value_tsv_lf_target_projection/v2",
+    "sourceObservationSha256": "925762cd3ef56601916b2e2ae58f929d4dd389055b0d8bcd2176e9abd9b29e69",
+    "canonicalLineCount": 150,
+    "canonicalByteLength": 6689,
+    "trustedSha256": "095eebce4f244f9326aa558302318f85547697b165eb6458735527bd2b0f6d10"
+  },
+  "challengeSelector": {
+    "difficultyTypeCode": "challenge",
+    "waveOrder": 8,
+    "targetCardinality": 1
+  },
+  "sourceAffinity": {
+    "bossElementCode": "electric",
+    "weaknessCode": "iron"
+  },
+  "elementShield": {
+    "modeCode": "none",
+    "fxVariantRequired": false,
+    "fxVariantStatusCode": "not_required"
+  },
+  "transformation": {
+    "modeCode": "target_monster_element_reference",
+    "allowedTableCodes": ["monster"],
+    "preserveElementTable": true,
+    "restrictToTargetMonsterElementIds": true,
+    "rawSourceIdentifiersPersisted": false
+  }
+}

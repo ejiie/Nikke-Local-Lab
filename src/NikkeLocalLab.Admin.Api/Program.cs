@@ -20,6 +20,12 @@ internal static class AdminApiProgram
       RuntimeRootInitializer.Initialize(configuration, options["repository-root"]);
       var connectionString = PostgreSqlConnectionPolicy.ResolveFromEnvironment(
           configuration.DatabaseConnectionStringEnvironmentVariable);
+      var phaseDControlCenter = string.Equals(
+          Environment.GetEnvironmentVariable("NLL_PHASE_D_CONTROL_CENTER"),
+          "1",
+          StringComparison.Ordinal) ||
+          (options.TryGetValue("phase-d-control-center", out var phaseDControlCenterValue) &&
+           string.Equals(phaseDControlCenterValue, "true", StringComparison.Ordinal));
       var policyOptions = configuration.ChallengeOperationalPolicy;
       var initialPolicy =
           global::NikkeLocalLab.Domain.PrivateServer.ChallengeOperationalPolicy
@@ -35,9 +41,11 @@ internal static class AdminApiProgram
                   policyOptions.LocalRankingCapability);
       await using var profileRuntime = await PostgreSqlProfileManagementRuntime.CreateAsync(
           connectionString).ConfigureAwait(false);
-      await using var privateServerRuntime = await PostgreSqlPrivateServerRuntime.CreateAsync(
-          connectionString,
-          initialPolicy).ConfigureAwait(false);
+      await using PostgreSqlPrivateServerRuntime? privateServerRuntime = phaseDControlCenter
+          ? null
+          : await PostgreSqlPrivateServerRuntime.CreateAsync(
+              connectionString,
+              initialPolicy).ConfigureAwait(false);
 
       await using var app = AdminApiHost.Build(
           [],
@@ -45,11 +53,88 @@ internal static class AdminApiProgram
           {
             Port = configuration.AdminPort,
             BootstrapCodeSink = DeliverBootstrapCode,
-            RequirePrivateServerAdministration = true,
+            RequirePrivateServerAdministration = !phaseDControlCenter,
+            RequirePhaseDExecution = true,
             ConfigureServices = services =>
             {
               services.AddSingleton(profileRuntime.Service);
-              services.AddSingleton(privateServerRuntime.Service);
+              if (privateServerRuntime is not null)
+              {
+                services.AddSingleton(privateServerRuntime.Service);
+              }
+              services.AddSingleton<IPhaseDPreparationService>(new PowerShellPhaseDPreparationService(
+                  options["repository-root"], Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                      "System32", "WindowsPowerShell", "v1.0", "powershell.exe")));
+              services.AddSingleton<IPhaseDExecutionService>(provider =>
+                  new FilesystemPhaseDExecutionService(
+                      provider.GetRequiredService<IProfileManagementService>(),
+                      new PhaseDExecutionOptions(
+                          options["repository-root"],
+                          options["config"],
+                          Path.Combine(
+                              options["repository-root"],
+                              "artifacts",
+                              "automation",
+                              "phase-d-executions"),
+                          Path.Combine(
+                              Directory.GetParent(
+                                  Environment.GetEnvironmentVariable("NIKKE_LAB_HOME") ??
+                                  throw new LabConfigurationException("runtime_root_missing"))?.FullName ??
+                              throw new LabConfigurationException("runtime_root_missing"),
+                              "state",
+                              "phase-d-solo-raid"),
+                           Path.Combine(
+                               options["repository-root"],
+                               "scripts",
+                               "invoke-nll-phase-d-execution.ps1"),
+                           Path.Combine(
+                               options["repository-root"],
+                               "scripts",
+                               "recover-nll-phase-d-orphaned-execution.ps1"),
+                           Path.Combine(
+                              Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                              "System32",
+                              "WindowsPowerShell",
+                              "v1.0",
+                              "powershell.exe")),
+                      logger: provider.GetRequiredService<ILogger<FilesystemPhaseDExecutionService>>(),
+                      preparation: provider.GetRequiredService<IPhaseDPreparationService>()));
+              services.AddHostedService<PhaseDLifecycleWorker>();
+              services.AddSingleton<IAccountImportService>(provider =>
+                  new FilesystemAccountImportService(
+                      provider.GetRequiredService<IProfileManagementService>(),
+                      new AccountImportOptions(
+                          options["repository-root"],
+                          options["config"],
+                          Path.Combine(
+                              options["repository-root"],
+                              "scripts",
+                              "invoke-nll-phase-c-fresh-account-fetch.ps1"),
+                          Path.Combine(
+                              options["repository-root"],
+                              "src",
+                              "NikkeLocalLab.Import.Cli",
+                              "bin",
+                              "Release",
+                              "net8.0",
+                              "NikkeLocalLab.Import.Cli.dll"),
+                          Path.Combine(
+                              Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                              "dotnet",
+                              "dotnet.exe"),
+                          Path.Combine(
+                              Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                              "System32",
+                              "WindowsPowerShell",
+                              "v1.0",
+                              "powershell.exe"),
+                          Path.Combine(
+                              Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                              "Database",
+                              "raw",
+                              "nikke_full_scroll_result.json"),
+                          Environment.GetEnvironmentVariable("NIKKE_LAB_HOME") ??
+                              throw new LabConfigurationException("runtime_root_missing"))));
             }
           });
       await app.RunAsync().ConfigureAwait(false);
@@ -83,7 +168,7 @@ internal static class AdminApiProgram
 
   private static IReadOnlyDictionary<string, string> ParseOptions(string[] args)
   {
-    if (args.Length != 4)
+    if (args.Length is not (4 or 6))
     {
       throw new LabConfigurationException("required_option_missing");
     }
@@ -99,8 +184,11 @@ internal static class AdminApiProgram
       }
     }
 
-    if (result.Count != 2 || !result.ContainsKey("config") ||
-        !result.ContainsKey("repository-root"))
+    if (!result.ContainsKey("config") || !result.ContainsKey("repository-root") ||
+        result.Keys.Any(static key => key is not (
+            "config" or "repository-root" or "phase-d-control-center")) ||
+        (result.TryGetValue("phase-d-control-center", out var phaseDValue) &&
+         !string.Equals(phaseDValue, "true", StringComparison.Ordinal)))
     {
       throw new LabConfigurationException("required_option_missing");
     }
@@ -110,6 +198,12 @@ internal static class AdminApiProgram
 
   private static void DeliverBootstrapCode(string code)
   {
+    var sinkPath = Environment.GetEnvironmentVariable("NLL_CONTROL_CENTER_BOOTSTRAP_PATH");
+    if (!string.IsNullOrWhiteSpace(sinkPath) && Path.IsPathFullyQualified(sinkPath))
+    {
+      Directory.CreateDirectory(Path.GetDirectoryName(sinkPath)!);
+      File.WriteAllText(sinkPath, code, new System.Text.UTF8Encoding(false));
+    }
     Console.Error.WriteLine($"Nikke Local Lab one-time admin code: {code}");
   }
 

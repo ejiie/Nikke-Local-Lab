@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:fetched-progression-observation:v1",
+  "title": "FetchedProgressionObservationV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "mainQuestDataSha256",
+    "mainQuestCompletedCount",
+    "completedScenarioCount",
+    "contentsOpenUnlockedCount",
+    "officialUserIdentifierPersisted",
+    "credentialOrSessionPersisted"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "nll/fetched-progression-observation/v1" },
+    "mainQuestDataSha256": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "mainQuestCompletedCount": { "type": ["integer", "null"], "minimum": 0 },
+    "completedScenarioCount": { "type": ["integer", "null"], "minimum": 0 },
+    "contentsOpenUnlockedCount": { "type": ["integer", "null"], "minimum": 0 },
+    "officialUserIdentifierPersisted": { "const": false },
+    "credentialOrSessionPersisted": { "const": false }
+  }
+}

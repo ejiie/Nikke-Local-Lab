@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EpinelRuntimeRoot Condition="'$(EpinelRuntimeRoot)' == ''">E:\NLL\EpinelPS\EpinelPS\bin\Release\net10.0\win-x64</EpinelRuntimeRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="EpinelPS">
+      <HintPath>$(EpinelRuntimeRoot)\EpinelPS.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(EpinelRuntimeRoot)\Newtonsoft.Json.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Microsoft.EntityFrameworkCore">
+      <HintPath>$(EpinelRuntimeRoot)\Microsoft.EntityFrameworkCore.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Microsoft.EntityFrameworkCore.Sqlite">
+      <HintPath>$(EpinelRuntimeRoot)\Microsoft.EntityFrameworkCore.Sqlite.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Microsoft.Data.Sqlite">
+      <HintPath>$(EpinelRuntimeRoot)\Microsoft.Data.Sqlite.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="SQLitePCLRaw.core">
+      <HintPath>$(EpinelRuntimeRoot)\SQLitePCLRaw.core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="SQLitePCLRaw.batteries_v2">
+      <HintPath>$(EpinelRuntimeRoot)\SQLitePCLRaw.batteries_v2.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="SQLitePCLRaw.provider.e_sqlite3">
+      <HintPath>$(EpinelRuntimeRoot)\SQLitePCLRaw.provider.e_sqlite3.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Content Include="$(EpinelRuntimeRoot)\*.dll">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(EpinelRuntimeRoot)\gameconfig.json">
+      <Link>gameconfig.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(EpinelRuntimeRoot)\appsettings.json">
+      <Link>appsettings.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

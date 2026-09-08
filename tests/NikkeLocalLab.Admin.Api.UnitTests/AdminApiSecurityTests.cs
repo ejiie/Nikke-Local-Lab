@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 using NikkeLocalLab.Admin.Api;
 using NikkeLocalLab.Identity;
 using NikkeLocalLab.Provenance;
@@ -10,8 +11,14 @@ using NikkeLocalLab.Provenance;
 namespace NikkeLocalLab.Admin.Api.UnitTests;
 
 [Collection("Admin API environment")]
-public sealed class AdminApiSecurityTests
+public sealed partial class AdminApiSecurityTests
 {
+  [Fact]
+  public void DefaultBodyLimitAcceptsCompleteSourceFreeAccountRegistration()
+  {
+    Assert.Equal(4_194_304, new AdminApiHostOptions().MaximumRequestBodyBytes);
+  }
+
   [Theory]
   [InlineData("1")]
   [InlineData("{}")]
@@ -88,7 +95,7 @@ public sealed class AdminApiSecurityTests
     Assert.Equal("DENY", editor.Headers.GetValues("X-Frame-Options").Single());
     Assert.Contains("default-src 'none'", editor.Headers.GetValues("Content-Security-Policy").Single());
     Assert.False(editor.Headers.Contains("Access-Control-Allow-Origin"));
-    Assert.Contains("관리 Editor", await editor.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    Assert.Contains("지휘관 관리 도구", await editor.Content.ReadAsStringAsync(), StringComparison.Ordinal);
 
     using var rejectedHost = new HttpRequestMessage(HttpMethod.Get, "/editor/");
     rejectedHost.Headers.Host = "example.invalid";
@@ -156,6 +163,26 @@ public sealed class AdminApiSecurityTests
     using var rejected = await fixture.ExchangeBootstrapAsync();
     Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
     Assert.Equal("admin_bootstrap_rejected", await ReadCodeAsync(rejected));
+  }
+
+  [Fact]
+  public async Task ActiveDesktopSessionUsesSlidingWorkPeriodExpiration()
+  {
+    var time = new ManualTimeProvider(DateTimeOffset.UtcNow);
+    await using var fixture = await RunningApi.StartAsync(time, TimeSpan.FromHours(12));
+    _ = await fixture.GetCsrfAsync();
+    time.Advance(TimeSpan.FromHours(11));
+    using var firstRefresh = await fixture.Client.GetAsync("/admin-api/v1/security/csrf");
+    Assert.Equal(HttpStatusCode.OK, firstRefresh.StatusCode);
+
+    time.Advance(TimeSpan.FromHours(11));
+    using var secondRefresh = await fixture.Client.GetAsync("/admin-api/v1/security/csrf");
+    Assert.Equal(HttpStatusCode.OK, secondRefresh.StatusCode);
+
+    time.Advance(TimeSpan.FromHours(12));
+    using var expired = await fixture.Client.GetAsync("/admin-api/v1/security/csrf");
+    Assert.Equal(HttpStatusCode.Unauthorized, expired.StatusCode);
+    Assert.Equal("admin_session_required", await ReadCodeAsync(expired));
   }
 
   [Fact]
@@ -755,6 +782,15 @@ public sealed class AdminApiSecurityTests
     return current?.FullName ?? throw new InvalidOperationException("repository_root_not_found");
   }
 
+  private sealed class ManualTimeProvider(DateTimeOffset utcNow) : TimeProvider
+  {
+    private DateTimeOffset _utcNow = utcNow;
+
+    public override DateTimeOffset GetUtcNow() => _utcNow;
+
+    public void Advance(TimeSpan delta) => _utcNow = _utcNow.Add(delta);
+  }
+
   private sealed class RunningApi : IAsyncDisposable
   {
     private readonly WebApplication _application;
@@ -783,7 +819,10 @@ public sealed class AdminApiSecurityTests
 
     public IReadOnlyList<string> Addresses { get; }
 
-    public static async Task<RunningApi> StartAsync()
+    public static async Task<RunningApi> StartAsync(
+        TimeProvider? timeProvider = null,
+        TimeSpan? sessionLifetime = null,
+        NikkeLocalLab.Application.ProfileManagement.IProfileManagementService? profiles = null)
     {
       string? bootstrapCode = null;
       var application = AdminApiHost.Build(
@@ -792,8 +831,14 @@ public sealed class AdminApiSecurityTests
           {
             Port = 0,
             MaximumRequestBodyBytes = 16_384,
+            AdminSessionLifetime = sessionLifetime ?? TimeSpan.FromHours(12),
             BootstrapCodeSink = code => bootstrapCode = code,
-            AllowUnavailableProfileManagementForTests = true
+            AllowUnavailableProfileManagementForTests = true,
+            ConfigureServices = services =>
+            {
+              if (timeProvider is not null) services.AddSingleton(timeProvider);
+              if (profiles is not null) services.AddSingleton(profiles);
+            }
           });
       await application.StartAsync();
       var addresses = application.Urls.Order(StringComparer.Ordinal).ToArray();

@@ -27,7 +27,48 @@ internal sealed record SaveAsProfileRequest(
     string? OperationUid,
     string? CandidateDraftUid,
     string? CandidateSha256,
-    string? ExpectedDiffSha256);
+    string? ExpectedDiffSha256,
+    string? AccountLabel);
+
+internal sealed record RenameAccountRequest(
+    string? ExpectedAccountLabel,
+    string? AccountLabel);
+
+internal sealed record ResumeWorkspaceSaveRequest(string? OperationUid);
+
+internal sealed record SaveAccountWorkspaceRequest(
+    string? OperationUid,
+    string? ExpectedProfileRevisionUid,
+    string? ExpectedLobbyRevisionUid,
+    string? ExpectedWalletRevisionUid,
+    string? CandidateDraftUid,
+    string? CandidateSha256,
+    string? ExpectedDiffSha256,
+    string? ExpectedAccountLabel,
+    string? AccountLabel,
+    string? DisplayName,
+    int? CommanderLevel,
+    string? ProfileIconSelectionUid,
+    string? ProfileFrameSelectionUid,
+    string? LobbyCharacterSelectionUid,
+    string? LobbyBackgroundSelectionUid,
+    IReadOnlyList<WalletBalanceRequest>? Balances);
+
+internal sealed record RegisterFetchedAccountSnapshotRequest(
+    string? CanonicalSnapshotJson,
+    string? CanonicalSanitizedDraftJson,
+    string? CanonicalProgressionObservationJson);
+
+internal sealed record FetchedLobbyDiffRequest(
+    string? OperationUid,
+    string? TargetAccountUid,
+    IReadOnlyList<string>? Fields);
+
+internal sealed record ApplyFetchedLobbyRequest(
+    string? OperationUid,
+    string? TargetAccountUid,
+    string? ExpectedDiffSha256,
+    IReadOnlyList<string>? Fields);
 
 internal sealed record ImportDiffRequest(
     string? OperationUid,

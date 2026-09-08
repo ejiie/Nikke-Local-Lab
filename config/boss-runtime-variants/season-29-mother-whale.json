@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 3,
+  "contractId": "nll/boss-runtime-variant-profile/v3",
+  "profileCode": "season-29-mother-whale",
+  "seasonNumber": 29,
+  "displayNameCode": "mother-whale",
+  "selectedManagerObservation": {
+    "contractId": "nll/season29-classic-target-observation/v3",
+    "canonicalizationCode": "role_path_type_value_tsv_lf_target_projection/v3",
+    "sourceObservationSha256": "925762cd3ef56601916b2e2ae58f929d4dd389055b0d8bcd2176e9abd9b29e69",
+    "roleLineCounts": [3, 13, 13, 177, 12, 12],
+    "canonicalLineCount": 231,
+    "canonicalByteLength": 11003,
+    "trustedSha256": "7d0d3f249df637d7d8d79de30d402694f70fa66cb4fc5be1c7b07c8848ac691b"
+  },
+  "challengeSelector": {
+    "difficultyTypeCode": "challenge",
+    "waveOrder": 8,
+    "targetCardinality": 1
+  },
+  "sourceAffinity": {
+    "bossElementCode": "electric",
+    "weaknessCode": "iron"
+  },
+  "skillClosure": {
+    "monsterSkillRelationCount": 29,
+    "monsterSkillRecordCount": 29,
+    "passiveStateEffectRecordCount": 1,
+    "rootFunctionRecordCount": 39,
+    "closedFunctionRecordCount": 47,
+    "missingReferenceCount": 0,
+    "canonicalSha256": "0493c4323b06e151299ea3a4106621e14d8cc45c423c585c6599a8c389ed4160"
+  },
+  "behaviorAssembly": {
+    "modeCode": "preserve_exact_external_behavior_tree",
+    "rootReferenceCount": 1,
+    "rootReferenceSetSha256": "d3106c177911b307866ef145db4620045e588c46d02f14ed19a893db9348a571",
+    "assetClosureStatusCode": "resolved",
+    "bundleByteLength": 2415189,
+    "bundleSha256": "4adb06ddb6b325a64c536377c5f7554c26b89524af920f0bf9e4208f9935819a",
+    "graphMatchCount": 1,
+    "nodeCount": 759,
+    "canonicalGraphSha256": "0a5211cdce3c95aabe33fa29d19d4a0507889630ae462913163d84047cf51abf",
+    "taskTypeSetSha256": "335e6910c2b26506195dc6b3bc6a053102d03ccdd8fec5b6bdbbd87b4c92c556",
+    "skillAnimationReferenceSetSha256": "e819b8fb9f5cdc3fd497450794bbb2c21015549da96abfbc81cf0f95f4390258",
+    "partReferenceSetSha256": "99f81d3e50f9ac6030a11957365325da88c80aae80a9a5cab9a720f7dabf1d19",
+    "pointReferenceSetSha256": "5b9db142ea67dc704bc1b521cfce8c06525e99f49013fd3adcfd5bc7752f1434"
+  },
+  "elementShield": {
+    "modeCode": "dynamic_affinity_linked",
+    "functionTypeCode": "immune_other_element",
+    "functionRecordCount": 3,
+    "skillBindingCount": 3,
+    "passiveBindingCount": 1,
+    "functionSetSha256": "d5ed9b4b546b8fb6d4f31ee0c9e16cf92c3b3424858511623b4f888e3c622898",
+    "sourceFxPrefabSetSha256": "16e394178413fc7408c0f6cc446c02fcc90cbb163dab4643c361e17c3c8526c4",
+    "fxVariantRequired": true,
+    "fxVariantStatusCode": "resolved",
+    "fxVariants": [
+      {
+        "bossElementCode": "fire",
+        "mappingSetSha256": "c02c728ac02f111b63dcd8eb9ff83fee867a2eed927d1eccace6463c3acef843",
+        "mappings": [{
+          "sourceFxPrefabSetSha256": "308e6f49d8bfa043d8bb22226f10fc711f28aed98e312bda1a573debe7b35b5e",
+          "targetFxPrefabSetSha256": "c1c2f510568f53feb8d8dc976613d97cc1f7f45bbcf2940a9df1dc2e2fc7c7ca",
+          "assetBundleSetSha256": "4d656f956cdc2e71b03bca730cea04427439119d90bf1ab74a51442a0f5098fb",
+          "assetBundles": [{
+            "sha256": "f3a58dc190949da518514049bd337bed174dcb1d1dcf684442fbb2faaee80661",
+            "byteLength": 533968
+          }],
+          "sourceKindCode": "common"
+        }]
+      },
+      {
+        "bossElementCode": "water",
+        "mappingSetSha256": "f65233ffacb8fc4afc153384cc58ae8874256ccc1e83a84a49fe59d8b8b72077",
+        "mappings": [{
+          "sourceFxPrefabSetSha256": "308e6f49d8bfa043d8bb22226f10fc711f28aed98e312bda1a573debe7b35b5e",
+          "targetFxPrefabSetSha256": "638ea97535aea1d982ee2610f5df6747799781f305fe4f59f2b702febd55a392",
+          "assetBundleSetSha256": "fb8ddd30c1057c15b5b7b98135f0f1f421ea6e1e3a551fe15c5247af77bb764e",
+          "assetBundles": [{
+            "sha256": "5245e2dcf36fb3e28540a040b686dbec558bf16ab148e1af2d1dff68d6388e68",
+            "byteLength": 537593
+          }],
+          "sourceKindCode": "boss_specific"
+        }]
+      },
+      {
+        "bossElementCode": "wind",
+        "mappingSetSha256": "c1884df7038ecd6b585c848ba74ea6d62f9073249d15fa6afd78b181f1174297",
+        "mappings": [{
+          "sourceFxPrefabSetSha256": "308e6f49d8bfa043d8bb22226f10fc711f28aed98e312bda1a573debe7b35b5e",
+          "targetFxPrefabSetSha256": "83a7a8e0c62680b5bfb9a9bdf2ad93d999c3aebc96411a7773ea43da2efc5655",
+          "assetBundleSetSha256": "81fe4658dbdee5f6bac4c3297d367f766c05936dfdaea30f403366aa7c418763",
+          "assetBundles": [{
+            "sha256": "aeedaba9e31d572fa9b3fb6920a0c4e86d741de16a0ff318f4e8ee6cfb5c9918",
+            "byteLength": 508088
+          }],
+          "sourceKindCode": "common"
+        }]
+      },
+      {
+        "bossElementCode": "electric",
+        "mappingSetSha256": "d5a945ada8865133f041d165d97879f718f16098aa00b40a8e3c85ba4d4dd636",
+        "mappings": [{
+          "sourceFxPrefabSetSha256": "308e6f49d8bfa043d8bb22226f10fc711f28aed98e312bda1a573debe7b35b5e",
+          "targetFxPrefabSetSha256": "308e6f49d8bfa043d8bb22226f10fc711f28aed98e312bda1a573debe7b35b5e",
+          "assetBundleSetSha256": "4e1de1f57ddce2e8a25a23f4f5a89708c3657cf9f8f0c21bd9b4b913d024f1c6",
+          "assetBundles": [{
+            "sha256": "bebc94976943391dd031aa55a6e40103889ca3d7ca223e722ae611cce2a22315",
+            "byteLength": 534632
+          }],
+          "sourceKindCode": "boss_specific"
+        }]
+      },
+      {
+        "bossElementCode": "iron",
+        "mappingSetSha256": "cc46d56b2cab4360764aba50197390ace9dc958daf08b1fec37f65ce8abc19ba",
+        "mappings": [{
+          "sourceFxPrefabSetSha256": "308e6f49d8bfa043d8bb22226f10fc711f28aed98e312bda1a573debe7b35b5e",
+          "targetFxPrefabSetSha256": "05b96bfc782a0acda08e2db8b5ec6704b82101d4402774c4faa61dc22ddf71ee",
+          "assetBundleSetSha256": "c82a8c969fb349ef422ddf8349da60a83174b39f75880df1c95247e174972e36",
+          "assetBundles": [{
+            "sha256": "44e22d09888bbd2190018d8450784cb2de3b6469e6a7b3af15ac49d5c018cae5",
+            "byteLength": 535979
+          }],
+          "sourceKindCode": "common"
+        }]
+      }
+    ]
+  },
+  "quickTimeEventAffinity": {
+    "modeCode": "target_monster_linked_element_only",
+    "recordCount": 5,
+    "monsterReferenceCount": 3,
+    "recordSetSha256": "4fe6bfc851254a63ac59bb6e484454c368d032ca61f40cf53962536838ddd186",
+    "immutablePayloadSetSha256": "5070375dd4ba07fb18d9dd2b1dc683c9b59f1604edd45fea95bdb09a4fcc71cd",
+    "sourceElementSetSha256": "a5bc8dcde81ed9dbad6edf4f14b3b8e1201702eaa27ab7f8cb708ffe7f49ddc9",
+    "sourceElementCodes": ["electric"]
+  },
+  "shieldFxTransformNormalization": {
+    "modeCode": "per_execution_target_bundle_overlay",
+    "sourceBossElementCode": "electric",
+    "targetBossElementCodes": ["fire", "wind", "iron"],
+    "variants": [
+      {
+        "bossElementCode": "fire",
+        "sourceBundleSha256": "bebc94976943391dd031aa55a6e40103889ca3d7ca223e722ae611cce2a22315",
+        "sourceBundleByteLength": 534632,
+        "targetBundleSha256": "f3a58dc190949da518514049bd337bed174dcb1d1dcf684442fbb2faaee80661",
+        "targetBundleByteLength": 533968,
+        "variantBundleSha256": "62aedf12e95d566d27bd3dabe61fc1f733fac647eb2e73bd9bd8c2cf6ea10f70",
+        "variantBundleByteLength": 535406,
+        "sourceTransformCount": 14,
+        "targetTransformCount": 14,
+        "matchedTransformCount": 14,
+        "modifiedTransformCount": 4,
+        "matchedTransformValueSetSha256": "60ae8d34268885aa559413a7a90439535522327e646b4d0cc59a42ae55c49224",
+        "nonTransformObjectSetSha256": "92d8154b37fae1948676f9d2357d7936cc4ea2df3397baee6b56fde187502f33"
+      },
+      {
+        "bossElementCode": "wind",
+        "sourceBundleSha256": "bebc94976943391dd031aa55a6e40103889ca3d7ca223e722ae611cce2a22315",
+        "sourceBundleByteLength": 534632,
+        "targetBundleSha256": "aeedaba9e31d572fa9b3fb6920a0c4e86d741de16a0ff318f4e8ee6cfb5c9918",
+        "targetBundleByteLength": 508088,
+        "variantBundleSha256": "8ca6cf7f9c98ffe08ca83399f15f3df1ab929045992c1dc507c5fd20a5abacef",
+        "variantBundleByteLength": 509531,
+        "sourceTransformCount": 14,
+        "targetTransformCount": 14,
+        "matchedTransformCount": 13,
+        "modifiedTransformCount": 6,
+        "matchedTransformValueSetSha256": "8ae8ba57404b376e3b909dc4aea933c8f7b49ebf2c6953e4becc3695d53cc6bb",
+        "nonTransformObjectSetSha256": "fe1e092ca69c067e45f8d67dfd4221531fffe8bbf396475ca64f79faaccbd92f"
+      },
+      {
+        "bossElementCode": "iron",
+        "sourceBundleSha256": "bebc94976943391dd031aa55a6e40103889ca3d7ca223e722ae611cce2a22315",
+        "sourceBundleByteLength": 534632,
+        "targetBundleSha256": "44e22d09888bbd2190018d8450784cb2de3b6469e6a7b3af15ac49d5c018cae5",
+        "targetBundleByteLength": 535979,
+        "variantBundleSha256": "6d067cc68084023db666d9c5f7660d9a27e954e44e5a59e5a8fa72b6f68a55b3",
+        "variantBundleByteLength": 537583,
+        "sourceTransformCount": 14,
+        "targetTransformCount": 14,
+        "matchedTransformCount": 14,
+        "modifiedTransformCount": 4,
+        "matchedTransformValueSetSha256": "60ae8d34268885aa559413a7a90439535522327e646b4d0cc59a42ae55c49224",
+        "nonTransformObjectSetSha256": "21df314291883e06f1c67de6e2a048634b34e9d32bc1f8059ab14cb9a5a7bdba"
+      }
+    ]
+  },
+  "transformation": {
+    "modeCode": "target_monster_element_dynamic_shield_fx_and_qte_element",
+    "allowedTableCodes": ["monster", "function", "quick_time_event"],
+    "preserveElementTable": true,
+    "restrictToTargetMonsterElementIds": true,
+    "rawSourceIdentifiersPersisted": false
+  }
+}

@@ -12,17 +12,153 @@ public sealed class PostgreSqlLocalAccountProfileTests
   private const string ResetToken = "allow-phase1a-disposable-schema-reset";
 
   [Fact]
+  public async Task AccountCubeInventoryPersistsCopiesAndPreservesImmutableHistory()
+  {
+    await using var dataSource = CreateDataSource();
+    await ResetSchemasAsync(dataSource);
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    var catalogs = await PublishSyntheticCatalogsAsync(dataSource, 5);
+    var support = await ReadSupportSelectionsAsync(dataSource, catalogs.Support.CatalogSnapshotUid);
+    var store = new PostgreSqlLocalAccountProfileStore(dataSource, new RandomEntityUidGenerator());
+    var initial = CreateProfile(catalogs, support, 200, null, false);
+    var now = DateTimeOffset.UtcNow;
+    now = now.AddTicks(-(now.Ticks % 10));
+    var created = await store.CreateAsync(new CreateLocalAccountProfileCommand(EntityUid.New(), initial, now));
+    var service = new PostgreSqlProfileManagementService(dataSource, new RandomEntityUidGenerator());
+    var account = created.AccountUid;
+    var revision = created.ProfileTemplateRevisionUid;
+
+    async Task<NikkeLocalLab.Application.ProfileManagement.ProfileWriteReceipt> Save(
+        params NikkeLocalLab.Application.ProfileManagement.ProfileEditOperation[] operations)
+    {
+      var diff = await service.PreviewProfileEditsAsync(new(
+          EntityUid.New(), account, revision, operations));
+      var command = new NikkeLocalLab.Application.ProfileManagement.SaveProfileCommand(
+          EntityUid.New(), account, revision, diff.CandidateDraftUid, diff.CandidateSha256, diff.DiffSha256);
+      var receipt = await service.SaveProfileAsync(command);
+      var replay = await service.SaveProfileAsync(command);
+      Assert.True(replay.IsIdempotentReplay);
+      revision = receipt.ProfileRevision.RevisionUid;
+      return receipt;
+    }
+
+    // Preview must disclose the first legacy completion without changing the old head.
+    var legacyPreview = await service.PreviewProfileEditsAsync(new(EntityUid.New(), account, revision, []));
+    var completion = Assert.Single(legacyPreview.Changes);
+    Assert.Equal("account_cube_level", completion.FieldCode);
+    Assert.Equal(support.CubeUid, completion.SubjectUid);
+    Assert.Null(completion.Before);
+    Assert.Equal(15, completion.After!.IntegerValue);
+    var beforeCompletion = (await store.GetCurrentAsync(account))!;
+    Assert.Equal(created.ProfileTemplateRevisionUid, beforeCompletion.Revision.ProfileTemplateRevisionUid);
+    Assert.Empty(beforeCompletion.Profile.AccountState.Cubes);
+
+    var completed = await Save(); // Explicit legacy completion is not a no-op.
+    Assert.NotEqual(created.ProfileTemplateRevisionUid, completed.ProfileRevision.RevisionUid);
+    var owned = (await store.GetCurrentAsync(account))!.Profile.AccountState.Cubes;
+    Assert.Equal(15, Assert.Single(owned).Level);
+    Assert.Empty(initial.AccountState.Cubes);
+    var noOpPreview = await service.PreviewProfileEditsAsync(new(EntityUid.New(), account, revision, []));
+    Assert.Empty(noOpPreview.Changes);
+    var unchanged = await Save();
+    Assert.Equal(completed.ProfileRevision, unchanged.ProfileRevision);
+    var subjects = catalogs.Character.CharacterUids.Take(2).ToArray();
+    await Save(subjects.SelectMany(uid => new[]
+    {
+      new NikkeLocalLab.Application.ProfileManagement.ProfileEditOperation("cube.state", uid, "controlled", ControlledValue: "equipped"),
+      new NikkeLocalLab.Application.ProfileManagement.ProfileEditOperation("cube.definition", uid, "reference", ReferenceUid: support.CubeUid),
+      new NikkeLocalLab.Application.ProfileManagement.ProfileEditOperation("cube.level", uid, "integer", IntegerValue: 15)
+    }).ToArray());
+    await Save([new("account_cube_level", support.CubeUid, "integer", IntegerValue: 1)]);
+    var after = (await store.GetCurrentAsync(account))!;
+    Assert.Equal(1, Assert.Single(after.Profile.AccountState.Cubes).Level);
+    Assert.All(after.Profile.Builds.Where(build => subjects.Contains(build.CharacterUid)),
+        build => Assert.Equal(1, build.Cube.Level!.Value));
+    Assert.Equal(initial.AccountState.Consoles, after.Profile.AccountState.Consoles);
+
+    // Save As preserves the inventory and equipped levels, but owns an independent revision chain.
+    var copyDiff = await service.PreviewProfileEditsAsync(new(EntityUid.New(), account, revision, []));
+    var copy = await service.SaveAsProfileAsync(new(EntityUid.New(), account, revision,
+        copyDiff.CandidateDraftUid, copyDiff.CandidateSha256, copyDiff.DiffSha256));
+    Assert.Equal(1, Assert.Single((await store.GetCurrentAsync(copy.AccountUid))!.Profile.AccountState.Cubes).Level);
+    await Save([new("account_cube_level", support.CubeUid, "integer", IntegerValue: 15)]);
+    Assert.Equal(1, Assert.Single((await store.GetCurrentAsync(copy.AccountUid))!.Profile.AccountState.Cubes).Level);
+    var newService = new PostgreSqlProfileManagementService(dataSource, new RandomEntityUidGenerator());
+    var projection = await newService.GetCurrentProfileAsync(account);
+    Assert.Equal(15, Assert.Single(projection!.Values, value => value.FieldCode == "account_cube_level").IntegerValue);
+    await Assert.ThrowsAnyAsync<Exception>(() => service.PreviewProfileEditsAsync(new(
+        EntityUid.New(), account, revision, [new("account_cube_level", support.CubeUid, "integer", IntegerValue: 16)])));
+    await Assert.ThrowsAnyAsync<Exception>(() => service.PreviewProfileEditsAsync(new(
+        EntityUid.New(), account, revision, [new("account_cube_level", EntityUid.New(), "integer", IntegerValue: 15)])));
+    await using var connection = await dataSource.OpenConnectionAsync();
+    await using var mutate = new NpgsqlCommand("UPDATE lab_profile.account_cube_state SET level = 1;", connection);
+    var immutable = await Assert.ThrowsAsync<PostgresException>(() => mutate.ExecuteNonQueryAsync());
+    Assert.Equal("immutable_profile_row", immutable.MessageText);
+    await using var oldState = new NpgsqlCommand("""
+        SELECT cube_count FROM lab_profile.account_state_revision WHERE account_state_revision_uid = @uid;
+        """, connection);
+    oldState.Parameters.AddWithValue("uid", created.AccountCombatStateRevisionUid.Value);
+    Assert.Equal(0, await oldState.ExecuteScalarAsync());
+  }
+
+  [Theory]
+  [InlineData(1)]
+  [InlineData(15)]
+  public async Task OwnedCubeLevelSurvivesNoOpSaveAndNewService(int level)
+  {
+    await using var dataSource = CreateDataSource();
+    await ResetSchemasAsync(dataSource);
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    var catalogs = await PublishSyntheticCatalogsAsync(dataSource, 5);
+    var support = await ReadSupportSelectionsAsync(dataSource, catalogs.Support.CatalogSnapshotUid);
+    var store = new PostgreSqlLocalAccountProfileStore(dataSource, new RandomEntityUidGenerator());
+    var seed = CreateProfile(catalogs, support, 200, null, false);
+    var profile = new LocalAccountProfileWrite(
+        seed.CharacterCatalog, seed.CombatSupportCatalog,
+        new LocalAccountCombatStateWrite(seed.AccountState.SynchroLevel, seed.AccountState.Consoles,
+            seed.AccountState.ValidationMode, seed.AccountState.Origin,
+            [new LocalOwnedCubeWrite(support.CubeUid, level)]),
+        seed.Builds, seed.SquadCharacterUids, seed.SquadOrigin, seed.ProfileTemplateOrigin);
+    var instant = new DateTimeOffset(2026, 9, 6, 0, 0, 0, TimeSpan.Zero);
+    var created = await store.CreateAsync(new(EntityUid.New(), profile, instant));
+    var service = new PostgreSqlProfileManagementService(dataSource, new RandomEntityUidGenerator());
+    var previewCommand = new NikkeLocalLab.Application.ProfileManagement.ProfileEditPreviewCommand(
+        EntityUid.New(), created.AccountUid, created.ProfileTemplateRevisionUid, []);
+    var preview = await service.PreviewProfileEditsAsync(previewCommand);
+    var previewReplay = await service.PreviewProfileEditsAsync(previewCommand);
+    Assert.Empty(preview.Changes);
+    Assert.Empty(previewReplay.Changes);
+    Assert.Equal(preview.DiffSha256, previewReplay.DiffSha256);
+    var saveCommand = new NikkeLocalLab.Application.ProfileManagement.SaveProfileCommand(
+        EntityUid.New(), created.AccountUid, created.ProfileTemplateRevisionUid,
+        preview.CandidateDraftUid, preview.CandidateSha256, preview.DiffSha256);
+    var saved = await service.SaveProfileAsync(saveCommand);
+    var reopened = new PostgreSqlProfileManagementService(dataSource, new RandomEntityUidGenerator());
+    var replay = await reopened.SaveProfileAsync(saveCommand);
+    Assert.True(replay.IsIdempotentReplay);
+    Assert.Equal(created.ProfileTemplateRevisionUid, saved.ProfileRevision.RevisionUid);
+    Assert.Equal(saved.ProfileRevision, replay.ProfileRevision);
+    var current = (await store.GetCurrentAsync(created.AccountUid))!;
+    Assert.Equal(created.ProfileContentSha256, current.Revision.ProfileContentSha256);
+    Assert.Equal(level, Assert.Single(current.Profile.AccountState.Cubes).Level);
+    var again = await reopened.PreviewProfileEditsAsync(new(EntityUid.New(), created.AccountUid,
+        current.Revision.ProfileTemplateRevisionUid, []));
+    Assert.Empty(again.Changes);
+  }
+
+  [Fact]
   public void ContractsPreserveSparseOverloadDraftAndControlledLossCodes()
   {
     var option = EntityUid.New();
-    var manufacturerNotApplicable = Assert.Throws<LocalAccountProfileIntegrityException>(() =>
-        new LocalEquipmentWrite(
-            LocalEquipmentSlot.Head,
-            LocalEquipmentState.Equipped,
-            EntityUid.New(),
-            5,
-            LocalProfileFact<bool>.NotApplicable()));
-    Assert.Equal("profile_equipment_shape_invalid", manufacturerNotApplicable.Code);
+    var manufacturerNotApplicable = new LocalEquipmentWrite(
+        LocalEquipmentSlot.Head,
+        LocalEquipmentState.Equipped,
+        EntityUid.New(),
+        5,
+        LocalProfileFact<bool>.NotApplicable());
+    Assert.Equal(
+        LocalProfileFactStatus.NotApplicable,
+        manufacturerNotApplicable.ManufacturerMatched?.Status);
 
     var sparse = new LocalEquipmentWrite(
         LocalEquipmentSlot.Head,
@@ -181,11 +317,30 @@ public sealed class PostgreSqlLocalAccountProfileTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     await using var connection = await dataSource.OpenConnectionAsync();
     var forbidden = await ReadForbiddenProfileColumnsAsync(connection);
     Assert.Empty(forbidden);
+    // The same names on an unrelated table are NOT provenance metadata.
+    await using (var inject = new NpgsqlCommand("""
+        ALTER TABLE lab_profile.local_account ADD COLUMN source_account_uid uuid;
+        ALTER TABLE lab_profile.local_account ADD COLUMN source_artifact_sha256 bytea;
+        ALTER TABLE lab_profile.local_account ADD COLUMN request_payload bytea;
+        ALTER TABLE lab_profile.local_account ADD COLUMN payload_sha256 bytea;
+        ALTER TABLE lab_profile.account_workspace_save_request ADD COLUMN official_token text;
+        """, connection))
+      await inject.ExecuteNonQueryAsync();
+    Assert.Equal(new[] { "official_token", "payload_sha256", "request_payload", "source_account_uid", "source_artifact_sha256" },
+        await ReadForbiddenProfileColumnsAsync(connection));
+    await using (var remove = new NpgsqlCommand("""
+        ALTER TABLE lab_profile.local_account DROP COLUMN source_account_uid;
+        ALTER TABLE lab_profile.local_account DROP COLUMN source_artifact_sha256;
+        ALTER TABLE lab_profile.local_account DROP COLUMN request_payload;
+        ALTER TABLE lab_profile.local_account DROP COLUMN payload_sha256;
+        ALTER TABLE lab_profile.account_workspace_save_request DROP COLUMN official_token;
+        """, connection))
+      await remove.ExecuteNonQueryAsync();
     Assert.Equal(
         5L,
         await ScalarInt64Async(
@@ -216,11 +371,11 @@ public sealed class PostgreSqlLocalAccountProfileTests
   }
 
   [Fact]
-  public async Task GameLegalSignedOverloadAcceptsEquivalentDecimalsAndKeepsSemanticsSeparate()
+  public async Task GameLegalOverloadAcceptsEquivalentApplicationMagnitudesAndKeepsRawSemanticsSeparate()
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishSyntheticCatalogsAsync(dataSource, 5);
     var support = await ReadSupportSelectionsAsync(
         dataSource,
@@ -231,17 +386,17 @@ public sealed class PostgreSqlLocalAccountProfileTests
     var nowValue = DateTimeOffset.UtcNow;
     var now = nowValue.AddTicks(-(nowValue.Ticks % 10));
 
-    var signed = new LocalProfileExactValue(support.SignedRawValue, 4);
+    var magnitude = new LocalProfileExactValue(Math.Abs(support.SignedRawValue), 4);
     var created = await store.CreateAsync(new CreateLocalAccountProfileCommand(
         EntityUid.New(),
-        CreateGameLegalProfile(catalogs, support, signed),
+        CreateGameLegalProfile(catalogs, support, magnitude),
         now));
     Assert.True(created.IsCombatReady);
     Assert.True(created.IsGameLegalReady);
     Assert.False(created.HasCompleteCombatSemantics);
 
     var equivalent = new LocalProfileExactValue(
-        checked(support.SignedRawValue * 10),
+        checked(Math.Abs(support.SignedRawValue) * 10),
         5);
     var saved = await store.SaveAsync(new SaveLocalAccountProfileCommand(
         EntityUid.New(),
@@ -251,11 +406,11 @@ public sealed class PostgreSqlLocalAccountProfileTests
         now.AddSeconds(1)));
     Assert.True(saved.IsGameLegalReady);
 
-    var positive = new LocalProfileExactValue(Math.Abs(support.SignedRawValue), 4);
+    var signedRaw = new LocalProfileExactValue(support.SignedRawValue, 4);
     var invalid = await Assert.ThrowsAsync<LocalAccountProfileIntegrityException>(() =>
         store.CreateAsync(new CreateLocalAccountProfileCommand(
             EntityUid.New(),
-            CreateGameLegalProfile(catalogs, support, positive),
+            CreateGameLegalProfile(catalogs, support, signedRaw),
             now.AddSeconds(2))));
     Assert.Equal("profile_overload_value_not_legal", invalid.Code);
   }
@@ -265,7 +420,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishSyntheticCatalogsAsync(
         dataSource,
         5,
@@ -281,7 +436,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
     var profile = CreateGameLegalProfile(
         catalogs,
         support,
-        new LocalProfileExactValue(support.SignedRawValue, 4));
+        new LocalProfileExactValue(Math.Abs(support.SignedRawValue), 4));
 
     var created = await store.CreateAsync(new CreateLocalAccountProfileCommand(
         EntityUid.New(),
@@ -306,7 +461,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishSyntheticCatalogsAsync(dataSource, 5);
     var support = await ReadSupportSelectionsAsync(
         dataSource,
@@ -319,7 +474,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
     var source = CreateGameLegalProfile(
         catalogs,
         support,
-        new LocalProfileExactValue(support.SignedRawValue, 4));
+        new LocalProfileExactValue(Math.Abs(support.SignedRawValue), 4));
     var reason = new LocalProfileReasonCode("selected_level_not_retained");
     var characterUid = catalogs.Character.CharacterUids[0];
     var builds = source.Builds.Select(build => build.CharacterUid != characterUid
@@ -395,7 +550,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishSyntheticCatalogsAsync(dataSource, 5);
     var support = await ReadSupportSelectionsAsync(
         dataSource,
@@ -438,7 +593,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishSyntheticCatalogsAsync(
         dataSource,
         5,
@@ -487,7 +642,7 @@ public sealed class PostgreSqlLocalAccountProfileTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishSyntheticCatalogsAsync(dataSource, 192);
     var support = await ReadSupportSelectionsAsync(
         dataSource,
@@ -1719,6 +1874,20 @@ public sealed class PostgreSqlLocalAccountProfileTests
           AND (
               data_type IN ('json', 'jsonb')
               OR column_name ~ '(source|raw|path|alias|token|cookie|open.?id|payload|free.?text)'
+          )
+          -- V0009/V0011/V0014 metadata uses local UUIDs or digest/length,
+          -- not original account IDs, paths, credentials or source payloads.
+          -- V0018's immutable bounded canonical command is checked by the codec,
+          -- FK/checksum guards and recovery tests, not an opaque source dump.
+          AND (table_name, column_name, data_type) NOT IN (
+              ('fetched_account_snapshot', 'source_artifact_byte_length', 'integer'),
+              ('fetched_account_snapshot', 'source_artifact_sha256', 'bytea'),
+              ('account_workspace_save_operation', 'source_account_uid', 'uuid'),
+              ('account_workspace_save_request', 'source_account_uid', 'uuid'),
+              ('account_workspace_save_request', 'request_payload', 'bytea'),
+              ('account_workspace_save_request', 'payload_sha256', 'bytea'),
+              ('account_observation_provenance_binding', 'save_as_source_account_uid', 'uuid'),
+              ('account_observation_provenance_binding', 'source_snapshot_uid', 'uuid')
           )
         ORDER BY column_name;
         """,

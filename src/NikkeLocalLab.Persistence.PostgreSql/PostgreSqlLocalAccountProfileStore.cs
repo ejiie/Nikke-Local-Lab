@@ -70,6 +70,8 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
           connection,
           transaction,
           command.CreatedAtUtc,
+          command.AccountLabel,
+          command.SaveAsParentAccountUid,
           cancellationToken).ConfigureAwait(false);
       var stored = await PersistAggregateAsync(
           connection,
@@ -220,6 +222,18 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
     await using var transaction = await connection.BeginTransactionAsync(
         IsolationLevel.RepeatableRead,
         cancellationToken).ConfigureAwait(false);
+    var result = await GetCurrentAsync(connection, transaction, accountUid, cancellationToken).ConfigureAwait(false);
+    await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    return result;
+  }
+
+  internal static async Task<LocalCurrentAccountProfile?> GetCurrentAsync(
+      NpgsqlConnection connection,
+      NpgsqlTransaction transaction,
+      EntityUid accountUid,
+      CancellationToken cancellationToken)
+  {
+    RequireUid(accountUid, "profile_account_uid_invalid");
     var current = await ReadCurrentRevisionAsync(
         connection,
         transaction,
@@ -227,25 +241,56 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
         cancellationToken).ConfigureAwait(false);
     if (current is null)
     {
-      await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
       return null;
     }
+
+    return await ReadVerifiedProfileAsync(connection, transaction, current.Value, cancellationToken).ConfigureAwait(false);
+  }
+
+  internal async Task<LocalCurrentAccountProfile?> GetRevisionAsync(
+      EntityUid accountUid,
+      EntityUid revisionUid,
+      CancellationToken cancellationToken)
+  {
+    await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+    await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken).ConfigureAwait(false);
+    await using var command = new NpgsqlCommand("""
+        SELECT revision.profile_template_revision_id
+        FROM lab_profile.profile_template_revision AS revision
+        JOIN lab_profile.local_account AS account ON account.local_account_id = revision.local_account_id
+        WHERE account.local_account_uid = @account_uid AND revision.profile_template_revision_uid = @revision_uid;
+        """, connection, transaction);
+    command.Parameters.AddWithValue("account_uid", accountUid.Value);
+    command.Parameters.AddWithValue("revision_uid", revisionUid.Value);
+    var id = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+    var result = id is long revisionId
+        ? await ReadVerifiedProfileAsync(connection, transaction, revisionId, cancellationToken).ConfigureAwait(false)
+        : null;
+    await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    return result;
+  }
+
+  private static async Task<LocalCurrentAccountProfile> ReadVerifiedProfileAsync(
+      NpgsqlConnection connection,
+      NpgsqlTransaction transaction,
+      long revisionId,
+      CancellationToken cancellationToken)
+  {
 
     var receipt = await ReadReceiptAsync(
         connection,
         transaction,
         operationUid: null,
-        current.Value,
+        revisionId,
         false,
         cancellationToken).ConfigureAwait(false);
     var profile = await ReadProfileAsync(
         connection,
         transaction,
-        current.Value,
+        revisionId,
         cancellationToken).ConfigureAwait(false);
     VerifyAggregateProjection(receipt, profile);
 
-    await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     return new LocalCurrentAccountProfile(receipt, profile);
   }
 
@@ -418,6 +463,14 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
       DateTimeOffset createdAtUtc,
       CancellationToken cancellationToken)
   {
+    var ownedCubes = profile.AccountState.Cubes.ToDictionary(static cube => cube.DefinitionUid);
+    if (ownedCubes.Count > 0 && profile.Builds.Any(build =>
+        build.Cube.DefinitionUid is { } uid &&
+        (!ownedCubes.TryGetValue(uid, out var owned) || build.Cube.Level?.Value != owned.Level)))
+    {
+      throw new LocalAccountProfileIntegrityException("profile_cube_level_account_mismatch");
+    }
+
     var stateValidation = await ValidateAccountStateAsync(
         connection,
         transaction,
@@ -545,6 +598,8 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
       NpgsqlConnection connection,
       NpgsqlTransaction transaction,
       DateTimeOffset createdAtUtc,
+      string? accountLabel,
+      EntityUid? saveAsParentAccountUid,
       CancellationToken cancellationToken)
   {
     var uid = _uidGenerator.NewUid();
@@ -569,6 +624,48 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
     var id = Convert.ToInt64(
         await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false),
         System.Globalization.CultureInfo.InvariantCulture);
+
+    await using var workspace = new NpgsqlCommand(
+        """
+        INSERT INTO lab_profile.account_workspace (
+            local_account_id,
+            workspace_uid,
+            account_label,
+            save_as_parent_account_uid,
+            fetched_snapshot_uid,
+            last_fetched_at_utc,
+            last_execution_result_code,
+            created_at_utc,
+            updated_at_utc
+        ) VALUES (
+            @account_id,
+            @workspace_uid,
+            @account_label,
+            @parent_uid,
+            NULL,
+            NULL,
+            NULL,
+            @created_at,
+            @created_at
+        );
+        """,
+        connection,
+        transaction);
+    Add(workspace, "account_id", NpgsqlDbType.Bigint, id);
+    Add(workspace, "workspace_uid", NpgsqlDbType.Uuid, uid.Value);
+    Add(
+        workspace,
+        "account_label",
+        NpgsqlDbType.Text,
+        accountLabel ?? $"account_{uid}");
+    Add(
+        workspace,
+        "parent_uid",
+        NpgsqlDbType.Uuid,
+        saveAsParentAccountUid?.Value);
+    Add(workspace, "created_at", NpgsqlDbType.TimestampTz, createdAtUtc);
+    await workspace.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
     return new AccountRow(
         id,
         uid,
@@ -790,8 +887,34 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
       issue ??= "profile_semantics_unresolved";
     }
 
+    var ownedCubes = new List<ResolvedOwnedCube>();
+    foreach (var cube in state.Cubes)
+    {
+      var definition = await ResolveSupportVersionAsync(
+          connection, transaction, supportCatalog.Id, cube.DefinitionUid, "cube", cancellationToken)
+          .ConfigureAwait(false);
+      await using var gate = new NpgsqlCommand(
+          """
+          SELECT 1 FROM lab_combat_support.cube_definition_detail detail
+          JOIN lab_combat_support.definition_level_coordinate coordinate
+            ON coordinate.definition_version_id = detail.definition_version_id
+          WHERE detail.definition_version_id = @version_id
+            AND detail.maximum_level_status = 'ready'
+            AND @level <= detail.maximum_level AND coordinate.level = @level;
+          """, connection, transaction);
+      Add(gate, "version_id", NpgsqlDbType.Bigint, definition.VersionId);
+      Add(gate, "level", NpgsqlDbType.Integer, cube.Level);
+      if (await gate.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is null)
+      {
+        throw new LocalAccountProfileIntegrityException("profile_cube_level_not_in_catalog");
+      }
+
+      ownedCubes.Add(new ResolvedOwnedCube(cube, definition));
+    }
+
     return new ValidatedAccountState(
         resolved,
+        ownedCubes,
         new ValidationResult(combatIssue is null, combatIssue),
         new ValidationResult(fidelityIssue is null, fidelityIssue),
         new ValidationResult(issue is null, issue));
@@ -896,6 +1019,7 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
             game_legal_readiness_status,
             game_legal_issue_code,
             console_count,
+            cube_count,
             content_sha256,
             revision_origin,
             materialized_at_utc
@@ -905,7 +1029,7 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
             @support_catalog_id, @support_dataset_id, @support_manifest,
             @synchro_status, @synchro_value, @synchro_reason, @validation_mode,
             @combat_readiness, @combat_issue, @fidelity_readiness, @fidelity_issue,
-            @readiness, @issue_code, 9, @content_hash, @origin, @created_at
+            @readiness, @issue_code, 9, @cube_count, @content_hash, @origin, @created_at
         )
         RETURNING account_state_revision_id;
         """,
@@ -932,6 +1056,7 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
           validated.GameLegal.IsReady ? "ready" : "unresolved");
       Add(insert, "issue_code", NpgsqlDbType.Text, validated.GameLegal.IssueCode);
       Add(insert, "content_hash", NpgsqlDbType.Bytea, hash.ToByteArray());
+      Add(insert, "cube_count", NpgsqlDbType.Integer, validated.Cubes.Count);
       Add(insert, "origin", NpgsqlDbType.Text,
           LocalAccountProfileCanonicalizer.Code(state.Origin));
       Add(insert, "created_at", NpgsqlDbType.TimestampTz, createdAtUtc);
@@ -981,6 +1106,23 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
       await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    foreach (var cube in validated.Cubes)
+    {
+      await using var insert = new NpgsqlCommand(
+          """
+          INSERT INTO lab_profile.account_cube_state (
+              account_state_revision_id, support_catalog_snapshot_id,
+              definition_entity_id, definition_version_id, definition_kind, level
+          ) VALUES (@revision_id, @catalog_id, @entity_id, @version_id, 'cube', @level);
+          """, connection, transaction);
+      Add(insert, "revision_id", NpgsqlDbType.Bigint, revisionId);
+      Add(insert, "catalog_id", NpgsqlDbType.Bigint, catalogs.Support.Id);
+      Add(insert, "entity_id", NpgsqlDbType.Bigint, cube.Definition.EntityId);
+      Add(insert, "version_id", NpgsqlDbType.Bigint, cube.Definition.VersionId);
+      Add(insert, "level", NpgsqlDbType.Integer, cube.Write.Level);
+      await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     return new StoredState(
         revisionId,
         uid,
@@ -1020,6 +1162,7 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
             version.manufacturer_status,
             version.manufacturer_code,
             version.rarity_status,
+            version.rarity_code,
             version.element_status
         FROM lab_catalog.character_catalog_snapshot_member AS member
         JOIN lab_catalog.character_entity AS entity
@@ -1041,6 +1184,7 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
     string? combatClass;
     string? weapon;
     string? manufacturer;
+    string? rarity;
     bool characterProfileSemanticsReady;
     await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
     {
@@ -1060,6 +1204,9 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
       manufacturer = reader.GetString(8) == "ready" && !reader.IsDBNull(9)
           ? reader.GetString(9)
           : null;
+      rarity = reader.GetString(10) == "ready" && !reader.IsDBNull(11)
+          ? reader.GetString(11)
+          : null;
 
       definitionVersionUid = new EntityUid(reader.GetGuid(2));
       definitionContentSha256 = Sha256Digest.FromBytes((byte[])reader.GetValue(3));
@@ -1067,7 +1214,7 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
           reader.GetString(6) == "ready" &&
           reader.GetString(8) == "ready" &&
           reader.GetString(10) == "ready" &&
-          reader.GetString(11) == "ready";
+          reader.GetString(12) == "ready";
     }
 
     var capabilities = new Dictionary<string, CapabilityRow>(StringComparer.Ordinal);
@@ -1102,6 +1249,7 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
         combatClass,
         weapon,
         manufacturer,
+        rarity,
         capabilities);
   }
 
@@ -1183,7 +1331,12 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
     scalarSelectionResolved &= ValidateFactCapability(
         character, "core_level", build.CoreLevel, gameLegal, true, ref issue);
     scalarSelectionResolved &= ValidateFactCapability(
-        character, "bond_level", build.BondLevel, gameLegal, false, ref issue);
+        character,
+        "bond_level",
+        build.BondLevel,
+        gameLegal,
+        character.Rarity == "r",
+        ref issue);
 
     var equipment = new List<ResolvedEquipment>(4);
     foreach (var write in build.Equipment)
@@ -1469,8 +1622,10 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
                 SELECT 1
                 FROM lab_combat_support.overload_legal_value
                 WHERE definition_version_id = @version_id
-                  AND source_raw_value::numeric * power(10::numeric, @scale) =
-                      @unscaled::numeric * 10000::numeric;
+                  AND engine_fraction_unscaled_value::numeric *
+                      power(10::numeric, @scale) =
+                      @unscaled::numeric *
+                      power(10::numeric, engine_fraction_decimal_scale);
                 """,
                 connection,
                 transaction);
@@ -2282,7 +2437,9 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
     }
     else if (fact.Status == LocalProfileFactStatus.NotApplicable)
     {
-      if (!allowNotApplicable || capability.Status != "not_applicable")
+      if (!allowNotApplicable ||
+          (capability.Status != "not_applicable" &&
+           !(code == "bond_level" && character.Rarity == "r")))
       {
         throw new LocalAccountProfileIntegrityException("profile_character_fact_not_applicable");
       }
@@ -4041,7 +4198,25 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
           ReadLongFact(consoleReader, 5, 6, 7)));
     }
 
-    return new LocalAccountCombatStateWrite(synchro, consoles, validationMode, origin);
+    await consoleReader.DisposeAsync().ConfigureAwait(false);
+    await using var cubeCommand = new NpgsqlCommand(
+        """
+        SELECT definition.definition_uid, cube.level
+        FROM lab_profile.account_cube_state cube
+        JOIN lab_combat_support.definition_entity definition
+          ON definition.definition_entity_id = cube.definition_entity_id
+        WHERE cube.account_state_revision_id = @revision_id
+        ORDER BY definition.definition_uid;
+        """, connection, transaction);
+    Add(cubeCommand, "revision_id", NpgsqlDbType.Bigint, stateRevisionId);
+    var cubes = new List<LocalOwnedCubeWrite>();
+    await using var cubeReader = await cubeCommand.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+    while (await cubeReader.ReadAsync(cancellationToken).ConfigureAwait(false))
+    {
+      cubes.Add(new LocalOwnedCubeWrite(new EntityUid(cubeReader.GetGuid(0)), cubeReader.GetInt32(1)));
+    }
+
+    return new LocalAccountCombatStateWrite(synchro, consoles, validationMode, origin, cubes);
   }
 
   private static async Task<IReadOnlyList<LocalCharacterBuildWrite>> ReadBuildWritesAsync(
@@ -4522,7 +4697,9 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
                   ToDomainConsoleCoordinate(item.Write.Coordinate),
                   ToDomainSupportReference(catalogs.Support, item.Definition),
                   ToDomainFact(item.Write.Level),
-                  ToDomainFact(item.Write.ObservedExperience))));
+                  ToDomainFact(item.Write.ObservedExperience))),
+          validated.Cubes.Select(item => new DomainProfile.OwnedCubeProgressState(
+              ToDomainSupportReference(catalogs.Support, item.Definition), item.Write.Level)));
 
   private static DomainProfile.CharacterBuildRevisionContent ProjectBuild(
       CatalogPair catalogs,
@@ -5003,6 +5180,11 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
       "local_game_lobby_character_not_in_profile" =>
           "local_game_lobby_character_not_in_profile",
       "immutable_profile_row" => "profile_immutable_violation",
+      _ when exception.SqlState == PostgresErrorCodes.UniqueViolation &&
+          string.Equals(
+              exception.ConstraintName,
+              "account_workspace_account_label_key",
+              StringComparison.Ordinal) => "account_label_conflict",
       _ when exception.SqlState == PostgresErrorCodes.ForeignKeyViolation =>
           "profile_reference_invalid",
       _ when exception.SqlState == PostgresErrorCodes.UniqueViolation =>
@@ -5045,6 +5227,7 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
       string? CombatClass,
       string? Weapon,
       string? Manufacturer,
+      string? Rarity,
       IReadOnlyDictionary<string, CapabilityRow> Capabilities);
 
   private readonly record struct SupportVersion(
@@ -5062,8 +5245,11 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
 
   private sealed record ValidationResult(bool IsReady, string? IssueCode);
 
+  private sealed record ResolvedOwnedCube(LocalOwnedCubeWrite Write, SupportVersion Definition);
+
   private sealed record ValidatedAccountState(
       IReadOnlyList<ResolvedConsole> Consoles,
+      IReadOnlyList<ResolvedOwnedCube> Cubes,
       ValidationResult Combat,
       ValidationResult FullFidelity,
       ValidationResult GameLegal);

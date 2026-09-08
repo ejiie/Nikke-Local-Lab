@@ -105,6 +105,121 @@ public sealed class PostgreSqlProfileCatalogAliasResolverFactory
         overload);
   }
 
+  public async Task<IReadOnlySet<EntityUid>> LoadCoreLevelNotApplicableCharacterUidsAsync(
+      ImportProfile.ProfileImportCatalogBinding characterCatalog,
+      CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(characterCatalog);
+    const string sql = """
+        SELECT entity.character_uid
+        FROM lab_catalog.character_catalog_snapshot_member AS member
+        JOIN lab_catalog.character_entity AS entity
+          ON entity.character_entity_id = member.character_entity_id
+        JOIN lab_catalog.character_definition_capability AS capability
+          ON capability.character_definition_version_id = member.character_definition_version_id
+        JOIN lab_catalog.character_catalog_snapshot AS catalog
+          ON catalog.character_catalog_snapshot_id = member.character_catalog_snapshot_id
+        JOIN lab_import.dataset_snapshot AS dataset
+          ON dataset.dataset_snapshot_id = catalog.dataset_snapshot_id
+        WHERE catalog.character_catalog_snapshot_uid = @catalog_uid
+          AND dataset.dataset_snapshot_uid = @dataset_uid
+          AND catalog.catalog_manifest_sha256 = @manifest
+          AND capability.capability_code = 'core_level'
+          AND capability.resolution_status = 'not_applicable';
+        """;
+    var result = new HashSet<EntityUid>();
+    await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken)
+        .ConfigureAwait(false);
+    await using var command = new NpgsqlCommand(sql, connection);
+    AddBinding(command, characterCatalog);
+    await using var reader = await command.ExecuteReaderAsync(cancellationToken)
+        .ConfigureAwait(false);
+    while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+    {
+      result.Add(new EntityUid(reader.GetGuid(0)));
+    }
+
+    return result;
+  }
+
+  public async Task<IReadOnlySet<EntityUid>> LoadBondLevelNotApplicableCharacterUidsAsync(
+      ImportProfile.ProfileImportCatalogBinding characterCatalog,
+      CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(characterCatalog);
+    const string sql = """
+        SELECT entity.character_uid
+        FROM lab_catalog.character_catalog_snapshot_member AS member
+        JOIN lab_catalog.character_entity AS entity
+          ON entity.character_entity_id = member.character_entity_id
+        JOIN lab_catalog.character_definition_version AS version
+          ON version.character_definition_version_id = member.character_definition_version_id
+        JOIN lab_catalog.character_catalog_snapshot AS catalog
+          ON catalog.character_catalog_snapshot_id = member.character_catalog_snapshot_id
+        JOIN lab_import.dataset_snapshot AS dataset
+          ON dataset.dataset_snapshot_id = catalog.dataset_snapshot_id
+        WHERE catalog.character_catalog_snapshot_uid = @catalog_uid
+          AND dataset.dataset_snapshot_uid = @dataset_uid
+          AND catalog.catalog_manifest_sha256 = @manifest
+          AND version.rarity_status = 'ready'
+          AND version.rarity_code = 'r';
+        """;
+    var result = new HashSet<EntityUid>();
+    await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken)
+        .ConfigureAwait(false);
+    await using var command = new NpgsqlCommand(sql, connection);
+    AddBinding(command, characterCatalog);
+    await using var reader = await command.ExecuteReaderAsync(cancellationToken)
+        .ConfigureAwait(false);
+    while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+    {
+      result.Add(new EntityUid(reader.GetGuid(0)));
+    }
+
+    return result;
+  }
+
+  public async Task<IReadOnlySet<EntityUid>> LoadManufacturerNotApplicableEquipmentUidsAsync(
+      ImportProfile.ProfileImportCatalogBinding combatSupportCatalog,
+      CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(combatSupportCatalog);
+    const string sql = """
+        SELECT entity.definition_uid
+        FROM lab_combat_support.catalog_snapshot_member AS member
+        JOIN lab_combat_support.definition_entity AS entity
+          ON entity.definition_entity_id = member.definition_entity_id
+         AND entity.definition_kind = 'equipment'
+        JOIN lab_combat_support.definition_version AS version
+          ON version.definition_version_id = member.definition_version_id
+        JOIN lab_combat_support.equipment_definition_detail AS detail
+          ON detail.definition_version_id = version.definition_version_id
+        JOIN lab_combat_support.catalog_snapshot AS catalog
+          ON catalog.catalog_snapshot_id = member.catalog_snapshot_id
+        JOIN lab_import.dataset_snapshot AS dataset
+          ON dataset.dataset_snapshot_id = catalog.dataset_snapshot_id
+        WHERE catalog.catalog_snapshot_uid = @catalog_uid
+          AND dataset.dataset_snapshot_uid = @dataset_uid
+          AND catalog.catalog_manifest_sha256 = @manifest
+          AND detail.tier_status = 'ready'
+          AND detail.tier_value IN (9, 10)
+          AND detail.manufacturer_status = 'not_applicable';
+        """;
+    var result = new HashSet<EntityUid>();
+    await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken)
+        .ConfigureAwait(false);
+    await using var command = new NpgsqlCommand(sql, connection);
+    AddBinding(command, combatSupportCatalog);
+    await using var reader = await command.ExecuteReaderAsync(cancellationToken)
+        .ConfigureAwait(false);
+    while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+    {
+      result.Add(new EntityUid(reader.GetGuid(0)));
+    }
+
+    return result;
+  }
+
   public async Task ValidateRebaseAsync(
       ImportProfile.SanitizedProfileDraft source,
       ImportProfile.SanitizedProfileDraft target,
@@ -176,7 +291,7 @@ public sealed class PostgreSqlProfileCatalogAliasResolverFactory
           bool includeUnaliased = false)
   {
     const string sql = """
-        SELECT alias.alias_fingerprint, entity.character_uid,
+        SELECT alias.alias_fingerprint, entity.character_uid, version.rarity_code,
                version.combat_class_code, version.manufacturer_code, version.weapon_code,
                max(cap.maximum_level) FILTER (WHERE cap.capability_code = 'character_level'),
                max(cap.maximum_level) FILTER (WHERE cap.capability_code = 'limit_break'),
@@ -203,11 +318,12 @@ public sealed class PostgreSqlProfileCatalogAliasResolverFactory
         WHERE catalog.character_catalog_snapshot_uid = @catalog_uid
           AND dataset.dataset_snapshot_uid = @dataset_uid
           AND catalog.catalog_manifest_sha256 = @manifest
+          AND version.rarity_status = 'ready'
           AND version.combat_class_status = 'ready'
           AND version.manufacturer_status = 'ready'
           AND version.weapon_status = 'ready'
           AND (@include_unaliased OR alias.alias_fingerprint IS NOT NULL)
-        GROUP BY alias.alias_fingerprint, entity.character_uid,
+        GROUP BY alias.alias_fingerprint, entity.character_uid, version.rarity_code,
                  version.combat_class_code, version.manufacturer_code, version.weapon_code
         HAVING count(*) FILTER (WHERE cap.capability_code IN (
                    'character_level','limit_break','core_level','bond_level',
@@ -225,11 +341,12 @@ public sealed class PostgreSqlProfileCatalogAliasResolverFactory
       Add(result, ReadAliasOrValidationKey(reader, 0, 1, "character"),
           new ImportProfile.ResolvedProfileCharacter(
               new EntityUid(reader.GetGuid(1)),
-              ParseRole(reader.GetString(2)),
-              ParseManufacturer(reader.GetString(3)),
-              ParseWeapon(reader.GetString(4)),
-              reader.GetInt32(5), reader.GetInt32(6), reader.GetInt32(7), reader.GetInt32(8),
-              reader.GetInt32(9), reader.GetInt32(10), reader.GetInt32(11)));
+              ParseRarity(reader.GetString(2)),
+              ParseRole(reader.GetString(3)),
+              ParseManufacturer(reader.GetString(4)),
+              ParseWeapon(reader.GetString(5)),
+              reader.GetInt32(6), reader.GetInt32(7), reader.GetInt32(8), reader.GetInt32(9),
+              reader.GetInt32(10), reader.GetInt32(11), reader.GetInt32(12)));
     }
 
     return result;
@@ -277,8 +394,7 @@ public sealed class PostgreSqlProfileCatalogAliasResolverFactory
                 ImportProfile.ProfileImportFact<ImportProfile.ProfileImportManufacturer>.Unresolved(
                     reader.GetString(reasonOrdinal)),
             "not_applicable" =>
-                ImportProfile.ProfileImportFact<ImportProfile.ProfileImportManufacturer>.Unresolved(
-                    "manufacturer_not_applicable"),
+                ImportProfile.ProfileImportFact<ImportProfile.ProfileImportManufacturer>.NotApplicable(),
             _ => throw new LocalGameStateIntegrityException(
                 "profile_catalog_manufacturer_shape_invalid")
           };
@@ -514,6 +630,14 @@ public sealed class PostgreSqlProfileCatalogAliasResolverFactory
     if (!target.TryGetValue(key, out var values)) target[key] = values = [];
     values.Add(value);
   }
+
+  private static ImportProfile.ProfileImportRarity ParseRarity(string value) => value switch
+  {
+    "r" => ImportProfile.ProfileImportRarity.R,
+    "sr" => ImportProfile.ProfileImportRarity.Sr,
+    "ssr" => ImportProfile.ProfileImportRarity.Ssr,
+    _ => throw new LocalGameStateIntegrityException("profile_catalog_rarity_invalid")
+  };
 
   private static ImportProfile.ProfileImportCombatRole ParseRole(string value) => value switch
   {

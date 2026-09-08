@@ -74,14 +74,17 @@
       "selectedManagerIntegrationCommitSha": "92a6ca228aeb580988907b96189b2857dff2c62d",
       "preflightSealCommitSha": "e32e5f900775974d5736e7fb2b50f8c62638a004",
       "preflightHardeningCommitSha": "4f7bd5b5eb2b9a6e03af503f1c09adc4c4f7f16f",
-      "latestExternalTreeCommitSha": "ce353eeebee3c76672e483c6f735bb27f0227815",
+      "latestExternalCommitSha": "519c3db51ec24ca19307e93e85acde7885928a72",
+      "latestExternalTreeCommitSha": "b9e8bfb1b1e065427a48d40cb2bcf2f30215436a",
       "checkoutClean": true,
       "dotnetSdkVersion": "10.0.400",
       "documentedToolchainMatched": true,
       "freshBuildCompleted": true,
-      "selectedManagerPassedCount": 59,
+      "selectedManagerPassedCount": 64,
       "handlerIsolationPassedCount": 5,
       "focusedTestFailedCount": 0,
+      "localOnlyHttp3Enabled": false,
+      "localOnlyAssetCachePathLoggingEnabled": false,
       "toolchainObservation": {
         "byteLength": 104,
         "sha256": "0404040404040404040404040404040404040404040404040404040404040404"
@@ -202,6 +205,7 @@
       "localeAutoFetchEnabled": false,
       "gitUpdateEnabled": false,
       "interactiveUpdateSurfaceEnabled": false,
+      "http3Enabled": false,
       "configObservation": {
         "byteLength": 129,
         "sha256": "2929292929292929292929292929292929292929292929292929292929292929"
@@ -228,10 +232,9 @@
       "http3Listener": {
         "protocolCode": "http3",
         "transportCode": "udp",
-        "addressFamilyCode": "ipv4",
-        "bindAddressCode": "loopback_127_0_0_1",
+        "statusCode": "disabled_local_only",
         "port": 443,
-        "listenerCount": 1
+        "listenerCount": 0
       },
       "wildcardListenerCount": 0,
       "lanListenerCount": 0,
@@ -245,8 +248,8 @@
       "ordinal": 15,
       "roleCode": "target_binding",
       "statusCode": "exact",
-      "targetObservationContractId": "nll/season26-classic-target-observation/v1",
-      "targetObservationSha256": "ed3a8682d0bbb2b49394db1c862da74a8c44cab097188cad3d5b5851dc5f50ba",
+      "targetObservationContractId": "nll/season26-classic-target-observation/v2",
+      "targetObservationSha256": "095eebce4f244f9326aa558302318f85547697b165eb6458735527bd2b0f6d10",
       "recomputedMatch": true,
       "latestFallbackCount": 0,
       "museumInvocationCount": 0
@@ -299,8 +302,8 @@
     "contractId": "nll/season26-classic-live-preflight-observation-set/v1",
     "canonicalizationCode": "role_ordered_ordinal_json_members_lf_v1",
     "memberCount": 18,
-    "canonicalByteLength": 7664,
-    "sha256": "266e503b9739a1fd66be2ef628976f00b12eb9250ba2c725558844564dce08d9"
+    "canonicalByteLength": 7799,
+    "sha256": "da4daa9074b796258dcb45a6aebc6f73fd781e6af4cc2da0f34d2146dbea7d9e"
   },
   "prohibitedMaterial": {
     "rawGameIdentifiersIncluded": false,

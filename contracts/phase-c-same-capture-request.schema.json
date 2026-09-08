@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:phase-c-same-capture-request:v1",
+  "title": "PhaseCSameCaptureRequestV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "requestedAtUtc",
+    "requestUid",
+    "requiredInputCodes",
+    "rawSourcePathPersisted",
+    "rawSourceHashPersisted",
+    "officialUserIdentifierPersisted",
+    "credentialOrSessionPersisted",
+    "officialLoginAutomated",
+    "officialFetchAutomated",
+    "clientExecutionStarted",
+    "serverExecutionStarted",
+    "nextStepCode"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "nll/phase-c-same-capture-request/v1" },
+    "requestedAtUtc": { "type": "string", "format": "date-time" },
+    "requestUid": { "type": "string", "format": "uuid" },
+    "requiredInputCodes": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,95}$" }
+    },
+    "rawSourcePathPersisted": { "const": false },
+    "rawSourceHashPersisted": { "const": false },
+    "officialUserIdentifierPersisted": { "const": false },
+    "credentialOrSessionPersisted": { "const": false },
+    "officialLoginAutomated": { "const": false },
+    "officialFetchAutomated": { "const": false },
+    "clientExecutionStarted": { "const": false },
+    "serverExecutionStarted": { "const": false },
+    "nextStepCode": { "const": "operator_produce_fresh_raw_and_trigger_archive_then_inspect" }
+  }
+}

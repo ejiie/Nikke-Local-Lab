@@ -1,5 +1,7 @@
 # Source layout
 
+현재 운영 구조는 [아키텍처](../docs/ARCHITECTURE.md), 진척은 [인계 요약](../docs/HANDOFF.md)을 따릅니다. 아래는 Phase별 모듈·검증 이력으로, 당시 `blocked/disabled` 설명을 현재 151 실행 전체의 상태로 해석하지 않습니다.
+
 완료된 Phase 2A1에는 다음 모듈이 포함됩니다. 단위 및 live PostgreSQL gate로 검증했습니다.
 
 - `NikkeLocalLab.Identity`: 자체 UUID와 HMAC 기반 source identity 격리
@@ -40,4 +42,4 @@ checked-in `challenge-operational-policy/unresolved/v1`은 Challenge unlock proj
 
 Phase 2B는 `lab_harness_observation/v1`만 수락하고 damage를 계산하지 않습니다. 최종 권위는 `original_client_runtime`이지만 현재 원본 runtime observation은 `blocked_by_gate`입니다. 같은 process의 같은 Open operation replay는 exact token byte를 재사용하지만 restart 간 token byte 동일성은 보장하지 않습니다.
 
-후속 제품 경계는 Phase 3A-R 재기준화, 3B-0 시즌 26 closure, 3B-1 classic selected-manager, 3B-2 isolated live proof, 3C shadow bridge, 3D end-to-end sealing, 3E 후속 시즌 확장과 Phase 4 multi-team/runtime parity로 분리합니다. 역사적 3A evidence audit verdict는 `blocked_insufficient_evidence`였지만, [3A-R](../docs/PHASE3AR.md)은 EpinelPS를 별도 process로 평가하는 `ready_for_local_compatibility_spike`를 기록했습니다. 문서 변경 시점의 adapter/config는 여전히 disabled이며 harness와 editor는 이를 대체하지 않습니다.
+후속 제품 경계는 Phase 3A-R 재기준화, 3B-0 시즌 26 closure, 3B-1 classic selected-manager, 3B-2 isolated live proof, 3C shadow bridge, 3D end-to-end sealing, 3E 후속 시즌 확장과 Phase 4 multi-team/runtime parity로 분리합니다. 역사적 3A evidence audit verdict는 `blocked_insufficient_evidence`였지만, [3A-R](../docs/contracts/PHASE3AR.md)은 EpinelPS를 별도 process로 평가하는 `ready_for_local_compatibility_spike`를 기록했습니다. 문서 변경 시점의 adapter/config는 여전히 disabled이며 harness와 editor는 이를 대체하지 않습니다.

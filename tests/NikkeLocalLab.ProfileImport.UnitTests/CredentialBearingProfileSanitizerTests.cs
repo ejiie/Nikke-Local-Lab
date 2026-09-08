@@ -66,7 +66,7 @@ public sealed class CredentialBearingProfileSanitizerTests
     var sparse = draft.Builds.SelectMany(static build => build.Equipment)
         .Single(static item => item.OverloadLines.Count == 2);
     Assert.Equal(new[] { 1, 3 }, sparse.OverloadLines.Select(static item => item.LineIndex));
-    Assert.Equal(-333, sparse.OverloadLines.Single(static item => item.LineIndex == 3)
+    Assert.Equal(333, sparse.OverloadLines.Single(static item => item.LineIndex == 3)
         .ExactValue.UnscaledValue);
     Assert.Equal(9, draft.AccountState.Consoles.Count);
     Assert.All(draft.AccountState.Consoles, static item => Assert.True(item.ObservedExperience >= 0));
@@ -262,7 +262,7 @@ public sealed class CredentialBearingProfileSanitizerTests
   }
 
   [Fact]
-  public void Missing_equipment_manufacturer_observation_is_not_materialized_as_false()
+  public void Tier_10_equipment_manufacturer_is_not_applicable()
   {
     using var source = SyntheticCapture.Create(equipmentManufacturerCode: 0);
 
@@ -280,27 +280,74 @@ public sealed class CredentialBearingProfileSanitizerTests
         .SelectMany(static build => build.Equipment)
         .Single(static item => item.State == ProfileImportAttachmentState.Equipped);
     Assert.Equal(
-        ProfileImportFactStatus.Unresolved,
+        ProfileImportFactStatus.NotApplicable,
         equipped.ManufacturerMatchedObservation?.Status);
     Assert.Equal(
-        "equipment_manufacturer_observation_missing",
-        equipped.ManufacturerMatchedObservation?.ReasonCode);
-    Assert.Equal(
-        ProfileImportFactStatus.Unresolved,
+        ProfileImportFactStatus.NotApplicable,
         equipped.ResolvedManufacturerMatched?.Status);
     var draft = Assert.IsType<SanitizedProfileDraft>(result.Draft);
     Assert.True(draft.CanMaterializeLocalAccountProfile);
-    Assert.False(draft.IsLocalAccountProfileWriteReady);
-    Assert.Contains(
+    Assert.True(draft.IsLocalAccountProfileWriteReady);
+    Assert.DoesNotContain(
         result.Diagnostics,
         static item => item.Code == "equipment_manufacturer_observation_unresolved");
   }
 
   [Fact]
+  public void Missing_tier_9_equipment_manufacturer_code_uses_exact_catalog_definition()
+  {
+    using var source = SyntheticCapture.Create(
+        equipmentManufacturerCode: 0,
+        equipmentTier: 9);
+
+    var result = new CredentialBearingProfileSanitizer().Sanitize(
+        source,
+        IdentitySecret,
+        SyntheticResolver.Create(equipmentTier: 9),
+        Options(CharacterLevelAuthorityPolicy.DetailObservationV1));
+
+    Assert.True(result.Succeeded);
+    var draft = Assert.IsType<SanitizedProfileDraft>(result.Draft);
+    var equipped = draft.Builds.SelectMany(static build => build.Equipment)
+        .Single(static item => item.State == ProfileImportAttachmentState.Equipped);
+    Assert.Equal(ProfileImportFactStatus.Ready, equipped.ResolvedManufacturerMatched?.Status);
+    Assert.True(equipped.ResolvedManufacturerMatched?.Value);
+    Assert.True(draft.IsLocalAccountProfileWriteReady);
+    Assert.DoesNotContain(
+        result.Diagnostics,
+        static item => item.Code == "equipment_manufacturer_observation_unresolved");
+  }
+
+  [Fact]
+  public void Manufacturerless_tier_9_equipment_is_not_applicable()
+  {
+    using var source = SyntheticCapture.Create(
+        equipmentManufacturerCode: 0,
+        equipmentTier: 9);
+    var resolver = SyntheticResolver.Create(equipmentTier: 9);
+    resolver.MakeEquipmentCatalogManufacturerNotApplicable();
+
+    var result = new CredentialBearingProfileSanitizer().Sanitize(
+        source,
+        IdentitySecret,
+        resolver,
+        Options(CharacterLevelAuthorityPolicy.DetailObservationV1));
+
+    Assert.True(result.Succeeded);
+    var draft = Assert.IsType<SanitizedProfileDraft>(result.Draft);
+    var equipped = draft.Builds.SelectMany(static build => build.Equipment)
+        .Single(static item => item.State == ProfileImportAttachmentState.Equipped);
+    Assert.Equal(
+        ProfileImportFactStatus.NotApplicable,
+        equipped.ResolvedManufacturerMatched?.Status);
+    Assert.True(draft.IsLocalAccountProfileWriteReady);
+  }
+
+  [Fact]
   public void Observed_equipment_manufacturer_must_match_the_exact_catalog_definition()
   {
-    using var source = SyntheticCapture.Create(equipmentManufacturerCode: 1);
-    var resolver = SyntheticResolver.Create();
+    using var source = SyntheticCapture.Create(equipmentManufacturerCode: 1, equipmentTier: 9);
+    var resolver = SyntheticResolver.Create(equipmentTier: 9);
     resolver.ChangeEquipmentCatalogManufacturer(ProfileImportManufacturer.Missilis);
 
     var result = new CredentialBearingProfileSanitizer().Sanitize(
@@ -316,7 +363,7 @@ public sealed class CredentialBearingProfileSanitizerTests
   }
 
   [Fact]
-  public void Unresolved_bond_observation_prevents_profile_write_readiness()
+  public void Non_R_zero_bond_observation_prevents_profile_write_readiness()
   {
     using var source = SyntheticCapture.Create(firstBondLevel: 0);
 
@@ -337,6 +384,29 @@ public sealed class CredentialBearingProfileSanitizerTests
         draft.Builds,
         static build => build.ResolvedBondLevel.Status == ProfileImportFactStatus.Unresolved);
     Assert.Contains(
+        result.Diagnostics,
+        static item => item.Code == "bond_level_zero_semantics_unresolved");
+  }
+
+  [Fact]
+  public void R_character_zero_bond_is_not_applicable()
+  {
+    using var source = SyntheticCapture.Create(firstBondLevel: 0);
+    var resolver = SyntheticResolver.Create();
+    resolver.ChangeFirstCharacterRarity(ProfileImportRarity.R);
+
+    var result = new CredentialBearingProfileSanitizer().Sanitize(
+        source,
+        IdentitySecret,
+        resolver,
+        Options(CharacterLevelAuthorityPolicy.DetailObservationV1));
+
+    Assert.True(result.Succeeded);
+    var draft = Assert.IsType<SanitizedProfileDraft>(result.Draft);
+    var build = draft.Builds.Single(static item => item.BondLevelObservation == 0);
+    Assert.Equal(ProfileImportFactStatus.NotApplicable, build.ResolvedBondLevel.Status);
+    Assert.True(draft.IsLocalAccountProfileWriteReady);
+    Assert.DoesNotContain(
         result.Diagnostics,
         static item => item.Code == "bond_level_zero_semantics_unresolved");
   }
@@ -452,11 +522,28 @@ public sealed class CredentialBearingProfileSanitizerTests
   }
 
   [Fact]
-  public void Overload_legal_value_must_preserve_signed_raw_value_and_scale()
+  public void Overload_legal_value_must_preserve_raw_evidence_and_positive_application_magnitude()
   {
     using var source = SyntheticCapture.Create();
     var resolver = SyntheticResolver.Create();
     resolver.CorruptFirstOverloadApplicationValue();
+
+    var result = new CredentialBearingProfileSanitizer().Sanitize(
+        source,
+        IdentitySecret,
+        resolver,
+        Options(CharacterLevelAuthorityPolicy.DetailObservationV1));
+
+    Assert.False(result.Succeeded);
+    Assert.Equal("overload_exact_value_mismatch", Assert.Single(result.Diagnostics).Code);
+  }
+
+  [Fact]
+  public void Overload_legal_value_rejects_signed_raw_value_as_application_value()
+  {
+    using var source = SyntheticCapture.Create();
+    var resolver = SyntheticResolver.Create();
+    resolver.NegateFirstOverloadApplicationValue();
 
     var result = new CredentialBearingProfileSanitizer().Sanitize(
         source,
@@ -591,7 +678,9 @@ public sealed class CredentialBearingProfileSanitizerTests
     var draft = CreateSanitizedDraft(
         CharacterLevelAuthorityPolicy.DetailObservationV1,
         firstBondLevel: 0,
-        equipmentManufacturerCode: 0);
+        equipmentManufacturerCode: 0,
+        equipmentTier: 9,
+        unresolvedCatalogManufacturer: true);
     Assert.True(draft.CanMaterializeLocalAccountProfile);
     Assert.False(draft.IsLocalAccountProfileWriteReady);
     var bondBuild = draft.Builds.Single(static build => build.BondLevelObservation == 0);
@@ -797,6 +886,256 @@ public sealed class CredentialBearingProfileSanitizerTests
     Assert.Equal(9, coverage.ConsoleObservationCount);
   }
 
+  [Fact]
+  public void Fetched_snapshot_materializes_only_source_free_profile_and_progression_values()
+  {
+    using var coverageSource = SyntheticCapture.Create();
+    var coverageResult = new CredentialBearingProfileSanitizer().InspectCoverage(coverageSource);
+    using var profileSource = SyntheticCapture.Create();
+    var sanitized = new CredentialBearingProfileSanitizer().Sanitize(
+        profileSource,
+        IdentitySecret,
+        SyntheticResolver.Create(),
+        Options(CharacterLevelAuthorityPolicy.RosterObservationV1));
+    var draft = Assert.IsType<SanitizedProfileDraft>(sanitized.Draft);
+    var coverage = Assert.IsType<CredentialBearingProfileCoverage>(coverageResult.Coverage);
+
+    var snapshot = FetchedAccountSnapshotMaterializer.Materialize(
+        new FetchedAccountSnapshotMaterializationCommand(
+            EntityUid.New(),
+            new DateTimeOffset(2026, 8, 29, 0, 0, 0, TimeSpan.Zero),
+            draft,
+            coverage,
+            new FetchedBasicAccountObservation("SyntheticLab", 893, "34-38", "20-31", "34-38"),
+            new FetchedProgressionObservation(
+                Sha256Digest.ComputeUtf8("synthetic-main-quest-data"),
+                611,
+                611,
+                17),
+            sanitized.Diagnostics));
+
+    Assert.Equal("complete", snapshot.Completeness.StatusCode);
+    Assert.Empty(snapshot.Completeness.ReasonCodes);
+    Assert.Equal(2, snapshot.Completeness.RosterCount);
+    Assert.Equal(2, snapshot.Completeness.CharacterDetailCount);
+    Assert.Equal(2, snapshot.Completeness.EquipmentCharacterCount);
+    Assert.Equal(9, snapshot.Account.Consoles.Count);
+    Assert.Equal(2, snapshot.Characters.Count);
+    Assert.All(snapshot.Characters, static character => Assert.Equal(4, character.Equipment.Count));
+    Assert.False(snapshot.Source.CredentialOrSessionPersisted);
+    Assert.False(snapshot.Source.RawSourcePersisted);
+
+    var encoded = FetchedAccountSnapshotJsonCodec.Encode(snapshot);
+    var decoded = FetchedAccountSnapshotJsonCodec.Decode(encoded);
+    Assert.Equal(encoded, FetchedAccountSnapshotJsonCodec.Encode(decoded));
+    var json = Encoding.UTF8.GetString(encoded);
+    Assert.DoesNotContain("raw-account-sentinel", json, StringComparison.Ordinal);
+    Assert.DoesNotContain("secret-token-value", json, StringComparison.Ordinal);
+    Assert.DoesNotContain("official.invalid", json, StringComparison.Ordinal);
+    foreach (var sourceReference in SyntheticCapture.AllSourceReferences)
+    {
+      Assert.DoesNotContain(sourceReference.ToString(), json, StringComparison.Ordinal);
+    }
+  }
+
+  [Fact]
+  public void Fetched_snapshot_marks_roster_detail_drift_incomplete_without_guessing()
+  {
+    var draft = CreateSanitizedDraft(CharacterLevelAuthorityPolicy.RosterObservationV1);
+    var snapshot = FetchedAccountSnapshotMaterializer.Materialize(
+        new FetchedAccountSnapshotMaterializationCommand(
+            EntityUid.New(),
+            new DateTimeOffset(2026, 8, 29, 0, 0, 0, TimeSpan.Zero),
+            draft,
+            new CredentialBearingProfileCoverage(2, 1, 0, 8, 2, 2, 1, 9),
+            new FetchedBasicAccountObservation("SyntheticLab", 893, "34-38", "20-31", "34-38"),
+            new FetchedProgressionObservation(null, null, null, null),
+            Array.Empty<ProfileImportDiagnostic>()));
+
+    Assert.Equal("incomplete", snapshot.Completeness.StatusCode);
+    Assert.Contains("roster_detail_count_mismatch", snapshot.Completeness.ReasonCodes);
+    Assert.Contains("progression_summary_missing", snapshot.Completeness.ReasonCodes);
+    Assert.Equal(1, snapshot.Completeness.MissingCharacterCount);
+  }
+
+  [Fact]
+  public void Progression_v2_sanitizes_observed_and_derived_components_without_source_ids()
+  {
+    const string privateSourceJson = """
+        {
+          "schemaVersion": 1,
+          "contractId": "nll/phase3b2-user-progression-private-source/v1",
+          "sourceSequencePersisted": false,
+          "officialUserIdentifierPersisted": false,
+          "credentialOrSessionFieldPersisted": false,
+          "selectedTriggers": [
+            { "typeCode": 2, "conditionId": 920001, "userValue": 1, "createdAt": 100 },
+            { "typeCode": 22, "conditionId": 920002, "userValue": 1, "createdAt": 101 }
+          ],
+          "mainQuestData": [
+            { "questId": 910001, "rewardClaimed": true },
+            { "questId": 910002, "rewardClaimed": true }
+          ]
+        }
+        """;
+    const string candidateJson = """
+        {
+          "Users": [
+            {
+              "CompletedScenarios": [930001, 930002, 930003],
+              "MainQuestData": { "910001": true, "910002": true },
+              "ContentsOpenUnlocked": {
+                "940001": { "ButtonAnimationPlayed": true, "PopupAnimationPlayed": true }
+              },
+              "StageClearHistorys": [],
+              "Triggers": [
+                { "Type": 2, "ConditionId": 920001 },
+                { "Type": 22, "ConditionId": 920002 }
+              ]
+            }
+          ]
+        }
+        """;
+    using var privateSource = new MemoryStream(Encoding.UTF8.GetBytes(privateSourceJson));
+    using var candidate = new MemoryStream(Encoding.UTF8.GetBytes(candidateJson));
+
+    var observation = LegacyProgressionObservationMaterializerV2.Materialize(
+        new LegacyProgressionMaterializationCommandV2(
+            EntityUid.New(),
+            new DateTimeOffset(2026, 8, 29, 0, 0, 0, TimeSpan.Zero),
+            privateSource,
+            candidate,
+            IdentitySecret));
+
+    Assert.Equal("incomplete", observation.Completeness.StatusCode);
+    Assert.Equal(2, observation.Completeness.AvailableComponentCount);
+    Assert.Equal(2, observation.Completeness.DerivedComponentCount);
+    Assert.Equal(1, observation.Completeness.UnavailableComponentCount);
+    Assert.Equal("observed", observation.MainQuestData.Summary.StateCode);
+    Assert.Equal(2, observation.MainQuestData.CompletedCount);
+    Assert.Equal(2, observation.MainQuestData.RewardClaimedCount);
+    Assert.Equal(3, observation.CompletedScenarios.Summary.ItemCount);
+    Assert.Equal(1, observation.ContentsOpenUnlocked.Summary.ItemCount);
+    Assert.Null(observation.StageClearHistorys.Summary.ItemCount);
+    Assert.Equal(2, observation.Triggers.Summary.ItemCount);
+    Assert.Contains("stage_clear_historys_unavailable", observation.Completeness.ReasonCodes);
+
+    var canonical = FetchedProgressionObservationV2JsonCodec.Encode(observation);
+    var decoded = FetchedProgressionObservationV2JsonCodec.Decode(canonical);
+    Assert.Equal(canonical, FetchedProgressionObservationV2JsonCodec.Encode(decoded));
+    var json = Encoding.UTF8.GetString(canonical);
+    foreach (var sourceId in new[] { "910001", "910002", "920001", "920002", "930001", "940001" })
+      Assert.DoesNotContain(sourceId, json, StringComparison.Ordinal);
+    Assert.DoesNotContain("conditionId", json, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain("questId", json, StringComparison.OrdinalIgnoreCase);
+  }
+
+  [Fact]
+  public void Progression_v2_does_not_promote_absent_legacy_components_to_empty_observed_sets()
+  {
+    const string privateSourceJson = """
+        {
+          "schemaVersion": 1,
+          "contractId": "nll/phase3b2-user-progression-private-source/v1",
+          "sourceSequencePersisted": false,
+          "officialUserIdentifierPersisted": false,
+          "credentialOrSessionFieldPersisted": false,
+          "selectedTriggers": [],
+          "mainQuestData": []
+        }
+        """;
+    using var privateSource = new MemoryStream(Encoding.UTF8.GetBytes(privateSourceJson));
+
+    var observation = LegacyProgressionObservationMaterializerV2.Materialize(
+        new LegacyProgressionMaterializationCommandV2(
+            EntityUid.New(),
+            new DateTimeOffset(2026, 8, 29, 0, 0, 0, TimeSpan.Zero),
+            privateSource,
+            null,
+            IdentitySecret));
+
+    Assert.Equal("observed", observation.MainQuestData.Summary.StateCode);
+    Assert.Equal(0, observation.MainQuestData.Summary.ItemCount);
+    Assert.Equal("observed", observation.Triggers.Summary.StateCode);
+    Assert.Equal(0, observation.Triggers.Summary.ItemCount);
+    Assert.Equal("unavailable", observation.CompletedScenarios.Summary.StateCode);
+    Assert.Null(observation.CompletedScenarios.Summary.ItemCount);
+    Assert.Equal("unavailable", observation.ContentsOpenUnlocked.Summary.StateCode);
+    Assert.Equal("unavailable", observation.StageClearHistorys.Summary.StateCode);
+  }
+
+  [Fact]
+  public void Fetched_snapshot_projects_bound_progression_v2_without_hiding_missing_stage_history()
+  {
+    var snapshotUid = EntityUid.New();
+    var draft = CreateSanitizedDraft(CharacterLevelAuthorityPolicy.RosterObservationV1);
+    var snapshot = FetchedAccountSnapshotMaterializer.Materialize(
+        new FetchedAccountSnapshotMaterializationCommand(
+            snapshotUid,
+            new DateTimeOffset(2026, 8, 29, 0, 0, 0, TimeSpan.Zero),
+            draft,
+            new CredentialBearingProfileCoverage(2, 2, 0, 8, 2, 2, 1, 9),
+            new FetchedBasicAccountObservation("SyntheticLab", 893, "34-38", "20-31", "34-38"),
+            new FetchedProgressionObservation(
+                Sha256Digest.ComputeUtf8("main-quest"),
+                2,
+                3,
+                1,
+                snapshotUid,
+                Sha256Digest.ComputeUtf8("progression-v2"),
+                "incomplete",
+                ["stage_clear_historys_unavailable"],
+                null,
+                2),
+            Array.Empty<ProfileImportDiagnostic>()));
+
+    Assert.DoesNotContain("progression_summary_missing", snapshot.Completeness.ReasonCodes);
+    Assert.Contains("stage_clear_historys_unavailable", snapshot.Completeness.ReasonCodes);
+    Assert.Equal("incomplete", snapshot.Completeness.StatusCode);
+  }
+
+  [Fact]
+  public void Basic_info_sanitizer_whitelists_values_and_drops_identity_transport_fields()
+  {
+    const string sourceText = """
+        {
+          "uid": "raw-account-sentinel",
+          "phase_1_initial_load": [
+            {
+              "endpoint": "GetUserProfileBasicInfo",
+              "url": "https://official.invalid/private?token=secret-token-value",
+              "data": {
+                "trace_id": "secret-trace",
+                "basic_info": {
+                  "nickname": "SyntheticLab",
+                  "lv": 893,
+                  "progress_normal_campaign": 3438,
+                  "progress_hard_campaign": "20-31",
+                  "progress_easy_campaign": 3438,
+                  "ignored_identity": "must-not-survive"
+                }
+              }
+            }
+          ],
+          "phase_2_after_click": []
+        }
+        """;
+    using var source = new MemoryStream(Encoding.UTF8.GetBytes(sourceText));
+
+    var result = CredentialBearingBasicInfoSanitizer.Sanitize(source);
+
+    Assert.True(result.Succeeded);
+    var observation = Assert.IsType<FetchedBasicAccountObservation>(result.Observation);
+    Assert.Equal("SyntheticLab", observation.DisplayName);
+    Assert.Equal(893, observation.CommanderLevel);
+    Assert.Equal("3438", observation.NormalStageLabel);
+    Assert.Equal("20-31", observation.HardStageLabel);
+    var json = JsonSerializer.Serialize(observation);
+    Assert.DoesNotContain("raw-account-sentinel", json, StringComparison.Ordinal);
+    Assert.DoesNotContain("secret-token-value", json, StringComparison.Ordinal);
+    Assert.DoesNotContain("must-not-survive", json, StringComparison.Ordinal);
+  }
+
   private static OfflineProfileImportOptions Options(
       CharacterLevelAuthorityPolicy? authority = null) => new(
           new DateTimeOffset(2026, 8, 20, 0, 0, 0, TimeSpan.Zero),
@@ -806,15 +1145,23 @@ public sealed class CredentialBearingProfileSanitizerTests
   private static SanitizedProfileDraft CreateSanitizedDraft(
       CharacterLevelAuthorityPolicy authority,
       int firstBondLevel = 30,
-      int equipmentManufacturerCode = 1)
+      int equipmentManufacturerCode = 0,
+      int equipmentTier = 10,
+      bool unresolvedCatalogManufacturer = false)
   {
     using var source = SyntheticCapture.Create(
         equipmentManufacturerCode: equipmentManufacturerCode,
+        equipmentTier: equipmentTier,
         firstBondLevel: firstBondLevel);
+    var resolver = SyntheticResolver.Create(equipmentTier);
+    if (unresolvedCatalogManufacturer)
+    {
+      resolver.MakeEquipmentCatalogManufacturerUnresolved();
+    }
     var result = new CredentialBearingProfileSanitizer().Sanitize(
         source,
         IdentitySecret,
-        SyntheticResolver.Create(),
+        resolver,
         Options(authority));
     Assert.True(
         result.Succeeded,
@@ -866,7 +1213,8 @@ public sealed class CredentialBearingProfileSanitizerTests
     public static MemoryStream Create(
         bool addUnknownRosterField = false,
         bool omitSecondStateEffect = false,
-        int equipmentManufacturerCode = 1,
+        int equipmentManufacturerCode = 0,
+        int equipmentTier = 10,
         int firstBondLevel = 30,
         bool moveSecondStateEffectToAnotherDetailPacket = false,
         int firstConsoleLevel = 1)
@@ -899,6 +1247,7 @@ public sealed class CredentialBearingProfileSanitizerTests
           1_000,
           withEquipment: true,
           equipmentManufacturerCode,
+          equipmentTier,
           firstBondLevel);
       var secondDetail = Detail(
           CharacterB,
@@ -906,6 +1255,7 @@ public sealed class CredentialBearingProfileSanitizerTests
           2_000,
           withEquipment: false,
           equipmentManufacturerCode: 0,
+          equipmentTier: 0,
           bondLevel: 30);
       object[] detailPackets = moveSecondStateEffectToAnotherDetailPacket
           ?
@@ -986,6 +1336,7 @@ public sealed class CredentialBearingProfileSanitizerTests
         long combat,
         bool withEquipment,
         int equipmentManufacturerCode,
+        int equipmentTier,
         int bondLevel)
     {
       var value = new Dictionary<string, object>
@@ -1008,7 +1359,7 @@ public sealed class CredentialBearingProfileSanitizerTests
       {
         var equipped = withEquipment && prefix == "head";
         value[$"{prefix}_equip_tid"] = equipped ? EquipmentHead : 0L;
-        value[$"{prefix}_equip_tier"] = equipped ? 10 : 0;
+        value[$"{prefix}_equip_tier"] = equipped ? equipmentTier : 0;
         value[$"{prefix}_equip_lv"] = equipped ? 5 : 0;
         value[$"{prefix}_equip_corporation_type"] = equipped ? equipmentManufacturerCode : 0;
         value[$"{prefix}_equip_option1_id"] = equipped ? OverloadLine1 : 0L;
@@ -1135,13 +1486,14 @@ public sealed class CredentialBearingProfileSanitizerTests
 
     public ProfileImportCatalogBinding CombatSupportCatalog { get; }
 
-    public static SyntheticResolver Create()
+    public static SyntheticResolver Create(int equipmentTier = 10)
     {
       var result = new SyntheticResolver();
       result._characters.Add(
           Alias("character-resource", SyntheticCapture.CharacterA),
           new ResolvedProfileCharacter(
               Uid(100),
+              ProfileImportRarity.Ssr,
               ProfileImportCombatRole.Attacker,
               ProfileImportManufacturer.Elysion,
               ProfileImportWeaponClass.AssaultRifle,
@@ -1156,6 +1508,7 @@ public sealed class CredentialBearingProfileSanitizerTests
           Alias("character-resource", SyntheticCapture.CharacterB),
           new ResolvedProfileCharacter(
               Uid(101),
+              ProfileImportRarity.Ssr,
               ProfileImportCombatRole.Attacker,
               ProfileImportManufacturer.Elysion,
               ProfileImportWeaponClass.AssaultRifle,
@@ -1172,9 +1525,11 @@ public sealed class CredentialBearingProfileSanitizerTests
               Uid(200),
               ProfileImportEquipmentSlot.Head,
               ProfileImportCombatRole.Attacker,
-              ProfileImportFact<ProfileImportManufacturer>.Ready(
-                  ProfileImportManufacturer.Elysion),
-              10,
+              equipmentTier == 10
+                  ? ProfileImportFact<ProfileImportManufacturer>.NotApplicable()
+                  : ProfileImportFact<ProfileImportManufacturer>.Ready(
+                      ProfileImportManufacturer.Elysion),
+              equipmentTier,
               5,
               true));
       result._cubes.Add(
@@ -1214,7 +1569,7 @@ public sealed class CredentialBearingProfileSanitizerTests
               Uid(601),
               ProfileImportValueUnit.Ratio,
               -333,
-              new ProfileImportExactValue(-333, 4)));
+              new ProfileImportExactValue(333, 4)));
       return result;
     }
 
@@ -1229,6 +1584,12 @@ public sealed class CredentialBearingProfileSanitizerTests
     {
       var alias = Alias("combat-support-generic-collection", SyntheticCapture.Collection);
       _collections[alias] = _collections[alias] with { ApplicableWeaponClass = weaponClass };
+    }
+
+    public void ChangeFirstCharacterRarity(ProfileImportRarity rarity)
+    {
+      var alias = Alias("character-resource", SyntheticCapture.CharacterA);
+      _characters[alias] = _characters[alias] with { Rarity = rarity };
     }
 
     public void LowerFirstCharacterSkillMaximum()
@@ -1277,12 +1638,42 @@ public sealed class CredentialBearingProfileSanitizerTests
       };
     }
 
+    public void NegateFirstOverloadApplicationValue()
+    {
+      var alias = Alias(
+          "combat-support-overload-legal-value",
+          SyntheticCapture.OverloadLine1);
+      _overloads[alias] = _overloads[alias] with
+      {
+        ApplicationValue = new ProfileImportExactValue(-111, 4)
+      };
+    }
+
     public void ChangeEquipmentCatalogManufacturer(ProfileImportManufacturer manufacturer)
     {
       var alias = Alias("combat-support-equipment", SyntheticCapture.EquipmentHead);
       _equipment[alias] = _equipment[alias] with
       {
         Manufacturer = ProfileImportFact<ProfileImportManufacturer>.Ready(manufacturer)
+      };
+    }
+
+    public void MakeEquipmentCatalogManufacturerUnresolved()
+    {
+      var alias = Alias("combat-support-equipment", SyntheticCapture.EquipmentHead);
+      _equipment[alias] = _equipment[alias] with
+      {
+        Manufacturer = ProfileImportFact<ProfileImportManufacturer>.Unresolved(
+            "fixture_equipment_manufacturer_unresolved")
+      };
+    }
+
+    public void MakeEquipmentCatalogManufacturerNotApplicable()
+    {
+      var alias = Alias("combat-support-equipment", SyntheticCapture.EquipmentHead);
+      _equipment[alias] = _equipment[alias] with
+      {
+        Manufacturer = ProfileImportFact<ProfileImportManufacturer>.NotApplicable()
       };
     }
 

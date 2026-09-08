@@ -244,6 +244,24 @@ public sealed record LocalConsoleStateWrite
   public LocalProfileFact<long> ObservedExperience { get; }
 }
 
+public sealed record LocalOwnedCubeWrite
+{
+  public LocalOwnedCubeWrite(EntityUid definitionUid, int level)
+  {
+    if (definitionUid.Value == Guid.Empty || level is < 1 or > 15)
+    {
+      throw new LocalAccountProfileIntegrityException("profile_account_cube_invalid");
+    }
+
+    DefinitionUid = definitionUid;
+    Level = level;
+  }
+
+  public EntityUid DefinitionUid { get; }
+
+  public int Level { get; }
+}
+
 public sealed record LocalAccountCombatStateWrite
 {
   public LocalAccountCombatStateWrite(
@@ -251,6 +269,16 @@ public sealed record LocalAccountCombatStateWrite
       IEnumerable<LocalConsoleStateWrite> consoles,
       LocalProfileValidationMode validationMode,
       LocalProfileRevisionOrigin origin = LocalProfileRevisionOrigin.UserEdit)
+      : this(synchroLevel, consoles, validationMode, origin, null)
+  {
+  }
+
+  public LocalAccountCombatStateWrite(
+      LocalProfileFact<int> synchroLevel,
+      IEnumerable<LocalConsoleStateWrite> consoles,
+      LocalProfileValidationMode validationMode,
+      LocalProfileRevisionOrigin origin,
+      IEnumerable<LocalOwnedCubeWrite>? cubes)
   {
     ArgumentNullException.ThrowIfNull(synchroLevel);
     ArgumentNullException.ThrowIfNull(consoles);
@@ -274,11 +302,20 @@ public sealed record LocalAccountCombatStateWrite
     Consoles = Array.AsReadOnly(normalized);
     ValidationMode = validationMode;
     Origin = origin;
+    var ownedCubes = (cubes ?? []).OrderBy(static item => item.DefinitionUid.ToString(), StringComparer.Ordinal).ToArray();
+    if (ownedCubes.Select(static item => item.DefinitionUid).Distinct().Count() != ownedCubes.Length)
+    {
+      throw new LocalAccountProfileIntegrityException("profile_account_cube_duplicate");
+    }
+
+    Cubes = Array.AsReadOnly(ownedCubes);
   }
 
   public LocalProfileFact<int> SynchroLevel { get; }
 
   public IReadOnlyList<LocalConsoleStateWrite> Consoles { get; }
+
+  public IReadOnlyList<LocalOwnedCubeWrite> Cubes { get; }
 
   public LocalProfileValidationMode ValidationMode { get; }
 
@@ -363,7 +400,6 @@ public sealed record LocalEquipmentWrite
           enhancementLevel.Status != LocalProfileFactStatus.NotApplicable &&
           (enhancementLevel.Value is null or (>= 0 and <= 5)) &&
           manufacturerMatched is not null &&
-          manufacturerMatched.Status != LocalProfileFactStatus.NotApplicable &&
           unresolvedReasonCode is null,
       LocalEquipmentState.Unequipped =>
           equipmentDefinitionUid is null && enhancementLevel is null &&
@@ -732,14 +768,30 @@ public sealed record CreateLocalAccountProfileCommand
   public CreateLocalAccountProfileCommand(
       EntityUid operationUid,
       LocalAccountProfileWrite profile,
-      DateTimeOffset createdAtUtc)
+      DateTimeOffset createdAtUtc,
+      string? accountLabel = null,
+      EntityUid? saveAsParentAccountUid = null)
   {
     RequireUid(operationUid, "profile_operation_uid_invalid");
     RequirePostgresTimestamp(createdAtUtc);
+    if (accountLabel is not null &&
+        (string.IsNullOrWhiteSpace(accountLabel) || accountLabel.Length > 64 ||
+         accountLabel.Any(static character => char.IsControl(character) ||
+             character is '/' or '\\' or ':')))
+    {
+      throw new LocalAccountProfileIntegrityException("account_label_invalid");
+    }
+
+    if (saveAsParentAccountUid is { Value: var parentUid } && parentUid == Guid.Empty)
+    {
+      throw new LocalAccountProfileIntegrityException("profile_account_uid_invalid");
+    }
 
     OperationUid = operationUid;
     Profile = profile ?? throw new ArgumentNullException(nameof(profile));
     CreatedAtUtc = createdAtUtc;
+    AccountLabel = accountLabel;
+    SaveAsParentAccountUid = saveAsParentAccountUid;
     RequestSha256 = LocalAccountProfileCanonicalizer.ComputeCreateRequestSha256(this);
   }
 
@@ -748,6 +800,10 @@ public sealed record CreateLocalAccountProfileCommand
   public LocalAccountProfileWrite Profile { get; }
 
   public DateTimeOffset CreatedAtUtc { get; }
+
+  public string? AccountLabel { get; }
+
+  public EntityUid? SaveAsParentAccountUid { get; }
 
   public Sha256Digest RequestSha256 { get; }
 }
@@ -885,9 +941,18 @@ public static class LocalAccountProfileCanonicalizer
   public static Sha256Digest ComputeCreateRequestSha256(CreateLocalAccountProfileCommand command)
   {
     using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-    Append(hash, "nll/create-local-account-profile/v1");
+    var labeled = command.AccountLabel is not null || command.SaveAsParentAccountUid is not null;
+    Append(hash, labeled
+        ? "nll/create-local-account-profile/v2"
+        : "nll/create-local-account-profile/v1");
     Append(hash, command.Profile.CanonicalSha256.Hex);
     Append(hash, command.CreatedAtUtc.UtcDateTime.Ticks.ToString(CultureInfo.InvariantCulture));
+    if (labeled)
+    {
+      Append(hash, command.AccountLabel);
+      Append(hash, command.SaveAsParentAccountUid?.ToString());
+    }
+
     return Digest(hash);
   }
 
@@ -918,6 +983,18 @@ public static class LocalAccountProfileCanonicalizer
           hash,
           console.ObservedExperience,
           static value => value.ToString(CultureInfo.InvariantCulture));
+    }
+
+    // Legacy revisions keep their exact request hash when no inventory was recorded.
+    if (state.Cubes.Count > 0)
+    {
+      Append(hash, "account-cubes/v1");
+      Append(hash, state.Cubes.Count.ToString(CultureInfo.InvariantCulture));
+      foreach (var cube in state.Cubes)
+      {
+        Append(hash, cube.DefinitionUid.ToString());
+        Append(hash, cube.Level.ToString(CultureInfo.InvariantCulture));
+      }
     }
   }
 

@@ -14,7 +14,7 @@ internal static class CharacterCatalogCli
       "NIKKE/game/nikke_Data/StreamingAssets/sd.bin";
   private static readonly ExtractorDescriptor Extractor = new(
       "staticdata_character_catalog",
-      "1",
+      "v1",
       Sha256Digest.ComputeUtf8("nll/staticdata-character-catalog-extractor-contract/v1"));
 
   public static async Task<int> InspectAsync(

@@ -27,7 +27,7 @@ public sealed class PostgreSqlPrivateServerRunInvariantTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
       account = await CreateInitializedAccountAsync(dataSource);
     }

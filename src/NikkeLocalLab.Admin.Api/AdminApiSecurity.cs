@@ -96,10 +96,23 @@ internal sealed class LoopbackAdminGuardMiddleware
       if (!context.Request.Cookies.TryGetValue(
               AdminAccessSessionManager.CookieName,
               out var sessionToken) ||
-          !adminAccess.IsSessionActive(sessionToken))
+          !adminAccess.TryRefreshSession(sessionToken, out var sessionExpiresAtUtc))
       {
         throw new ApiRequestException(StatusCodes.Status401Unauthorized, "admin_session_required");
       }
+
+      context.Response.Cookies.Append(
+          AdminAccessSessionManager.CookieName,
+          sessionToken,
+          new CookieOptions
+          {
+            HttpOnly = true,
+            IsEssential = true,
+            SameSite = SameSiteMode.Strict,
+            Secure = false,
+            Path = "/admin-api",
+            Expires = sessionExpiresAtUtc
+          });
 
       if (isUnsafe)
       {

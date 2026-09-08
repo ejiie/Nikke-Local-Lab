@@ -24,7 +24,7 @@ public sealed class PostgreSqlPrivateServerTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
     }
 
@@ -97,7 +97,7 @@ public sealed class PostgreSqlPrivateServerTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     await using var connection = await dataSource.OpenConnectionAsync();
 
     Assert.Equal(
@@ -115,7 +115,7 @@ public sealed class PostgreSqlPrivateServerTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
     }
 
@@ -182,7 +182,7 @@ public sealed class PostgreSqlPrivateServerTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
       account = await CreateInitializedAccountAsync(dataSource);
     }
@@ -305,7 +305,7 @@ public sealed class PostgreSqlPrivateServerTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
       account = await CreateInitializedAccountAsync(dataSource);
     }
@@ -494,7 +494,7 @@ public sealed class PostgreSqlPrivateServerTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
       account = await CreateInitializedAccountAsync(dataSource);
     }
@@ -574,7 +574,7 @@ public sealed class PostgreSqlPrivateServerTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
       account = await CreateInitializedAccountAsync(dataSource);
     }
@@ -769,7 +769,7 @@ public sealed class PostgreSqlPrivateServerTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
       account = await CreateInitializedAccountAsync(dataSource);
     }
@@ -934,7 +934,7 @@ public sealed class PostgreSqlPrivateServerTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
       account = await CreateInitializedAccountAsync(dataSource);
     }
@@ -1048,7 +1048,7 @@ public sealed class PostgreSqlPrivateServerTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
       account = await CreateInitializedAccountAsync(dataSource);
     }
@@ -1172,7 +1172,7 @@ public sealed class PostgreSqlPrivateServerTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
       account = await CreateInitializedAccountAsync(dataSource);
     }
@@ -1278,7 +1278,7 @@ public sealed class PostgreSqlPrivateServerTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
       account = await CreateInitializedAccountAsync(dataSource);
     }

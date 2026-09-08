@@ -15,7 +15,8 @@ public static class ProfileCanonicalizer
   public static string ToCanonicalText(AccountCombatStateRevisionContent content)
   {
     ArgumentNullException.ThrowIfNull(content);
-    var lines = new List<string> { AccountCombatStateContractId };
+    var lines = new List<string> { content.Cubes.Count == 0
+        ? AccountCombatStateContractId : "nll/account-combat-state-content/v2" };
     AppendBinding(lines, content.DatasetBinding);
     lines.Add($"validation-mode={ProfileCanonicalCodes.ValidationMode(content.ValidationMode)}");
     lines.Add($"synchro-level={Fact(content.SynchroLevel, Integer)}");
@@ -28,6 +29,18 @@ public static class ProfileCanonicalizer
       AppendSupportReference(lines, $"{prefix}.definition", console.Definition);
       lines.Add($"{prefix}.level={Fact(console.Level, Integer)}");
       lines.Add($"{prefix}.experience={Fact(console.Experience, Long)}");
+    }
+
+    if (content.Cubes.Count > 0)
+    {
+      lines.Add($"cubes.count={Integer(content.Cubes.Count)}");
+      for (var index = 0; index < content.Cubes.Count; index++)
+      {
+        var cube = content.Cubes[index];
+        var prefix = $"cubes.{Integer(index)}";
+        AppendSupportReference(lines, $"{prefix}.definition", cube.Definition);
+        lines.Add($"{prefix}.level={Integer(cube.Level)}");
+      }
     }
 
     return string.Join('\n', lines);

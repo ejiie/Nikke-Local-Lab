@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <EpinelSourceRoot Condition="'$(EpinelSourceRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\.external\EpinelPS\EpinelPS</EpinelSourceRoot>
+    <EpinelRuntimeRoot Condition="'$(EpinelRuntimeRoot)' == ''">$(EpinelSourceRoot)\bin\Release\net10.0\win-x64</EpinelRuntimeRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="System.Data.HashFunction.SpookyHash" VersionOverride="2.0.0" />
+    <ProjectReference Include="..\..\..\src\NikkeLocalLab.Automation\NikkeLocalLab.Automation.csproj" />
+    <!-- External compatibility implementation, never copied into the domain. -->
+    <Compile Include="$(EpinelSourceRoot)\Data\NkdbDecryptor.cs" Link="External\NkdbDecryptor.cs" />
+    <Compile Include="$(EpinelSourceRoot)\Data\OfbStream.cs" Link="External\OfbStream.cs" />
+    <Compile Include="$(EpinelSourceRoot)\Data\ZeroStream.cs" Link="External\ZeroStream.cs" />
+    <Reference Include="Microsoft.Data.Sqlite" HintPath="$(EpinelRuntimeRoot)\Microsoft.Data.Sqlite.dll" Private="true" />
+    <Reference Include="SQLitePCLRaw.core" HintPath="$(EpinelRuntimeRoot)\SQLitePCLRaw.core.dll" Private="true" />
+    <Reference Include="SQLitePCLRaw.batteries_v2" HintPath="$(EpinelRuntimeRoot)\SQLitePCLRaw.batteries_v2.dll" Private="true" />
+    <Reference Include="SQLitePCLRaw.provider.e_sqlite3" HintPath="$(EpinelRuntimeRoot)\SQLitePCLRaw.provider.e_sqlite3.dll" Private="true" />
+    <Reference Include="ZstdSharp" HintPath="$(EpinelRuntimeRoot)\ZstdSharp.dll" Private="true" />
+    <Content Include="$(EpinelRuntimeRoot)\e_sqlite3.dll" Link="e_sqlite3.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\config\resource-profiles\*.json" Link="resource-profile-%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

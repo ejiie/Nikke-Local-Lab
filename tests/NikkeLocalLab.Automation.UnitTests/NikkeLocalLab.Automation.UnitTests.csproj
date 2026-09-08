@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NikkeLocalLab.Automation\NikkeLocalLab.Automation.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\fixtures\automation\season26-v8.pipeline.json" Link="Fixtures\season26-v8.pipeline.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

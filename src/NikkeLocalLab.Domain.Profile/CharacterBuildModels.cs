@@ -114,7 +114,8 @@ public sealed class CharacterOverloadLineInput
   public CombatSupportDefinitionVersion OptionDefinitionVersion { get; }
 
   /// <summary>
-  /// The signed normalized application value. Research mode preserves any exact decimal value.
+  /// The positive normalized application magnitude consumed by the runtime mapping.
+  /// Research mode preserves any exact decimal value.
   /// </summary>
   public CombatSupportExactValue ApplicationValue { get; }
 }

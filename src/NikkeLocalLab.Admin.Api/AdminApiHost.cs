@@ -13,7 +13,13 @@ public sealed record AdminApiHostOptions
 {
   public int Port { get; init; } = 17878;
 
-  public long MaximumRequestBodyBytes { get; init; } = 1_048_576;
+  // A complete source-free account registration carries the canonical account
+  // snapshot, sanitized draft, and progression observation in one local admin
+  // request. The current real capture is larger than 1 MiB, while remaining
+  // comfortably inside the already-validated 4 MiB administrative ceiling.
+  public long MaximumRequestBodyBytes { get; init; } = 4_194_304;
+
+  public TimeSpan AdminSessionLifetime { get; init; } = TimeSpan.FromHours(12);
 
   public Action<string>? BootstrapCodeSink { get; init; }
 
@@ -22,6 +28,8 @@ public sealed record AdminApiHostOptions
   public bool AllowUnavailableProfileManagementForTests { get; init; }
 
   public bool RequirePrivateServerAdministration { get; init; }
+
+  public bool RequirePhaseDExecution { get; init; }
 }
 
 public static class AdminApiHost
@@ -36,7 +44,9 @@ public static class AdminApiHost
     }
 
     options ??= new AdminApiHostOptions();
-    if (options.Port is < 0 or > 65535 || options.MaximumRequestBodyBytes is < 1 or > 4_194_304)
+    if (options.Port is < 0 or > 65535 || options.MaximumRequestBodyBytes is < 1 or > 4_194_304 ||
+        options.AdminSessionLifetime < TimeSpan.FromMinutes(1) ||
+        options.AdminSessionLifetime > TimeSpan.FromHours(24))
     {
       throw new ArgumentOutOfRangeException(nameof(options));
     }
@@ -99,10 +109,14 @@ public static class AdminApiHost
     builder.Services.AddSingleton<AdminAccessSessionManager>(services =>
         AdminAccessSessionManager.Create(
             services.GetRequiredService<TimeProvider>(),
+            options.AdminSessionLifetime,
             options.BootstrapCodeSink));
     options.ConfigureServices?.Invoke(builder.Services);
     builder.Services.TryAddSingleton<IProfileManagementService, UnavailableProfileManagementService>();
     builder.Services.TryAddSingleton<IPrivateServerService, UnavailablePrivateServerService>();
+    builder.Services.TryAddSingleton<IPhaseDExecutionService, UnavailablePhaseDExecutionService>();
+    builder.Services.TryAddSingleton<IPhaseDPreparationService, UnavailablePhaseDPreparationService>();
+    builder.Services.TryAddSingleton<IAccountImportService, UnavailableAccountImportService>();
 
     var app = builder.Build();
     if (!options.AllowUnavailableProfileManagementForTests &&
@@ -115,6 +129,12 @@ public static class AdminApiHost
         app.Services.GetRequiredService<IPrivateServerService>() is UnavailablePrivateServerService)
     {
       throw new InvalidOperationException("private_server_administration_composition_missing");
+    }
+
+    if (options.RequirePhaseDExecution &&
+        app.Services.GetRequiredService<IPhaseDExecutionService>() is UnavailablePhaseDExecutionService)
+    {
+      throw new InvalidOperationException("phase_d_execution_composition_missing");
     }
 
     _ = app.Services.GetRequiredService<AdminAccessSessionManager>();
@@ -186,6 +206,8 @@ public static class AdminApiHost
     app.MapAdminApiEndpoints();
     app.MapPrivateServerPolicyAdminEndpoints();
     app.MapPrivateServerExecutionAdminEndpoints();
+    app.MapPhaseDExecutionEndpoints();
+    app.MapAccountImportEndpoints();
     return app;
   }
 }

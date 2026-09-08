@@ -27,7 +27,7 @@ public sealed class PostgreSqlImportLedgerTests
     await ResetSchemasAsync(dataSource);
 
     var migrations = new PostgreSqlMigrationRunner();
-    Assert.Equal(7, await migrations.MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await migrations.MigrateAsync(dataSource));
     Assert.Equal(0, await migrations.MigrateAsync(dataSource));
     await AssertMigrationChecksumDriftFailsAsync(dataSource);
 

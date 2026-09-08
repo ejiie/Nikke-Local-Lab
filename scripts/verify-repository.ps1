@@ -109,12 +109,16 @@ foreach ($PathEntry in $Paths) {
     }
 
     if ($Extension -eq ".json") {
+        $IsResourceProfile = $RelativePath -cmatch '^config/resource-profiles/legacy-[0-9]+\.[0-9]+\.[0-9]+\.json$'
         $AllowedJson = (
             $RelativePath -match '^contracts/.+\.schema\.json$' -or
             $RelativePath -match '^config/.+\.example\.json$' -or
+            $RelativePath -match '^config/boss-runtime-variants/[a-z0-9._-]+\.json$' -or
+            $IsResourceProfile -or
             $RelativePath -match '^tests/fixtures/synthetic/.+\.json$' -or
             $RelativePath -match '^tests/fixtures/evidence/.+\.json$' -or
-            $RelativePath -eq 'global.json' -or
+            $RelativePath -match '^tests/fixtures/automation/.+\.json$' -or
+            $RelativePath -match '(^|/)global\.json$' -or
             $RelativePath -match '(^|/)packages\.lock\.json$'
         )
         if (-not $AllowedJson) {
@@ -122,6 +126,19 @@ foreach ($PathEntry in $Paths) {
         }
         try {
             Get-Content -Raw -LiteralPath $FullPath | ConvertFrom-Json | Out-Null
+            if ($IsResourceProfile) {
+                $ProfileText = Get-Content -Raw -LiteralPath $FullPath
+                $ProfileSchema = Join-Path $RepositoryRoot 'contracts/sealed-resource-catalog-profile.schema.json'
+                if (-not (Test-Json -Json $ProfileText -SchemaFile $ProfileSchema -ErrorAction Stop)) {
+                    throw 'resource_profile_schema_invalid'
+                }
+                $Profile = $ProfileText | ConvertFrom-Json
+                $Roles = @($Profile.members.roleCode)
+                if (@($Roles | Select-Object -Unique).Count -ne $Roles.Count -or
+                    @(@('core', 'dp', 'fd', 'saus') | Where-Object { $_ -cnotin $Roles }).Count -ne 0) {
+                    throw 'resource_profile_roles_invalid'
+                }
+            }
         } catch {
             Add-Failure "Invalid JSON: $RelativePath ($($_.Exception.Message))"
         }

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Security.Cryptography;
 using App = NikkeLocalLab.Application.ProfileManagement;
@@ -14,6 +15,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
   private const string CandidateDiffContract = "profile_edit_diff.v1";
   private const string ImportDiffContract = "sanitized_import_diff.v1";
   private const string CreateImportDiffContract = "sanitized_import_create_diff.v1";
+  private const string FetchedLobbyDiffContract = "nll/fetched-lobby-diff/v1";
   private const string FeatureContract = "nll/client-feature-manifest/v1";
   private const string NoLevelAuthority = "unresolved/no_apply";
   private const string RosterLevelAuthority = "roster_observation/v1";
@@ -44,6 +46,10 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
   private readonly PostgreSqlLocalAccountProfileStore _profileStore;
   private readonly PostgreSqlLocalGameStateStore _gameStateStore;
   private readonly PostgreSqlProfileImportStore _importStore;
+  private readonly PostgreSqlAccountWorkspaceStore? _workspaceStore;
+  private readonly NpgsqlDataSource? _workspaceDataSource;
+  private readonly PostgreSqlAccountWorkspaceSaveStore? _accountSaveStore;
+  private readonly PostgreSqlFetchedAccountSnapshotStore? _fetchedSnapshotStore;
   private readonly PostgreSqlProfileCatalogAliasResolverFactory? _catalogResolverFactory;
   private readonly TimeProvider _timeProvider;
   private readonly Sha256Digest _transformerBinarySha256;
@@ -59,7 +65,8 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
           new PostgreSqlProfileImportStore(dataSource, uidGenerator),
           timeProvider,
           transformerBinarySha256,
-          new PostgreSqlProfileCatalogAliasResolverFactory(dataSource))
+          new PostgreSqlProfileCatalogAliasResolverFactory(dataSource),
+          dataSource)
   {
   }
 
@@ -69,15 +76,107 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
       PostgreSqlProfileImportStore importStore,
       TimeProvider? timeProvider = null,
       Sha256Digest? transformerBinarySha256 = null,
-      PostgreSqlProfileCatalogAliasResolverFactory? catalogResolverFactory = null)
+      PostgreSqlProfileCatalogAliasResolverFactory? catalogResolverFactory = null,
+      NpgsqlDataSource? workspaceDataSource = null)
   {
     _profileStore = profileStore ?? throw new ArgumentNullException(nameof(profileStore));
     _gameStateStore = gameStateStore ?? throw new ArgumentNullException(nameof(gameStateStore));
     _importStore = importStore ?? throw new ArgumentNullException(nameof(importStore));
+    _workspaceDataSource = workspaceDataSource;
+    _workspaceStore = workspaceDataSource is null
+        ? null
+        : new PostgreSqlAccountWorkspaceStore(workspaceDataSource);
+    _accountSaveStore = workspaceDataSource is null
+        ? null
+        : new PostgreSqlAccountWorkspaceSaveStore(workspaceDataSource);
+    _fetchedSnapshotStore = workspaceDataSource is null
+        ? null
+        : new PostgreSqlFetchedAccountSnapshotStore(workspaceDataSource);
     _catalogResolverFactory = catalogResolverFactory;
     _timeProvider = timeProvider ?? TimeProvider.System;
     _transformerBinarySha256 = transformerBinarySha256 ?? ComputeTransformerBinarySha256();
   }
+
+  public Task<IReadOnlyList<App.AccountSummaryProjection>> ListAccountsAsync(
+      CancellationToken cancellationToken = default) => TranslateAsync(async () =>
+  {
+    var summaries = await RequireWorkspaceStore().ListAsync(cancellationToken)
+        .ConfigureAwait(false);
+    var result = new List<App.AccountSummaryProjection>(summaries.Count);
+    foreach (var summary in summaries)
+    {
+      result.Add(await WithRuntimeMaterializationReadinessAsync(
+          summary,
+          cancellationToken).ConfigureAwait(false));
+    }
+
+    return (IReadOnlyList<App.AccountSummaryProjection>)result.AsReadOnly();
+  });
+
+  public Task<App.AccountWorkspaceProjection?> GetAccountWorkspaceAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default) => TranslateAsync(async () =>
+  {
+    var snapshot = await ReadAccountSnapshotAsync(accountUid, forRuntime: false, cancellationToken).ConfigureAwait(false);
+    if (snapshot is null) return null;
+    var summary = WithRuntimeMaterializationReadiness(snapshot.Summary, MapProfile(snapshot.Profile).Values);
+    var revisions = new App.AccountWorkspaceBaseRevisions(
+        summary.ProfileRevision.RevisionUid,
+        summary.AccountStateRevisionUid,
+        ProgressionRevisionUid: null,
+        App.AccountWorkspaceCanonicalizer.ComputeRevisionSet(
+            summary.ProfileRevision.RevisionUid,
+            summary.AccountStateRevisionUid,
+            progressionRevisionUid: null));
+    return new App.AccountWorkspaceProjection(
+        1,
+        "nll/account-workspace/v1",
+        summary.WorkspaceUid,
+        summary.AccountUid,
+        summary.AccountLabel,
+        revisions,
+        summary.FetchedSnapshotUid,
+        App.AccountWorkspaceCanonicalizer.EmptyPendingEditSetSha256,
+        0,
+        summary.ValidationStatusCode,
+        summary.ValidationReasonCodes,
+        summary.SaveAsParentAccountUid);
+  });
+
+  public Task<App.AccountRevisionHistoryProjection?> GetAccountRevisionHistoryAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default) => TranslateAsync(async () =>
+  {
+    return await RequireWorkspaceStore().GetHistoryAsync(accountUid, cancellationToken)
+        .ConfigureAwait(false);
+  });
+
+  public Task<App.AccountSummaryProjection> RenameAccountAsync(
+      App.RenameAccountCommand command,
+      CancellationToken cancellationToken = default) => TranslateAsync(async () =>
+  {
+    var summary = await RequireWorkspaceStore().RenameAsync(command, Now(), cancellationToken)
+        .ConfigureAwait(false);
+    return await WithRuntimeMaterializationReadinessAsync(summary, cancellationToken)
+        .ConfigureAwait(false);
+  });
+
+  public Task<App.SaveAccountWorkspaceReceipt> SaveAccountWorkspaceAsync(
+      App.SaveAccountWorkspaceCommand command,
+      CancellationToken cancellationToken = default) => TranslateAsync(() =>
+  {
+    var canonical = NormalizeWorkspaceSave(command);
+    var coordinator = new AccountWorkspaceSaveCoordinator(RequireAccountSaveStore(), new WorkspaceSaveStages(this), Now);
+    return coordinator.ExecuteAsync(canonical, cancellationToken);
+  });
+
+  public Task<App.RuntimeProjectionCandidate?> ExportRuntimeProjectionCandidateAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default) => TranslateAsync(async () =>
+  {
+    var snapshot = await ReadAccountSnapshotAsync(accountUid, forRuntime: true, cancellationToken).ConfigureAwait(false);
+    return snapshot is null ? null : CreateRuntimeCandidate(snapshot);
+  });
 
   public Task<App.ClientFeatureManifestProjection> EnsureBuiltInFeatureManifestAsync(
       CancellationToken cancellationToken = default) => TranslateAsync(async () =>
@@ -273,7 +372,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         command.AccountUid,
         command.ExpectedProfileRevisionUid,
         cancellationToken).ConfigureAwait(false);
-    var edited = ApplyOperations(current, canonicalOperations);
+    var edited = await EnsureCubeInventoryAsync(ApplyOperations(current, canonicalOperations), cancellationToken).ConfigureAwait(false);
     var changes = BuildAllChanges(current.Profile, edited);
     var candidateJson = SerializeCandidate(command, canonicalOperations);
     var draft = await _importStore.SaveProfileEditCandidateAsync(
@@ -372,7 +471,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         command.ExpectedProfileRevisionUid,
         cancellationToken).ConfigureAwait(false);
     var operations = candidate.Operations.Select(MapOperation).ToArray();
-    var profile = ApplyOperations(current, operations);
+    var profile = await EnsureCubeInventoryAsync(ApplyOperations(current, operations), cancellationToken).ConfigureAwait(false);
     var changes = BuildAllChanges(current.Profile, profile);
     var expectedDiffJson = SerializeDiff(
         "profile_edit_diff/v1",
@@ -436,6 +535,20 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         cancellationToken).ConfigureAwait(false);
     if (resolution.Recovered is not null)
     {
+      if (command.AccountLabel is not null)
+      {
+        var workspace = await RequireWorkspaceStore().GetAsync(
+            resolution.Recovered.AccountUid,
+            cancellationToken).ConfigureAwait(false) ??
+            throw Failure(App.ProfileManagementFailureKind.Conflict, "save_as_workspace_missing");
+        var normalizedLabel = App.ProfileManagementText.NormalizeAccountLabel(command.AccountLabel);
+        if (!string.Equals(workspace.AccountLabel, normalizedLabel, StringComparison.Ordinal) ||
+            workspace.SaveAsParentAccountUid != command.SourceAccountUid)
+        {
+          throw Failure(App.ProfileManagementFailureKind.Conflict, "save_as_reuse_mismatch");
+        }
+      }
+
       return resolution.Recovered;
     }
 
@@ -446,7 +559,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         command.ExpectedSourceProfileRevisionUid,
         cancellationToken).ConfigureAwait(false);
     var operations = candidate.Operations.Select(MapOperation).ToArray();
-    var profile = ApplyOperations(current, operations);
+    var profile = await EnsureCubeInventoryAsync(ApplyOperations(current, operations), cancellationToken).ConfigureAwait(false);
     var changes = BuildAllChanges(current.Profile, profile);
     var expectedDiffJson = SerializeDiff(
         "profile_edit_diff/v1",
@@ -475,7 +588,11 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         new CreateLocalAccountProfileCommand(
             command.OperationUid,
             profile,
-            prepared.Diff.CreatedAtUtc),
+            prepared.Diff.CreatedAtUtc,
+            command.AccountLabel is null
+                ? null
+                : App.ProfileManagementText.NormalizeAccountLabel(command.AccountLabel),
+            command.SourceAccountUid),
         cancellationToken).ConfigureAwait(false);
     await _importStore.LinkApplicationAsync(application, cancellationToken).ConfigureAwait(false);
     return MapWriteReceipt(command.OperationUid, receipt);
@@ -488,6 +605,190 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
     var draft = await _importStore.GetDraftAsync(draftUid, cancellationToken)
         .ConfigureAwait(false);
     return draft is null ? null : ProjectDraft(draft);
+  });
+
+  public Task<App.FetchedAccountSnapshotProjection> RegisterFetchedAccountSnapshotAsync(
+      App.RegisterFetchedAccountSnapshotCommand command,
+      CancellationToken cancellationToken = default) => TranslateAsync(async () =>
+  {
+    ArgumentNullException.ThrowIfNull(command);
+    _ = await RequireCurrentAsync(
+        command.TargetAccountUid,
+        command.ExpectedProfileRevisionUid,
+        cancellationToken).ConfigureAwait(false);
+
+    ImportProfile.FetchedAccountSnapshot snapshot;
+    ImportProfile.SanitizedProfileDraft draft;
+    ImportProfile.FetchedProgressionObservationV2? progression = null;
+    byte[] canonicalSnapshotUtf8;
+    byte[] canonicalDraftUtf8;
+    byte[]? canonicalProgressionUtf8 = null;
+    try
+    {
+      var suppliedSnapshotUtf8 = Encoding.UTF8.GetBytes(command.CanonicalSnapshotJson);
+      snapshot = ImportProfile.FetchedAccountSnapshotJsonCodec.Decode(suppliedSnapshotUtf8);
+      canonicalSnapshotUtf8 = ImportProfile.FetchedAccountSnapshotJsonCodec.Encode(snapshot);
+      var suppliedDraftUtf8 = Encoding.UTF8.GetBytes(command.CanonicalSanitizedDraftJson);
+      draft = ImportProfile.SanitizedProfileDraftJsonCodec.Decode(suppliedDraftUtf8);
+      canonicalDraftUtf8 = ImportProfile.SanitizedProfileDraftJsonCodec.Encode(draft);
+      if (command.CanonicalProgressionObservationJson is not null)
+      {
+        var suppliedProgressionUtf8 = Encoding.UTF8.GetBytes(
+            command.CanonicalProgressionObservationJson);
+        progression = ImportProfile.FetchedProgressionObservationV2JsonCodec.Decode(
+            suppliedProgressionUtf8);
+        canonicalProgressionUtf8 = ImportProfile.FetchedProgressionObservationV2JsonCodec.Encode(
+            progression);
+        if (!suppliedProgressionUtf8.AsSpan().SequenceEqual(canonicalProgressionUtf8))
+          throw Failure(
+              App.ProfileManagementFailureKind.InvalidRequest,
+              "fetched_progression_observation_payload_not_canonical");
+      }
+      if (!suppliedSnapshotUtf8.AsSpan().SequenceEqual(canonicalSnapshotUtf8) ||
+          !suppliedDraftUtf8.AsSpan().SequenceEqual(canonicalDraftUtf8))
+        throw Failure(
+            App.ProfileManagementFailureKind.InvalidRequest,
+            "fetched_snapshot_payload_not_canonical");
+    }
+    catch (ImportProfile.SanitizedProfileDraftCodecException exception)
+    {
+      throw Failure(App.ProfileManagementFailureKind.InvalidRequest, exception.Code);
+    }
+    catch (InvalidDataException exception)
+    {
+      throw Failure(App.ProfileManagementFailureKind.InvalidRequest, exception.Message);
+    }
+
+    if (snapshot.Source.ArtifactByteLength != canonicalDraftUtf8.Length ||
+        snapshot.Source.ArtifactSha256 != Sha256Digest.Compute(canonicalDraftUtf8))
+      throw Failure(
+          App.ProfileManagementFailureKind.Unprocessable,
+          "fetched_snapshot_source_artifact_mismatch");
+    VerifyFetchedSnapshotDraftParity(snapshot, draft);
+    if (progression is not null && canonicalProgressionUtf8 is not null)
+      VerifyFetchedProgressionParity(snapshot, progression);
+
+    var draftWrite = new SanitizedProfileDraftWrite(
+        SanitizedProfileDraftDerivationKind.OfflineSanitizedImport,
+        previousDraftUid: null,
+        draft.Provenance.SourceSchemaSha256,
+        draft.Provenance.TransformerBinarySha256,
+        draft.Provenance.SemanticOptionsSha256,
+        ToPersistenceBinding(draft.CharacterCatalog),
+        ToPersistenceBinding(draft.CombatSupportCatalog),
+        Encoding.UTF8.GetString(canonicalDraftUtf8));
+    var importedDraft = await _importStore.ImportDraftAsync(
+        new ImportSanitizedProfileDraftCommand(
+            snapshot.SnapshotUid,
+            draftWrite,
+            draft.Provenance.ImportedAtUtc),
+        cancellationToken).ConfigureAwait(false);
+    var stored = await RequireFetchedSnapshotStore().RegisterAsync(
+        new FetchedAccountSnapshotWrite(
+            snapshot.SnapshotUid,
+            command.TargetAccountUid,
+            importedDraft.DraftUid,
+            snapshot.CapturedAtUtc,
+            snapshot.Completeness.StatusCode,
+            snapshot.Completeness.RosterCount,
+            snapshot.Completeness.CharacterDetailCount,
+            snapshot.Completeness.EquipmentCharacterCount,
+            snapshot.Completeness.MissingCharacterCount,
+            Encoding.UTF8.GetString(canonicalSnapshotUtf8),
+            Sha256Digest.Compute(canonicalSnapshotUtf8),
+            snapshot.Source.ArtifactByteLength,
+            snapshot.Source.ArtifactSha256,
+            Now(),
+            progression is null || canonicalProgressionUtf8 is null
+                ? null
+                : new FetchedProgressionObservationWrite(
+                    Encoding.UTF8.GetString(canonicalProgressionUtf8),
+                    Sha256Digest.Compute(canonicalProgressionUtf8),
+                    progression.Completeness.StatusCode,
+                    progression.Completeness.AvailableComponentCount,
+                    progression.Completeness.DerivedComponentCount,
+                    progression.Completeness.UnavailableComponentCount,
+                    progression.CompletedScenarios.Summary.ItemCount,
+                    progression.MainQuestData.CompletedCount,
+                    progression.MainQuestData.RewardClaimedCount,
+                    progression.ContentsOpenUnlocked.Summary.ItemCount,
+                    progression.StageClearHistorys.Summary.ItemCount,
+                    progression.Triggers.Summary.ItemCount)),
+        cancellationToken).ConfigureAwait(false);
+    return MapFetchedSnapshot(stored);
+  });
+
+  public Task<App.FetchedAccountSnapshotProjection?> GetFetchedAccountSnapshotAsync(
+      EntityUid snapshotUid,
+      CancellationToken cancellationToken = default) => TranslateAsync(async () =>
+  {
+    var document = await RequireFetchedSnapshotStore().GetAsync(snapshotUid, cancellationToken)
+        .ConfigureAwait(false);
+    return document is null ? null : MapFetchedSnapshot(document);
+  });
+
+  public Task<App.FetchedAccountSnapshotProjection?> GetLatestFetchedAccountSnapshotAsync(
+      EntityUid accountUid,
+      CancellationToken cancellationToken = default) => TranslateAsync(async () =>
+  {
+    var store = RequireFetchedSnapshotStore();
+    var document = await store.GetLatestEffectiveForAccountAsync(accountUid, cancellationToken)
+        .ConfigureAwait(false);
+    return document is null ? null : MapFetchedSnapshot(document);
+  });
+
+  public Task<App.FetchedLobbyDiffProjection> PreviewFetchedLobbyDiffAsync(
+      App.PreviewFetchedLobbyDiffCommand command,
+      CancellationToken cancellationToken = default) => TranslateAsync(async () =>
+  {
+    ArgumentNullException.ThrowIfNull(command);
+    RequireOperationUid(command.OperationUid);
+    var resolved = await ResolveFetchedLobbyDiffAsync(
+        command.SnapshotUid,
+        command.TargetAccountUid,
+        command.ExpectedLobbyRevisionUid,
+        command.Fields,
+        cancellationToken).ConfigureAwait(false);
+    return resolved.Diff;
+  });
+
+  public Task<App.ApplyFetchedLobbyProjection> ApplyFetchedLobbyAsync(
+      App.ApplyFetchedLobbyCommand command,
+      CancellationToken cancellationToken = default) => TranslateAsync(async () =>
+  {
+    ArgumentNullException.ThrowIfNull(command);
+    RequireOperationUid(command.OperationUid);
+    var resolved = await ResolveFetchedLobbyDiffAsync(
+        command.SnapshotUid,
+        command.TargetAccountUid,
+        command.ExpectedLobbyRevisionUid,
+        command.Fields,
+        cancellationToken).ConfigureAwait(false);
+    if (resolved.Diff.DiffSha256 != command.ExpectedDiffSha256)
+      throw Failure(App.ProfileManagementFailureKind.Conflict, "fetched_lobby_diff_changed");
+
+    var selected = resolved.Diff.Fields;
+    var sourceDisplayName = selected.Contains("display_name", StringComparer.Ordinal)
+        ? resolved.Snapshot.Account.DisplayName ??
+            throw Failure(App.ProfileManagementFailureKind.Unprocessable, "fetched_display_name_unavailable")
+        : resolved.Lobby.DisplayName;
+    var sourceCommanderLevel = selected.Contains("commander_level", StringComparer.Ordinal)
+        ? resolved.Snapshot.Account.CommanderLevel ??
+            throw Failure(App.ProfileManagementFailureKind.Unprocessable, "fetched_commander_level_unavailable")
+        : resolved.Lobby.CommanderLevel;
+    var saved = await SaveLobbyPresentationAsync(
+        new App.SaveLobbyPresentationCommand(
+            command.OperationUid,
+            command.TargetAccountUid,
+            command.ExpectedLobbyRevisionUid,
+            sourceDisplayName,
+            sourceCommanderLevel,
+            resolved.Lobby.ProfileIconSelectionUid,
+            resolved.Lobby.ProfileFrameSelectionUid,
+            resolved.Lobby.LobbyCharacterSelectionUid,
+            resolved.Lobby.LobbyBackgroundSelectionUid),
+        cancellationToken).ConfigureAwait(false);
+    return new App.ApplyFetchedLobbyProjection(resolved.Diff, saved);
   });
 
   public Task<App.ProfileDiffProjection> PreviewImportDiffAsync(
@@ -522,15 +823,19 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
     }
 
     var hasConflicts = issues.Any(static issue => issue.Severity == "error");
+    var catalogApplicability = replacesBuilds
+        ? await LoadImportCatalogApplicabilityAsync(decoded, cancellationToken).ConfigureAwait(false)
+        : ImportCatalogApplicability.Empty;
     var changes = hasConflicts
         ? []
         : BuildAllChanges(
             current.Profile,
-            MaterializeImportProfile(
+            await EnsureCubeInventoryAsync(MaterializeImportProfile(
                 current,
                 decoded,
                 command.LevelAuthorityPolicy,
-                command.Scopes));
+                command.Scopes,
+                catalogApplicability), cancellationToken).ConfigureAwait(false));
     var diffJson = SerializeDiff(
         "sanitized_import_diff/v1",
         draft.DraftUid,
@@ -630,14 +935,20 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         command.TargetAccountUid,
         command.ExpectedProfileRevisionUid,
         cancellationToken).ConfigureAwait(false);
+    var catalogApplicability = ReplacesBuilds(command.Scopes)
+        ? await LoadImportCatalogApplicabilityAsync(decoded, cancellationToken)
+            .ConfigureAwait(false)
+        : ImportCatalogApplicability.Empty;
     var candidate = MaterializeImportProfile(
         current,
         decoded,
         command.LevelAuthorityPolicy,
         command.Scopes,
+        catalogApplicability,
         draft.DerivationKind == SanitizedProfileDraftDerivationKind.Rebase
             ? LocalProfileRevisionOrigin.Rebase
             : LocalProfileRevisionOrigin.OfflineSanitizedImport);
+    candidate = await EnsureCubeInventoryAsync(candidate, cancellationToken).ConfigureAwait(false);
     var changes = BuildAllChanges(current.Profile, candidate);
     var expectedDiffJson = SerializeDiff(
         "sanitized_import_diff/v1",
@@ -702,11 +1013,15 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
     }
 
     var hasConflicts = issues.Count != 0;
+    var catalogApplicability = await LoadImportCatalogApplicabilityAsync(
+        decoded,
+        cancellationToken).ConfigureAwait(false);
     var changes = hasConflicts
         ? []
-        : BuildCreateChanges(MaterializeNewImportProfile(
+        : BuildCreateChanges(await EnsureCubeInventoryAsync(MaterializeNewImportProfile(
             decoded,
-            command.LevelAuthorityPolicy));
+            command.LevelAuthorityPolicy,
+            catalogApplicability), cancellationToken).ConfigureAwait(false));
     var diffJson = SerializeCreateImportDiff(
         draft.DraftUid,
         draft.CanonicalPayloadSha256,
@@ -789,12 +1104,17 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
 
     var diff = resolution.Diff;
 
+    var catalogApplicability = await LoadImportCatalogApplicabilityAsync(
+        decoded,
+        cancellationToken).ConfigureAwait(false);
     var candidate = MaterializeNewImportProfile(
         decoded,
         command.LevelAuthorityPolicy,
+        catalogApplicability,
         draft.DerivationKind == SanitizedProfileDraftDerivationKind.Rebase
             ? LocalProfileRevisionOrigin.Rebase
             : LocalProfileRevisionOrigin.OfflineSanitizedImport);
+    candidate = await EnsureCubeInventoryAsync(candidate, cancellationToken).ConfigureAwait(false);
     var changes = BuildCreateChanges(candidate);
     var expectedDiffJson = SerializeCreateImportDiff(
         draft.DraftUid,
@@ -1521,6 +1841,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
       ImportProfile.SanitizedProfileDraft draft,
       string levelAuthorityPolicy,
       IReadOnlyList<string> scopes,
+      ImportCatalogApplicability catalogApplicability,
       LocalProfileRevisionOrigin origin = LocalProfileRevisionOrigin.OfflineSanitizedImport)
   {
     if (!BindingEquals(current.Profile.CharacterCatalog, draft.CharacterCatalog) ||
@@ -1538,6 +1859,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         ? draft.Builds.Select(build => MaterializeBuild(
             build,
             levelAuthorityPolicy,
+            catalogApplicability,
             origin)).ToArray()
         : current.Profile.Builds;
     var buildUids = builds.Select(static item => item.CharacterUid).ToHashSet();
@@ -1549,7 +1871,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
     return new LocalAccountProfileWrite(
         current.Profile.CharacterCatalog,
         current.Profile.CombatSupportCatalog,
-        replaceAccount ? MaterializeAccountState(draft.AccountState, origin) : current.Profile.AccountState,
+        replaceAccount ? MaterializeAccountState(draft.AccountState, origin, current.Profile.AccountState.Cubes) : current.Profile.AccountState,
         builds,
         squad,
         origin,
@@ -1559,6 +1881,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
   private static LocalAccountProfileWrite MaterializeNewImportProfile(
       ImportProfile.SanitizedProfileDraft draft,
       string levelAuthorityPolicy,
+      ImportCatalogApplicability catalogApplicability,
       LocalProfileRevisionOrigin origin = LocalProfileRevisionOrigin.OfflineSanitizedImport) => new(
           new LocalProfileCatalogBindingWrite(
               draft.CharacterCatalog.CatalogSnapshotUid,
@@ -1569,7 +1892,11 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
               draft.CombatSupportCatalog.DatasetSnapshotUid,
               draft.CombatSupportCatalog.ManifestSha256),
           MaterializeAccountState(draft.AccountState, origin),
-          draft.Builds.Select(build => MaterializeBuild(build, levelAuthorityPolicy, origin)),
+          draft.Builds.Select(build => MaterializeBuild(
+              build,
+              levelAuthorityPolicy,
+              catalogApplicability,
+              origin)),
           squadCharacterUids: null,
           squadOrigin: origin,
           profileTemplateOrigin: origin);
@@ -1580,7 +1907,8 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
 
   private static LocalAccountCombatStateWrite MaterializeAccountState(
       ImportProfile.SanitizedAccountCombatStateDraft state,
-      LocalProfileRevisionOrigin origin) => new(
+      LocalProfileRevisionOrigin origin,
+      IEnumerable<LocalOwnedCubeWrite>? cubes = null) => new(
           LocalProfileFact<int>.Ready(state.SynchroLevel),
           state.Consoles.Select(static console => new LocalConsoleStateWrite(
               MapConsole(console.Coordinate),
@@ -1588,11 +1916,13 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
               LocalProfileFact<int>.Ready(console.Level),
               LocalProfileFact<long>.Ready(console.ObservedExperience))),
           LocalProfileValidationMode.GameLegal,
-          origin);
+          origin,
+          cubes);
 
   private static LocalCharacterBuildWrite MaterializeBuild(
       ImportProfile.SanitizedCharacterBuildDraft build,
       string levelAuthorityPolicy,
+      ImportCatalogApplicability catalogApplicability,
       LocalProfileRevisionOrigin origin = LocalProfileRevisionOrigin.OfflineSanitizedImport)
   {
     var characterLevel = levelAuthorityPolicy == RosterLevelAuthority
@@ -1602,31 +1932,70 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         build.CharacterUid,
         characterLevel,
         LocalProfileFact<int>.Ready(build.LimitBreak),
-        LocalProfileFact<int>.Ready(build.CoreLevel),
-        MapFact(build.ResolvedBondLevel),
+        catalogApplicability.CoreLevelNotApplicableCharacterUids.Contains(build.CharacterUid)
+            ? LocalProfileFact<int>.NotApplicable()
+            : LocalProfileFact<int>.Ready(build.CoreLevel),
+        catalogApplicability.BondLevelNotApplicableCharacterUids.Contains(build.CharacterUid) &&
+            build.BondLevelObservation == 0
+              ? LocalProfileFact<int>.NotApplicable()
+              : MapFact(build.ResolvedBondLevel),
         LocalProfileFact<int>.Ready(build.Skill1Level),
         LocalProfileFact<int>.Ready(build.Skill2Level),
         LocalProfileFact<int>.Ready(build.BurstLevel),
-        build.Equipment.Select(MaterializeEquipment),
+        build.Equipment.Select(equipment => MaterializeEquipment(
+            equipment,
+            catalogApplicability.ManufacturerNotApplicableEquipmentUids)),
         MaterializeCube(build.Cube),
         MaterializeCollection(build.Collection),
-        IsFullyResolvedImportBuild(build)
+        IsFullyResolvedImportBuild(build, catalogApplicability)
             ? LocalProfileValidationMode.GameLegal
             : LocalProfileValidationMode.Research,
         LocalProfileMaterializationPolicy.ExplicitV1,
         origin);
   }
 
+  private async Task<ImportCatalogApplicability> LoadImportCatalogApplicabilityAsync(
+      ImportProfile.SanitizedProfileDraft draft,
+      CancellationToken cancellationToken)
+  {
+    var factory = _catalogResolverFactory ??
+        throw Failure(
+            App.ProfileManagementFailureKind.Unavailable,
+            "profile_catalog_resolver_unavailable");
+    var coreTask = factory.LoadCoreLevelNotApplicableCharacterUidsAsync(
+        draft.CharacterCatalog,
+        cancellationToken);
+    var bondTask = factory.LoadBondLevelNotApplicableCharacterUidsAsync(
+        draft.CharacterCatalog,
+        cancellationToken);
+    var manufacturerTask = factory.LoadManufacturerNotApplicableEquipmentUidsAsync(
+        draft.CombatSupportCatalog,
+        cancellationToken);
+    await Task.WhenAll(coreTask, bondTask, manufacturerTask)
+        .ConfigureAwait(false);
+    return new ImportCatalogApplicability(
+        await coreTask.ConfigureAwait(false),
+        await bondTask.ConfigureAwait(false),
+        await manufacturerTask.ConfigureAwait(false));
+  }
+
   private static bool IsFullyResolvedImportBuild(
-      ImportProfile.SanitizedCharacterBuildDraft build) =>
-      build.ResolvedBondLevel.Status == ImportProfile.ProfileImportFactStatus.Ready &&
-      build.Equipment.All(static equipment =>
+      ImportProfile.SanitizedCharacterBuildDraft build,
+      ImportCatalogApplicability catalogApplicability) =>
+      (build.ResolvedBondLevel.Status != ImportProfile.ProfileImportFactStatus.Unresolved ||
+       (build.BondLevelObservation == 0 &&
+        catalogApplicability.BondLevelNotApplicableCharacterUids.Contains(build.CharacterUid))) &&
+      build.Equipment.All(equipment =>
           equipment.State == ImportProfile.ProfileImportAttachmentState.Unequipped ||
-          equipment.ResolvedManufacturerMatched?.Status ==
-              ImportProfile.ProfileImportFactStatus.Ready);
+          equipment.ResolvedManufacturerMatched?.Status !=
+              ImportProfile.ProfileImportFactStatus.Unresolved ||
+          (equipment.DefinitionUid.HasValue &&
+           catalogApplicability.ManufacturerNotApplicableEquipmentUids.Contains(
+               equipment.DefinitionUid.Value)));
 
   private static LocalEquipmentWrite MaterializeEquipment(
-      ImportProfile.SanitizedEquipmentSelection equipment)
+      ImportProfile.SanitizedEquipmentSelection equipment,
+      IReadOnlySet<EntityUid> manufacturerNotApplicableEquipmentUids)
   {
     if (equipment.State == ImportProfile.ProfileImportAttachmentState.Unequipped)
     {
@@ -1641,14 +2010,41 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         state: LocalEquipmentState.Equipped,
         equipmentDefinitionUid: equipment.DefinitionUid,
         enhancementLevel: LocalProfileFact<int>.Ready(equipment.EnhancementLevel!.Value),
-        manufacturerMatched: MapFact(equipment.ResolvedManufacturerMatched!),
-        overloadLines: equipment.OverloadLines.Select(static line => new LocalOverloadLineWrite(
+        manufacturerMatched: equipment.DefinitionUid.HasValue &&
+            manufacturerNotApplicableEquipmentUids.Contains(equipment.DefinitionUid.Value)
+              ? LocalProfileFact<bool>.NotApplicable()
+              : MapFact(equipment.ResolvedManufacturerMatched!),
+        overloadLines: equipment.OverloadLines.Select(line => new LocalOverloadLineWrite(
             line.LineIndex,
             line.OptionDefinitionUid,
             MapValueUnit(line.Unit),
             new LocalProfileExactValue(
-                line.ExactValue.UnscaledValue,
+                NormalizeOverloadApplicationValue(line),
                 line.ExactValue.DecimalScale))));
+  }
+
+  private static long NormalizeOverloadApplicationValue(
+      ImportProfile.SanitizedOverloadLine line)
+  {
+    if (line.ExactValue.UnscaledValue == long.MinValue)
+    {
+      throw Failure(
+          App.ProfileManagementFailureKind.Unprocessable,
+          "profile_overload_value_not_legal");
+    }
+
+    return Math.Abs(line.ExactValue.UnscaledValue);
+  }
+
+  private sealed record ImportCatalogApplicability(
+      IReadOnlySet<EntityUid> CoreLevelNotApplicableCharacterUids,
+      IReadOnlySet<EntityUid> BondLevelNotApplicableCharacterUids,
+      IReadOnlySet<EntityUid> ManufacturerNotApplicableEquipmentUids)
+  {
+    public static ImportCatalogApplicability Empty { get; } = new(
+        new HashSet<EntityUid>(),
+        new HashSet<EntityUid>(),
+        new HashSet<EntityUid>());
   }
 
   private static LocalCubeSelectionWrite MaterializeCube(
@@ -1684,6 +2080,8 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         ImportProfile.ProfileImportFactStatus.Ready => LocalProfileFact<T>.Ready(fact.Value!.Value),
         ImportProfile.ProfileImportFactStatus.Unresolved => LocalProfileFact<T>.Unresolved(
             new LocalProfileReasonCode(fact.ReasonCode!)),
+        ImportProfile.ProfileImportFactStatus.NotApplicable =>
+            LocalProfileFact<T>.NotApplicable(),
         _ => throw Failure(App.ProfileManagementFailureKind.Unprocessable, "sanitized_profile_fact_invalid")
       };
 
@@ -1747,6 +2145,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
     var accountState = current.Profile.AccountState;
     var builds = current.Profile.Builds.ToDictionary(static item => item.CharacterUid);
     var consoles = accountState.Consoles.ToArray();
+    var cubes = accountState.Cubes.ToDictionary(static cube => cube.DefinitionUid);
     var accountChanged = false;
     var buildOperations = new List<App.ProfileEditOperation>();
     foreach (var operation in operations)
@@ -1759,7 +2158,8 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
             LocalProfileFact<int>.Ready(CheckedInt(synchro, "profile_edit_value_out_of_range")),
             consoles,
             accountState.ValidationMode,
-            LocalProfileRevisionOrigin.UserEdit);
+            LocalProfileRevisionOrigin.UserEdit,
+            cubes.Values);
         accountChanged = true;
         continue;
       }
@@ -1798,6 +2198,18 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         continue;
       }
 
+      if (operation.FieldCode == "account_cube_level")
+      {
+        if (operation.SubjectUid is not { } cubeUid)
+        {
+          throw Failure(App.ProfileManagementFailureKind.InvalidRequest, "profile_edit_subject_not_found");
+        }
+
+        cubes[cubeUid] = new LocalOwnedCubeWrite(cubeUid, RequireInteger(operation));
+        accountChanged = true;
+        continue;
+      }
+
       buildOperations.Add(operation);
     }
 
@@ -1807,7 +2219,8 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
           accountState.SynchroLevel,
           consoles,
           accountState.ValidationMode,
-          LocalProfileRevisionOrigin.UserEdit);
+          LocalProfileRevisionOrigin.UserEdit,
+          cubes.Values);
     }
 
     foreach (var group in buildOperations.GroupBy(static operation => operation.SubjectUid))
@@ -1817,7 +2230,16 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         throw Failure(App.ProfileManagementFailureKind.Unprocessable, "profile_edit_subject_not_found");
       }
 
-      builds[characterUid] = ApplyBuildOperations(build, group.ToArray());
+      var editedBuild = ApplyBuildOperations(build, group.ToArray());
+      if (group.Any(static operation => operation.FieldCode == "cube.level") &&
+          editedBuild.Cube.DefinitionUid is { } editedCubeUid &&
+          cubes.TryGetValue(editedCubeUid, out var ownedCube) &&
+          editedBuild.Cube.Level?.Value != ownedCube.Level)
+      {
+        throw Failure(App.ProfileManagementFailureKind.InvalidRequest, "profile_cube_level_account_managed");
+      }
+
+      builds[characterUid] = editedBuild;
     }
 
     return new LocalAccountProfileWrite(
@@ -1853,6 +2275,12 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
       if (operation.FieldCode is "character_level" or "limit_break" or "core_level" or
           "bond_level" or "skill_1_level" or "skill_2_level" or "burst_level")
       {
+        if (operation.FieldCode == "bond_level" && IsNotApplicable(operation))
+        {
+          bondLevel = LocalProfileFact<int>.NotApplicable();
+          continue;
+        }
+
         var value = RequireInteger(operation);
         switch (operation.FieldCode)
         {
@@ -1928,6 +2356,9 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
           ? value
           : throw Failure(App.ProfileManagementFailureKind.Unprocessable, "profile_edit_value_kind_mismatch");
 
+  private static bool IsNotApplicable(App.ProfileEditOperation operation) =>
+      operation is { ValueKind: "controlled", ControlledValue: "not_applicable" };
+
   private sealed class EquipmentEditStage
   {
     private readonly LocalEquipmentWrite _source;
@@ -1978,7 +2409,9 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
             _nonStateTouched = true;
             return;
           case "manufacturer_matched":
-            _manufacturer = LocalProfileFact<bool>.Ready(RequireBoolean(operation));
+            _manufacturer = IsNotApplicable(operation)
+                ? LocalProfileFact<bool>.NotApplicable()
+                : LocalProfileFact<bool>.Ready(RequireBoolean(operation));
             _nonStateTouched = true;
             return;
         }
@@ -2073,7 +2506,11 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
           {
             "absolute" => LocalProfileValueUnit.Absolute,
             "ratio" => LocalProfileValueUnit.Ratio,
-            "percent" => LocalProfileValueUnit.Percent,
+            // Overload option definitions are normalized to ratio. Older editor
+            // builds sent the presentation unit "percent" when changing an
+            // option; accept it as the same ratio instead of persisting an
+            // incompatible unit.
+            "percent" => LocalProfileValueUnit.Ratio,
             "count" => LocalProfileValueUnit.Count,
             _ => throw Failure(App.ProfileManagementFailureKind.Unprocessable, "profile_edit_controlled_value_invalid")
           };
@@ -2321,6 +2758,12 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
           "console_experience",
           console.ConsoleDefinitionUid,
           console.ObservedExperience));
+    }
+
+    foreach (var cube in profile.AccountState.Cubes)
+    {
+      result.Add(new App.ProfileValueProjection(
+          "account_cube_level", cube.DefinitionUid, "ready", IntegerValue: cube.Level));
     }
 
     foreach (var build in profile.Builds)
@@ -2976,7 +3419,15 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
     return new App.ProfileValueProjection(
         fieldCode,
         subjectUid,
-        fact.Status == ImportProfile.ProfileImportFactStatus.Ready ? "ready" : "unresolved",
+        fact.Status switch
+        {
+          ImportProfile.ProfileImportFactStatus.Ready => "ready",
+          ImportProfile.ProfileImportFactStatus.Unresolved => "unresolved",
+          ImportProfile.ProfileImportFactStatus.NotApplicable => "not_applicable",
+          _ => throw Failure(
+              App.ProfileManagementFailureKind.Unprocessable,
+              "sanitized_profile_fact_invalid")
+        },
         IntegerValue: value is int intValue ? intValue : value is long longValue ? longValue : null,
         BooleanValue: value is bool boolValue ? boolValue : null,
         ReasonCode: fact.ReasonCode);
@@ -3446,6 +3897,9 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
     return new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
   }
 
+  private static EntityUid DerivedOperationUid(EntityUid rootOperationUid, string role) =>
+      AccountWorkspaceSaveCoordinator.ChildOperationUid(rootOperationUid, role);
+
   private static Sha256Digest ComputeTransformerBinarySha256()
   {
     var location = typeof(ImportProfile.SanitizedProfileDraftJsonCodec).Assembly.Location;
@@ -3586,9 +4040,307 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
           App.ProfileManagementFailureKind.Unavailable,
           "profile_catalog_validator_not_configured");
 
+  private static void VerifyFetchedSnapshotDraftParity(
+      ImportProfile.FetchedAccountSnapshot snapshot,
+      ImportProfile.SanitizedProfileDraft draft)
+  {
+    if (snapshot.Account.SynchroLevel != draft.AccountState.SynchroLevel ||
+        snapshot.Account.Consoles.Count != draft.AccountState.Consoles.Count ||
+        snapshot.Characters.Count != draft.Builds.Count)
+      throw Failure(
+          App.ProfileManagementFailureKind.Unprocessable,
+          "fetched_snapshot_draft_parity_invalid");
+
+    var snapshotByCharacter = snapshot.Characters.ToDictionary(static item => item.CharacterUid);
+    foreach (var build in draft.Builds)
+    {
+      if (!snapshotByCharacter.TryGetValue(build.CharacterUid, out var character) ||
+          character.CharacterLevel != build.Level.ResolvedBattleLevel.Value ||
+          character.CharacterLevelReasonCode != build.Level.ResolvedBattleLevel.ReasonCode ||
+          character.LimitBreak != build.LimitBreak ||
+          character.CoreLevel != build.CoreLevel ||
+          character.BondLevel != build.ResolvedBondLevel.Value ||
+          character.BondLevelReasonCode != build.ResolvedBondLevel.ReasonCode ||
+          character.Skills.Skill1 != build.Skill1Level ||
+          character.Skills.Skill2 != build.Skill2Level ||
+          character.Skills.Burst != build.BurstLevel ||
+          character.Equipment.Count != build.Equipment.Count)
+        throw Failure(
+            App.ProfileManagementFailureKind.Unprocessable,
+            "fetched_snapshot_draft_parity_invalid");
+    }
+
+    if (snapshot.Completeness.StatusCode == "complete" &&
+        (!draft.IsLocalAccountProfileWriteReady ||
+         snapshot.Completeness.RosterCount != draft.Builds.Count ||
+         snapshot.Completeness.CharacterDetailCount != draft.Builds.Count ||
+         snapshot.Completeness.EquipmentCharacterCount != draft.Builds.Count ||
+         snapshot.Completeness.MissingCharacterCount != 0))
+      throw Failure(
+          App.ProfileManagementFailureKind.Unprocessable,
+          "fetched_snapshot_complete_draft_invalid");
+  }
+
+  private static void VerifyFetchedProgressionParity(
+      ImportProfile.FetchedAccountSnapshot snapshot,
+      ImportProfile.FetchedProgressionObservationV2 progression)
+  {
+    var summary = snapshot.Progression;
+    if (progression.SnapshotUid != snapshot.SnapshotUid ||
+        progression.CapturedAtUtc != snapshot.CapturedAtUtc ||
+        summary.MainQuestDataSha256 != progression.MainQuestData.Summary.CanonicalEntriesSha256 ||
+        summary.MainQuestCompletedCount != progression.MainQuestData.CompletedCount ||
+        summary.CompletedScenarioCount != progression.CompletedScenarios.Summary.ItemCount ||
+        summary.ContentsOpenUnlockedCount != progression.ContentsOpenUnlocked.Summary.ItemCount ||
+        progression.Completeness.ReasonCodes.Any(reason =>
+            !snapshot.Completeness.ReasonCodes.Contains(reason, StringComparer.Ordinal)))
+      throw Failure(
+          App.ProfileManagementFailureKind.Unprocessable,
+          "fetched_progression_observation_snapshot_parity_invalid");
+  }
+
+  private static LocalProfileCatalogBindingWrite ToPersistenceBinding(
+      ImportProfile.ProfileImportCatalogBinding binding) => new(
+          binding.CatalogSnapshotUid,
+          binding.DatasetSnapshotUid,
+          binding.ManifestSha256);
+
+  private static App.FetchedAccountSnapshotProjection MapFetchedSnapshot(
+      FetchedAccountSnapshotDocument document)
+  {
+    var snapshot = DecodeFetchedSnapshot(document);
+    return new(
+          document.SnapshotUid,
+          document.TargetAccountUid,
+          document.SanitizedDraftUid,
+          document.CapturedAtUtc,
+          snapshot.Account.DisplayName,
+          snapshot.Account.CommanderLevel,
+          document.CompletenessStatusCode,
+          document.RosterCount,
+          document.CharacterDetailCount,
+          document.EquipmentCharacterCount,
+          document.MissingCharacterCount,
+          document.CanonicalSnapshotSha256,
+          document.ImportedAtUtc,
+          document.IsCurrentWorkspaceSnapshot,
+          document.Progression is null
+              ? null
+              : new App.FetchedProgressionObservationProjection(
+                  ImportProfile.FetchedProgressionObservationV2Contract.ContractId,
+                  document.Progression.CompletenessStatusCode,
+                  document.Progression.AvailableComponentCount,
+                  document.Progression.DerivedComponentCount,
+                  document.Progression.UnavailableComponentCount,
+                  document.Progression.CompletedScenarioCount,
+                  document.Progression.MainQuestCompletedCount,
+                  document.Progression.MainQuestRewardClaimedCount,
+                  document.Progression.ContentsOpenUnlockedCount,
+                  document.Progression.StageClearHistoryCount,
+                  document.Progression.TriggerCount,
+                  document.Progression.CanonicalSha256));
+  }
+
+  private async Task<FetchedLobbyDiffResolution> ResolveFetchedLobbyDiffAsync(
+      EntityUid snapshotUid,
+      EntityUid targetAccountUid,
+      EntityUid expectedLobbyRevisionUid,
+      IReadOnlyList<string> requestedFields,
+      CancellationToken cancellationToken)
+  {
+    if (snapshotUid.Value == Guid.Empty || targetAccountUid.Value == Guid.Empty ||
+        expectedLobbyRevisionUid.Value == Guid.Empty)
+      throw Failure(App.ProfileManagementFailureKind.InvalidRequest, "entity_uid_invalid");
+    var fields = NormalizeFetchedLobbyFields(requestedFields);
+    var document = await RequireFetchedSnapshotStore().GetAsync(snapshotUid, cancellationToken)
+        .ConfigureAwait(false) ??
+        throw Failure(App.ProfileManagementFailureKind.NotFound, "fetched_snapshot_not_found");
+    if (document.TargetAccountUid != targetAccountUid)
+      throw Failure(App.ProfileManagementFailureKind.Conflict, "fetched_snapshot_account_mismatch");
+    var snapshot = DecodeFetchedSnapshot(document);
+    var lobbyReceipt = await _gameStateStore.GetLobbyPresentationHeadAsync(
+        targetAccountUid,
+        cancellationToken).ConfigureAwait(false) ??
+        throw Failure(App.ProfileManagementFailureKind.NotFound, "lobby_presentation_not_found");
+    if (lobbyReceipt.RevisionUid != expectedLobbyRevisionUid)
+      throw Failure(App.ProfileManagementFailureKind.Conflict, "lobby_revision_conflict");
+    var lobby = MapLobby(targetAccountUid, lobbyReceipt);
+
+    var changes = new List<App.FetchedLobbyFieldDiffProjection>();
+    foreach (var field in fields)
+    {
+      if (field == "commander_level")
+      {
+        var after = snapshot.Account.CommanderLevel ??
+            throw Failure(App.ProfileManagementFailureKind.Unprocessable, "fetched_commander_level_unavailable");
+        if (after is < 1 or > 1_000_000)
+          throw Failure(App.ProfileManagementFailureKind.Unprocessable, "fetched_commander_level_invalid");
+        if (lobby.CommanderLevel != after)
+          changes.Add(new App.FetchedLobbyFieldDiffProjection(
+              field, "integer", null, null, lobby.CommanderLevel, after));
+      }
+      else
+      {
+        var after = snapshot.Account.DisplayName ??
+            throw Failure(App.ProfileManagementFailureKind.Unprocessable, "fetched_display_name_unavailable");
+        after = App.ProfileManagementText.NormalizeDisplayName(after);
+        if (!string.Equals(lobby.DisplayName, after, StringComparison.Ordinal))
+          changes.Add(new App.FetchedLobbyFieldDiffProjection(
+              field, "text", lobby.DisplayName, after, null, null));
+      }
+    }
+
+    var descriptor = JsonSerializer.Serialize(
+        new FetchedLobbyDiffDescriptor(
+            FetchedLobbyDiffContract,
+            document.SnapshotUid.ToString(),
+            document.CanonicalSnapshotSha256.ToString(),
+            targetAccountUid.ToString(),
+            expectedLobbyRevisionUid.ToString(),
+            fields,
+            changes.Select(static change => new FetchedLobbyFieldDiffWire(
+                change.FieldCode,
+                change.ValueKind,
+                change.BeforeText,
+                change.AfterText,
+                change.BeforeInteger,
+                change.AfterInteger)).ToArray()),
+        JsonOptions);
+    var diff = new App.FetchedLobbyDiffProjection(
+        Sha256Digest.ComputeUtf8(descriptor),
+        document.SnapshotUid,
+        document.CanonicalSnapshotSha256,
+        targetAccountUid,
+        expectedLobbyRevisionUid,
+        fields,
+        changes);
+    return new FetchedLobbyDiffResolution(diff, snapshot, lobby);
+  }
+
+  private static ImportProfile.FetchedAccountSnapshot DecodeFetchedSnapshot(
+      FetchedAccountSnapshotDocument document)
+  {
+    try
+    {
+      return ImportProfile.FetchedAccountSnapshotJsonCodec.Decode(
+          Encoding.UTF8.GetBytes(document.CanonicalSnapshotJson));
+    }
+    catch (InvalidDataException exception)
+    {
+      throw Failure(App.ProfileManagementFailureKind.Unprocessable, exception.Message);
+    }
+  }
+
+  private static IReadOnlyList<string> NormalizeFetchedLobbyFields(
+      IReadOnlyList<string>? requestedFields)
+  {
+    var fields = requestedFields?.Distinct(StringComparer.Ordinal)
+        .Order(StringComparer.Ordinal).ToArray() ?? [];
+    if (fields.Length == 0 || fields.Length > 2 ||
+        fields.Any(static field => field is not ("commander_level" or "display_name")))
+      throw Failure(App.ProfileManagementFailureKind.InvalidRequest, "fetched_lobby_field_set_invalid");
+    return fields;
+  }
+
+  private async Task<App.AccountSummaryProjection> WithRuntimeMaterializationReadinessAsync(
+      App.AccountSummaryProjection summary,
+      CancellationToken cancellationToken)
+  {
+    var current = await _profileStore.GetRevisionAsync(summary.AccountUid, summary.ProfileRevision.RevisionUid, cancellationToken)
+        .ConfigureAwait(false) ??
+        throw new LocalAccountProfileIntegrityException("profile_current_revision_missing");
+    return WithRuntimeMaterializationReadiness(summary, MapProfile(current).Values);
+  }
+
+  private static App.AccountSummaryProjection WithRuntimeMaterializationReadiness(
+      App.AccountSummaryProjection summary,
+      IReadOnlyList<App.ProfileValueProjection> values)
+  {
+    var readiness = ComputeRuntimeMaterializationReadiness(values);
+    return summary with
+    {
+      ValidationStatusCode = readiness.StatusCode,
+      ValidationReasonCodes = readiness.ReasonCodes
+    };
+  }
+
+  private static RuntimeReadiness ComputeRuntimeMaterializationReadiness(
+      IReadOnlyList<App.ProfileValueProjection> values)
+  {
+    if (values.Count == 0)
+    {
+      return new RuntimeReadiness(
+          "unresolved",
+          ["runtime_projection_empty"]);
+    }
+
+    var invalid = values.Where(static value =>
+        value.Status is not ("ready" or "not_applicable")).ToArray();
+    if (invalid.Length == 0)
+    {
+      return new RuntimeReadiness("ready", []);
+    }
+
+    var reasons = invalid.Select(static value =>
+        value.Status == "unresolved" && !string.IsNullOrWhiteSpace(value.ReasonCode)
+          ? value.ReasonCode
+          : "profile_value_status_invalid")
+        .Distinct(StringComparer.Ordinal)
+        .Order(StringComparer.Ordinal)
+        .ToArray();
+    return new RuntimeReadiness("unresolved", reasons);
+  }
+
+  private static void RequireOperationUid(EntityUid operationUid)
+  {
+    if (operationUid.Value == Guid.Empty)
+      throw Failure(App.ProfileManagementFailureKind.InvalidRequest, "entity_uid_invalid");
+  }
+
+  private PostgreSqlAccountWorkspaceStore RequireWorkspaceStore() =>
+      _workspaceStore ?? throw Failure(
+          App.ProfileManagementFailureKind.Unavailable,
+          "account_workspace_not_configured");
+
+  private PostgreSqlAccountWorkspaceSaveStore RequireAccountSaveStore() =>
+      _accountSaveStore ?? throw Failure(
+          App.ProfileManagementFailureKind.Unavailable,
+          "account_workspace_save_not_configured");
+
+  private PostgreSqlFetchedAccountSnapshotStore RequireFetchedSnapshotStore() =>
+      _fetchedSnapshotStore ?? throw Failure(
+          App.ProfileManagementFailureKind.Unavailable,
+          "fetched_snapshot_store_not_configured");
+
   private sealed record WriteDiffResolution(
       ProfileDraftDiffDocument Diff,
       App.ProfileWriteReceipt? Recovered);
+
+  private sealed record RuntimeReadiness(
+      string StatusCode,
+      IReadOnlyList<string> ReasonCodes);
+
+  private sealed record FetchedLobbyDiffResolution(
+      App.FetchedLobbyDiffProjection Diff,
+      ImportProfile.FetchedAccountSnapshot Snapshot,
+      App.LobbyPresentationProjection Lobby);
+
+  private sealed record FetchedLobbyDiffDescriptor(
+      string ContractId,
+      string SnapshotUid,
+      string SnapshotSha256,
+      string TargetAccountUid,
+      string ExpectedLobbyRevisionUid,
+      IReadOnlyList<string> Fields,
+      IReadOnlyList<FetchedLobbyFieldDiffWire> Changes);
+
+  private sealed record FetchedLobbyFieldDiffWire(
+      string FieldCode,
+      string ValueKind,
+      string? BeforeText,
+      string? AfterText,
+      int? BeforeInteger,
+      int? AfterInteger);
 
   private sealed record ApplicationPreparation(
       LinkProfileDraftApplicationCommand Application,

@@ -25,7 +25,7 @@ public sealed class PostgreSqlPrivateServerContextReplayTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
       var account = await CreateInitializedAccountAsync(dataSource);
       accountUid = account.AccountUid;
@@ -144,7 +144,7 @@ public sealed class PostgreSqlPrivateServerContextReplayTests
     await using (var dataSource = PostgreSqlDataSourceFactory.Create(connectionString))
     {
       await ResetSchemasAsync(dataSource);
-      Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+      Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
       await PublishSixSeasonRaidCatalogAsync(dataSource);
       account = await CreateInitializedAccountAsync(dataSource);
     }

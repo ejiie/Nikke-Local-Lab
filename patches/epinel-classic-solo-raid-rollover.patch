@@ -1,0 +1,279 @@
+diff --git a/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs b/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs
+index 1453d7c..051963a 100644
+--- a/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs
++++ b/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs
+@@ -201,7 +201,10 @@ public class SoloRaidHelper
+ 
+             if (trial is not null)
+             {
+-                return raid is not null && raid.TrialCount > 0
++                // TrialCount belongs to the current raid day, not to this run.
++                // A run admitted yesterday survives the 05:00 counter reset;
++                // resuming it must neither create a run nor charge today's count.
++                return raid is not null && raid.TrialCount >= 0
+                     ? SoloRaidOpenResolution.Existing(raid.TrialCount)
+                     : SoloRaidOpenResolution.Failure();
+             }
+@@ -356,7 +359,7 @@ public class SoloRaidHelper
+ 
+                 if (level.Type == SoloRaidType.Trial)
+                 {
+-                    if (trial is not null || raid.TrialCount <= 0)
++                    if (trial is not null || raid.TrialCount < 0)
+                     {
+                         return false;
+                     }
+diff --git a/EpinelPS/LobbyServer/Soloraid/ClassicSoloRaidRouteExecutor.cs b/EpinelPS/LobbyServer/Soloraid/ClassicSoloRaidRouteExecutor.cs
+index 7138139..401260a 100644
+--- a/EpinelPS/LobbyServer/Soloraid/ClassicSoloRaidRouteExecutor.cs
++++ b/EpinelPS/LobbyServer/Soloraid/ClassicSoloRaidRouteExecutor.cs
+@@ -43,12 +43,8 @@ internal static class ClassicSoloRaidRouteExecutor
+         var failure = new ResGetLevelTrialSoloRaid { PeriodResult = SoloRaidPeriodResult.Failure };
+         return Execute(accountId, ClassicSoloRaidRoute.GetLevelTrial, null, raidLevel, failure, (user, managerId) =>
+         {
+-            var hadActiveTrial = SoloRaidHelper.GetSoloRaidLevelData(
+-                SoloRaidHelper.GetSoloRaidData(user, managerId, isAdd: false),
+-                raidLevel,
+-                SoloRaidType.Trial,
+-                isOpen: true) is not null;
+-            var rolloverChanged = !hadActiveTrial && SoloRaidHelper.ResetOpenCount(user, managerId);
++            // Daily accounting is independent of whether an old run is resumed.
++            var rolloverChanged = SoloRaidHelper.ResetOpenCount(user, managerId);
+             var ensured = SoloRaidHelper.EnsureTrialOpen(user, managerId, raidLevel);
+             if (!ensured.Success)
+             {
+@@ -70,12 +66,7 @@ internal static class ClassicSoloRaidRouteExecutor
+         var failure = new ResOpenSoloRaidTrial { PeriodResult = SoloRaidPeriodResult.Failure };
+         return Execute(accountId, ClassicSoloRaidRoute.OpenTrial, null, raidLevel, failure, (user, managerId) =>
+         {
+-            var hadActiveTrial = SoloRaidHelper.GetSoloRaidLevelData(
+-                SoloRaidHelper.GetSoloRaidData(user, managerId, isAdd: false),
+-                raidLevel,
+-                SoloRaidType.Trial,
+-                isOpen: true) is not null;
+-            var rolloverChanged = !hadActiveTrial && SoloRaidHelper.ResetOpenCount(user, managerId);
++            var rolloverChanged = SoloRaidHelper.ResetOpenCount(user, managerId);
+             var ensured = SoloRaidHelper.EnsureTrialOpen(user, managerId, raidLevel);
+             if (!ensured.Success)
+             {
+diff --git a/tests/EpinelPS.SelectedManager.Tests/SoloRaidRolloverResumeTests.cs b/tests/EpinelPS.SelectedManager.Tests/SoloRaidRolloverResumeTests.cs
+new file mode 100644
+--- /dev/null
++++ b/tests/EpinelPS.SelectedManager.Tests/SoloRaidRolloverResumeTests.cs
+@@ -0,0 +1,216 @@
++using EpinelPS;
++using EpinelPS.Database;
++using EpinelPS.LobbyServer.Soloraid;
++using EpinelPS.Models;
++using Google.Protobuf;
++using Newtonsoft.Json;
++using Xunit;
++
++namespace EpinelPS.SelectedManager.Tests;
++
++public sealed class SoloRaidRolloverResumeTests
++{
++    private const int Manager = ClassicRouteTestFixture.TargetManager;
++    private static readonly DateTimeOffset Rollover = new(2026, 9, 7, 5, 0, 0, TimeSpan.FromHours(9));
++
++    [Theory]
++    [InlineData("GetLevelTrial", "OpenTrial")]
++    [InlineData("OpenTrial", "GetLevelPractice")]
++    public void DirectTrialEntryDoesNotSkipDailyResetForAnActiveRun(string method, string next)
++    {
++        var source = new RouteSourceFixture().ReadRouteFile("ClassicSoloRaidRouteExecutor.cs");
++        var start = source.IndexOf(" " + method + "(", StringComparison.Ordinal);
++        var end = source.IndexOf(" " + next + "(", start + 1, StringComparison.Ordinal);
++        var body = source[start..end];
++        Assert.Contains("var rolloverChanged = SoloRaidHelper.ResetOpenCount(user, managerId);", body);
++        Assert.DoesNotContain("hadActiveTrial", body);
++        Assert.Contains("rolloverChanged || ensured.Created", body);
++    }
++
++    [Theory]
++    [InlineData(0, false)]
++    [InlineData(1, false)]
++    [InlineData(4, false)]
++    [InlineData(0, true)]
++    [InlineData(1, true)]
++    [InlineData(2, true)]
++    [InlineData(3, true)]
++    [InlineData(4, true)]
++    public void DailyResetThenRestartPreservesRunAndCompleteJoinWire(int teams, bool afterReset)
++    {
++        using var store = new Store(UserWithRun(teams));
++        var levelsBefore = Levels(store.User);
++
++        // GetInfo/GetLogs commits rollover before trial/getlevel; restart reloads
++        // that exact snapshot. Never use the operational JsonDb singleton here.
++        store.Coordinator.Execute(core =>
++        {
++            var changed = SoloRaidHelper.ResetOpenCount(
++                core.Users.Single(), Manager, afterReset ? Rollover : Rollover.AddTicks(-1));
++            Assert.Equal(afterReset, changed);
++            return changed ? CoordinatedMutation<bool>.Commit(true) : CoordinatedMutation<bool>.ValidateOnly(false);
++        });
++        store.Restart();
++        var beforeResume = File.ReadAllBytes(store.Path);
++
++        for (var replay = 0; replay < 2; replay++)
++        {
++            var wire = store.Coordinator.Execute(core =>
++            {
++                var user = core.Users.Single();
++                var ensured = EnsureExisting(user);
++                Assert.True(ensured.Success);
++                Assert.False(ensured.Created);
++                Assert.Equal(afterReset ? 0 : 1, ensured.OpenCount);
++                return CoordinatedMutation<ResGetLevelTrialSoloRaid>.ValidateOnly(TrialWire(user));
++            });
++            Assert.Equal(SoloRaidPeriodResult.Success, wire.PeriodResult);
++            Assert.NotNull(wire.Raid);
++            Assert.Equal(teams * 100, wire.Raid.Damage);
++            Assert.Equal(teams, wire.RaidJoinCount);
++            Assert.NotNull(wire.JoinData);
++            Assert.Equal(Enumerable.Range(1, teams * 5).Select(i => (long)i), wire.JoinData.CsnList);
++            store.Restart();
++        }
++
++        Assert.Equal(beforeResume, File.ReadAllBytes(store.Path));
++        Assert.Equal(levelsBefore, Levels(store.User));
++        Assert.Equal(afterReset ? 0 : 1, store.User.SoloRaidData[Manager].TrialCount);
++        Assert.Equal(500, SoloRaidHelper.GetBestCompletedTrialLevel(store.User.SoloRaidData[Manager], 8)!.TotalDamage);
++        var logs = new ResGetSoloRaidLogs();
++        SoloRaidHelper.GetSoloRaidLog(store.User, ref logs, Manager, 8);
++        Assert.Equal(teams + 5, logs.Logs.Count);
++    }
++
++    [Fact]
++    public void AlreadyPersistedZeroCountResumesWithoutRepairWriteOrNewAttempt()
++    {
++        var user = UserWithRun(1);
++        user.SoloRaidData[Manager].TrialCount = 0;
++        user.SoloRaidData[Manager].LastDateDay = 20260907;
++        var before = ClassicRouteTestFixture.Snapshot(user);
++
++        Assert.False(SoloRaidHelper.ResetOpenCount(user, Manager, Rollover.AddHours(12)));
++        Assert.True(EnsureExisting(user).Success);
++        Assert.Equal(5, TrialWire(user).JoinData.CsnList.Count);
++        Assert.Equal(before, ClassicRouteTestFixture.Snapshot(user));
++    }
++
++    [Fact]
++    public void PracticeEntryWithCarriedTrialDoesNotMutateChallenge()
++    {
++        var user = UserWithRun(1);
++        Assert.True(SoloRaidHelper.ResetOpenCount(user, Manager, Rollover));
++        var before = ClassicRouteTestFixture.Snapshot(user);
++        var result = SoloRaidHelper.EnsurePracticeOpen(user, Manager, 8, (_, _, _) =>
++            throw new InvalidOperationException("existing_practice_must_not_be_replaced"));
++        Assert.True(result.Success);
++        Assert.False(result.Created);
++        var response = new ResGetLevelPracticeSoloRaid();
++        Assert.True(SoloRaidHelper.GetLevelPracticeInfo(user, ref response, Manager, 8));
++        var wire = ResGetLevelPracticeSoloRaid.Parser.ParseFrom(response.ToByteArray());
++        Assert.Equal(SoloRaidPeriodResult.Success, wire.PeriodResult);
++        Assert.NotNull(wire.JoinData);
++        Assert.NotNull(wire.Raid);
++        Assert.Equal(before, ClassicRouteTestFixture.Snapshot(user));
++    }
++
++    [Theory]
++    [InlineData(-1, false, false)]
++    [InlineData(0, true, false)]
++    [InlineData(0, false, true)]
++    public void InvalidRunStillFailsWithoutMutation(int count, bool duplicate, bool badLogs)
++    {
++        var user = UserWithRun(1);
++        var raid = user.SoloRaidData[Manager];
++        raid.TrialCount = count;
++        var active = raid.SoloRaidLevels.Single(l => l.IsOpen && l.Type == SoloRaidType.Trial);
++        if (duplicate) raid.SoloRaidLevels.Add(JsonConvert.DeserializeObject<SoloRaidLevelData>(JsonConvert.SerializeObject(active))!);
++        if (badLogs) active.RaidJoinCount++;
++        var before = ClassicRouteTestFixture.Snapshot(user);
++        Assert.False(EnsureExisting(user).Success);
++        Assert.Equal(before, ClassicRouteTestFixture.Snapshot(user));
++    }
++
++    [Fact]
++    public void NewTrialAfterRolloverStillChargesExactlyOneAttempt()
++    {
++        var user = UserWithRun(1);
++        user.SoloRaidData[Manager].SoloRaidLevels.RemoveAll(l => l.Type == SoloRaidType.Trial && l.IsOpen);
++        Assert.True(SoloRaidHelper.ResetOpenCount(user, Manager, Rollover));
++        var preserved = Levels(user);
++        var calls = 0;
++        var opened = SoloRaidHelper.EnsureTrialOpen(user, Manager, 8, (target, manager, _) =>
++        {
++            calls++;
++            var raid = target.SoloRaidData[manager];
++            raid.SoloRaidLevels.Add(new SoloRaidLevelData
++            {
++                RaidLevel = 8, Type = SoloRaidType.Trial, Status = SoloRaidStatus.Alive, IsOpen = true,
++            });
++            return ++raid.TrialCount;
++        });
++        Assert.True(opened.Success);
++        Assert.True(opened.Created);
++        Assert.Equal(1, opened.OpenCount);
++        Assert.Equal(1, EnsureExisting(user).OpenCount);
++        Assert.Equal(1, calls);
++        Assert.NotNull(TrialWire(user).JoinData);
++        Assert.Equal(preserved, JsonConvert.SerializeObject(user.SoloRaidData[Manager].SoloRaidLevels.Where(l => !(l.IsOpen && l.Type == SoloRaidType.Trial))));
++    }
++
++    private static SoloRaidOpenResolution EnsureExisting(User user) =>
++        SoloRaidHelper.EnsureTrialOpen(user, Manager, 8, (_, _, _) =>
++            throw new InvalidOperationException("resumed_run_must_not_materialize"));
++
++    private static ResGetLevelTrialSoloRaid TrialWire(User user)
++    {
++        var response = new ResGetLevelTrialSoloRaid();
++        Assert.True(SoloRaidHelper.GetLevelTrialInfo(user, ref response, Manager, 8));
++        return ResGetLevelTrialSoloRaid.Parser.ParseFrom(response.ToByteArray());
++    }
++
++    private static string Levels(User user) => JsonConvert.SerializeObject(user.SoloRaidData[Manager].SoloRaidLevels);
++
++    private static User UserWithRun(int teams)
++    {
++        var user = ClassicRouteTestFixture.ActiveUser(joinCount: teams);
++        var raid = user.SoloRaidData[Manager];
++        raid.LastDateDay = 20260906;
++        var active = raid.SoloRaidLevels.Single();
++        for (var i = 0; i < teams; i++)
++            active.Logs[i].Team = Enumerable.Range(i * 5 + 1, 5)
++                .Select(csn => new TeamCharacterData { Slot = (csn - 1) % 5, Csn = csn, Tid = csn, Lv = 400 })
++                .ToList();
++        raid.SoloRaidLevels.Add(new SoloRaidLevelData
++        {
++            RaidLevel = 8, Type = SoloRaidType.Trial, IsOpen = false, IsClear = true,
++            Status = SoloRaidStatus.Kill, RaidJoinCount = 5, TotalDamage = 500,
++            Logs = Enumerable.Range(1, 5).Select(_ => new SoloRaidLogData { Damage = 100 }).ToList(),
++        });
++        raid.SoloRaidLevels.Add(new SoloRaidLevelData
++        {
++            RaidLevel = 8, Type = SoloRaidType.Practice, IsOpen = true, Status = SoloRaidStatus.Alive,
++        });
++        return user;
++    }
++
++    private sealed class Store : IDisposable
++    {
++        private CoreInfo current;
++        private readonly string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "epinel-rollover-" + Guid.NewGuid().ToString("N"));
++        internal Store(User user)
++        {
++            Directory.CreateDirectory(directory);
++            Path = System.IO.Path.Combine(directory, "db.json");
++            current = new CoreInfo { Users = [user] };
++            File.WriteAllText(Path, JsonConvert.SerializeObject(current));
++            Coordinator = new ClassicSoloRaidPersistenceCoordinator(() => current, value => current = value, Path);
++        }
++        internal string Path { get; }
++        internal User User => current.Users.Single();
++        internal ClassicSoloRaidPersistenceCoordinator Coordinator { get; }
++        internal void Restart() => current = JsonConvert.DeserializeObject<CoreInfo>(File.ReadAllText(Path))!;
++        public void Dispose() => Directory.Delete(directory, recursive: true);
++    }
++}

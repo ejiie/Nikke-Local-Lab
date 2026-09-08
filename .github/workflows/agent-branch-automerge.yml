@@ -71,6 +71,10 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/verify-phase3b2.ps1 -ContractOnly
 
+      - name: Verify boss weakness variant automation contract
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/verify-automation-boss-weakness-variant.ps1
+
       - name: Verify Actions automation contract
         shell: pwsh
         run: pwsh -NoProfile -File scripts/verify-actions-contract.ps1

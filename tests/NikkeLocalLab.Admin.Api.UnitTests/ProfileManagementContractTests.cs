@@ -22,6 +22,18 @@ public sealed class ProfileManagementContractTests
   }
 
   [Fact]
+  public void ProfileEditAcceptsControlledNotApplicableApplicabilityValue()
+  {
+    var operation = new ProfileEditOperation(
+        "bond_level",
+        new EntityUid(Guid.NewGuid()),
+        "controlled",
+        ControlledValue: "not_applicable");
+
+    operation.Validate();
+  }
+
+  [Fact]
   public void ProfileEditRejectsUncontrolledFieldCodes()
   {
     var operation = new ProfileEditOperation(

@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:boss-runtime-variant-profile:v1",
+  "title": "BossRuntimeVariantProfileV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "profileCode",
+    "seasonNumber",
+    "displayNameCode",
+    "selectedManagerObservation",
+    "challengeSelector",
+    "sourceAffinity",
+    "elementShield",
+    "transformation"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "nll/boss-runtime-variant-profile/v1" },
+    "profileCode": { "$ref": "#/$defs/code" },
+    "seasonNumber": { "type": "integer", "minimum": 1 },
+    "displayNameCode": { "$ref": "#/$defs/code" },
+    "selectedManagerObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contractId",
+        "canonicalizationCode",
+        "sourceObservationSha256",
+        "canonicalLineCount",
+        "canonicalByteLength",
+        "trustedSha256"
+      ],
+      "properties": {
+        "contractId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "canonicalizationCode": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sourceObservationSha256": { "$ref": "#/$defs/sha256" },
+        "canonicalLineCount": { "type": "integer", "minimum": 1 },
+        "canonicalByteLength": { "type": "integer", "minimum": 1 },
+        "trustedSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "challengeSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["difficultyTypeCode", "waveOrder", "targetCardinality"],
+      "properties": {
+        "difficultyTypeCode": { "const": "challenge" },
+        "waveOrder": { "type": "integer", "minimum": 1 },
+        "targetCardinality": { "const": 1 }
+      }
+    },
+    "sourceAffinity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bossElementCode", "weaknessCode"],
+      "properties": {
+        "bossElementCode": { "$ref": "#/$defs/element" },
+        "weaknessCode": { "$ref": "#/$defs/element" }
+      }
+    },
+    "elementShield": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modeCode", "fxVariantRequired", "fxVariantStatusCode"],
+      "properties": {
+        "modeCode": {
+          "enum": ["none", "static_affinity_linked", "effect_asset_variant_required", "unresolved"]
+        },
+        "fxVariantRequired": { "type": "boolean" },
+        "fxVariantStatusCode": {
+          "enum": ["not_required", "resolved", "unresolved"]
+        }
+      }
+    },
+    "transformation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "modeCode",
+        "allowedTableCodes",
+        "preserveElementTable",
+        "restrictToTargetMonsterElementIds",
+        "rawSourceIdentifiersPersisted"
+      ],
+      "properties": {
+        "modeCode": { "const": "target_monster_element_reference" },
+        "allowedTableCodes": {
+          "type": "array",
+          "const": ["monster"]
+        },
+        "preserveElementTable": { "const": true },
+        "restrictToTargetMonsterElementIds": { "const": true },
+        "rawSourceIdentifiersPersisted": { "const": false }
+      }
+    }
+  },
+  "$defs": {
+    "code": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]{0,63}$"
+    },
+    "element": {
+      "enum": ["fire", "water", "wind", "electric", "iron"]
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

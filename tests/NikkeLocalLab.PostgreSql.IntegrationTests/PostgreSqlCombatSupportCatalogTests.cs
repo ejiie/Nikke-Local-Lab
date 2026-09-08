@@ -26,7 +26,7 @@ public sealed class PostgreSqlCombatSupportCatalogTests
     var migrationReceipts = await Task.WhenAll(
         Enumerable.Range(0, 4)
             .Select(_ => new PostgreSqlMigrationRunner().MigrateAsync(dataSource)));
-    Assert.Equal(7, migrationReceipts.Sum());
+    Assert.Equal(MigrationBaseline.Count, migrationReceipts.Sum());
     Assert.Equal(0, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     var characterAlias = Alias("character", "favorite-owner");

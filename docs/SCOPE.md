@@ -6,7 +6,7 @@
 
 원본 client는 UI, asset, animation, 전투 simulation, damage 계산과 HUD의 권위입니다. Local Lab은 local session, profile projection, 기능 개방, Solo Raid session과 결과 저장의 권위입니다. lab-owned harness와 `Nikke-Dmg-Simulator`는 계약 검사·데이터 해석·최적화·대조용 sidecar이며 최종 게임 client를 대체하지 않습니다.
 
-로비와 Solo Raid의 제품 계약은 [PRIVATE_SERVER_UI.md](PRIVATE_SERVER_UI.md)가 단일 권위입니다.
+로비와 Solo Raid의 제품 계약은 [PRIVATE_SERVER_UI.md](contracts/PRIVATE_SERVER_UI.md)가 단일 권위입니다.
 
 Phase 3의 기술 기준은 pinned public EpinelPS 구현을 prior art/reference로 사용하는 modified-local compatibility 연구입니다. 공개 저장소의 존재는 원본 client와 local server 사이의 기술적 실행 가능성 증거이지 Shift Up의 허가 또는 묵인을 뜻하지 않습니다. 권리자 승인은 주장하지 않으며 법적 상태는 이 프로젝트에서 확정하지 않습니다. 현재 운영 범위를 비배포·개인 로컬 실험으로 제한하고, 범위가 바뀌면 다시 검토합니다.
 
@@ -52,7 +52,7 @@ Phase 3의 기술 기준은 pinned public EpinelPS 구현을 prior art/reference
 - Quick Battle은 구현하지 않고 원본 button은 숨김 또는 controlled disabled/no-op으로 처리합니다.
 - daily Challenge state는 `Asia/Seoul`의 매일 05:00에 초기화합니다.
 - Union Raid는 향후 확장 지점만 예약하고 현재 비활성화합니다.
-- 첫 live compatibility test는 시즌 26입니다. 3B-0에서 exact manager, preset, Challenge wave, monster/stat과 current behavior/asset closure를 확인했고 3B-1 selected-manager patch도 완료했습니다. 이제 disposable environment gate에서만 실행하며, 후속 결손이면 Museum이나 다른 시즌으로 자동 대체하지 않고 controlled blocked 결과를 기록합니다. Closure는 [PHASE3B0.md](PHASE3B0.md), account selection과 run pin 결과는 [PHASE3B1.md](PHASE3B1.md)를 따릅니다.
+- 첫 live compatibility test는 시즌 26입니다. 3B-0에서 exact manager, preset, Challenge wave, monster/stat과 current behavior/asset closure를 확인했고 3B-1 selected-manager patch도 완료했습니다. 이제 disposable environment gate에서만 실행하며, 후속 결손이면 Museum이나 다른 시즌으로 자동 대체하지 않고 controlled blocked 결과를 기록합니다. Closure는 [PHASE3B0.md](contracts/PHASE3B0.md), account selection과 run pin 결과는 [PHASE3B1.md](contracts/PHASE3B1.md)를 따릅니다.
 
 ## Phase 0에서 하지 않았던 것
 
@@ -65,4 +65,4 @@ Phase 3의 기술 기준은 pinned public EpinelPS 구현을 prior art/reference
 - 실제 게임 데이터 import 또는 원본 자산 복사
 - 기존 대미지 시뮬레이터를 최종 전투 runtime으로 사용
 
-Phase 0의 "하지 않는 것"은 해당 단계의 역사적 범위입니다. 이후 Phase 2에서는 local private server를 구현했습니다. Phase 3A는 rights-holder-approved route를 전제로 감사해 `blocked_insufficient_evidence`로 종료했고 그 결과는 변경하지 않습니다. [PHASE3AR.md](PHASE3AR.md)는 사용자 결정과 공개 EpinelPS prior art를 근거로 별도의 operator-authorized modified-local lane을 재기준화합니다. 이 lane은 주 설치본이 아닌 snapshot 가능한 disposable VM/별도 OS, 합성 계정, `127.0.0.1` exact bind, 전 process tree non-loopback 차단과 완전한 rollback을 전제로 transport 평가를 시작합니다. custom lobby UI variant는 첫 시즌 26 classic Solo Raid proof 이후의 별도 presentation gate입니다.
+Phase 0의 "하지 않는 것"은 해당 단계의 역사적 범위입니다. 이후 Phase 2에서는 local private server를 구현했습니다. Phase 3A는 rights-holder-approved route를 전제로 감사해 `blocked_insufficient_evidence`로 종료했고 그 결과는 변경하지 않습니다. [PHASE3AR.md](contracts/PHASE3AR.md)는 사용자 결정과 공개 EpinelPS prior art를 근거로 별도의 operator-authorized modified-local lane을 재기준화합니다. 이 lane은 주 설치본이 아닌 snapshot 가능한 disposable VM/별도 OS, 합성 계정, `127.0.0.1` exact bind, 전 process tree non-loopback 차단과 완전한 rollback을 전제로 transport 평가를 시작합니다. custom lobby UI variant는 첫 시즌 26 classic Solo Raid proof 이후의 별도 presentation gate입니다.
