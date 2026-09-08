@@ -196,6 +196,7 @@
         "selectedManagerIntegrationCommitSha",
         "preflightSealCommitSha",
         "preflightHardeningCommitSha",
+        "latestExternalCommitSha",
         "latestExternalTreeCommitSha",
         "checkoutClean",
         "dotnetSdkVersion",
@@ -204,6 +205,8 @@
         "selectedManagerPassedCount",
         "handlerIsolationPassedCount",
         "focusedTestFailedCount",
+        "localOnlyHttp3Enabled",
+        "localOnlyAssetCachePathLoggingEnabled",
         "toolchainObservation",
         "buildArtifactObservation",
         "focusedTestObservation"
@@ -216,14 +219,17 @@
         "selectedManagerIntegrationCommitSha": { "const": "92a6ca228aeb580988907b96189b2857dff2c62d" },
         "preflightSealCommitSha": { "const": "e32e5f900775974d5736e7fb2b50f8c62638a004" },
         "preflightHardeningCommitSha": { "const": "4f7bd5b5eb2b9a6e03af503f1c09adc4c4f7f16f" },
-        "latestExternalTreeCommitSha": { "const": "ce353eeebee3c76672e483c6f735bb27f0227815" },
+        "latestExternalCommitSha": { "const": "519c3db51ec24ca19307e93e85acde7885928a72" },
+        "latestExternalTreeCommitSha": { "const": "b9e8bfb1b1e065427a48d40cb2bcf2f30215436a" },
         "checkoutClean": { "const": true },
         "dotnetSdkVersion": { "const": "10.0.400" },
         "documentedToolchainMatched": { "const": true },
         "freshBuildCompleted": { "const": true },
-        "selectedManagerPassedCount": { "const": 59 },
+        "selectedManagerPassedCount": { "const": 64 },
         "handlerIsolationPassedCount": { "const": 5 },
         "focusedTestFailedCount": { "const": 0 },
+        "localOnlyHttp3Enabled": { "const": false },
+        "localOnlyAssetCachePathLoggingEnabled": { "const": false },
         "toolchainObservation": { "$ref": "#/$defs/sourceFreeDigest" },
         "buildArtifactObservation": { "$ref": "#/$defs/sourceFreeDigest" },
         "focusedTestObservation": { "$ref": "#/$defs/sourceFreeDigest" }
@@ -390,6 +396,7 @@
         "localeAutoFetchEnabled",
         "gitUpdateEnabled",
         "interactiveUpdateSurfaceEnabled",
+        "http3Enabled",
         "configObservation"
       ],
       "properties": {
@@ -402,6 +409,7 @@
         "localeAutoFetchEnabled": { "const": false },
         "gitUpdateEnabled": { "const": false },
         "interactiveUpdateSurfaceEnabled": { "const": false },
+        "http3Enabled": { "const": false },
         "configObservation": { "$ref": "#/$defs/sourceFreeDigest" }
       }
     },
@@ -444,10 +452,9 @@
       "const": {
         "protocolCode": "http3",
         "transportCode": "udp",
-        "addressFamilyCode": "ipv4",
-        "bindAddressCode": "loopback_127_0_0_1",
+        "statusCode": "disabled_local_only",
         "port": 443,
-        "listenerCount": 1
+        "listenerCount": 0
       }
     },
     "targetBindingObservation": {
@@ -458,8 +465,8 @@
         "ordinal": { "const": 15 },
         "roleCode": { "const": "target_binding" },
         "statusCode": { "const": "exact" },
-        "targetObservationContractId": { "const": "nll/season26-classic-target-observation/v1" },
-        "targetObservationSha256": { "const": "ed3a8682d0bbb2b49394db1c862da74a8c44cab097188cad3d5b5851dc5f50ba" },
+        "targetObservationContractId": { "const": "nll/season26-classic-target-observation/v2" },
+        "targetObservationSha256": { "const": "095eebce4f244f9326aa558302318f85547697b165eb6458735527bd2b0f6d10" },
         "recomputedMatch": { "const": true },
         "latestFallbackCount": { "const": 0 },
         "museumInvocationCount": { "const": 0 }

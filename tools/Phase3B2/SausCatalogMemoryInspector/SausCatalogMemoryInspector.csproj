@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EpinelRuntimeRoot Condition="'$(EpinelRuntimeRoot)' == ''">E:\NLL\EpinelPS\EpinelPS\bin\Release\net10.0\win-x64</EpinelRuntimeRoot>
+    <EpinelSourceRoot Condition="'$(EpinelSourceRoot)' == ''">E:\NLL\EpinelPS\EpinelPS</EpinelSourceRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(EpinelSourceRoot)\Data\NkdbDecryptor.cs" Link="EpinelPS.Data\NkdbDecryptor.cs" />
+    <Compile Include="$(EpinelSourceRoot)\Data\OfbStream.cs" Link="EpinelPS.Data\OfbStream.cs" />
+    <Compile Include="$(EpinelSourceRoot)\Data\ZeroStream.cs" Link="EpinelPS.Data\ZeroStream.cs" />
+
+    <Reference Include="Microsoft.Data.Sqlite">
+      <HintPath>$(EpinelRuntimeRoot)\Microsoft.Data.Sqlite.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="SQLitePCLRaw.core">
+      <HintPath>$(EpinelRuntimeRoot)\SQLitePCLRaw.core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="SQLitePCLRaw.batteries_v2">
+      <HintPath>$(EpinelRuntimeRoot)\SQLitePCLRaw.batteries_v2.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="SQLitePCLRaw.provider.e_sqlite3">
+      <HintPath>$(EpinelRuntimeRoot)\SQLitePCLRaw.provider.e_sqlite3.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Content Include="$(EpinelRuntimeRoot)\e_sqlite3.dll">
+      <Link>e_sqlite3.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

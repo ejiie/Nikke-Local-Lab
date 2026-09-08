@@ -13,7 +13,7 @@ using Npgsql;
 
 namespace NikkeLocalLab.PostgreSql.IntegrationTests;
 
-public sealed class PostgreSqlLocalGameStateTests
+public sealed partial class PostgreSqlLocalGameStateTests
 {
   private const string ResetToken = "allow-phase1a-disposable-schema-reset";
   private const string NoLevelAuthority = "unresolved/no_apply";
@@ -189,7 +189,7 @@ public sealed class PostgreSqlLocalGameStateTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     var store = new PostgreSqlLocalGameStateStore(dataSource, new RandomEntityUidGenerator());
     var manifest = new LocalClientFeatureManifestWrite(
@@ -232,7 +232,7 @@ public sealed class PostgreSqlLocalGameStateTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
     var imported = await ImportStrictDraftAsync(
@@ -348,7 +348,7 @@ public sealed class PostgreSqlLocalGameStateTests
         item.CharacterUid == catalogs.CharacterUids[0] &&
         item.SlotCode == "head");
     Assert.Equal("equipped", head.State);
-    Assert.True(Value(head, "manufacturer_matched").BooleanValue);
+    Assert.Equal("not_applicable", Value(head, "manufacturer_matched").Status);
     Assert.Equal("present", Value(head, "overload.1.state").ControlledValue);
     Assert.Equal(catalogs.OptionRawValue1, Value(head, "overload.1.value").UnscaledValue);
     Assert.Equal(4, Value(head, "overload.1.value").DecimalScale);
@@ -356,6 +356,152 @@ public sealed class PostgreSqlLocalGameStateTests
     Assert.Equal("present", Value(head, "overload.3.state").ControlledValue);
     Assert.Equal(catalogs.OptionRawValue3, Value(head, "overload.3.value").UnscaledValue);
     Assert.Equal(4, Value(head, "overload.3.value").DecimalScale);
+
+    var profileStore = new PostgreSqlLocalAccountProfileStore(
+        dataSource,
+        new RandomEntityUidGenerator());
+    var current = Assert.IsType<LocalCurrentAccountProfile>(
+        await profileStore.GetCurrentAsync(created.AccountUid));
+    var legacyBuilds = current.Profile.Builds.Select(build =>
+    {
+      if (build.CharacterUid != catalogs.CharacterUids[0])
+      {
+        return build;
+      }
+
+      var equipment = build.Equipment.Select(item =>
+          item.Slot == LocalEquipmentSlot.Head
+              ? new LocalEquipmentWrite(
+                  item.Slot,
+                  item.State,
+                  item.EquipmentDefinitionUid,
+                  item.EnhancementLevel,
+                  LocalProfileFact<bool>.Unresolved(
+                      new LocalProfileReasonCode("manufacturer_observation_missing")),
+                  item.OverloadLines,
+                  item.UnresolvedReasonCode)
+              : item);
+      return new LocalCharacterBuildWrite(
+          build.CharacterUid,
+          build.CharacterLevel,
+          build.LimitBreak,
+          build.CoreLevel,
+          build.BondLevel,
+          build.Skill1Level,
+          build.Skill2Level,
+          build.BurstLevel,
+          equipment,
+          build.Cube,
+          build.Collection,
+          LocalProfileValidationMode.Research,
+          build.MaterializationPolicy,
+          build.Origin);
+    });
+    var legacy = await profileStore.CreateAsync(
+        new CreateLocalAccountProfileCommand(
+            EntityUid.New(),
+            new LocalAccountProfileWrite(
+                current.Profile.CharacterCatalog,
+                current.Profile.CombatSupportCatalog,
+                current.Profile.AccountState,
+                legacyBuilds,
+                squadCharacterUids: null,
+                current.Profile.SquadOrigin,
+                current.Profile.ProfileTemplateOrigin),
+            TestInstant.AddMinutes(1)));
+    var applicabilityPreview = await service.PreviewProfileEditsAsync(
+        new App.ProfileEditPreviewCommand(
+            EntityUid.New(),
+            legacy.AccountUid,
+            legacy.ProfileTemplateRevisionUid,
+            [
+              new App.ProfileEditOperation(
+                  "equipment.head.manufacturer_matched",
+                  catalogs.CharacterUids[0],
+                  "controlled",
+                  ControlledValue: "not_applicable")
+            ]));
+    var applicabilityChange = Assert.Single(applicabilityPreview.Changes);
+    Assert.Equal("unresolved", applicabilityChange.Before!.Status);
+    Assert.Equal("not_applicable", applicabilityChange.After!.Status);
+    var applicabilitySaved = await service.SaveProfileAsync(
+        new App.SaveProfileCommand(
+            EntityUid.New(),
+            legacy.AccountUid,
+            legacy.ProfileTemplateRevisionUid,
+            applicabilityPreview.CandidateDraftUid,
+            applicabilityPreview.CandidateSha256,
+            applicabilityPreview.DiffSha256));
+    var applicabilityCurrent = Assert.IsType<App.CurrentProfileProjection>(
+        await service.GetCurrentProfileAsync(legacy.AccountUid));
+    Assert.Equal(applicabilitySaved.ProfileRevision, applicabilityCurrent.ProfileRevision);
+    Assert.Equal(
+        "not_applicable",
+        Value(
+            applicabilityCurrent,
+            "equipment.head.manufacturer_matched",
+            catalogs.CharacterUids[0]).Status);
+    var legacyPercentPreview = await service.PreviewProfileEditsAsync(
+        new App.ProfileEditPreviewCommand(
+            EntityUid.New(),
+            legacy.AccountUid,
+            applicabilityCurrent.ProfileRevision.RevisionUid,
+            [
+              new App.ProfileEditOperation(
+                  "equipment.head.overload.1.unit",
+                  catalogs.CharacterUids[0],
+                  "controlled",
+                  ControlledValue: "percent"),
+              new App.ProfileEditOperation(
+                  "equipment.head.overload.1.value",
+                  catalogs.CharacterUids[0],
+                  "exact_decimal",
+                  UnscaledValue: catalogs.OptionRawValue3,
+                  DecimalScale: 4)
+            ]));
+    Assert.DoesNotContain(
+        legacyPercentPreview.Changes,
+        static change => change.FieldCode.EndsWith(".unit", StringComparison.Ordinal));
+    var legacyPercentSaved = await service.SaveProfileAsync(
+        new App.SaveProfileCommand(
+            EntityUid.New(),
+            legacy.AccountUid,
+            applicabilityCurrent.ProfileRevision.RevisionUid,
+            legacyPercentPreview.CandidateDraftUid,
+            legacyPercentPreview.CandidateSha256,
+            legacyPercentPreview.DiffSha256));
+    var legacyPercentCurrent = Assert.IsType<App.CurrentProfileProjection>(
+        await service.GetCurrentProfileAsync(legacy.AccountUid));
+    Assert.Equal(legacyPercentSaved.ProfileRevision, legacyPercentCurrent.ProfileRevision);
+    Assert.Equal(
+        "ratio",
+        Value(
+            legacyPercentCurrent,
+            "equipment.head.overload.1.unit",
+            catalogs.CharacterUids[0]).ControlledValue);
+    Assert.Equal(
+        catalogs.OptionRawValue3,
+        Value(
+            legacyPercentCurrent,
+            "equipment.head.overload.1.value",
+            catalogs.CharacterUids[0]).UnscaledValue);
+    var runtimeCandidate = Assert.IsType<App.RuntimeProjectionCandidate>(
+        await service.ExportRuntimeProjectionCandidateAsync(legacy.AccountUid));
+    Assert.Equal("ready", runtimeCandidate.ValidationStatusCode);
+    Assert.Empty(runtimeCandidate.ValidationReasonCodes);
+    Assert.DoesNotContain(
+        runtimeCandidate.Values,
+        static value => value.Status == "unresolved");
+    var runtimeWorkspace = Assert.IsType<App.AccountWorkspaceProjection>(
+        await service.GetAccountWorkspaceAsync(legacy.AccountUid));
+    Assert.Equal("ready", runtimeWorkspace.ValidationStatusCode);
+    Assert.Empty(runtimeWorkspace.ValidationReasonCodes);
+    var runtimeSummary = Assert.Single(
+        await service.ListAccountsAsync(),
+        item => item.AccountUid == legacy.AccountUid);
+    Assert.Equal("ready", runtimeSummary.ValidationStatusCode);
+    Assert.Empty(runtimeSummary.ValidationReasonCodes);
+    Assert.Null((await service.GetCurrentBootstrapAsync(legacy.AccountUid))?.Squad);
   }
 
   [Fact]
@@ -363,7 +509,7 @@ public sealed class PostgreSqlLocalGameStateTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
     var detailDraft = await ImportStrictDraftAsync(
         dataSource,
@@ -389,6 +535,15 @@ public sealed class PostgreSqlLocalGameStateTests
         await service.GetCurrentProfileAsync(detailAccount.AccountUid));
     var rosterCurrent = Assert.IsType<App.CurrentProfileProjection>(
         await service.GetCurrentProfileAsync(rosterAccount.AccountUid));
+    var detailSummary = Assert.Single(
+        await service.ListAccountsAsync(),
+        item => item.AccountUid == detailCurrent.AccountUid);
+    var renamedDetail = await service.RenameAccountAsync(
+        new App.RenameAccountCommand(
+            detailCurrent.AccountUid,
+            detailSummary.AccountLabel,
+            "계정_1"));
+    Assert.Equal("계정_1", renamedDetail.AccountLabel);
     Assert.Equal(200, Value(detailCurrent, "character_level", catalogs.CharacterUids[0]).IntegerValue);
     Assert.Equal(100, Value(rosterCurrent, "character_level", catalogs.CharacterUids[0]).IntegerValue);
 
@@ -446,12 +601,17 @@ public sealed class PostgreSqlLocalGameStateTests
         afterAccountOnly.ProfileRevision.RevisionUid,
         emptyPreview.CandidateDraftUid,
         emptyPreview.CandidateSha256,
-        emptyPreview.DiffSha256);
+        emptyPreview.DiffSha256,
+        "계정_2");
     var savedAs = await service.SaveAsProfileAsync(saveAsCommand);
     var savedAsReplay = await service.SaveAsProfileAsync(saveAsCommand);
     Assert.NotEqual(afterAccountOnly.AccountUid, savedAs.AccountUid);
     Assert.True(savedAsReplay.IsIdempotentReplay);
     Assert.Equal(savedAs.AccountUid, savedAsReplay.AccountUid);
+    var accountList = await service.ListAccountsAsync();
+    var copiedSummary = Assert.Single(accountList, item => item.AccountUid == savedAs.AccountUid);
+    Assert.Equal("계정_2", copiedSummary.AccountLabel);
+    Assert.Equal(afterAccountOnly.AccountUid, copiedSummary.SaveAsParentAccountUid);
 
     var editPreview = await service.PreviewProfileEditsAsync(
         new App.ProfileEditPreviewCommand(
@@ -477,6 +637,56 @@ public sealed class PostgreSqlLocalGameStateTests
     var savedReplay = await service.SaveProfileAsync(saveCommand);
     Assert.True(savedReplay.IsIdempotentReplay);
     Assert.Equal(saved.ProfileRevision, savedReplay.ProfileRevision);
+    var copiedCurrent = Assert.IsType<App.CurrentProfileProjection>(
+        await service.GetCurrentProfileAsync(savedAs.AccountUid));
+    var copiedEditPreview = await service.PreviewProfileEditsAsync(
+        new App.ProfileEditPreviewCommand(
+            EntityUid.New(),
+            copiedCurrent.AccountUid,
+            copiedCurrent.ProfileRevision.RevisionUid,
+            [
+              new App.ProfileEditOperation(
+                  "character_level",
+                  catalogs.CharacterUids[0],
+                  "integer",
+                  IntegerValue: 198)
+            ]));
+    var copiedSaved = await service.SaveProfileAsync(
+        new App.SaveProfileCommand(
+            EntityUid.New(),
+            copiedCurrent.AccountUid,
+            copiedCurrent.ProfileRevision.RevisionUid,
+            copiedEditPreview.CandidateDraftUid,
+            copiedEditPreview.CandidateSha256,
+            copiedEditPreview.DiffSha256));
+    var sourceAfterIndependentCopyEdit = Assert.IsType<App.CurrentProfileProjection>(
+        await service.GetCurrentProfileAsync(afterAccountOnly.AccountUid));
+    var copyAfterIndependentEdit = Assert.IsType<App.CurrentProfileProjection>(
+        await service.GetCurrentProfileAsync(savedAs.AccountUid));
+    Assert.Equal(saved.ProfileRevision, sourceAfterIndependentCopyEdit.ProfileRevision);
+    Assert.Equal(copiedSaved.ProfileRevision, copyAfterIndependentEdit.ProfileRevision);
+    Assert.Equal(
+        199,
+        Value(sourceAfterIndependentCopyEdit, "character_level", catalogs.CharacterUids[0]).IntegerValue);
+    Assert.Equal(
+        198,
+        Value(copyAfterIndependentEdit, "character_level", catalogs.CharacterUids[0]).IntegerValue);
+    var sourceHistory = Assert.IsType<App.AccountRevisionHistoryProjection>(
+        await service.GetAccountRevisionHistoryAsync(afterAccountOnly.AccountUid));
+    var copiedHistory = Assert.IsType<App.AccountRevisionHistoryProjection>(
+        await service.GetAccountRevisionHistoryAsync(savedAs.AccountUid));
+    Assert.Equal(2, sourceHistory.Revisions.Count);
+    Assert.Equal(2, copiedHistory.Revisions.Count);
+    Assert.NotEqual(
+        sourceHistory.Revisions[0].ProfileRevision.RevisionUid,
+        copiedHistory.Revisions[0].ProfileRevision.RevisionUid);
+    var sourceRuntimeCandidate = Assert.IsType<App.RuntimeProjectionCandidate>(
+        await service.ExportRuntimeProjectionCandidateAsync(afterAccountOnly.AccountUid));
+    var copiedRuntimeCandidate = Assert.IsType<App.RuntimeProjectionCandidate>(
+        await service.ExportRuntimeProjectionCandidateAsync(savedAs.AccountUid));
+    Assert.Equal("계정_1", sourceRuntimeCandidate.AccountLabel);
+    Assert.Equal("계정_2", copiedRuntimeCandidate.AccountLabel);
+    Assert.NotEqual(sourceRuntimeCandidate.CandidateSha256, copiedRuntimeCandidate.CandidateSha256);
     var stale = await Assert.ThrowsAsync<App.ProfileManagementException>(() =>
         service.PreviewProfileEditsAsync(
             new App.ProfileEditPreviewCommand(
@@ -488,11 +698,593 @@ public sealed class PostgreSqlLocalGameStateTests
   }
 
   [Fact]
+  public async Task CompleteFetchedSnapshotBecomesCurrentAndReusesExistingSelectiveImportDiff()
+  {
+    await using var dataSource = CreateDataSource();
+    await ResetSchemasAsync(dataSource);
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
+    var imported = await ImportStrictDraftAsync(
+        dataSource,
+        catalogs,
+        CharacterLevelAuthorityPolicy.DetailObservationV1,
+        TestInstant);
+    var service = Service(dataSource);
+    var created = await CreateAccountFromImportAsync(service, imported, DetailLevelAuthority);
+    var current = Assert.IsType<App.CurrentProfileProjection>(
+        await service.GetCurrentProfileAsync(created.AccountUid));
+    var edit = await service.PreviewProfileEditsAsync(
+        new App.ProfileEditPreviewCommand(
+            EntityUid.New(),
+            created.AccountUid,
+            current.ProfileRevision.RevisionUid,
+            [
+              new App.ProfileEditOperation(
+                  "character_level",
+                  catalogs.CharacterUids[0],
+                  "integer",
+                  IntegerValue: 199)
+            ]));
+    var edited = await service.SaveProfileAsync(
+        new App.SaveProfileCommand(
+            EntityUid.New(),
+            created.AccountUid,
+            current.ProfileRevision.RevisionUid,
+            edit.CandidateDraftUid,
+            edit.CandidateSha256,
+            edit.DiffSha256));
+
+    var snapshot = FetchedAccountSnapshotMaterializer.Materialize(
+        new FetchedAccountSnapshotMaterializationCommand(
+            EntityUid.New(),
+            TestInstant.AddMinutes(5),
+            imported.Draft,
+            new CredentialBearingProfileCoverage(2, 2, 1, 8, 2, 2, 1, 9),
+            new FetchedBasicAccountObservation("SyntheticLab", 893, "34-38", "20-31", "34-38"),
+            new FetchedProgressionObservation(
+                Sha256Digest.ComputeUtf8("synthetic-main-quest"),
+                611,
+                611,
+                17),
+            Array.Empty<ProfileImportDiagnostic>()));
+    var snapshotJson = Encoding.UTF8.GetString(FetchedAccountSnapshotJsonCodec.Encode(snapshot));
+    var draftJson = Encoding.UTF8.GetString(SanitizedProfileDraftJsonCodec.Encode(imported.Draft));
+    var registerCommand = new App.RegisterFetchedAccountSnapshotCommand(
+        created.AccountUid,
+        edited.ProfileRevision.RevisionUid,
+        snapshotJson,
+        draftJson);
+
+    var registered = await service.RegisterFetchedAccountSnapshotAsync(registerCommand);
+    var replay = await service.RegisterFetchedAccountSnapshotAsync(registerCommand);
+    Assert.True(registered.IsCurrentWorkspaceSnapshot);
+    Assert.Equal(registered, replay);
+    Assert.Equal("SyntheticLab", registered.DisplayName);
+    Assert.Equal(893, registered.CommanderLevel);
+
+    var manifest = await service.EnsureBuiltInFeatureManifestAsync();
+    var initialized = await service.InitializeLocalStateAsync(
+        new App.InitializeLocalStateCommand(
+            EntityUid.New(),
+            created.AccountUid,
+            edited.ProfileRevision.RevisionUid,
+            manifest.ManifestUid,
+            manifest.ContentSha256,
+            "Local Lobby Name",
+            700,
+            null,
+            null,
+            null,
+            null,
+            [
+              new App.WalletBalanceProjection("credit", 0),
+              new App.WalletBalanceProjection("jewel", 0)
+            ]));
+    var sourceWorkspace = Assert.IsType<App.AccountWorkspaceProjection>(
+        await service.GetAccountWorkspaceAsync(created.AccountUid));
+    var copyPreview = await service.PreviewProfileEditsAsync(
+        new App.ProfileEditPreviewCommand(
+            EntityUid.New(),
+            created.AccountUid,
+            edited.ProfileRevision.RevisionUid,
+            []));
+    var copyCommand = new App.SaveAccountWorkspaceCommand(
+        EntityUid.New(),
+        true,
+        created.AccountUid,
+        sourceWorkspace.BaseRevisions.RevisionSetSha256,
+        edited.ProfileRevision.RevisionUid,
+        initialized.Lobby.Revision.RevisionUid,
+        initialized.Wallet.Revision.RevisionUid,
+        copyPreview.CandidateDraftUid,
+        copyPreview.CandidateSha256,
+        copyPreview.DiffSha256,
+        sourceWorkspace.AccountLabel,
+        "관측 출처 복사본",
+        initialized.Lobby.DisplayName,
+        initialized.Lobby.CommanderLevel,
+        initialized.Lobby.ProfileIconSelectionUid,
+        initialized.Lobby.ProfileFrameSelectionUid,
+        initialized.Lobby.LobbyCharacterSelectionUid,
+        initialized.Lobby.LobbyBackgroundSelectionUid,
+        initialized.Wallet.Balances);
+    var copied = await service.SaveAccountWorkspaceAsync(copyCommand);
+    var copiedReplay = await service.SaveAccountWorkspaceAsync(copyCommand);
+    Assert.Equal(snapshot.SnapshotUid, copied.ObservationSourceSnapshotUid);
+    Assert.Equal(copied with { IsIdempotentReplay = true }, copiedReplay);
+    var copiedWorkspace = Assert.IsType<App.AccountWorkspaceProjection>(
+        await service.GetAccountWorkspaceAsync(copied.AccountUid));
+    Assert.Null(copiedWorkspace.FetchedSnapshotUid);
+    var copiedObservation = Assert.IsType<App.FetchedAccountSnapshotProjection>(
+        await service.GetLatestFetchedAccountSnapshotAsync(copied.AccountUid));
+    Assert.Equal(snapshot.SnapshotUid, copiedObservation.SnapshotUid);
+    Assert.Equal(created.AccountUid, copiedObservation.TargetAccountUid);
+    var copiedBootstrap = Assert.IsType<App.AccountBootstrapProjection>(
+        await service.GetCurrentBootstrapAsync(copied.AccountUid));
+    var chainedPreview = await service.PreviewProfileEditsAsync(
+        new App.ProfileEditPreviewCommand(
+            EntityUid.New(),
+            copied.AccountUid,
+            copied.ProfileRevision.RevisionUid,
+            []));
+    var chained = await service.SaveAccountWorkspaceAsync(
+        new App.SaveAccountWorkspaceCommand(
+            EntityUid.New(),
+            true,
+            copied.AccountUid,
+            copiedWorkspace.BaseRevisions.RevisionSetSha256,
+            copied.ProfileRevision.RevisionUid,
+            copied.LobbyRevision.RevisionUid,
+            copied.WalletRevision.RevisionUid,
+            chainedPreview.CandidateDraftUid,
+            chainedPreview.CandidateSha256,
+            chainedPreview.DiffSha256,
+            copiedWorkspace.AccountLabel,
+            "관측 출처 연속 복사본",
+            copiedBootstrap.Lobby.DisplayName,
+            copiedBootstrap.Lobby.CommanderLevel,
+            copiedBootstrap.Lobby.ProfileIconSelectionUid,
+            copiedBootstrap.Lobby.ProfileFrameSelectionUid,
+            copiedBootstrap.Lobby.LobbyCharacterSelectionUid,
+            copiedBootstrap.Lobby.LobbyBackgroundSelectionUid,
+            copiedBootstrap.Wallet.Balances));
+    Assert.Equal(snapshot.SnapshotUid, chained.ObservationSourceSnapshotUid);
+    var chainedObservation = Assert.IsType<App.FetchedAccountSnapshotProjection>(
+        await service.GetLatestFetchedAccountSnapshotAsync(chained.AccountUid));
+    Assert.Equal(snapshot.SnapshotUid, chainedObservation.SnapshotUid);
+    Assert.Equal(created.AccountUid, chainedObservation.TargetAccountUid);
+    var lobbyDiff = await service.PreviewFetchedLobbyDiffAsync(
+        new App.PreviewFetchedLobbyDiffCommand(
+            EntityUid.New(),
+            snapshot.SnapshotUid,
+            created.AccountUid,
+            initialized.Lobby.Revision.RevisionUid,
+            ["commander_level"]));
+    var commanderChange = Assert.Single(lobbyDiff.Changes);
+    Assert.Equal("commander_level", commanderChange.FieldCode);
+    Assert.Equal(700, commanderChange.BeforeInteger);
+    Assert.Equal(893, commanderChange.AfterInteger);
+    var appliedLobby = await service.ApplyFetchedLobbyAsync(
+        new App.ApplyFetchedLobbyCommand(
+            EntityUid.New(),
+            snapshot.SnapshotUid,
+            created.AccountUid,
+            initialized.Lobby.Revision.RevisionUid,
+            lobbyDiff.DiffSha256,
+            ["commander_level"]));
+    Assert.Equal(893, appliedLobby.Lobby.CommanderLevel);
+    Assert.Equal("Local Lobby Name", appliedLobby.Lobby.DisplayName);
+    Assert.Null(appliedLobby.Lobby.ProfileIconSelectionUid);
+    Assert.Null(appliedLobby.Lobby.ProfileFrameSelectionUid);
+    Assert.Null(appliedLobby.Lobby.LobbyCharacterSelectionUid);
+    Assert.Null(appliedLobby.Lobby.LobbyBackgroundSelectionUid);
+    var zeroLobbyDiff = await service.PreviewFetchedLobbyDiffAsync(
+        new App.PreviewFetchedLobbyDiffCommand(
+            EntityUid.New(),
+            snapshot.SnapshotUid,
+            created.AccountUid,
+            appliedLobby.Lobby.Revision.RevisionUid,
+            ["commander_level"]));
+    Assert.Empty(zeroLobbyDiff.Changes);
+    var workspace = Assert.IsType<App.AccountWorkspaceProjection>(
+        await service.GetAccountWorkspaceAsync(created.AccountUid));
+    Assert.Equal(snapshot.SnapshotUid, workspace.FetchedSnapshotUid);
+
+    var draft = Assert.IsType<App.SourceFreeImportDraftProjection>(
+        await service.GetImportDraftAsync(registered.SanitizedDraftUid));
+    var diff = await service.PreviewImportDiffAsync(
+        new App.ImportDiffCommand(
+            EntityUid.New(),
+            draft.DraftUid,
+            draft.DraftSha256,
+            created.AccountUid,
+            edited.ProfileRevision.RevisionUid,
+            DetailLevelAuthority,
+            ["full_profile"]));
+    var characterLevel = Assert.Single(
+        diff.Changes,
+        item => item.FieldCode == "character_level" && item.SubjectUid == catalogs.CharacterUids[0]);
+    Assert.Equal(199, characterLevel.Before?.IntegerValue);
+    Assert.Equal(200, characterLevel.After?.IntegerValue);
+
+    var incomplete = FetchedAccountSnapshotMaterializer.Materialize(
+        new FetchedAccountSnapshotMaterializationCommand(
+            EntityUid.New(),
+            TestInstant.AddMinutes(6),
+            imported.Draft,
+            new CredentialBearingProfileCoverage(2, 1, 1, 8, 2, 2, 1, 9),
+            new FetchedBasicAccountObservation("SyntheticLab", 893, "34-38", "20-31", "34-38"),
+            new FetchedProgressionObservation(null, null, null, null),
+            Array.Empty<ProfileImportDiagnostic>()));
+    var incompleteStored = await service.RegisterFetchedAccountSnapshotAsync(
+        new App.RegisterFetchedAccountSnapshotCommand(
+            created.AccountUid,
+            edited.ProfileRevision.RevisionUid,
+            Encoding.UTF8.GetString(FetchedAccountSnapshotJsonCodec.Encode(incomplete)),
+            draftJson));
+    Assert.Equal("incomplete", incompleteStored.CompletenessStatusCode);
+    Assert.False(incompleteStored.IsCurrentWorkspaceSnapshot);
+    copiedObservation = Assert.IsType<App.FetchedAccountSnapshotProjection>(
+        await service.GetLatestFetchedAccountSnapshotAsync(copied.AccountUid));
+    Assert.Equal(snapshot.SnapshotUid, copiedObservation.SnapshotUid);
+    Assert.NotEqual(incomplete.SnapshotUid, copiedObservation.SnapshotUid);
+    chainedObservation = Assert.IsType<App.FetchedAccountSnapshotProjection>(
+        await service.GetLatestFetchedAccountSnapshotAsync(chained.AccountUid));
+    Assert.Equal(snapshot.SnapshotUid, chainedObservation.SnapshotUid);
+    workspace = Assert.IsType<App.AccountWorkspaceProjection>(
+        await service.GetAccountWorkspaceAsync(created.AccountUid));
+    Assert.Equal(snapshot.SnapshotUid, workspace.FetchedSnapshotUid);
+
+    var progressionSnapshotUid = EntityUid.New();
+    var progressionCapturedAt = TestInstant.AddMinutes(7);
+    var progression = CreateProgressionObservation(
+        progressionSnapshotUid,
+        progressionCapturedAt);
+    var progressionUtf8 = FetchedProgressionObservationV2JsonCodec.Encode(progression);
+    var progressionSnapshot = FetchedAccountSnapshotMaterializer.Materialize(
+        new FetchedAccountSnapshotMaterializationCommand(
+            progressionSnapshotUid,
+            progressionCapturedAt,
+            imported.Draft,
+            new CredentialBearingProfileCoverage(2, 2, 1, 8, 2, 2, 1, 9),
+            new FetchedBasicAccountObservation("SyntheticLab", 893, "34-38", "20-31", "34-38"),
+            new FetchedProgressionObservation(
+                progression.MainQuestData.Summary.CanonicalEntriesSha256,
+                progression.MainQuestData.CompletedCount,
+                progression.CompletedScenarios.Summary.ItemCount,
+                progression.ContentsOpenUnlocked.Summary.ItemCount,
+                progressionSnapshotUid,
+                Sha256Digest.Compute(progressionUtf8),
+                progression.Completeness.StatusCode,
+                progression.Completeness.ReasonCodes,
+                progression.StageClearHistorys.Summary.ItemCount,
+                progression.Triggers.Summary.ItemCount,
+                progressionCapturedAt),
+            Array.Empty<ProfileImportDiagnostic>()));
+    var progressionSnapshotJson = Encoding.UTF8.GetString(
+        FetchedAccountSnapshotJsonCodec.Encode(progressionSnapshot));
+    var progressionJson = Encoding.UTF8.GetString(progressionUtf8);
+    var progressionCommand = new App.RegisterFetchedAccountSnapshotCommand(
+        created.AccountUid,
+        edited.ProfileRevision.RevisionUid,
+        progressionSnapshotJson,
+        draftJson,
+        progressionJson);
+    var progressionStored = await service.RegisterFetchedAccountSnapshotAsync(progressionCommand);
+    var progressionReplay = await service.RegisterFetchedAccountSnapshotAsync(progressionCommand);
+    Assert.Equal(progressionStored, progressionReplay);
+    Assert.False(progressionStored.IsCurrentWorkspaceSnapshot);
+    var storedSidecar = Assert.IsType<App.FetchedProgressionObservationProjection>(
+        progressionStored.Progression);
+    Assert.Equal("incomplete", storedSidecar.CompletenessStatusCode);
+    Assert.Equal(2, storedSidecar.AvailableComponentCount);
+    Assert.Equal(2, storedSidecar.DerivedComponentCount);
+    Assert.Equal(1, storedSidecar.UnavailableComponentCount);
+    Assert.Equal(2, storedSidecar.MainQuestCompletedCount);
+    Assert.Equal(2, storedSidecar.MainQuestRewardClaimedCount);
+    Assert.Equal(3, storedSidecar.CompletedScenarioCount);
+    Assert.Equal(1, storedSidecar.ContentsOpenUnlockedCount);
+    Assert.Null(storedSidecar.StageClearHistoryCount);
+    Assert.Equal(2, storedSidecar.TriggerCount);
+    Assert.Equal(Sha256Digest.Compute(progressionUtf8), storedSidecar.CanonicalObservationSha256);
+    var progressionRead = Assert.IsType<App.FetchedAccountSnapshotProjection>(
+        await service.GetFetchedAccountSnapshotAsync(progressionSnapshotUid));
+    Assert.Equal(progressionStored, progressionRead);
+
+    var wrongBinding = progression with { SnapshotUid = EntityUid.New() };
+    var bindingFailure = await Assert.ThrowsAsync<App.ProfileManagementException>(() =>
+        service.RegisterFetchedAccountSnapshotAsync(
+            progressionCommand with
+            {
+              CanonicalProgressionObservationJson = Encoding.UTF8.GetString(
+                  FetchedProgressionObservationV2JsonCodec.Encode(wrongBinding))
+            }));
+    Assert.Equal("fetched_progression_observation_snapshot_parity_invalid", bindingFailure.Code);
+  }
+
+  [Fact]
+  public async Task OperatorFetchedSnapshotDistinguishesLocalEditAndReturnsToSourceValue()
+  {
+    if (!string.Equals(
+            Environment.GetEnvironmentVariable("NIKKE_LAB_OPERATOR_FETCH_ACCEPTANCE"),
+            "1",
+            StringComparison.Ordinal))
+    {
+      return;
+    }
+
+    var snapshotPath = Environment.GetEnvironmentVariable("NIKKE_LAB_OPERATOR_SNAPSHOT");
+    var draftPath = Environment.GetEnvironmentVariable("NIKKE_LAB_OPERATOR_DRAFT");
+    var progressionPath = Environment.GetEnvironmentVariable("NIKKE_LAB_OPERATOR_PROGRESSION");
+    var receiptPath = Environment.GetEnvironmentVariable("NIKKE_LAB_OPERATOR_RECEIPT");
+    if (string.IsNullOrWhiteSpace(snapshotPath) ||
+        string.IsNullOrWhiteSpace(draftPath) ||
+        string.IsNullOrWhiteSpace(receiptPath))
+    {
+      throw new InvalidOperationException("Operator acceptance paths are required.");
+    }
+
+    var snapshotUtf8 = await File.ReadAllBytesAsync(snapshotPath);
+    var draftUtf8 = await File.ReadAllBytesAsync(draftPath);
+    var snapshot = FetchedAccountSnapshotJsonCodec.Decode(snapshotUtf8);
+    var draft = SanitizedProfileDraftJsonCodec.Decode(draftUtf8);
+    string? canonicalProgressionJson = null;
+    FetchedProgressionObservationV2? progression = null;
+    if (!string.IsNullOrWhiteSpace(progressionPath))
+    {
+      var progressionUtf8 = await File.ReadAllBytesAsync(progressionPath);
+      progression = FetchedProgressionObservationV2JsonCodec.Decode(progressionUtf8);
+      Assert.Equal(snapshot.SnapshotUid, progression.SnapshotUid);
+      Assert.Equal(snapshot.CapturedAtUtc, progression.CapturedAtUtc);
+      canonicalProgressionJson = Encoding.UTF8.GetString(progressionUtf8);
+    }
+    Assert.Equal(snapshot.Source.ArtifactSha256, Sha256Digest.Compute(draftUtf8));
+    Assert.False(snapshot.Source.CredentialOrSessionPersisted);
+    Assert.False(snapshot.Source.RawSourcePersisted);
+
+    await using var dataSource = CreateDataSource();
+    Assert.Equal(0, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    var importedAtUtc = snapshot.CapturedAtUtc;
+    var importReceipt = await new PostgreSqlProfileImportStore(
+        dataSource,
+        new RandomEntityUidGenerator()).ImportDraftAsync(
+        new ImportSanitizedProfileDraftCommand(
+            EntityUid.New(),
+            new SanitizedProfileDraftWrite(
+                SanitizedProfileDraftDerivationKind.OfflineSanitizedImport,
+                null,
+                draft.Provenance.SourceSchemaSha256,
+                draft.Provenance.TransformerBinarySha256,
+                draft.Provenance.SemanticOptionsSha256,
+                new LocalProfileCatalogBindingWrite(
+                    draft.CharacterCatalog.CatalogSnapshotUid,
+                    draft.CharacterCatalog.DatasetSnapshotUid,
+                    draft.CharacterCatalog.ManifestSha256),
+                new LocalProfileCatalogBindingWrite(
+                    draft.CombatSupportCatalog.CatalogSnapshotUid,
+                    draft.CombatSupportCatalog.DatasetSnapshotUid,
+                    draft.CombatSupportCatalog.ManifestSha256),
+                Encoding.UTF8.GetString(draftUtf8)),
+            importedAtUtc));
+
+    var service = new PostgreSqlProfileManagementService(
+        dataSource,
+        new RandomEntityUidGenerator(),
+        new FixedTimeProvider(snapshot.CapturedAtUtc.AddMinutes(30)),
+        draft.Provenance.TransformerBinarySha256);
+    var createPreview = await service.PreviewCreateFromImportAsync(
+        new App.CreateImportDiffCommand(
+            EntityUid.New(),
+            importReceipt.DraftUid,
+            importReceipt.CanonicalPayloadSha256,
+            DetailLevelAuthority,
+            ["full_profile"]));
+    var capabilityMismatches = await ReadCapabilityMismatchSummaryAsync(dataSource, draft);
+    App.ProfileWriteReceipt created;
+    try
+    {
+      created = await service.CreateFromImportAsync(
+          new App.CreateFromImportCommand(
+              EntityUid.New(),
+              importReceipt.DraftUid,
+              importReceipt.CanonicalPayloadSha256,
+              createPreview.DiffSha256,
+              DetailLevelAuthority,
+              ["full_profile"]));
+    }
+    catch (App.ProfileManagementException exception)
+    {
+      throw new InvalidOperationException(
+          $"{exception.Code}:capability_mismatch_summary=" +
+          string.Join(',', capabilityMismatches),
+          exception);
+    }
+    var sourceCurrent = Assert.IsType<App.CurrentProfileProjection>(
+        await service.GetCurrentProfileAsync(created.AccountUid));
+    var sourceSynchro = Assert.IsType<long>(
+        Value(sourceCurrent, "synchro_level", null).IntegerValue);
+    var localSynchro = checked(sourceSynchro + 1);
+    var localEditPreview = await service.PreviewProfileEditsAsync(
+        new App.ProfileEditPreviewCommand(
+            EntityUid.New(),
+            created.AccountUid,
+            sourceCurrent.ProfileRevision.RevisionUid,
+            [new App.ProfileEditOperation(
+                "synchro_level",
+                null,
+                "integer",
+                IntegerValue: localSynchro)]));
+    var locallyEdited = await service.SaveProfileAsync(
+        new App.SaveProfileCommand(
+            EntityUid.New(),
+            created.AccountUid,
+            sourceCurrent.ProfileRevision.RevisionUid,
+            localEditPreview.CandidateDraftUid,
+            localEditPreview.CandidateSha256,
+            localEditPreview.DiffSha256));
+
+    var sourceCommanderLevel = Assert.IsType<int>(snapshot.Account.CommanderLevel);
+    var localCommanderLevel = checked(sourceCommanderLevel + 1);
+    var manifest = await service.EnsureBuiltInFeatureManifestAsync();
+    var initialized = await service.InitializeLocalStateAsync(
+        new App.InitializeLocalStateCommand(
+            EntityUid.New(),
+            created.AccountUid,
+            locallyEdited.ProfileRevision.RevisionUid,
+            manifest.ManifestUid,
+            manifest.ContentSha256,
+            "Operator Local Lobby",
+            localCommanderLevel,
+            null,
+            null,
+            null,
+            null,
+            [
+              new App.WalletBalanceProjection("credit", 0),
+              new App.WalletBalanceProjection("jewel", 0)
+            ]));
+    Assert.Equal(localCommanderLevel, initialized.Lobby.CommanderLevel);
+
+    var registered = await service.RegisterFetchedAccountSnapshotAsync(
+        new App.RegisterFetchedAccountSnapshotCommand(
+            created.AccountUid,
+            locallyEdited.ProfileRevision.RevisionUid,
+            Encoding.UTF8.GetString(snapshotUtf8),
+            Encoding.UTF8.GetString(draftUtf8),
+            canonicalProgressionJson));
+    if (progression is not null)
+    {
+      var stored = Assert.IsType<App.FetchedProgressionObservationProjection>(
+          registered.Progression);
+      Assert.Equal(FetchedProgressionObservationV2Contract.ContractId, stored.ContractId);
+      Assert.Equal(progression.Triggers.Summary.ItemCount, stored.TriggerCount);
+    }
+    var registeredDraft = Assert.IsType<App.SourceFreeImportDraftProjection>(
+        await service.GetImportDraftAsync(registered.SanitizedDraftUid));
+    var sourceDiff = await service.PreviewImportDiffAsync(
+        new App.ImportDiffCommand(
+            EntityUid.New(),
+            registeredDraft.DraftUid,
+            registeredDraft.DraftSha256,
+            created.AccountUid,
+            locallyEdited.ProfileRevision.RevisionUid,
+            NoLevelAuthority,
+            ["account_state_only"]));
+    var synchroDiff = Assert.Single(
+        sourceDiff.Changes,
+        item => item.FieldCode == "synchro_level" && item.SubjectUid is null);
+    Assert.Equal(localSynchro, synchroDiff.Before?.IntegerValue);
+    Assert.Equal(sourceSynchro, synchroDiff.After?.IntegerValue);
+
+    var applied = await service.ApplyImportAsync(
+        new App.ApplyImportCommand(
+            EntityUid.New(),
+            registeredDraft.DraftUid,
+            registeredDraft.DraftSha256,
+            created.AccountUid,
+            locallyEdited.ProfileRevision.RevisionUid,
+            sourceDiff.DiffSha256,
+            NoLevelAuthority,
+            ["account_state_only"]));
+    var restored = Assert.IsType<App.CurrentProfileProjection>(
+        await service.GetCurrentProfileAsync(created.AccountUid));
+    Assert.Equal(sourceSynchro, Value(restored, "synchro_level", null).IntegerValue);
+
+    var lobbyBeforeProjection = Assert.IsType<App.LobbyPresentationProjection>(
+        await service.GetLobbyPresentationAsync(created.AccountUid));
+    var lobbyDiff = await service.PreviewFetchedLobbyDiffAsync(
+        new App.PreviewFetchedLobbyDiffCommand(
+            EntityUid.New(),
+            registered.SnapshotUid,
+            created.AccountUid,
+            lobbyBeforeProjection.Revision.RevisionUid,
+            ["commander_level"]));
+    var commanderDiff = Assert.Single(lobbyDiff.Changes);
+    Assert.Equal("commander_level", commanderDiff.FieldCode);
+    Assert.Equal(localCommanderLevel, commanderDiff.BeforeInteger);
+    Assert.Equal(sourceCommanderLevel, commanderDiff.AfterInteger);
+    var lobbyApplied = await service.ApplyFetchedLobbyAsync(
+        new App.ApplyFetchedLobbyCommand(
+            EntityUid.New(),
+            registered.SnapshotUid,
+            created.AccountUid,
+            lobbyBeforeProjection.Revision.RevisionUid,
+            lobbyDiff.DiffSha256,
+            ["commander_level"]));
+    Assert.Equal(sourceCommanderLevel, lobbyApplied.Lobby.CommanderLevel);
+    Assert.Equal("Operator Local Lobby", lobbyApplied.Lobby.DisplayName);
+    Assert.Null(lobbyApplied.Lobby.ProfileIconSelectionUid);
+    Assert.Null(lobbyApplied.Lobby.ProfileFrameSelectionUid);
+    Assert.Null(lobbyApplied.Lobby.LobbyCharacterSelectionUid);
+    Assert.Null(lobbyApplied.Lobby.LobbyBackgroundSelectionUid);
+
+    var secondSnapshot = snapshot with
+    {
+      SnapshotUid = EntityUid.New(),
+      CapturedAtUtc = snapshot.CapturedAtUtc.AddMinutes(1)
+    };
+    var secondSnapshotUtf8 = FetchedAccountSnapshotJsonCodec.Encode(secondSnapshot);
+    var secondRegistered = await service.RegisterFetchedAccountSnapshotAsync(
+        new App.RegisterFetchedAccountSnapshotCommand(
+            created.AccountUid,
+            applied.ProfileRevision.RevisionUid,
+            Encoding.UTF8.GetString(secondSnapshotUtf8),
+            Encoding.UTF8.GetString(draftUtf8)));
+    var zeroDiff = await service.PreviewImportDiffAsync(
+        new App.ImportDiffCommand(
+            EntityUid.New(),
+            secondRegistered.SanitizedDraftUid,
+            registeredDraft.DraftSha256,
+            created.AccountUid,
+            applied.ProfileRevision.RevisionUid,
+            NoLevelAuthority,
+            ["account_state_only"]));
+    Assert.Empty(zeroDiff.Changes);
+
+    var receipt = new
+    {
+      schemaVersion = 1,
+      contractId = "nll/phase-c-operator-fetch-acceptance/v1",
+      completedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+      accountUid = created.AccountUid.ToString(),
+      snapshotUid = snapshot.SnapshotUid.ToString(),
+      snapshotCompleteness = snapshot.Completeness.StatusCode,
+      snapshotReasonCodes = snapshot.Completeness.ReasonCodes,
+      rosterCount = snapshot.Completeness.RosterCount,
+      detailCount = snapshot.Completeness.CharacterDetailCount,
+      characterCount = snapshot.Characters.Count,
+      progressionSidecarRegistered = progression is not null,
+      progressionTriggerCount = progression?.Triggers.Summary.ItemCount,
+      sourceSynchroLevel = sourceSynchro,
+      localEditSynchroLevel = localSynchro,
+      detectedDiffCount = sourceDiff.Changes.Count,
+      selectedApplyRestoredSourceValue = true,
+      sourceCommanderLevel,
+      localCommanderLevel,
+      commanderLobbyDiffCount = lobbyDiff.Changes.Count,
+      commanderLobbySelectedApplyVerified = true,
+      unselectedLobbyFieldsPreserved = true,
+      sameCaptureSecondObservationDiffCount = zeroDiff.Changes.Count,
+      freshExternalRefetchPerformed = false,
+      rawSourcePersisted = false,
+      officialUserIdentifierPersisted = false,
+      credentialOrSessionPersisted = false,
+      goldenModified = false,
+      gameRuntimeModified = false,
+      nextStepCode = "add_progression_observation_then_run_fresh_external_refetch"
+    };
+    await File.WriteAllTextAsync(
+        receiptPath,
+        JsonSerializer.Serialize(receipt, new JsonSerializerOptions { WriteIndented = true }),
+        new UTF8Encoding(false));
+  }
+
+  [Fact]
   public async Task ReviewedOverridesAndExactRebasePreserveTypedLineage()
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
     var unresolved = await ImportStrictDraftAsync(
         dataSource,
@@ -523,17 +1315,10 @@ public sealed class PostgreSqlLocalGameStateTests
               null,
               1,
               null,
-              "user_reviewed_override"),
-          new App.ImportReviewedOverrideRequest(
-              App.ImportReviewedOverrideKind.EquipmentManufacturerMatched,
-              catalogs.CharacterUids[0],
-              App.ImportEquipmentSlot.Head,
-              null,
-              true,
-              "original_client_verified_override")
+              "user_reviewed_override")
         ]);
     var reviewPreview = await service.PreviewReviewImportDraftAsync(reviewRequest);
-    Assert.Equal(2, reviewPreview.Changes.Count);
+    Assert.Single(reviewPreview.Changes);
     var reviewed = await service.ReviewImportDraftAsync(
         reviewRequest with { ExpectedDiffSha256 = reviewPreview.DiffSha256 });
     var reviewedReplay = await service.ReviewImportDraftAsync(
@@ -541,7 +1326,7 @@ public sealed class PostgreSqlLocalGameStateTests
     Assert.Equal(reviewed.DraftUid, reviewedReplay.DraftUid);
     Assert.Equal("reviewed_override", reviewed.DerivationKind);
     Assert.Equal(unresolved.Receipt.DraftUid, reviewed.PreviousDraftUid);
-    Assert.Equal(2, reviewed.ReviewedOverrides.Count);
+    Assert.Single(reviewed.ReviewedOverrides);
     var reviewedStored = Assert.IsType<SanitizedProfileDraftDocument>(
         await new PostgreSqlProfileImportStore(
             dataSource,
@@ -567,10 +1352,10 @@ public sealed class PostgreSqlLocalGameStateTests
     Assert.Equal(
         1,
         Value(reviewedCurrent, "bond_level", catalogs.CharacterUids[0]).IntegerValue);
-    Assert.True(Value(
+    Assert.Equal("not_applicable", Value(
         reviewedCurrent,
         "equipment.head.manufacturer_matched",
-        catalogs.CharacterUids[0]).BooleanValue);
+        catalogs.CharacterUids[0]).Status);
 
     var target = await PublishTargetCatalogAsync(dataSource, catalogs);
     var mappings = ReferencedMappings(unresolved.Draft, catalogs, target);
@@ -613,7 +1398,7 @@ public sealed class PostgreSqlLocalGameStateTests
     Assert.Equal("rebase", rebased.DerivationKind);
     Assert.Equal(reviewed.DraftUid, rebased.PreviousDraftUid);
     Assert.Equal(targetSupport, rebased.CombatSupportCatalog);
-    Assert.Equal(2, rebased.ReviewedOverrides.Count);
+    Assert.Single(rebased.ReviewedOverrides);
 
     var rebasedDocument = Assert.IsType<SanitizedProfileDraftDocument>(
         await new PostgreSqlProfileImportStore(
@@ -628,11 +1413,184 @@ public sealed class PostgreSqlLocalGameStateTests
   }
 
   [Fact]
+  public async Task AggregateWorkspaceSaveSurvivesLobbyRevalidationAndReplaysExactly()
+  {
+    await using var dataSource = CreateDataSource();
+    await ResetSchemasAsync(dataSource);
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
+    var profileStore = new PostgreSqlLocalAccountProfileStore(
+        dataSource,
+        new RandomEntityUidGenerator());
+    var created = await profileStore.CreateAsync(
+        new CreateLocalAccountProfileCommand(
+            EntityUid.New(),
+            CreateSyntheticProfile(catalogs),
+            TestInstant));
+    var service = Service(dataSource);
+    var manifest = await service.EnsureBuiltInFeatureManifestAsync();
+    var initialized = await service.InitializeLocalStateAsync(
+        new App.InitializeLocalStateCommand(
+            EntityUid.New(),
+            created.AccountUid,
+            created.ProfileTemplateRevisionUid,
+            manifest.ManifestUid,
+            manifest.ContentSha256,
+            "통합 저장 전",
+            895,
+            null,
+            null,
+            catalogs.CharacterUids[0],
+            null,
+            [new("credit", 100), new("jewel", 200)]));
+    var workspace = Assert.IsType<App.AccountWorkspaceProjection>(
+        await service.GetAccountWorkspaceAsync(created.AccountUid));
+    var preview = await service.PreviewProfileEditsAsync(
+        new App.ProfileEditPreviewCommand(
+            EntityUid.New(),
+            created.AccountUid,
+            created.ProfileTemplateRevisionUid,
+            [
+              new App.ProfileEditOperation(
+                  "character_level",
+                  catalogs.CharacterUids[0],
+                  "integer",
+                  IntegerValue: 201)
+            ]));
+    var operationUid = EntityUid.New();
+    var command = new App.SaveAccountWorkspaceCommand(
+        operationUid,
+        false,
+        created.AccountUid,
+        workspace.BaseRevisions.RevisionSetSha256,
+        created.ProfileTemplateRevisionUid,
+        initialized.Lobby.Revision.RevisionUid,
+        initialized.Wallet.Revision.RevisionUid,
+        preview.CandidateDraftUid,
+        preview.CandidateSha256,
+        preview.DiffSha256,
+        workspace.AccountLabel,
+        "통합 저장본",
+        "통합 저장 후",
+        896,
+        null,
+        null,
+        catalogs.CharacterUids[0],
+        null,
+        [new("jewel", 2_000), new("credit", 1_000)]);
+
+    var saved = await service.SaveAccountWorkspaceAsync(command);
+    var replay = await service.SaveAccountWorkspaceAsync(command);
+    var current = Assert.IsType<App.AccountBootstrapProjection>(
+        await service.GetCurrentBootstrapAsync(created.AccountUid));
+    var currentWorkspace = Assert.IsType<App.AccountWorkspaceProjection>(
+        await service.GetAccountWorkspaceAsync(created.AccountUid));
+
+    Assert.False(saved.IsIdempotentReplay);
+    Assert.True(replay.IsIdempotentReplay);
+    Assert.Equal(saved with { IsIdempotentReplay = true }, replay);
+    Assert.Equal(saved.ProfileRevision, current.Profile.ProfileRevision);
+    Assert.Equal(saved.LobbyRevision, current.Lobby.Revision);
+    Assert.Equal(saved.WalletRevision, current.Wallet.Revision);
+    Assert.NotEqual(initialized.Lobby.Revision.RevisionUid, saved.LobbyRevision.RevisionUid);
+    Assert.Equal("통합 저장 후", current.Lobby.DisplayName);
+    Assert.Equal(896, current.Lobby.CommanderLevel);
+    Assert.Equal("통합 저장본", currentWorkspace.AccountLabel);
+    Assert.Equal(1_000, current.Wallet.Balances.Single(item => item.CurrencyCode == "credit").Balance);
+    Assert.Equal(2_000, current.Wallet.Balances.Single(item => item.CurrencyCode == "jewel").Balance);
+
+    var reuse = await Assert.ThrowsAsync<App.ProfileManagementException>(() =>
+        service.SaveAccountWorkspaceAsync(command with { CommanderLevel = 897 }));
+    Assert.Equal("account_workspace_save_operation_reuse_mismatch", reuse.Code);
+
+    var copyPreview = await service.PreviewProfileEditsAsync(
+        new App.ProfileEditPreviewCommand(
+            EntityUid.New(),
+            created.AccountUid,
+            current.Profile.ProfileRevision.RevisionUid,
+            []));
+    var copyOperationUid = EntityUid.New();
+    var copyCommand = new App.SaveAccountWorkspaceCommand(
+        copyOperationUid,
+        true,
+        created.AccountUid,
+        currentWorkspace.BaseRevisions.RevisionSetSha256,
+        current.Profile.ProfileRevision.RevisionUid,
+        current.Lobby.Revision.RevisionUid,
+        current.Wallet.Revision.RevisionUid,
+        copyPreview.CandidateDraftUid,
+        copyPreview.CandidateSha256,
+        copyPreview.DiffSha256,
+        currentWorkspace.AccountLabel,
+        "통합 저장본 복사본",
+        current.Lobby.DisplayName,
+        current.Lobby.CommanderLevel,
+        current.Lobby.ProfileIconSelectionUid,
+        current.Lobby.ProfileFrameSelectionUid,
+        current.Lobby.LobbyCharacterSelectionUid,
+        current.Lobby.LobbyBackgroundSelectionUid,
+        current.Wallet.Balances);
+    var copied = await service.SaveAccountWorkspaceAsync(copyCommand);
+    var copiedReplay = await service.SaveAccountWorkspaceAsync(copyCommand);
+    var copiedBootstrap = Assert.IsType<App.AccountBootstrapProjection>(
+        await service.GetCurrentBootstrapAsync(copied.AccountUid));
+    var copiedWorkspace = Assert.IsType<App.AccountWorkspaceProjection>(
+        await service.GetAccountWorkspaceAsync(copied.AccountUid));
+
+    Assert.True(copied.SaveAs);
+    Assert.NotEqual(created.AccountUid, copied.AccountUid);
+    Assert.Equal(copied with { IsIdempotentReplay = true }, copiedReplay);
+    Assert.Equal(copied.LobbyRevision, copiedBootstrap.Lobby.Revision);
+    Assert.Equal(copied.WalletRevision, copiedBootstrap.Wallet.Revision);
+    Assert.Equal("통합 저장본 복사본", copiedWorkspace.AccountLabel);
+    Assert.Null(copied.ObservationSourceSnapshotUid);
+    Assert.Null(await service.GetLatestFetchedAccountSnapshotAsync(copied.AccountUid));
+
+    await using var count = dataSource.CreateCommand(
+        "SELECT count(*) FROM lab_profile.account_workspace_save_operation;");
+    Assert.Equal(2L, Convert.ToInt64(await count.ExecuteScalarAsync()));
+    await using var binding = dataSource.CreateCommand(
+        """
+        SELECT count(*), count(source_snapshot_uid)
+        FROM lab_profile.account_observation_provenance_binding;
+        """);
+    await using var bindingReader = await binding.ExecuteReaderAsync();
+    Assert.True(await bindingReader.ReadAsync());
+    Assert.Equal(1L, bindingReader.GetInt64(0));
+    Assert.Equal(0L, bindingReader.GetInt64(1));
+  }
+
+  [Fact]
+  public async Task ImportCreationMaterializesOwnedCubesBeforeFirstNoOpSave()
+  {
+    await using var dataSource = CreateDataSource();
+    await ResetSchemasAsync(dataSource);
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
+    var imported = await ImportStrictDraftAsync(dataSource, catalogs,
+        CharacterLevelAuthorityPolicy.DetailObservationV1, TestInstant);
+    var service = Service(dataSource);
+    var created = await CreateAccountFromImportAsync(service, imported, DetailLevelAuthority);
+    var store = new PostgreSqlLocalAccountProfileStore(dataSource, new RandomEntityUidGenerator());
+    var current = (await store.GetCurrentAsync(created.AccountUid))!;
+    Assert.Equal(15, Assert.Single(current.Profile.AccountState.Cubes).Level);
+    var countBefore = await CountProfileRevisionsAsync(dataSource, created.AccountUid);
+    var preview = await service.PreviewProfileEditsAsync(new(EntityUid.New(), created.AccountUid,
+        created.ProfileRevision.RevisionUid, []));
+    Assert.Empty(preview.Changes);
+    var saved = await service.SaveProfileAsync(new(EntityUid.New(), created.AccountUid,
+        created.ProfileRevision.RevisionUid, preview.CandidateDraftUid, preview.CandidateSha256,
+        preview.DiffSha256));
+    Assert.Equal(created.ProfileRevision, saved.ProfileRevision);
+    Assert.Equal(countBefore, await CountProfileRevisionsAsync(dataSource, created.AccountUid));
+  }
+
+  [Fact]
   public async Task TypedSquadInventoryLobbyRevalidationAndApplicationRecoveryAreDurable()
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
     var profileStore = new PostgreSqlLocalAccountProfileStore(
         dataSource,
@@ -640,7 +1598,7 @@ public sealed class PostgreSqlLocalGameStateTests
     var sourceCreate = await profileStore.CreateAsync(
         new CreateLocalAccountProfileCommand(
             EntityUid.New(),
-            CreateSyntheticProfile(catalogs),
+            CreateSyntheticProfileWithOwnedCube(catalogs),
             TestInstant));
     var service = Service(dataSource);
     var manifest = await service.EnsureBuiltInFeatureManifestAsync();
@@ -873,7 +1831,7 @@ public sealed class PostgreSqlLocalGameStateTests
             sameAccountWriteOperation,
             sourceCreate.AccountUid,
             promoted.ProfileRevision.RevisionUid,
-            CreateSyntheticProfile(catalogs, 203),
+            CreateSyntheticProfileWithOwnedCube(catalogs, 203),
             sameAccountDiff.CreatedAtUtc));
     var mismatchedRecovery = await Assert.ThrowsAsync<LocalGameStateIntegrityException>(() =>
         importStore.TryRecoverApplicationAsync(
@@ -939,21 +1897,7 @@ public sealed class PostgreSqlLocalGameStateTests
             NoLevelAuthority,
             ["account_state_only"]));
     Assert.Equal(applyPreview.DiffSha256, applySecondPreview.DiffSha256);
-    var applySource = Assert.IsType<LocalCurrentAccountProfile>(
-        await profileStore.GetCurrentAsync(sourceCreate.AccountUid));
-    var interruptedApply = await profileStore.SaveAsync(
-        new SaveLocalAccountProfileCommand(
-            applyWriteOperation,
-            sourceCreate.AccountUid,
-            activeRevision.RevisionUid,
-            MaterializeImportProfile(
-                applySource,
-                applyDraft.Draft,
-                NoLevelAuthority,
-                ["account_state_only"]),
-            applyDiff.CreatedAtUtc));
-    var recoveredApply = await service.ApplyImportAsync(
-        new App.ApplyImportCommand(
+    var applyCommand = new App.ApplyImportCommand(
             applyWriteOperation,
             applyDraft.Receipt.DraftUid,
             applyDraft.Receipt.CanonicalPayloadSha256,
@@ -961,7 +1905,45 @@ public sealed class PostgreSqlLocalGameStateTests
             activeRevision.RevisionUid,
             applyPreview.DiffSha256,
             NoLevelAuthority,
-            ["account_state_only"]));
+            ["account_state_only"]);
+    // Fail the real service after its profile transaction commits, before linking the
+    // application receipt. Do not duplicate private materialization logic via reflection.
+    await using (var injectionConnection = await dataSource.OpenConnectionAsync())
+    {
+      await using var inject = new NpgsqlCommand("""
+          CREATE FUNCTION public.synthetic_reject_profile_link() RETURNS trigger
+          LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic_profile_link_failure'; END $$;
+          CREATE TRIGGER synthetic_reject_profile_link
+          BEFORE INSERT ON lab_local_game.profile_draft_application
+          FOR EACH ROW EXECUTE FUNCTION public.synthetic_reject_profile_link();
+          """, injectionConnection);
+      await inject.ExecuteNonQueryAsync();
+      try
+      {
+        var failure = await Assert.ThrowsAsync<App.ProfileManagementException>(() =>
+            service.ApplyImportAsync(applyCommand));
+        Assert.Equal("sanitized_import_database_rejected", failure.Code);
+        Assert.NotNull(await profileStore.GetByOperationAsync(applyWriteOperation));
+        await using var unlinked = new NpgsqlCommand("""
+            SELECT count(*) FROM lab_local_game.profile_draft_application WHERE application_uid = @uid;
+            """, injectionConnection);
+        unlinked.Parameters.AddWithValue("uid", applyWriteOperation.Value);
+        Assert.Equal(0L, await unlinked.ExecuteScalarAsync());
+      }
+      finally
+      {
+        await using var remove = new NpgsqlCommand("""
+            DROP TRIGGER synthetic_reject_profile_link ON lab_local_game.profile_draft_application;
+            DROP FUNCTION public.synthetic_reject_profile_link();
+            """, injectionConnection);
+        await remove.ExecuteNonQueryAsync();
+      }
+    }
+
+    var interruptedApply = (await profileStore.GetByOperationAsync(applyWriteOperation))!;
+    var countBeforeRecovery = await CountProfileRevisionsAsync(dataSource, sourceCreate.AccountUid);
+    var recoveredApply = await Service(dataSource).ApplyImportAsync(applyCommand);
+    Assert.Equal(countBeforeRecovery, await CountProfileRevisionsAsync(dataSource, sourceCreate.AccountUid));
     Assert.Equal(interruptedApply.AccountUid, recoveredApply.AccountUid);
     Assert.Equal(
         interruptedApply.ProfileTemplateRevisionUid,
@@ -1043,7 +2025,8 @@ public sealed class PostgreSqlLocalGameStateTests
         new CreateLocalAccountProfileCommand(
             legacyWriteOperation,
             source.Profile,
-            legacyDiff.CreatedAtUtc));
+            legacyDiff.CreatedAtUtc,
+            saveAsParentAccountUid: sourceCreate.AccountUid));
     var legacySecondPreview = await service.PreviewProfileEditsAsync(
         new App.ProfileEditPreviewCommand(
             EntityUid.New(),
@@ -1081,7 +2064,7 @@ public sealed class PostgreSqlLocalGameStateTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
     var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
     var imported = await ImportStrictDraftAsync(
         dataSource,
@@ -1151,7 +2134,7 @@ public sealed class PostgreSqlLocalGameStateTests
   {
     await using var dataSource = CreateDataSource();
     await ResetSchemasAsync(dataSource);
-    Assert.Equal(7, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     var catalogs = await PublishCatalogFixtureAsync(dataSource, 5);
     var profileStore = new PostgreSqlLocalAccountProfileStore(
@@ -1265,6 +2248,83 @@ public sealed class PostgreSqlLocalGameStateTests
     return Convert.ToInt64(await command.ExecuteScalarAsync());
   }
 
+  private static async Task<IReadOnlyList<string>> ReadCapabilityMismatchSummaryAsync(
+      NpgsqlDataSource dataSource,
+      SanitizedProfileDraft draft)
+  {
+    await using var command = dataSource.CreateCommand(
+        """
+        SELECT
+            entity.character_uid,
+            capability.capability_code,
+            capability.resolution_status,
+            capability.maximum_level
+        FROM lab_catalog.character_catalog_snapshot AS snapshot
+        JOIN lab_catalog.character_catalog_snapshot_member AS member
+          ON member.character_catalog_snapshot_id = snapshot.character_catalog_snapshot_id
+        JOIN lab_catalog.character_entity AS entity
+          ON entity.character_entity_id = member.character_entity_id
+        JOIN lab_catalog.character_definition_capability AS capability
+          ON capability.character_definition_version_id = member.character_definition_version_id
+        WHERE snapshot.character_catalog_snapshot_uid = @snapshot_uid
+          AND entity.character_uid = ANY(@character_uids);
+        """);
+    command.Parameters.AddWithValue("snapshot_uid", draft.CharacterCatalog.CatalogSnapshotUid.Value);
+    command.Parameters.AddWithValue(
+        "character_uids",
+        draft.Builds.Select(static item => item.CharacterUid.Value).ToArray());
+    var capabilities = new Dictionary<(Guid CharacterUid, string Code), (string Status, int? Maximum)>();
+    await using (var reader = await command.ExecuteReaderAsync())
+    {
+      while (await reader.ReadAsync())
+      {
+        capabilities.Add(
+            (reader.GetGuid(0), reader.GetString(1)),
+            (reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetInt32(3)));
+      }
+    }
+
+    var mismatches = new Dictionary<string, int>(StringComparer.Ordinal);
+    void Check(EntityUid characterUid, string code, int value)
+    {
+      if (!capabilities.TryGetValue((characterUid.Value, code), out var capability))
+      {
+        Increment($"{code}:missing");
+      }
+      else if (capability.Status != "ready" || capability.Maximum is null)
+      {
+        if (code == "core_level" && capability.Status == "not_applicable" && value == 0)
+        {
+          return;
+        }
+
+        Increment($"{code}:{capability.Status}");
+      }
+      else if (value > capability.Maximum.Value)
+      {
+        Increment($"{code}:exceeded");
+      }
+    }
+
+    void Increment(string key) => mismatches[key] = mismatches.GetValueOrDefault(key) + 1;
+    foreach (var build in draft.Builds)
+    {
+      Check(build.CharacterUid, "character_level", build.Level.DetailLevel);
+      Check(build.CharacterUid, "limit_break", build.LimitBreak);
+      Check(build.CharacterUid, "core_level", build.CoreLevel);
+      if (build.ResolvedBondLevel.Status == ProfileImportFactStatus.Ready)
+      {
+        Check(build.CharacterUid, "bond_level", build.ResolvedBondLevel.Value!.Value);
+      }
+      Check(build.CharacterUid, "skill_1", build.Skill1Level);
+      Check(build.CharacterUid, "skill_2", build.Skill2Level);
+      Check(build.CharacterUid, "burst", build.BurstLevel);
+    }
+    return mismatches.OrderBy(static item => item.Key, StringComparer.Ordinal)
+        .Select(static item => $"{item.Key}:{item.Value}")
+        .ToArray();
+  }
+
   private static App.ProfileValueProjection Value(
       App.CurrentProfileProjection profile,
       string fieldCode,
@@ -1280,6 +2340,56 @@ public sealed class PostgreSqlLocalGameStateTests
           value.CatalogSnapshotUid,
           value.DatasetSnapshotUid,
           value.CatalogManifestSha256);
+
+  private static FetchedProgressionObservationV2 CreateProgressionObservation(
+      EntityUid snapshotUid,
+      DateTimeOffset capturedAtUtc)
+  {
+    const string privateSourceJson = """
+        {
+          "schemaVersion": 1,
+          "contractId": "nll/phase3b2-user-progression-private-source/v1",
+          "sourceSequencePersisted": false,
+          "officialUserIdentifierPersisted": false,
+          "credentialOrSessionFieldPersisted": false,
+          "selectedTriggers": [
+            { "typeCode": 2, "conditionId": 920001, "userValue": 1, "createdAt": 100 },
+            { "typeCode": 22, "conditionId": 920002, "userValue": 1, "createdAt": 101 }
+          ],
+          "mainQuestData": [
+            { "questId": 910001, "rewardClaimed": true },
+            { "questId": 910002, "rewardClaimed": true }
+          ]
+        }
+        """;
+    const string candidateJson = """
+        {
+          "Users": [
+            {
+              "CompletedScenarios": [930001, 930002, 930003],
+              "MainQuestData": { "910001": true, "910002": true },
+              "ContentsOpenUnlocked": {
+                "940001": { "ButtonAnimationPlayed": true, "PopupAnimationPlayed": true }
+              },
+              "StageClearHistorys": [],
+              "Triggers": [
+                { "Type": 2, "ConditionId": 920001 },
+                { "Type": 22, "ConditionId": 920002 }
+              ]
+            }
+          ]
+        }
+        """;
+    using var privateSource = new MemoryStream(Encoding.UTF8.GetBytes(privateSourceJson));
+    using var candidate = new MemoryStream(Encoding.UTF8.GetBytes(candidateJson));
+    return LegacyProgressionObservationMaterializerV2.Materialize(
+        new LegacyProgressionMaterializationCommandV2(
+            snapshotUid,
+            capturedAtUtc,
+            privateSource,
+            candidate,
+            IdentitySecret));
+  }
 
   private static async Task<App.ProfileWriteReceipt> CreateAccountFromImportAsync(
       PostgreSqlProfileManagementService service,
@@ -1350,7 +2460,7 @@ public sealed class PostgreSqlLocalGameStateTests
       CharacterLevelAuthorityPolicy authority,
       DateTimeOffset importedAtUtc,
       int bondLevel = 30,
-      int equipmentManufacturerCode = 1,
+      int equipmentManufacturerCode = 0,
       int synchroLevel = 200)
   {
     using var source = SyntheticCapture.Create(
@@ -1442,7 +2552,7 @@ public sealed class PostgreSqlLocalGameStateTests
     await using (var connection = await dataSource.OpenConnectionAsync())
     await using (var command = new NpgsqlCommand(
         """
-        SELECT legal.source_raw_value
+        SELECT legal.engine_fraction_unscaled_value
         FROM lab_combat_support.catalog_snapshot AS catalog
         JOIN lab_combat_support.catalog_snapshot_member AS member
           ON member.catalog_snapshot_id = catalog.catalog_snapshot_id
@@ -1497,24 +2607,21 @@ public sealed class PostgreSqlLocalGameStateTests
         ])!;
   }
 
-  private static LocalAccountProfileWrite MaterializeImportProfile(
-      LocalCurrentAccountProfile current,
-      SanitizedProfileDraft draft,
-      string authority,
-      IReadOnlyList<string> scopes)
+  private static LocalAccountProfileWrite CreateSyntheticProfileWithOwnedCube(
+      SyntheticCatalogFixture catalogs,
+      int? firstCharacterLevel = null)
   {
-    var method = typeof(PostgreSqlProfileManagementService).GetMethod(
-        "MaterializeImportProfile",
-        BindingFlags.NonPublic | BindingFlags.Static)!;
-    return (LocalAccountProfileWrite)method.Invoke(
-        null,
-        [
-          current,
-          draft,
-          authority,
-          scopes,
-          LocalProfileRevisionOrigin.OfflineSanitizedImport
-        ])!;
+    var profile = CreateSyntheticProfile(catalogs, firstCharacterLevel);
+    // Low-level store fixtures may deliberately model a pre-cube-policy revision.
+    // No-op editor/recovery tests instead start with an already materialized inventory.
+    return new LocalAccountProfileWrite(
+            profile.CharacterCatalog, profile.CombatSupportCatalog,
+            new LocalAccountCombatStateWrite(
+                profile.AccountState.SynchroLevel, profile.AccountState.Consoles,
+                profile.AccountState.ValidationMode, profile.AccountState.Origin,
+                [new LocalOwnedCubeWrite(catalogs.CubeUid, 15)]),
+            profile.Builds, profile.SquadCharacterUids, profile.SquadOrigin,
+            profile.ProfileTemplateOrigin);
   }
 
   private static async Task<TargetCatalogFixture> PublishTargetCatalogAsync(
@@ -1840,8 +2947,7 @@ public sealed class PostgreSqlLocalGameStateTests
                     _catalogs.Equipment[LocalEquipmentSlot.Head],
                     ProfileImportEquipmentSlot.Head,
                     ProfileImportCombatRole.Attacker,
-                    ProfileImportFact<ProfileImportManufacturer>.Ready(
-                        ProfileImportManufacturer.Elysion),
+                    ProfileImportFact<ProfileImportManufacturer>.NotApplicable(),
                     10,
                     5,
                     true))
@@ -1917,6 +3023,7 @@ public sealed class PostgreSqlLocalGameStateTests
         ProfileAliasResolution<ResolvedProfileCharacter>.Resolved(
             new ResolvedProfileCharacter(
                 uid,
+                ProfileImportRarity.Ssr,
                 ProfileImportCombatRole.Attacker,
                 ProfileImportManufacturer.Elysion,
                 ProfileImportWeaponClass.AssaultRifle,
@@ -2005,6 +3112,16 @@ public sealed class PostgreSqlLocalGameStateTests
     PostgreSqlTestDatabaseGuard.RequireDisposableDatabase(builder);
     return PostgreSqlDataSourceFactory.Create(validated);
   }
+
+  private static async Task ResetAndMigrateAsync(NpgsqlDataSource dataSource)
+  {
+    await ResetSchemasAsync(dataSource);
+    await new PostgreSqlMigrationRunner().MigrateAsync(dataSource);
+  }
+
+  private static Task<int> ApplyWorkspaceTestMigrationsAsync(NpgsqlDataSource dataSource, int count) =>
+      new PostgreSqlMigrationRunner(PostgreSqlMigrationRunner.LoadEmbeddedMigrations(
+          typeof(PostgreSqlMigrationRunner).Assembly).Take(count).ToArray()).MigrateAsync(dataSource);
 
   private static async Task ResetSchemasAsync(NpgsqlDataSource dataSource)
   {

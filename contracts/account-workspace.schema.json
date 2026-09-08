@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:account-workspace:v1",
+  "title": "AccountWorkspaceV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "workspaceUid",
+    "accountUid",
+    "accountLabel",
+    "baseRevisions",
+    "fetchedSnapshotUid",
+    "pendingEditSetSha256",
+    "pendingEditCount",
+    "validationStatusCode",
+    "validationReasonCodes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "nll/account-workspace/v1" },
+    "workspaceUid": { "$ref": "#/$defs/uuid" },
+    "accountUid": { "$ref": "#/$defs/uuid" },
+    "accountLabel": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "baseRevisions": { "$ref": "#/$defs/revisions" },
+    "fetchedSnapshotUid": {
+      "oneOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+    },
+    "pendingEditSetSha256": { "$ref": "#/$defs/sha256" },
+    "pendingEditCount": { "type": "integer", "minimum": 0 },
+    "validationStatusCode": { "enum": ["ready", "unresolved", "invalid"] },
+    "validationReasonCodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/controlledCode" }
+    },
+    "saveAsParentAccountUid": {
+      "oneOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "controlledCode": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}$" },
+    "revisions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileRevisionUid", "accountStateRevisionUid", "progressionRevisionUid", "revisionSetSha256"],
+      "properties": {
+        "profileRevisionUid": { "$ref": "#/$defs/uuid" },
+        "accountStateRevisionUid": { "$ref": "#/$defs/uuid" },
+        "progressionRevisionUid": {
+          "oneOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+        },
+        "revisionSetSha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

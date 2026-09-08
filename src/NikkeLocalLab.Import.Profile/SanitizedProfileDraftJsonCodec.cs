@@ -379,7 +379,7 @@ public static class SanitizedProfileDraftJsonCodec
     {
       writer.WriteNumber("value", fact.Value!.Value);
     }
-    else
+    else if (fact.Status == ProfileImportFactStatus.Unresolved)
     {
       writer.WriteString("reason_code", fact.ReasonCode);
     }
@@ -395,7 +395,7 @@ public static class SanitizedProfileDraftJsonCodec
     {
       writer.WriteBoolean("value", fact.Value!.Value);
     }
-    else
+    else if (fact.Status == ProfileImportFactStatus.Unresolved)
     {
       writer.WriteString("reason_code", fact.ReasonCode);
     }
@@ -415,7 +415,7 @@ public static class SanitizedProfileDraftJsonCodec
           "value",
           fact.Value!.Value.UtcDateTime.ToString(TimestampFormat, CultureInfo.InvariantCulture));
     }
-    else
+    else if (fact.Status == ProfileImportFactStatus.Unresolved)
     {
       writer.WriteString("reason_code", fact.ReasonCode);
     }
@@ -783,6 +783,12 @@ public static class SanitizedProfileDraftJsonCodec
       return ProfileImportFact<int>.Ready(ReadInt32(value, "value"));
     }
 
+    if (status == ProfileImportFactStatus.NotApplicable)
+    {
+      RequireObject(value, "sanitized_draft_fact_shape_invalid", "status");
+      return ProfileImportFact<int>.NotApplicable();
+    }
+
     RequireObject(value, "sanitized_draft_fact_shape_invalid", "status", "reason_code");
     return ProfileImportFact<int>.Unresolved(ReadControlledCode(value, "reason_code"));
   }
@@ -797,6 +803,12 @@ public static class SanitizedProfileDraftJsonCodec
       return ProfileImportFact<bool>.Ready(ReadBoolean(value, "value"));
     }
 
+    if (status == ProfileImportFactStatus.NotApplicable)
+    {
+      RequireObject(value, "sanitized_draft_fact_shape_invalid", "status");
+      return ProfileImportFact<bool>.NotApplicable();
+    }
+
     RequireObject(value, "sanitized_draft_fact_shape_invalid", "status", "reason_code");
     return ProfileImportFact<bool>.Unresolved(ReadControlledCode(value, "reason_code"));
   }
@@ -809,6 +821,12 @@ public static class SanitizedProfileDraftJsonCodec
     {
       RequireObject(value, "sanitized_draft_fact_shape_invalid", "status", "value");
       return ProfileImportFact<DateTimeOffset>.Ready(ReadTimestamp(value, "value"));
+    }
+
+    if (status == ProfileImportFactStatus.NotApplicable)
+    {
+      RequireObject(value, "sanitized_draft_fact_shape_invalid", "status");
+      return ProfileImportFact<DateTimeOffset>.NotApplicable();
     }
 
     RequireObject(value, "sanitized_draft_fact_shape_invalid", "status", "reason_code");
@@ -910,10 +928,11 @@ public static class SanitizedProfileDraftJsonCodec
     var canMaterialize = authority.HasValue;
     var isWriteReady = canMaterialize && builds.All(static build =>
         build.Level.ResolvedBattleLevel.Status == ProfileImportFactStatus.Ready &&
-        build.ResolvedBondLevel.Status == ProfileImportFactStatus.Ready &&
+        build.ResolvedBondLevel.Status != ProfileImportFactStatus.Unresolved &&
         build.Equipment.All(static equipment =>
             equipment.State == ProfileImportAttachmentState.Unequipped ||
-            equipment.ResolvedManufacturerMatched?.Status == ProfileImportFactStatus.Ready));
+            equipment.ResolvedManufacturerMatched?.Status !=
+                ProfileImportFactStatus.Unresolved));
     return (authority, canMaterialize, isWriteReady);
   }
 
@@ -1363,6 +1382,7 @@ public static class SanitizedProfileDraftJsonCodec
     var valid = build.BondLevelObservation == 0
         ? (build.ResolvedBondLevel.Status == ProfileImportFactStatus.Unresolved &&
            build.ResolvedBondLevel.ReasonCode == "bond_level_zero_semantics_unresolved") ||
+          build.ResolvedBondLevel.Status == ProfileImportFactStatus.NotApplicable ||
           (build.ResolvedBondLevel.Status == ProfileImportFactStatus.Ready &&
            build.ResolvedBondLevel.Value is >= 1 and <= MaximumScalar)
         : build.ResolvedBondLevel.Status == ProfileImportFactStatus.Ready &&
@@ -1463,6 +1483,11 @@ public static class SanitizedProfileDraftJsonCodec
 
   private static void ValidateManufacturerFact(ProfileImportFact<bool> fact)
   {
+    if (fact.Status == ProfileImportFactStatus.NotApplicable)
+    {
+      return;
+    }
+
     if (fact.Status == ProfileImportFactStatus.Unresolved &&
         fact.ReasonCode == "equipment_manufacturer_observation_missing")
     {
@@ -1814,6 +1839,7 @@ public static class SanitizedProfileDraftJsonCodec
   {
     "ready" => ProfileImportFactStatus.Ready,
     "unresolved" => ProfileImportFactStatus.Unresolved,
+    "not_applicable" => ProfileImportFactStatus.NotApplicable,
     _ => throw Failure("sanitized_draft_fact_status_invalid")
   };
 
@@ -1889,6 +1915,7 @@ public static class SanitizedProfileDraftJsonCodec
   {
     ProfileImportFactStatus.Ready => "ready",
     ProfileImportFactStatus.Unresolved => "unresolved",
+    ProfileImportFactStatus.NotApplicable => "not_applicable",
     _ => throw Failure("sanitized_draft_fact_status_invalid")
   };
 

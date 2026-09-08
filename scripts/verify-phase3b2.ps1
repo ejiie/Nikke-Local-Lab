@@ -283,7 +283,8 @@ function Assert-FixedExternalLineage {
     Assert-True ($lineage.selectedManagerIntegrationCommitSha -ceq "92a6ca228aeb580988907b96189b2857dff2c62d") "phase3b2_selected_manager_pin_mismatch"
     Assert-True ($lineage.preflightSealCommitSha -ceq "e32e5f900775974d5736e7fb2b50f8c62638a004") "phase3b2_preflight_seal_pin_mismatch"
     Assert-True ($lineage.preflightHardeningCommitSha -ceq "4f7bd5b5eb2b9a6e03af503f1c09adc4c4f7f16f") "phase3b2_preflight_hardening_pin_mismatch"
-    Assert-True ($lineage.latestExternalTreeCommitSha -ceq "ce353eeebee3c76672e483c6f735bb27f0227815") "phase3b2_latest_external_tree_pin_mismatch"
+    Assert-True ($lineage.latestExternalCommitSha -ceq "519c3db51ec24ca19307e93e85acde7885928a72") "phase3b2_latest_external_commit_pin_mismatch"
+    Assert-True ($lineage.latestExternalTreeCommitSha -ceq "b9e8bfb1b1e065427a48d40cb2bcf2f30215436a") "phase3b2_latest_external_tree_pin_mismatch"
 }
 
 function Assert-ProhibitedMaterialBoundary {
@@ -467,17 +468,19 @@ function Assert-ReadyPreflightObservationBinding {
 
         $externalBuildObservation = $observationMembers[3]
         Assert-True ($externalBuildObservation.GetProperty("dotnetSdkVersion").GetString() -ceq "10.0.400") "phase3b2_local_external_sdk_mismatch"
-        Assert-True ($externalBuildObservation.GetProperty("selectedManagerPassedCount").GetInt32() -eq 59 -and
+        Assert-True ($externalBuildObservation.GetProperty("selectedManagerPassedCount").GetInt32() -eq 64 -and
             $externalBuildObservation.GetProperty("handlerIsolationPassedCount").GetInt32() -eq 5 -and
-            $externalBuildObservation.GetProperty("focusedTestFailedCount").GetInt32() -eq 0) "phase3b2_local_external_focused_test_mismatch"
+            $externalBuildObservation.GetProperty("focusedTestFailedCount").GetInt32() -eq 0 -and
+            -not $externalBuildObservation.GetProperty("localOnlyHttp3Enabled").GetBoolean() -and
+            -not $externalBuildObservation.GetProperty("localOnlyAssetCachePathLoggingEnabled").GetBoolean()) `
+            "phase3b2_local_external_focused_test_mismatch"
 
         $http3Listener = $observationMembers[13].GetProperty("http3Listener")
         Assert-True ($http3Listener.GetProperty("protocolCode").GetString() -ceq "http3" -and
             $http3Listener.GetProperty("transportCode").GetString() -ceq "udp" -and
-            $http3Listener.GetProperty("addressFamilyCode").GetString() -ceq "ipv4" -and
-            $http3Listener.GetProperty("bindAddressCode").GetString() -ceq "loopback_127_0_0_1" -and
+            $http3Listener.GetProperty("statusCode").GetString() -ceq "disabled_local_only" -and
             $http3Listener.GetProperty("port").GetInt32() -eq 443 -and
-            $http3Listener.GetProperty("listenerCount").GetInt32() -eq 1) "phase3b2_local_http3_listener_mismatch"
+            $http3Listener.GetProperty("listenerCount").GetInt32() -eq 0) "phase3b2_local_http3_listener_mismatch"
 
         $preflightDocument = [System.Text.Json.JsonDocument]::Parse($PreflightJson)
         try {
@@ -568,6 +571,7 @@ $RepositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $ScriptDirectory ".."
 $PreflightSchemaPath = Join-Path $RepositoryRoot "contracts/season26-classic-live-preflight.schema.json"
 $ReferenceRunSchemaPath = Join-Path $RepositoryRoot "contracts/season26-classic-reference-run.schema.json"
 $ObservationSetSchemaPath = Join-Path $RepositoryRoot "contracts/season26-classic-live-preflight-observation-set.schema.json"
+$TargetObservationV2SchemaPath = Join-Path $RepositoryRoot "contracts/season26-classic-target-observation-v2.schema.json"
 $PreflightRelativePath = "tests/fixtures/synthetic/season26-classic-live-preflight.blocked.json"
 $ReferenceRunRelativePath = "tests/fixtures/synthetic/season26-classic-reference-run.not-executed.json"
 $ObservationSetRelativePath = "tests/fixtures/synthetic/season26-classic-live-preflight-observation-set.valid.json"
@@ -592,9 +596,119 @@ else {
 Assert-True (Test-Path -LiteralPath $PreflightSchemaPath -PathType Leaf) "phase3b2_preflight_schema_missing"
 Assert-True (Test-Path -LiteralPath $ReferenceRunSchemaPath -PathType Leaf) "phase3b2_reference_run_schema_missing"
 Assert-True (Test-Path -LiteralPath $ObservationSetSchemaPath -PathType Leaf) "phase3b2_observation_set_schema_missing"
+Assert-True (Test-Path -LiteralPath $TargetObservationV2SchemaPath -PathType Leaf) "phase3b2_target_observation_v2_schema_missing"
 Assert-True (Test-Path -LiteralPath $PreflightPath -PathType Leaf) "phase3b2_blocked_preflight_fixture_missing"
 Assert-True (Test-Path -LiteralPath $ReferenceRunPath -PathType Leaf) "phase3b2_not_executed_reference_run_fixture_missing"
 Assert-True (Test-Path -LiteralPath $ObservationSetPath -PathType Leaf) "phase3b2_observation_set_fixture_missing"
+
+$localBootstrapSourcePath = Join-Path $RepositoryRoot `
+    "tools/Phase3B2/LocalBootstrap/Program.cs"
+$localBootstrapProjectPath = Join-Path $RepositoryRoot `
+    "tools/Phase3B2/LocalBootstrap/NikkeLocalLab.Phase3B2.LocalBootstrap.csproj"
+$localBootstrapGlobalJsonPath = Join-Path $RepositoryRoot `
+    "tools/Phase3B2/LocalBootstrap/global.json"
+$localBootstrapLockPath = Join-Path $RepositoryRoot `
+    "tools/Phase3B2/LocalBootstrap/packages.lock.json"
+$localBootstrapBuildPath = Join-Path $ScriptDirectory `
+    "build-phase3b2-local-bootstrap.ps1"
+$localBootstrapPreparePath = Join-Path $ScriptDirectory `
+    "prepare-phase3b2-local-bootstrap-p0-v5-in-vm.ps1"
+$localBootstrapRollbackPath = Join-Path $ScriptDirectory `
+    "rollback-phase3b2-p0-with-local-bootstrap-in-vm.ps1"
+$localBootstrapReferencePath = Join-Path $ScriptDirectory `
+    "start-phase3b2-local-bootstrap-reference-in-vm.ps1"
+$localBootstrapWorkflowPath = Join-Path $ScriptDirectory `
+    "recover-and-prepare-phase3b2-local-bootstrap.ps1"
+$localBootstrapVirtualEnvironmentRecoveryPath = Join-Path $ScriptDirectory `
+    "recover-phase3b2-after-virtual-environment-rejection.ps1"
+$localBootstrapPaths = @(
+    $localBootstrapSourcePath,
+    $localBootstrapProjectPath,
+    $localBootstrapGlobalJsonPath,
+    $localBootstrapLockPath,
+    $localBootstrapBuildPath,
+    $localBootstrapPreparePath,
+    $localBootstrapRollbackPath,
+    $localBootstrapReferencePath,
+    $localBootstrapWorkflowPath,
+    $localBootstrapVirtualEnvironmentRecoveryPath
+)
+Assert-True (@($localBootstrapPaths | Where-Object {
+            -not (Test-Path -LiteralPath $_ -PathType Leaf)
+        }).Count -eq 0) "phase3b2_local_bootstrap_contract_file_missing"
+$localBootstrapSourceText = [IO.File]::ReadAllText(
+    $localBootstrapSourcePath)
+$localBootstrapProjectText = [IO.File]::ReadAllText(
+    $localBootstrapProjectPath)
+$localBootstrapBuildText = [IO.File]::ReadAllText(
+    $localBootstrapBuildPath)
+$localBootstrapPrepareText = [IO.File]::ReadAllText(
+    $localBootstrapPreparePath)
+$localBootstrapReferenceText = [IO.File]::ReadAllText(
+    $localBootstrapReferencePath)
+$localBootstrapWorkflowText = [IO.File]::ReadAllText(
+    $localBootstrapWorkflowPath)
+$localBootstrapVirtualEnvironmentRecoveryText = [IO.File]::ReadAllText(
+    $localBootstrapVirtualEnvironmentRecoveryPath)
+$localBootstrapCombinedImplementation = @(
+    $localBootstrapSourceText,
+    $localBootstrapReferenceText,
+    $localBootstrapWorkflowText,
+    $localBootstrapVirtualEnvironmentRecoveryText
+) -join "`n"
+Assert-True ($localBootstrapProjectText -match
+        '<TargetFramework>net10\.0</TargetFramework>' -and
+    $localBootstrapProjectText -match
+        '<TreatWarningsAsErrors>true</TreatWarningsAsErrors>' -and
+    $localBootstrapBuildText -match
+        '3d680453c0a4ca5ab2cdf3eb60e09b4160cb1bb3' -and
+    $localBootstrapBuildText -match
+        '54b85eb6fbaa74feae0c6b441d66a5a703073ba3' -and
+    $localBootstrapBuildText -match '--locked-mode' -and
+    $localBootstrapBuildText -match
+        'officialLauncherBuilt\s*=\s*\$false' -and
+    $localBootstrapBuildText -match
+        'antiCheatSubstitutionApplied\s*=\s*\$false') `
+    "phase3b2_local_bootstrap_build_contract_invalid"
+Assert-True ($localBootstrapSourceText -match
+        'Sail\.SharedMemory\.\{GameId\}' -and
+    $localBootstrapSourceText -match 'NamedPipeServerStream\(' -and
+    $localBootstrapSourceText -match
+        'E:\\NIKKE\\game\\nikke\.exe' -and
+    $localBootstrapSourceText -match
+        'officialLauncherExecutionStarted.*false' -and
+    $localBootstrapCombinedImplementation -notmatch
+        'CreateRemoteThread|WriteProcessMemory|ReadProcessMemory|VirtualAllocEx|SetWindowsHookEx|MinHook|Detour|DangerousAcceptAnyServerCertificateValidator|ServerCertificateCustomValidationCallback') `
+    "phase3b2_local_bootstrap_runtime_boundary_invalid"
+Assert-True ($localBootstrapPrepareText -match
+        'NLL-P3B2-Block-017' -and
+    $localBootstrapPrepareText -match
+        'source_built_sail_abi_local_bootstrap' -and
+    $localBootstrapPrepareText -match
+        'officialLauncherExecutionPermitted\s*=\s*\$false' -and
+    $localBootstrapReferenceText -match
+        'Get-NetRoute[\s\S]*0\.0\.0\.0/0' -and
+    $localBootstrapReferenceText -match
+        'Get-NetRoute[\s\S]*::/0' -and
+    $localBootstrapReferenceText -match
+        'retryPerformed\s*=\s*\$false' -and
+    $localBootstrapWorkflowText -match
+        'NLL-P3B2-W1-P0-Private-SQLiteCredential-v1-' -and
+    $localBootstrapWorkflowText -match
+        'new-phase3b2-private-p0-local-bootstrap-checkpoint\.ps1' -and
+    $localBootstrapVirtualEnvironmentRecoveryText -match
+        'runtime_blocked_virtualized_environment' -and
+    $localBootstrapVirtualEnvironmentRecoveryText -match
+        'original_client_rejected_virtualized_environment_before_sail_pipe_connection' -and
+    $localBootstrapVirtualEnvironmentRecoveryText -match
+        'antiVirtualizationBypassAttempted\s*=\s*\$false' -and
+    $localBootstrapVirtualEnvironmentRecoveryText -match
+        'processInjectionOrHookingAttempted\s*=\s*\$false' -and
+    $localBootstrapVirtualEnvironmentRecoveryText -match
+        'NLL-P3B2-W1-P0-Private-LocalBootstrap-v1-[\s\S]*Restore-VMSnapshot' -and
+    $localBootstrapVirtualEnvironmentRecoveryText -notmatch
+        'DisableAC|hypervisor.*hide|anti.?vm.*bypass') `
+    "phase3b2_local_bootstrap_operational_contract_invalid"
 
 $preflightText = [System.IO.File]::ReadAllText($PreflightPath, [System.Text.UTF8Encoding]::new($false, $true))
 $referenceRunText = [System.IO.File]::ReadAllText($ReferenceRunPath, [System.Text.UTF8Encoding]::new($false, $true))
@@ -602,6 +716,25 @@ $observationSetText = [System.IO.File]::ReadAllText($ObservationSetPath, [System
 Assert-True (Test-CanonicalAssessment $preflightText $PreflightSchemaPath) "phase3b2_blocked_preflight_fixture_invalid"
 Assert-True (Test-CanonicalAssessment $referenceRunText $ReferenceRunSchemaPath) "phase3b2_not_executed_reference_run_fixture_invalid"
 Assert-True (Test-CanonicalObservationSet $observationSetText $ObservationSetSchemaPath $ObservationSetContractId) "phase3b2_observation_set_fixture_invalid"
+
+$targetObservationV2 = [ordered]@{
+    schemaVersion = 2
+    contractId = "nll/season26-classic-target-observation/v2"
+    sourceClosureContractId = "nll/season26-classic-solo-raid-closure/v1"
+    sourceObservationRoleCode = "staticdata_archive_target"
+    sourceObservationSha256 = "925762cd3ef56601916b2e2ae58f929d4dd389055b0d8bcd2176e9abd9b29e69"
+    clientBuildVersion = "150.6.9"
+    seasonNumber = 26
+    modeCode = "classic_solo_raid"
+    museumAllowed = $false
+    projectionCode = "exact_target_and_containing_spawn_source_order/v1"
+    recordRoleCount = 6
+    canonicalLineCount = 150
+    canonicalByteLength = 6689
+    sha256 = "095eebce4f244f9326aa558302318f85547697b165eb6458735527bd2b0f6d10"
+    recomputedMatch = $true
+}
+Assert-True (Test-Json -Json ($targetObservationV2 | ConvertTo-Json -Depth 10 -Compress) -SchemaFile $TargetObservationV2SchemaPath -ErrorAction SilentlyContinue) "phase3b2_target_observation_v2_contract_invalid"
 
 $preflight = $preflightText | ConvertFrom-Json -Depth 100
 $referenceRun = $referenceRunText | ConvertFrom-Json -Depth 100
@@ -652,6 +785,10 @@ $preflightPinCandidate = $preflightText | ConvertFrom-Json -Depth 100
 $preflightPinCandidate.externalLineage.latestExternalTreeCommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 Assert-True (-not (Test-Json -Json ($preflightPinCandidate | ConvertTo-Json -Depth 100) -SchemaFile $PreflightSchemaPath -ErrorAction SilentlyContinue)) "phase3b2_preflight_external_pin_drift_accepted"
 
+$preflightHeadCandidate = $preflightText | ConvertFrom-Json -Depth 100
+$preflightHeadCandidate.externalLineage.latestExternalCommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+Assert-True (-not (Test-Json -Json ($preflightHeadCandidate | ConvertTo-Json -Depth 100) -SchemaFile $PreflightSchemaPath -ErrorAction SilentlyContinue)) "phase3b2_preflight_external_head_drift_accepted"
+
 $referencePinCandidate = $referenceRunText | ConvertFrom-Json -Depth 100
 $referencePinCandidate.externalLineage.latestExternalTreeCommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 Assert-True (-not (Test-Json -Json ($referencePinCandidate | ConvertTo-Json -Depth 100) -SchemaFile $ReferenceRunSchemaPath -ErrorAction SilentlyContinue)) "phase3b2_reference_run_external_pin_drift_accepted"
@@ -691,8 +828,12 @@ $wildcardListenerCandidate.observations[13].wildcardListenerCount = 1
 Assert-True (-not (Test-CanonicalObservationSet ($wildcardListenerCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_wildcard_listener_accepted"
 
 $http3ListenerCandidate = $observationSetText | ConvertFrom-Json -Depth 100
-$http3ListenerCandidate.observations[13].http3Listener.port = 444
+$http3ListenerCandidate.observations[13].http3Listener.listenerCount = 1
 Assert-True (-not (Test-CanonicalObservationSet ($http3ListenerCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_http3_listener_drift_accepted"
+
+$http3ConfigCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$http3ConfigCandidate.observations[12].http3Enabled = $true
+Assert-True (-not (Test-CanonicalObservationSet ($http3ConfigCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_local_only_http3_enabled_accepted"
 
 $externalSdkCandidate = $observationSetText | ConvertFrom-Json -Depth 100
 $externalSdkCandidate.observations[3].dotnetSdkVersion = "10.0.401"
@@ -701,6 +842,22 @@ Assert-True (-not (Test-CanonicalObservationSet ($externalSdkCandidate | Convert
 $externalTestCandidate = $observationSetText | ConvertFrom-Json -Depth 100
 $externalTestCandidate.observations[3].focusedTestFailedCount = 1
 Assert-True (-not (Test-CanonicalObservationSet ($externalTestCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_external_focused_test_failure_accepted"
+
+$externalTestCountCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$externalTestCountCandidate.observations[3].selectedManagerPassedCount = 63
+Assert-True (-not (Test-CanonicalObservationSet ($externalTestCountCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_external_focused_test_count_drift_accepted"
+
+$externalPathLogCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$externalPathLogCandidate.observations[3].localOnlyAssetCachePathLoggingEnabled = $true
+Assert-True (-not (Test-CanonicalObservationSet ($externalPathLogCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_local_only_asset_path_logging_accepted"
+
+$targetObservationCandidate = $observationSetText | ConvertFrom-Json -Depth 100
+$targetObservationCandidate.observations[14].targetObservationContractId = "nll/season26-classic-target-observation/v1"
+Assert-True (-not (Test-CanonicalObservationSet ($targetObservationCandidate | ConvertTo-Json -Depth 100 -Compress) $ObservationSetSchemaPath $ObservationSetContractId)) "phase3b2_target_observation_v1_accepted"
+
+$targetDigestCandidate = $targetObservationV2 | ConvertTo-Json -Depth 10 | ConvertFrom-Json -Depth 10
+$targetDigestCandidate.sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+Assert-True (-not (Test-Json -Json ($targetDigestCandidate | ConvertTo-Json -Depth 10 -Compress) -SchemaFile $TargetObservationV2SchemaPath -ErrorAction SilentlyContinue)) "phase3b2_target_observation_v2_digest_drift_accepted"
 
 $observationManifestCandidate = $observationSetText | ConvertFrom-Json -Depth 100
 $observationManifestCandidate.canonicalManifest.sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

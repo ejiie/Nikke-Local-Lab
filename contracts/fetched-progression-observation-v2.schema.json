@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:fetched-progression-observation:v2",
+  "title": "FetchedProgressionObservationV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "snapshotUid",
+    "capturedAtUtc",
+    "source",
+    "completeness",
+    "completedScenarios",
+    "mainQuestData",
+    "contentsOpenUnlocked",
+    "stageClearHistorys",
+    "triggers"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "contractId": { "const": "nll/fetched-progression-observation/v2" },
+    "snapshotUid": { "$ref": "#/$defs/uuid" },
+    "capturedAtUtc": { "$ref": "#/$defs/utcInstant" },
+    "source": { "$ref": "#/$defs/source" },
+    "completeness": { "$ref": "#/$defs/completeness" },
+    "completedScenarios": { "$ref": "#/$defs/completedScenarios" },
+    "mainQuestData": { "$ref": "#/$defs/mainQuestData" },
+    "contentsOpenUnlocked": { "$ref": "#/$defs/contentsOpenUnlocked" },
+    "stageClearHistorys": { "$ref": "#/$defs/stageClearHistorys" },
+    "triggers": { "$ref": "#/$defs/triggers" }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "controlledCode": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,95}$" },
+    "utcInstant": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workerCode",
+        "workerVersion",
+        "provenanceCode",
+        "credentialOrSessionPersisted",
+        "officialUserIdentifierPersisted",
+        "rawSourcePersisted",
+        "rawSourcePathPersisted",
+        "rawSourceHashPersisted"
+      ],
+      "properties": {
+        "workerCode": { "$ref": "#/$defs/controlledCode" },
+        "workerVersion": { "$ref": "#/$defs/controlledCode" },
+        "provenanceCode": { "$ref": "#/$defs/controlledCode" },
+        "credentialOrSessionPersisted": { "const": false },
+        "officialUserIdentifierPersisted": { "const": false },
+        "rawSourcePersisted": { "const": false },
+        "rawSourcePathPersisted": { "const": false },
+        "rawSourceHashPersisted": { "const": false }
+      }
+    },
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statusCode",
+        "availableComponentCount",
+        "derivedComponentCount",
+        "unavailableComponentCount",
+        "reasonCodes"
+      ],
+      "properties": {
+        "statusCode": { "enum": ["complete", "incomplete"] },
+        "availableComponentCount": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "derivedComponentCount": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "unavailableComponentCount": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "reasonCodes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/controlledCode" }
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stateCode", "evidenceCode", "itemCount", "canonicalEntriesSha256"],
+      "properties": {
+        "stateCode": { "enum": ["observed", "derived", "unavailable"] },
+        "evidenceCode": { "$ref": "#/$defs/controlledCode" },
+        "itemCount": { "type": ["integer", "null"], "minimum": 0 },
+        "canonicalEntriesSha256": {
+          "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+        }
+      }
+    },
+    "completedScenarios": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "entries"],
+      "properties": {
+        "summary": { "$ref": "#/$defs/component" },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scenarioUid"],
+            "properties": { "scenarioUid": { "$ref": "#/$defs/uuid" } }
+          }
+        }
+      }
+    },
+    "mainQuestData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "completedCount", "rewardClaimedCount", "entries"],
+      "properties": {
+        "summary": { "$ref": "#/$defs/component" },
+        "completedCount": { "type": ["integer", "null"], "minimum": 0 },
+        "rewardClaimedCount": { "type": ["integer", "null"], "minimum": 0 },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["questUid", "completed", "rewardClaimed"],
+            "properties": {
+              "questUid": { "$ref": "#/$defs/uuid" },
+              "completed": { "type": "boolean" },
+              "rewardClaimed": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "contentsOpenUnlocked": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "entries"],
+      "properties": {
+        "summary": { "$ref": "#/$defs/component" },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["contentUid", "buttonAnimationPlayed", "popupAnimationPlayed"],
+            "properties": {
+              "contentUid": { "$ref": "#/$defs/uuid" },
+              "buttonAnimationPlayed": { "type": "boolean" },
+              "popupAnimationPlayed": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "stageClearHistorys": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "entries"],
+      "properties": {
+        "summary": { "$ref": "#/$defs/component" },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stageUid", "clearedAt"],
+            "properties": {
+              "stageUid": { "$ref": "#/$defs/uuid" },
+              "clearedAt": { "type": ["integer", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "triggers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "entries"],
+      "properties": {
+        "summary": { "$ref": "#/$defs/component" },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["triggerUid", "typeCode", "typeName", "userValue", "createdAt"],
+            "properties": {
+              "triggerUid": { "$ref": "#/$defs/uuid" },
+              "typeCode": { "enum": [2, 3, 22, 25, 35] },
+              "typeName": {
+                "enum": [
+                  "campaign_clear",
+                  "chapter_clear",
+                  "main_quest_clear",
+                  "campaign_group_clear",
+                  "hard_chapter_clear"
+                ]
+              },
+              "userValue": { "type": "integer" },
+              "createdAt": { "type": "integer" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

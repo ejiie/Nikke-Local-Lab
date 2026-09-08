@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:boss-candidate:v1",
+  "title": "BossCandidateV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "candidateUid",
+    "seasonNumber",
+    "displayName",
+    "raidSnapshotUid",
+    "raidSnapshotSha256",
+    "runtimeVariantProfile",
+    "closure",
+    "selectedManager",
+    "actualPlayStatusCode",
+    "candidateStatusCode",
+    "reasonCodes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "nll/boss-candidate/v1" },
+    "candidateUid": { "$ref": "#/$defs/uuid" },
+    "seasonNumber": { "type": "integer", "minimum": 1 },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "raidSnapshotUid": { "$ref": "#/$defs/uuid" },
+    "raidSnapshotSha256": { "$ref": "#/$defs/sha256" },
+    "runtimeVariantProfile": { "$ref": "#/$defs/runtimeVariantProfile" },
+    "closure": { "$ref": "#/$defs/closure" },
+    "selectedManager": { "$ref": "#/$defs/selectedManager" },
+    "actualPlayStatusCode": { "enum": ["not_run", "passed", "failed", "blocked"] },
+    "candidateStatusCode": { "enum": ["static_only", "runtime_candidate", "ready_for_actual_play", "verified", "blocked"] },
+    "reasonCodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/controlledCode" }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "controlledCode": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}$" },
+    "closureStatus": { "enum": ["resolved", "unresolved", "not_evaluated", "mismatch"] },
+    "closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manager", "preset", "challengeWave", "monsterStats", "parts", "skills", "behavior", "clientAssets", "localePresentation"],
+      "properties": {
+        "manager": { "$ref": "#/$defs/closureStatus" },
+        "preset": { "$ref": "#/$defs/closureStatus" },
+        "challengeWave": { "$ref": "#/$defs/closureStatus" },
+        "monsterStats": { "$ref": "#/$defs/closureStatus" },
+        "parts": { "$ref": "#/$defs/closureStatus" },
+        "skills": { "$ref": "#/$defs/closureStatus" },
+        "behavior": { "$ref": "#/$defs/closureStatus" },
+        "clientAssets": { "$ref": "#/$defs/closureStatus" },
+        "localePresentation": { "$ref": "#/$defs/closureStatus" }
+      }
+    },
+    "selectedManager": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statusCode", "sourceManifestSha256", "passedTestCount", "failedTestCount"],
+      "properties": {
+        "statusCode": { "enum": ["not_built", "built", "verified", "failed"] },
+        "sourceManifestSha256": {
+          "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+        },
+        "passedTestCount": { "type": "integer", "minimum": 0 },
+        "failedTestCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "runtimeVariantProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profileCode",
+        "profileSha256",
+        "registryStatusCode",
+        "sourceBossElementCode",
+        "sourceBossWeaknessCode",
+        "elementShieldModeCode",
+        "fxVariantStatusCode"
+      ],
+      "properties": {
+        "profileCode": { "$ref": "#/$defs/controlledCode" },
+        "profileSha256": { "$ref": "#/$defs/sha256" },
+        "registryStatusCode": { "enum": ["enabled", "disabled", "unresolved"] },
+        "sourceBossElementCode": { "$ref": "#/$defs/elementCode" },
+        "sourceBossWeaknessCode": { "$ref": "#/$defs/elementCode" },
+        "elementShieldModeCode": {
+          "enum": ["none", "static_affinity_linked", "effect_asset_variant_required", "unresolved"]
+        },
+        "fxVariantStatusCode": { "enum": ["not_required", "resolved", "unresolved"] }
+      }
+    }
+    ,
+    "elementCode": { "enum": ["fire", "water", "wind", "electric", "iron"] }
+  }
+}

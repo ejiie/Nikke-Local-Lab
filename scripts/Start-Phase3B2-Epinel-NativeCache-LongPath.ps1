@@ -35,16 +35,29 @@ $expectedDeploymentReceiptSha256 = `
     '__NATIVE_CACHE_DEPLOYMENT_RECEIPT_SHA256__'
 $expectedVerifierManifestSha256 = `
     '__NATIVE_CACHE_VERIFIER_MANIFEST_SHA256__'
+$expectedHeaderClosureReceiptSha256 = `
+    '__NATIVE_CACHE_HEADER_CLOSURE_RECEIPT_SHA256__'
 $deploymentPath = `
     'C:\NLL\Evidence\Phase3B2\Physical\epinel-native-cache-deployment-v1\deployment.receipt.json'
 $verifierRoot = 'C:\NLL\Tools\Phase3B2.NativeCacheVerifier-v1'
 $verifierManifestPath = Join-Path $verifierRoot 'bundle.manifest.json'
 $verifierDllPath = Join-Path $verifierRoot `
     'Phase3B2.NativeCacheMaterializer.dll'
+$headerClosureReceiptPath = `
+    'C:\NLL\Evidence\Phase3B2\Physical\epinel-native-cache-header-closure-v1\repair.receipt.json'
 $dotnetPath = 'C:\Program Files\dotnet\dotnet.exe'
 $cacheRoot = `
     'C:\NLL\EpinelPS\EpinelPS\bin\Release\net10.0\win-x64\cache'
-$minimalStartPath = 'C:\NLL\Tools\Start-Phase3B2-Epinel-Minimal.ps1'
+$headerRelativePath = `
+    'prdenv\150-b059c3f36c\StandaloneWindows64\pck\latest-651.txt'
+$headerPath = Join-Path $cacheRoot $headerRelativePath
+$headerUrl = `
+    'https://cloud.nikke-kr.com/prdenv/150-b059c3f36c/StandaloneWindows64/pck/latest-651.txt'
+$expectedHeaderByteLength = 139L
+$expectedHeaderSha256 = `
+    '5914cb58fd2146fe761ab531ecb4e321300527186a54b455e59de962ff6c044a'
+$minimalStartPath =
+    'C:\NLL\Tools\start-phase3b2-epinel-minimal-reference-in-micron.ps1'
 $extensionFirewallGroup = 'NLL Phase3B2 Epinel Minimal Extension'
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -64,10 +77,37 @@ Assert-True (
     (Get-Sha256Hex $verifierManifestPath) -ceq `
         $expectedVerifierManifestSha256 -and
     (Test-Path -LiteralPath $verifierDllPath -PathType Leaf) -and
+    (Test-Path -LiteralPath $headerClosureReceiptPath -PathType Leaf) -and
+    (Get-Sha256Hex $headerClosureReceiptPath) -ceq `
+        $expectedHeaderClosureReceiptSha256 -and
+    (Test-Path -LiteralPath $headerPath -PathType Leaf) -and
+    (Get-Item -LiteralPath $headerPath).Length -eq `
+        $expectedHeaderByteLength -and
+    (Get-Sha256Hex $headerPath) -ceq $expectedHeaderSha256 -and
     (Test-Path -LiteralPath $dotnetPath -PathType Leaf) -and
     (Test-Path -LiteralPath $minimalStartPath -PathType Leaf) -and
     (Test-Path -LiteralPath $cacheRoot -PathType Container)
 ) 'phase3b2_epinel_native_cache_start_input_missing_or_drifted'
+
+$headerClosure = Get-Content -LiteralPath $headerClosureReceiptPath `
+    -Raw -Encoding UTF8 | ConvertFrom-Json
+Assert-True (
+    $headerClosure.contractId -ceq `
+        'nll/phase3b2-epinel-native-cache-header-closure-repair/v1' -and
+    $headerClosure.versionHeaderApplied -and
+    $headerClosure.versionHeaderRelativePath -ceq `
+        $headerRelativePath.Replace('\', '/') -and
+    $headerClosure.versionHeaderByteLength -eq $expectedHeaderByteLength -and
+    $headerClosure.versionHeaderSha256 -ceq $expectedHeaderSha256 -and
+    $headerClosure.activeCacheFileCountAfter -eq 40109 -and
+    [long]$headerClosure.activeCacheContentByteLengthAfter -eq `
+        39030630086L -and
+    $headerClosure.databaseRestored -and
+    $headerClosure.sqliteRuntimeRemoved -and
+    $headerClosure.activeRunPointerArchived -and
+    -not $headerClosure.serverExecutionStarted -and
+    -not $headerClosure.clientExecutionStarted
+) 'phase3b2_epinel_native_cache_start_header_closure_invalid'
 
 $deployment = Get-Content -LiteralPath $deploymentPath -Raw -Encoding UTF8 |
     ConvertFrom-Json
@@ -117,8 +157,8 @@ Assert-True (
     $inspection.contractId -ceq `
         'nll/phase3b2-native-cache-tree-inspection/v1' -and
     $inspection.longPathSafeEnumerationUsed -and
-    $inspection.fileCount -eq 40108 -and
-    [long]$inspection.contentByteLength -eq 39030629947L -and
+    $inspection.fileCount -eq 40109 -and
+    [long]$inspection.contentByteLength -eq 39030630086L -and
     $inspection.partialMemberCount -eq 0
 ) 'phase3b2_epinel_native_cache_start_cache_shape_invalid'
 
@@ -129,7 +169,10 @@ Assert-True (
         -ErrorAction SilentlyContinue).Count -eq 0
 ) 'phase3b2_epinel_native_cache_start_stale_firewall_cleanup_failed'
 
-$startText = (& $minimalStartPath | Out-String).Trim()
+$startText = (& $minimalStartPath `
+    -RequiredLocalAssetUrl $headerUrl `
+    -RequiredLocalAssetByteLength $expectedHeaderByteLength `
+    -RequiredLocalAssetSha256 $expectedHeaderSha256 | Out-String).Trim()
 $start = $startText | ConvertFrom-Json
 Assert-True (
     $start.contractId -ceq `
@@ -140,6 +183,14 @@ Assert-True (
     $start.clientExecutionStarted -and
     $start.successfulNonLoopbackConnectionCount -eq 0
 ) 'phase3b2_epinel_native_cache_start_inner_receipt_invalid'
+Assert-True (
+    $start.requiredLocalAssetPreflightPerformed -and
+    $start.requiredLocalAssetLoopbackResolved -and
+    $start.requiredLocalAssetHttpStatusCode -eq 200 -and
+    $start.requiredLocalAssetObservedByteLength -eq `
+        $expectedHeaderByteLength -and
+    $start.requiredLocalAssetObservedSha256 -ceq $expectedHeaderSha256
+) 'phase3b2_epinel_native_cache_start_inner_receipt_invalid'
 
 $bindingPath = Join-Path (
     'C:\NLL\Evidence\Phase3B2\Physical\epinel-minimal-reference-v1\' +
@@ -149,13 +200,19 @@ Assert-True (-not (Test-Path -LiteralPath $bindingPath)) `
     'phase3b2_epinel_native_cache_start_binding_collision'
 $binding = [ordered]@{
     schemaVersion = 1
-    contractId = 'nll/phase3b2-epinel-native-cache-run-binding/v2'
+    contractId = 'nll/phase3b2-epinel-native-cache-run-binding/v3'
     boundAtUtc = [DateTimeOffset]::UtcNow.ToString(
         "yyyy-MM-dd'T'HH:mm:ss'Z'"
     )
     assessmentUid = [string]$start.assessmentUid
     deploymentReceiptSha256 = $expectedDeploymentReceiptSha256
     verifierManifestSha256 = $expectedVerifierManifestSha256
+    headerClosureReceiptSha256 = $expectedHeaderClosureReceiptSha256
+    versionHeaderRelativePath = $headerRelativePath.Replace('\', '/')
+    versionHeaderByteLength = $expectedHeaderByteLength
+    versionHeaderSha256 = $expectedHeaderSha256
+    localHttpPreflightStatusCode = 200
+    localHttpPreflightSha256 = $expectedHeaderSha256
     cacheInspectionContractId = [string]$inspection.contractId
     longPathSafeEnumerationUsed = $true
     activeCacheFileCount = [int]$inspection.fileCount

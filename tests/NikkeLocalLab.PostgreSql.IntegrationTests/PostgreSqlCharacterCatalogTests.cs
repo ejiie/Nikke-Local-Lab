@@ -27,7 +27,7 @@ public sealed class PostgreSqlCharacterCatalogTests
     var concurrentResults = await Task.WhenAll(
         Enumerable.Range(0, 4)
             .Select(_ => new PostgreSqlMigrationRunner().MigrateAsync(dataSource)));
-    Assert.Equal(7, concurrentResults.Sum());
+    Assert.Equal(MigrationBaseline.Count, concurrentResults.Sum());
     Assert.Equal(0, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
 
     var uidGenerator = new RandomEntityUidGenerator();

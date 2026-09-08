@@ -473,7 +473,7 @@ $repositorySources = @(
     'scripts\deploy-phase3b2-epinel-solo-raid-regroup-repair-v5-offline.ps1',
     'scripts\inspect-phase3b2-epinel-solo-raid-regroup-repair-v5-offline.ps1',
     'scripts\seal-phase3b2-epinel-solo-raid-regroup-v5-checkpoint-offline.ps1',
-    'docs\PHASE3B2_EPINEL_MINIMAL_PLAN.md',
+    'docs\archive\PHASE3B2_EPINEL_MINIMAL_PLAN.md',
     'docs\NEXT_STEPS.md',
     'docs\HANDOFF.md'
 )

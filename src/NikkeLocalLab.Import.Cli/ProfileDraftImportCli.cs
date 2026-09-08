@@ -16,7 +16,8 @@ internal static class ProfileDraftImportCli
     "repository-root",
     "level-authority",
     "operation-uid",
-    "imported-at-utc"
+    "imported-at-utc",
+    "output-draft"
   };
 
   public static async Task<int> ImportAsync(
@@ -32,6 +33,7 @@ internal static class ProfileDraftImportCli
         TimeProvider.System,
         new RandomEntityUidGenerator());
     var sourcePath = ProfileSanitizerCli.ResolveSourcePath(configuration, repositoryRoot);
+    var outputDraftPath = ResolveOutputDraftPath(configuration, options);
     var secret = RequireIdentitySecret(configuration);
     try
     {
@@ -93,7 +95,23 @@ internal static class ProfileDraftImportCli
       var receipt = await new PostgreSqlProfileImportStore(
           dataSource,
           new RandomEntityUidGenerator()).ImportDraftAsync(command).ConfigureAwait(false);
+      if (outputDraftPath is not null)
+      {
+        await using var output = new FileStream(
+            outputDraftPath,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 64 * 1024,
+            FileOptions.Asynchronous | FileOptions.WriteThrough);
+        await output.WriteAsync(canonicalUtf8).ConfigureAwait(false);
+        await output.FlushAsync().ConfigureAwait(false);
+      }
       WriteReceipt(Console.Out, receipt, strictDraft, result.Diagnostics);
+      if (outputDraftPath is not null)
+      {
+        Console.WriteLine("sanitized_draft_exported=true");
+      }
       return 0;
     }
     catch (Npgsql.NpgsqlException)
@@ -272,6 +290,50 @@ internal static class ProfileDraftImportCli
     {
       throw new LabConfigurationException("profile_transformer_binary_unavailable");
     }
+  }
+
+  private static string? ResolveOutputDraftPath(
+      ResolvedLabConfiguration configuration,
+      IReadOnlyDictionary<string, string> options)
+  {
+    if (!options.TryGetValue("output-draft", out var configuredPath))
+    {
+      return null;
+    }
+
+    string outputPath;
+    try
+    {
+      outputPath = PathBoundary.NormalizeAbsoluteLocalPath(
+          configuredPath,
+          "profile_draft_output_path_invalid");
+    }
+    catch (LabConfigurationException)
+    {
+      throw;
+    }
+
+    if (!PathBoundary.IsWithinOrEqual(outputPath, configuration.RuntimeRoot))
+    {
+      throw new LabConfigurationException("profile_draft_output_boundary_invalid");
+    }
+    if (File.Exists(outputPath) || Directory.Exists(outputPath))
+    {
+      throw new LabConfigurationException("profile_draft_output_exists");
+    }
+
+    var parent = Path.GetDirectoryName(outputPath);
+    if (string.IsNullOrWhiteSpace(parent) ||
+        !PathBoundary.IsWithinOrEqual(parent, configuration.RuntimeRoot))
+    {
+      throw new LabConfigurationException("profile_draft_output_boundary_invalid");
+    }
+    Directory.CreateDirectory(parent);
+    PathBoundary.EnsureNoReparsePoints(
+        parent,
+        requireFinalExists: true,
+        "profile_draft_output_reparse_rejected");
+    return outputPath;
   }
 
   private static DateTimeOffset ToPostgreSqlSafeUtc(DateTimeOffset value)

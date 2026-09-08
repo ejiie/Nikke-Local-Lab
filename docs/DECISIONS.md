@@ -11,7 +11,7 @@
 - Phase 3 원본 client 연구는 운영자가 승인한 개인·비상업·비배포·로컬 전용 범위다. 권리자 승인은 주장하지 않으며 법적 상태는 `not_determined`로 둔다.
 - public EpinelPS commit `28b2f5413a0a1e3521a11ae162f91851335c8b40`은 exact `150.6.9` client에 대한 기술적 prior art/reference로 고정한다. 공개 저장소의 존재를 Shift Up의 승인·묵인·비집행 약속으로 해석하지 않는다.
 - EpinelPS는 Local Lab source tree에 vendor하지 않고 별도 checkout/process로 먼저 평가한다. generated protocol source, game data, certificate와 patched binary는 이 저장소에 넣지 않는다.
-- `C:\NIKKE` 주 설치본은 read-only로 보존한다. original-client live 실험은 exact hash를 고정한 snapshot 가능한 disposable VM/별도 OS와 synthetic dummy account에서만 수행한다. 단순 디렉터리 복제본은 정적 검산용이다.
+- Micron `C:\NIKKE`는 공식 launcher 소유의 mutable official-current 설치본이다. 공식 update/fresh capture 외에는 사용하지 않고 Local Lab/EpinelPS가 수정하거나 private-server 실행 대상으로 삼지 않는다. 실험 권위는 별도 version/hash로 봉인한 `C:\NLL\Clients\NIKKE-<build>-*` lane이며 현재 경로 계약은 [MICRON_CURRENT_PATHS.md](MICRON_CURRENT_PATHS.md)를 따른다.
 - system hosts/root CA는 disposable VM/OS에서만 바꾸고, client-local certificate bundle/native compatibility shim은 사전 backup, 원본·적용 SHA-256과 검증 가능한 rollback을 갖춘 경우에만 허용한다.
 - 캐릭터 빌드는 revision 기반이며 과거 revision은 불변이다.
 - 생성 기본 프리셋은 `combat-max/v1`이다.
@@ -36,7 +36,7 @@
 - 공식 global ranking, reward mail과 live-service 시즌 정산은 모방하지 않는다. 필요한 경우 자체 local record만 별도 계약으로 표시한다.
 - 첫 시즌 26 수직 proof에서는 custom widget 제거·six-season folder를 요구하지 않는다. proof 뒤 presentation을 별도 평가해, 안전한 client variant가 확인되고 사용자가 채택할 때만 기존 홍보·상점·social widget 제거와 좌측 Solo Raid season folder를 구현한다. 하단 니케·스쿼드·로비·인벤토리·대원모집 유지 및 대원모집 controlled no-op도 같은 후속 presentation 결정에 속한다.
 - Union Raid는 비활성 확장 지점이다.
-- 주 설치본, 공식 계정과 공식 서비스 경로는 계속 blocked다. modified-local 연구 lane은 [PHASE3AR.md](PHASE3AR.md)의 `ready_for_local_compatibility_spike` 판정과 [FEASIBILITY_GATES.md](FEASIBILITY_GATES.md)의 disposable 환경 조건을 따른다.
+- 공식-current `C:\NIKKE`, 공식 계정과 공식 서비스 경로는 modified-local 실행 대상으로 계속 blocked다. 공식 launcher 업데이트와 운영자가 수행하는 fresh capture는 별도 공식 경로이며, modified-local 연구 lane은 [PHASE3AR.md](contracts/PHASE3AR.md)의 `ready_for_local_compatibility_spike` 판정과 [FEASIBILITY_GATES.md](contracts/FEASIBILITY_GATES.md)의 격리 조건을 따른다.
 - Phase 3A의 `blocked_insufficient_evidence`는 rights-holder-approved route를 전제로 한 역사적 정상 종료로 보존한다. Phase 3A-R은 이를 성공으로 덮어쓰지 않고 operator-authorized modified-local lane을 별도 재기준화한다.
 - Phase 3은 3B-0 시즌 26 closure, 3B-1 classic selected-manager extension, 3B-2 disposable reference run, 3C Local Lab shadow bridge, 3D exact authority correlation의 작은 수직 단계로 진행한다. custom six-season lobby는 첫 classic proof 뒤에 평가한다.
 - 3B-1 v1의 선택 권위는 external EpinelPS account다. Listener 시작 전 account-specific startup binding으로 write-once 저장하고 session override는 두지 않으며, account당 하나의 active classic run이 immutable manager pin을 가진다. `Trial` wire는 Challenge이고 Museum·Normal·Practice·FastBattle/Quick은 범위 밖이다. `GetLogs`의 exact target projection/denial은 B1a characterization gate다.
@@ -49,6 +49,7 @@
 - source path, file name, raw ID, decoded payload, exception text는 import ledger schema에 두지 않는다.
 - dataset snapshot은 경로가 없는 canonical source manifest hash로 식별하고, 동일 입력은 기존 snapshot을 재사용한다.
 - PostgreSQL은 loopback 연결만 허용하며 migration history는 embedded SQL checksum으로 잠근다.
+- Windows local 개발·통합 시험의 PostgreSQL 17은 Docker Desktop, WSL2 또는 Hyper-V backend가 아니라 native Windows binary를 on-demand로 실행한다. Windows service 자동 시작은 사용하지 않고 loopback 전용 비표준 port에서 시작하며, 검증 종료와 게임 실행 전에 `postgres.exe`가 0개인지 확인한다. GitHub Actions의 격리 PostgreSQL service는 이 local runtime 결정과 별개로 유지한다. 상세 설치·운영 계약은 [WINDOWS_NATIVE_POSTGRESQL_RUNTIME.md](operations/WINDOWS_NATIVE_POSTGRESQL_RUNTIME.md)를 따른다.
 - source alias HMAC fingerprint는 entity UID로 재사용하지 않고 private registry에서 무작위 lab UUID에 연결한다.
 - 캐릭터 catalog의 ledger 완료와 snapshot publish는 한 PostgreSQL transaction에서 원자적으로 처리한다.
 - 캐릭터 subtype과 sd.bin runtime cap을 함께 사용해 호감도 최대값을 해소한다.

@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:boss-runtime-variant-profile:v2",
+  "title": "BossRuntimeVariantProfileV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "contractId", "profileCode", "seasonNumber", "displayNameCode",
+    "selectedManagerObservation", "challengeSelector", "sourceAffinity", "skillClosure",
+    "behaviorAssembly", "elementShield", "transformation"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "contractId": { "const": "nll/boss-runtime-variant-profile/v2" },
+    "profileCode": { "$ref": "#/$defs/code" },
+    "seasonNumber": { "type": "integer", "minimum": 1 },
+    "displayNameCode": { "$ref": "#/$defs/code" },
+    "selectedManagerObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contractId", "canonicalizationCode", "sourceObservationSha256", "roleLineCounts",
+        "canonicalLineCount", "canonicalByteLength", "trustedSha256"
+      ],
+      "properties": {
+        "contractId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "canonicalizationCode": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sourceObservationSha256": { "$ref": "#/$defs/sha256" },
+        "roleLineCounts": {
+          "type": "array", "minItems": 6, "maxItems": 6,
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "canonicalLineCount": { "type": "integer", "minimum": 1 },
+        "canonicalByteLength": { "type": "integer", "minimum": 1 },
+        "trustedSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "challengeSelector": {
+      "type": "object", "additionalProperties": false,
+      "required": ["difficultyTypeCode", "waveOrder", "targetCardinality"],
+      "properties": {
+        "difficultyTypeCode": { "const": "challenge" },
+        "waveOrder": { "type": "integer", "minimum": 1 },
+        "targetCardinality": { "const": 1 }
+      }
+    },
+    "sourceAffinity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["bossElementCode", "weaknessCode"],
+      "properties": {
+        "bossElementCode": { "$ref": "#/$defs/element" },
+        "weaknessCode": { "$ref": "#/$defs/element" }
+      }
+    },
+    "skillClosure": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "monsterSkillRelationCount", "monsterSkillRecordCount", "passiveStateEffectRecordCount",
+        "rootFunctionRecordCount", "closedFunctionRecordCount", "missingReferenceCount",
+        "canonicalSha256"
+      ],
+      "properties": {
+        "monsterSkillRelationCount": { "type": "integer", "minimum": 1 },
+        "monsterSkillRecordCount": { "type": "integer", "minimum": 1 },
+        "passiveStateEffectRecordCount": { "type": "integer", "minimum": 0 },
+        "rootFunctionRecordCount": { "type": "integer", "minimum": 0 },
+        "closedFunctionRecordCount": { "type": "integer", "minimum": 0 },
+        "missingReferenceCount": { "const": 0 },
+        "canonicalSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "behaviorAssembly": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "modeCode", "rootReferenceCount", "rootReferenceSetSha256", "assetClosureStatusCode",
+        "bundleByteLength", "bundleSha256", "graphMatchCount", "nodeCount",
+        "canonicalGraphSha256", "taskTypeSetSha256", "skillAnimationReferenceSetSha256",
+        "partReferenceSetSha256", "pointReferenceSetSha256"
+      ],
+      "properties": {
+        "modeCode": { "const": "preserve_exact_external_behavior_tree" },
+        "rootReferenceCount": { "type": "integer", "minimum": 1 },
+        "rootReferenceSetSha256": { "$ref": "#/$defs/sha256" },
+        "assetClosureStatusCode": { "const": "resolved" },
+        "bundleByteLength": { "type": "integer", "minimum": 1 },
+        "bundleSha256": { "$ref": "#/$defs/sha256" },
+        "graphMatchCount": { "type": "integer", "minimum": 1 },
+        "nodeCount": { "type": "integer", "minimum": 1 },
+        "canonicalGraphSha256": { "$ref": "#/$defs/sha256" },
+        "taskTypeSetSha256": { "$ref": "#/$defs/sha256" },
+        "skillAnimationReferenceSetSha256": { "$ref": "#/$defs/sha256" },
+        "partReferenceSetSha256": { "$ref": "#/$defs/sha256" },
+        "pointReferenceSetSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "elementShield": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "modeCode", "functionTypeCode", "functionRecordCount", "skillBindingCount",
+        "passiveBindingCount", "functionSetSha256", "sourceFxPrefabSetSha256",
+        "fxVariantRequired", "fxVariantStatusCode", "fxVariants"
+      ],
+      "properties": {
+        "modeCode": { "enum": ["none", "dynamic_affinity_linked"] },
+        "functionTypeCode": { "enum": ["not_applicable", "immune_other_element"] },
+        "functionRecordCount": { "type": "integer", "minimum": 0 },
+        "skillBindingCount": { "type": "integer", "minimum": 0 },
+        "passiveBindingCount": { "type": "integer", "minimum": 0 },
+        "functionSetSha256": { "$ref": "#/$defs/sha256" },
+        "sourceFxPrefabSetSha256": { "$ref": "#/$defs/sha256" },
+        "fxVariantRequired": { "type": "boolean" },
+        "fxVariantStatusCode": { "enum": ["not_required", "resolved"] },
+        "fxVariants": {
+          "type": "array", "minItems": 0, "maxItems": 5,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": [
+              "bossElementCode", "mappingSetSha256", "mappings"
+            ],
+            "properties": {
+              "bossElementCode": { "$ref": "#/$defs/element" },
+              "mappingSetSha256": { "$ref": "#/$defs/sha256" },
+              "mappings": {
+                "type": "array", "minItems": 1,
+                "items": {
+                  "type": "object", "additionalProperties": false,
+                  "required": [
+                    "sourceFxPrefabSetSha256", "targetFxPrefabSetSha256",
+                    "assetBundleSetSha256", "assetBundles", "sourceKindCode"
+                  ],
+                  "properties": {
+                    "sourceFxPrefabSetSha256": { "$ref": "#/$defs/sha256" },
+                    "targetFxPrefabSetSha256": { "$ref": "#/$defs/sha256" },
+                    "assetBundleSetSha256": { "$ref": "#/$defs/sha256" },
+                    "assetBundles": {
+                      "type": "array", "minItems": 1,
+                      "items": {
+                        "type": "object", "additionalProperties": false,
+                        "required": ["sha256", "byteLength"],
+                        "properties": {
+                          "sha256": { "$ref": "#/$defs/sha256" },
+                          "byteLength": { "type": "integer", "minimum": 1 }
+                        }
+                      }
+                    },
+                    "sourceKindCode": { "enum": ["boss_specific", "common"] }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "transformation": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "modeCode", "allowedTableCodes", "preserveElementTable",
+        "restrictToTargetMonsterElementIds", "rawSourceIdentifiersPersisted"
+      ],
+      "properties": {
+        "modeCode": {
+          "enum": [
+            "target_monster_element_reference",
+            "target_monster_element_and_dynamic_shield_fx"
+          ]
+        },
+        "allowedTableCodes": {
+          "type": "array", "items": { "enum": ["monster", "function"] },
+          "minItems": 1, "maxItems": 2, "uniqueItems": true
+        },
+        "preserveElementTable": { "const": true },
+        "restrictToTargetMonsterElementIds": { "const": true },
+        "rawSourceIdentifiersPersisted": { "const": false }
+      }
+    }
+  },
+  "$defs": {
+    "code": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}$" },
+    "element": { "enum": ["fire", "water", "wind", "electric", "iron"] },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

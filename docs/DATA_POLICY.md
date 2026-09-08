@@ -40,15 +40,15 @@
         disposable-client\
         evidence\
 
-`C:\NIKKE` 주 설치본은 계속 read-only source입니다. 그 안의 파일, hosts/CA 상태 또는 launcher 설정을 수정·교체하지 않고 저장소 안으로 shadow copy하지 않습니다. 재현성용 local vault나 정적 검산 복제본은 저장소 밖의 `compatibility\disposable-client`에 둘 수 있지만, 실제 client 실행과 system hosts/root CA 변경은 격리 VM/별도 OS에서만 수행합니다. 두 경우 모두 원본 build/content-set hash와 접근 정책을 기록합니다.
+Micron `C:\NIKKE`는 공식 launcher가 설치·업데이트하는 mutable official-current source입니다. Local Lab importer는 여기에서 읽을 수 있지만 쓰기 capability를 갖지 않으며, EpinelPS/private-server 실험은 이 경로를 수정하거나 실행 대상으로 삼지 않습니다. 재현성·실험용 client는 저장소 밖의 `C:\NLL\Clients\NIKKE-<build>-*`에 별도 version/hash로 봉인합니다. 현재 실제 경로와 Samsung 배제 규칙은 [MICRON_CURRENT_PATHS.md](MICRON_CURRENT_PATHS.md)를 따릅니다.
 
-Phase 3 modified-local 연구에서 허용되는 변경 대상은 **disposable VM/별도 OS와 그 안의 client copy**뿐입니다. 단순 디렉터리 복제본은 host system trust를 격리하지 못합니다. 다음 변경은 [PHASE3AR.md](PHASE3AR.md)에 고정된 EpinelPS commit과 exact client build를 대상으로 사전 검토한 경우에만 허용합니다.
+Phase 3 modified-local 연구에서 허용되는 변경 대상은 **disposable VM/별도 OS와 그 안의 client copy**뿐입니다. 단순 디렉터리 복제본은 host system trust를 격리하지 못합니다. 다음 변경은 [PHASE3AR.md](contracts/PHASE3AR.md)에 고정된 EpinelPS commit과 exact client build를 대상으로 사전 검토한 경우에만 허용합니다.
 
 - disposable VM/OS 안에서만 local-only hostname routing을 위한 system hosts 변경
 - disposable VM/OS 안에서만 root CA trust 변경; client-local certificate bundle은 복제본에도 적용 가능
 - 검토·hash 고정한 native compatibility shim 교체
 
-각 변경은 적용 전에 원래 byte의 SHA-256과 backup 위치, 적용 byte의 SHA-256, 적용 순서와 rollback 순서를 manifest에 기록합니다. 실행 종료 또는 실패 뒤에는 rollback을 검증하고 주 설치본의 hash가 변하지 않았음을 다시 확인합니다. backup, certificate/private key, shim binary, patched output, client snapshot과 상세 original member manifest는 Git·CI·remote에 넣지 않습니다.
+각 변경은 적용 전에 frozen lane 원래 byte의 SHA-256과 backup 위치, 적용 byte의 SHA-256, 적용 순서와 rollback 순서를 manifest에 기록합니다. 실행 종료 또는 실패 뒤에는 rollback을 검증하고 공식-current `C:\NIKKE`가 Local Lab에 의해 변경되지 않았음을 다시 확인합니다. backup, certificate/private key, shim binary, patched output, client snapshot과 상세 original member manifest는 Git·CI·remote에 넣지 않습니다.
 
 EpinelPS는 Local Lab repository에 vendor하지 않고 기본적으로 별도 local checkout/process로 둡니다. 검토 기준은 `28b2f5413a0a1e3521a11ae162f91851335c8b40`이며 다른 commit이나 prebuilt binary로 바뀌면 새 provenance/hash 검토가 필요합니다. 공개 source의 존재는 기술적 prior art일 뿐 Shift Up의 승인 증거가 아니며, EpinelPS source를 복사·수정·배포하는 선택은 AGPL-3.0 의무를 별도로 검토해야 합니다.
 
@@ -61,6 +61,15 @@ EpinelPS는 Local Lab repository에 vendor하지 않고 기본적으로 별도 l
 original-client wire/presentation adapter가 client-local content reference를 요구하면 정확한 disposable client build에 결박된 Git 비추적 compatibility binding에서 실행 중에만 변환합니다. 해당 원본 reference, localized asset, icon, prefab 또는 patch output을 public domain/API, receipt, log, fixture와 Git에 복사하지 않습니다. source-free receipt에는 lab UID, controlled role, byte length와 비가역 hash만 남깁니다.
 
 Phase 1A의 `database\` 디렉터리는 경계만 초기화하며 PostgreSQL cluster나 dump를 자동 생성하지 않습니다. `staging\`은 import 실행 중 임시 데이터용이며 source 또는 repository와 겹칠 수 없습니다. Phase 1B character reader는 archive를 메모리에서만 해석하고 decoded file을 만들지 않습니다. 향후 staging을 쓰는 importer는 성공·실패·취소 후 이를 비워야 합니다.
+
+## 2026-09-05 Micron 151 입력 보관
+
+`SECURITY_BOUNDARY.md`의 추가 운영자 승인에 따라 취득하는 151 static pack과
+버전 metadata도 원본 game content입니다. 정확한 URL·private 요청/취득 manifest와
+파일 byte는 `C:\NLL\Staging`의 신규 assessment에만 보관합니다. 기존 설치본,
+runtime cache 또는 DB를 덮어쓰지 않습니다. 저장소에는 역할·길이·비가역 SHA-256과
+검증 상태만 기록합니다. 실패한 partial은 성공 입력으로 사용하지 않고 보존합니다.
+수집 성공은 pack 해석, resource closure 또는 native 실행 성공을 뜻하지 않습니다.
 
 ## Private source remote 경계
 

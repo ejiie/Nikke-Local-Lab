@@ -129,17 +129,25 @@ internal static class SanitizedProfileCanonicalizer
 
   private static void AppendFact(IncrementalHash hash, ProfileImportFact<int> fact)
   {
-    Append(hash, fact.Status == ProfileImportFactStatus.Ready ? "ready" : "unresolved");
+    Append(hash, FactStatusCode(fact.Status));
     Append(hash, fact.Value?.ToString(CultureInfo.InvariantCulture));
     Append(hash, fact.ReasonCode);
   }
 
   private static void AppendFact(IncrementalHash hash, ProfileImportFact<bool> fact)
   {
-    Append(hash, fact.Status == ProfileImportFactStatus.Ready ? "ready" : "unresolved");
+    Append(hash, FactStatusCode(fact.Status));
     Append(hash, fact.Value.HasValue ? (fact.Value.Value ? "true" : "false") : null);
     Append(hash, fact.ReasonCode);
   }
+
+  private static string FactStatusCode(ProfileImportFactStatus status) => status switch
+  {
+    ProfileImportFactStatus.Ready => "ready",
+    ProfileImportFactStatus.Unresolved => "unresolved",
+    ProfileImportFactStatus.NotApplicable => "not_applicable",
+    _ => throw new ArgumentOutOfRangeException(nameof(status))
+  };
 
   private static string Code(ProfileImportEquipmentSlot value) => value switch
   {

@@ -1,32 +1,35 @@
 # AGENTS.md
 
+문서 위치와 용도는 [문서 색인](docs/README.md)에서 찾습니다. 아래 필수 읽기 순서와 불변 규칙은 유지하며, `docs/archive/`의 과거 실행 지시는 현재 작업 지시와 구분합니다.
+
 이 저장소에서 작업하기 전에 다음 문서를 순서대로 읽습니다.
 
 1. `docs/SCOPE.md`
-2. `docs/DATA_POLICY.md`
-3. `docs/SECURITY_BOUNDARY.md`
-4. `docs/FEASIBILITY_GATES.md`
-5. `docs/DOMAIN.md`
-6. `docs/RAID_DOMAIN.md`
-7. `docs/PROFILE_EXECUTION_DOMAIN.md`
-8. `docs/PRIVATE_SERVER_UI.md`
-9. `docs/IDENTITY.md`
-10. `docs/DECISIONS.md`
-11. `docs/IMPLEMENTATION_PLAN.md`
-12. `docs/NEXT_STEPS.md`
-13. `docs/GITHUB_AUTOMATION.md`
-14. `docs/ARCHITECTURE.md`
-15. `docs/PHASE1D.md`
-16. `docs/PHASE2A1.md`
-17. `docs/PHASE2A2.md`
-18. `docs/PHASE2B.md`
-19. `docs/PHASE3.md`
-20. `docs/PHASE3A.md`
-21. `docs/PHASE3AR.md`
-22. `docs/PHASE3B0.md`
-23. `docs/PHASE3B1.md`
-24. `docs/PHASE3B2.md`
-25. `docs/HANDOFF.md`
+2. `docs/MICRON_CURRENT_PATHS.md`
+3. `docs/DATA_POLICY.md`
+4. `docs/SECURITY_BOUNDARY.md`
+5. `docs/contracts/FEASIBILITY_GATES.md`
+6. `docs/contracts/DOMAIN.md`
+7. `docs/contracts/RAID_DOMAIN.md`
+8. `docs/contracts/PROFILE_EXECUTION_DOMAIN.md`
+9. `docs/contracts/PRIVATE_SERVER_UI.md`
+10. `docs/contracts/IDENTITY.md`
+11. `docs/DECISIONS.md`
+12. `docs/archive/IMPLEMENTATION_PLAN.md`
+13. `docs/NEXT_STEPS.md`
+14. `docs/operations/GITHUB_AUTOMATION.md`
+15. `docs/ARCHITECTURE.md`
+16. `docs/contracts/PHASE1D.md`
+17. `docs/contracts/PHASE2A1.md`
+18. `docs/contracts/PHASE2A2.md`
+19. `docs/contracts/PHASE2B.md`
+20. `docs/contracts/PHASE3.md`
+21. `docs/contracts/PHASE3A.md`
+22. `docs/contracts/PHASE3AR.md`
+23. `docs/contracts/PHASE3B0.md`
+24. `docs/contracts/PHASE3B1.md`
+25. `docs/contracts/PHASE3B2.md`
+26. `docs/HANDOFF.md`
 
 ## 불변 규칙
 
@@ -34,10 +37,10 @@
 - 제품은 원본 client에 일부 기능만 공급하는 제한된 local private server이며 별도 게임 UI나 simulator runtime이 아닙니다.
 - lab-owned harness는 계약·데이터 검사용 보조 도구이며 최종 인수 조건을 대체하지 않습니다.
 - 공식 로그인·계정·session·token, live 공식 traffic 가로채기/replay, 게임 프로세스 주입·후킹·memory patch를 사용하지 않습니다.
-- `C:\NIKKE` 주 설치본은 계속 read-only입니다. 실제 원본 client 실험은 exact build/hash를 고정한 snapshot 가능한 disposable VM/별도 OS에서만 수행합니다. 단순 디렉터리 복제본은 정적 검산용입니다.
+- 2026-09-06 운영자는 위 memory patch 문구로 기존 Epinel 제공 DLL 사용을 막는 것을 명시적으로 철회했습니다. SHA-256 `54ee18f5ee3d16fea8bb6c3407a880727aa3b848f6a55908e6bf90f8635e5662`인 DLL 자체의 내장 동작을 포함해 격리된 151 복제본 실험에 사용할 수 있습니다. 별도 주입·패치 구현, 공식 설치본 변경 또는 외부 통신 허가는 아닙니다. 상세는 `docs/SECURITY_BOUNDARY.md`의 동일 날짜 승인을 따릅니다.
+- Micron의 `C:\NIKKE`는 공식 launcher가 소유하는 mutable official-current 설치 경로입니다. 공식 설치·업데이트·fresh capture에만 사용하고 Local Lab/EpinelPS 도구가 수정하거나 private-server 실행 대상으로 삼지 않습니다. Local compatibility의 불변 기준은 별도 version/hash로 봉인한 `C:\NLL\Clients\NIKKE-<build>-*` lane입니다. 현재 경로 권위는 `docs/MICRON_CURRENT_PATHS.md`를 따르며 Micron에서 `E:\NIKKE`를 참조하지 않습니다.
 - system hosts/root CA 변경은 disposable VM/OS에서만, client-local certificate bundle과 pinned native compatibility shim 변경은 사전 hash·backup·rollback manifest가 있을 때만 허용합니다. 이 예외를 주 설치본이나 공식 서비스 접속에 사용하지 않습니다.
-- Phase 3A의 `blocked_insufficient_evidence`는 과거의 rights-holder-approval prerequisite 판정으로 보존합니다. 운영자가 승인한 modified-local 연구 lane의 현재 권위와 진입 조건은 `docs/PHASE3AR.md`입니다.
-- 공개 EpinelPS 구현은 기술적 실행 가능성의 prior art일 뿐 Shift Up의 승인 증거가 아닙니다. 권리자 승인은 주장하지 않고 법적 상태도 확정하지 않습니다.
+- Phase 3A의 `blocked_insufficient_evidence`는 과거의 rights-holder-approval prerequisite 판정으로 보존합니다. 운영자가 승인한 modified-local 연구 lane의 현재 권위와 진입 조건은 `docs/contracts/PHASE3AR.md`입니다.
 - original/classic Solo Raid Challenge만 목표로 합니다. 결과에 별도 공식 buff가 적용되는 Solo Raid Museum은 구현·검증·fallback 대상이 아닙니다.
 - 첫 live compatibility test는 시즌 26으로 하며 exact manager→preset→Challenge wave→monster/stat→client asset closure가 확인될 때만 실행합니다.
 - 원본·복호물·번들·이미지·음성·DB·실계정 데이터·patched binary·인증서 private key는 커밋하지 않습니다.

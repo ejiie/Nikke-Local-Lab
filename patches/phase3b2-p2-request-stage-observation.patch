@@ -1,0 +1,180 @@
+diff --git a/EpinelPS/LobbyServer/LobbyRequestDispatcher.cs b/EpinelPS/LobbyServer/LobbyRequestDispatcher.cs
+index 73b4b4f..7ea4d8c 100644
+--- a/EpinelPS/LobbyServer/LobbyRequestDispatcher.cs
++++ b/EpinelPS/LobbyServer/LobbyRequestDispatcher.cs
+@@ -46,19 +46,37 @@ public sealed class LobbyRequestDispatcher
+ 
+         if (!registry.TryGetRegistration(path, out LobbyHandlerRegistration? registration))
+         {
++            SafeRequestStageTrace.Write("handler_missing", null, handlerRegistered: false);
+             Logging.WriteLine($"[LobbyHandler] No handler for: {path}", LogType.Error);
+-            await new EmptyHandler().HandleAsync(context);
++            await RunHandlerWithTraceAsync(
++                context, new EmptyHandler(), typeof(EmptyHandler), handlerRegistered: false);
+             return;
+         }
+ 
+         LobbyMessage handler = registration.CreateHandler();
+         if (registration.SerializeByAccount && TryGetAccountId(context, out ulong accountId))
+         {
+-            await accountCoordinator.RunAsync(accountId, () => handler.HandleAsync(context));
++            await accountCoordinator.RunAsync(accountId, () => RunHandlerWithTraceAsync(
++                context, handler, registration.HandlerType, handlerRegistered: true));
+             return;
+         }
+ 
+-        await handler.HandleAsync(context);
++        await RunHandlerWithTraceAsync(
++            context, handler, registration.HandlerType, handlerRegistered: true);
++    }
++
++    private static async Task RunHandlerWithTraceAsync(
++        HttpContext context, LobbyMessage handler, Type handlerType, bool handlerRegistered)
++    {
++        SafeRequestStageTrace.Write("handler_started", handlerType, handlerRegistered);
++        try
++        {
++            await handler.HandleAsync(context);
++            SafeRequestStageTrace.Write("handler_completed", handlerType, handlerRegistered);
++        }
++        catch
++        {
++            SafeRequestStageTrace.Write("handler_failed", handlerType, handlerRegistered);
++            throw;
++        }
+     }
+ 
+     private static bool TryGetAccountId(HttpContext context, out ulong accountId)
+diff --git a/EpinelPS/LobbyServer/SafeRequestStageTrace.cs b/EpinelPS/LobbyServer/SafeRequestStageTrace.cs
+new file mode 100644
+index 0000000..70b1a5a
+--- /dev/null
++++ b/EpinelPS/LobbyServer/SafeRequestStageTrace.cs
+@@ -0,0 +1,58 @@
++using System.Text;
++using System.Text.Json;
++
++namespace EpinelPS.LobbyServer;
++
++public static class SafeRequestStageTrace
++{
++    public const string OutputPathEnvironmentVariable = "NLL_PHASE3B2_REQUEST_STAGE_LOG";
++
++    private static readonly object Sync = new();
++    private static long ordinal;
++    private static long writeFailureCount;
++
++    public static long WriteFailureCount => Interlocked.Read(ref writeFailureCount);
++
++    public static void Write(string transitionCode, Type? handlerType, bool handlerRegistered)
++    {
++        string? outputPath = Environment.GetEnvironmentVariable(
++            OutputPathEnvironmentVariable,
++            EnvironmentVariableTarget.Process);
++        if (string.IsNullOrWhiteSpace(outputPath))
++            return;
++
++        try
++        {
++            string handlerTypeCode = handlerType?.FullName ?? "unregistered_path";
++            var observation = new
++            {
++                schemaVersion = 1,
++                observedAtUtc = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
++                ordinal = Interlocked.Increment(ref ordinal),
++                transitionCode,
++                handlerTypeCode,
++                handlerRegistered
++            };
++            string line = JsonSerializer.Serialize(observation) + "\n";
++            byte[] bytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
++                .GetBytes(line);
++
++            lock (Sync)
++            {
++                string? directory = Path.GetDirectoryName(outputPath);
++                if (string.IsNullOrWhiteSpace(directory))
++                    throw new InvalidOperationException("Request stage trace directory is missing");
++
++                Directory.CreateDirectory(directory);
++                using FileStream stream = new(
++                    outputPath,
++                    FileMode.Append,
++                    FileAccess.Write,
++                    FileShare.ReadWrite | FileShare.Delete);
++                stream.Write(bytes, 0, bytes.Length);
++                stream.Flush(flushToDisk: true);
++            }
++        }
++        catch
++        {
++            Interlocked.Increment(ref writeFailureCount);
++        }
++    }
++}
+diff --git a/tests/EpinelPS.HandlerIsolation.Tests/HandlerFactoryIsolationTests.cs b/tests/EpinelPS.HandlerIsolation.Tests/HandlerFactoryIsolationTests.cs
+index 2a76d09..0fae722 100644
+--- a/tests/EpinelPS.HandlerIsolation.Tests/HandlerFactoryIsolationTests.cs
++++ b/tests/EpinelPS.HandlerIsolation.Tests/HandlerFactoryIsolationTests.cs
+@@ -1,4 +1,5 @@
+ using System.Collections.Concurrent;
++using System.Text.Json;
+ using EpinelPS.Database;
+ using EpinelPS.LobbyServer;
+ using Microsoft.AspNetCore.Http;
+@@ -103,6 +104,47 @@ public sealed class HandlerFactoryIsolationTests
+             Assert.Equal("EpinelPS.LobbyServer.Soloraid", registration.HandlerType.Namespace));
+     }
+ 
++    [Fact]
++    public async Task Opt_in_request_stage_trace_excludes_path_and_account_identity()
++    {
++        string tracePath = Path.Combine(
++            Path.GetTempPath(), $"epinelps-request-stage-{Guid.NewGuid():N}.jsonl");
++        const string privatePath = "/private-secret-path";
++        const ulong privateAccountId = 987654321;
++        string? previous = Environment.GetEnvironmentVariable(
++            SafeRequestStageTrace.OutputPathEnvironmentVariable,
++            EnvironmentVariableTarget.Process);
++
++        try
++        {
++            Environment.SetEnvironmentVariable(
++                SafeRequestStageTrace.OutputPathEnvironmentVariable,
++                tracePath,
++                EnvironmentVariableTarget.Process);
++            ProbeHandler.Probe = new BarrierProbe(expectedEntries: 1);
++            LobbyRequestDispatcher dispatcher = CreateDispatcher(
++                privatePath, serializeByAccount: false);
++
++            await dispatcher.DispatchAsync(CreateContext(
++                "/v1" + privatePath, privateAccountId));
++
++            string traceText = await File.ReadAllTextAsync(tracePath);
++            Assert.DoesNotContain(privatePath, traceText, StringComparison.Ordinal);
++            Assert.DoesNotContain(privateAccountId.ToString(), traceText, StringComparison.Ordinal);
++            string[] lines = traceText.Split('\n', StringSplitOptions.RemoveEmptyEntries);
++            Assert.Equal(2, lines.Length);
++            using JsonDocument started = JsonDocument.Parse(lines[0]);
++            using JsonDocument completed = JsonDocument.Parse(lines[1]);
++            Assert.Equal("handler_started",
++                started.RootElement.GetProperty("transitionCode").GetString());
++            Assert.Equal("handler_completed",
++                completed.RootElement.GetProperty("transitionCode").GetString());
++            Assert.EndsWith(nameof(ProbeHandler),
++                started.RootElement.GetProperty("handlerTypeCode").GetString(),
++                StringComparison.Ordinal);
++        }
++        finally
++        {
++            Environment.SetEnvironmentVariable(
++                SafeRequestStageTrace.OutputPathEnvironmentVariable,
++                previous,
++                EnvironmentVariableTarget.Process);
++            if (File.Exists(tracePath)) File.Delete(tracePath);
++        }
++    }
++
+     private static LobbyHandlerRegistry CreateRegistry(string path, bool serializeByAccount)
+     {
+         return new LobbyHandlerRegistry(

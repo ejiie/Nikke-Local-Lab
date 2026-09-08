@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:fetched-account-snapshot:v1",
+  "title": "FetchedAccountSnapshotV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "snapshotUid",
+    "capturedAtUtc",
+    "source",
+    "completeness",
+    "account",
+    "progression",
+    "characters"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "nll/fetched-account-snapshot/v1" },
+    "snapshotUid": { "$ref": "#/$defs/uuid" },
+    "capturedAtUtc": { "$ref": "#/$defs/utcInstant" },
+    "source": { "$ref": "#/$defs/source" },
+    "completeness": { "$ref": "#/$defs/completeness" },
+    "account": { "$ref": "#/$defs/account" },
+    "progression": { "$ref": "#/$defs/progression" },
+    "characters": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/character" }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "controlledCode": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}$" },
+    "utcInstant": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "object",
+      "description": "The artifact length and hash identify the canonical source-free sanitized draft, never the credential-bearing raw capture.",
+      "additionalProperties": false,
+      "required": [
+        "workerCode",
+        "workerVersion",
+        "artifactByteLength",
+        "artifactSha256",
+        "credentialOrSessionPersisted",
+        "rawSourcePersisted"
+      ],
+      "properties": {
+        "workerCode": { "$ref": "#/$defs/controlledCode" },
+        "workerVersion": { "$ref": "#/$defs/controlledCode" },
+        "artifactByteLength": { "type": "integer", "minimum": 0 },
+        "artifactSha256": { "$ref": "#/$defs/sha256" },
+        "credentialOrSessionPersisted": { "const": false },
+        "rawSourcePersisted": { "const": false }
+      }
+    },
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statusCode",
+        "rosterCount",
+        "characterDetailCount",
+        "equipmentCharacterCount",
+        "missingCharacterCount",
+        "reasonCodes"
+      ],
+      "properties": {
+        "statusCode": { "enum": ["complete", "incomplete", "failed"] },
+        "rosterCount": { "type": "integer", "minimum": 0 },
+        "characterDetailCount": { "type": "integer", "minimum": 0 },
+        "equipmentCharacterCount": { "type": "integer", "minimum": 0 },
+        "missingCharacterCount": { "type": "integer", "minimum": 0 },
+        "reasonCodes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/controlledCode" }
+        }
+      }
+    },
+    "account": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["displayName", "commanderLevel", "synchroLevel", "consoles"],
+      "properties": {
+        "displayName": { "type": ["string", "null"], "minLength": 1, "maxLength": 64 },
+        "commanderLevel": { "type": ["integer", "null"], "minimum": 1 },
+        "synchroLevel": { "type": "integer", "minimum": 1 },
+        "consoles": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 9,
+          "items": { "$ref": "#/$defs/console" }
+        }
+      }
+    },
+    "console": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coordinateCode", "level", "experience"],
+      "properties": {
+        "coordinateCode": { "$ref": "#/$defs/controlledCode" },
+        "level": { "type": "integer", "minimum": 0 },
+        "experience": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "progression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "normalStageLabel",
+        "hardStageLabel",
+        "storyStageLabel",
+        "mainQuestDataSha256",
+        "mainQuestCompletedCount",
+        "completedScenarioCount",
+        "contentsOpenUnlockedCount"
+      ],
+      "properties": {
+        "normalStageLabel": { "type": ["string", "null"] },
+        "hardStageLabel": { "type": ["string", "null"] },
+        "storyStageLabel": { "type": ["string", "null"] },
+        "mainQuestDataSha256": {
+          "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+        },
+        "mainQuestCompletedCount": { "type": ["integer", "null"], "minimum": 0 },
+        "completedScenarioCount": { "type": ["integer", "null"], "minimum": 0 },
+        "contentsOpenUnlockedCount": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "character": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "characterUid",
+        "characterLevel",
+        "characterLevelReasonCode",
+        "limitBreak",
+        "coreLevel",
+        "bondLevel",
+        "bondLevelReasonCode",
+        "skills",
+        "equipment",
+        "cube",
+        "collectible"
+      ],
+      "properties": {
+        "characterUid": { "$ref": "#/$defs/uuid" },
+        "characterLevel": { "type": ["integer", "null"], "minimum": 1 },
+        "characterLevelReasonCode": {
+          "oneOf": [{ "$ref": "#/$defs/controlledCode" }, { "type": "null" }]
+        },
+        "limitBreak": { "type": "integer", "minimum": 0 },
+        "coreLevel": { "type": "integer", "minimum": 0 },
+        "bondLevel": { "type": ["integer", "null"], "minimum": 0 },
+        "bondLevelReasonCode": {
+          "oneOf": [{ "$ref": "#/$defs/controlledCode" }, { "type": "null" }]
+        },
+        "skills": { "$ref": "#/$defs/skills" },
+        "equipment": {
+          "type": "array",
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/equipment" }
+        },
+        "cube": { "$ref": "#/$defs/cube" },
+        "collectible": { "$ref": "#/$defs/collectible" }
+      }
+    },
+    "skills": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["skill1", "skill2", "burst"],
+      "properties": {
+        "skill1": { "type": "integer", "minimum": 1 },
+        "skill2": { "type": "integer", "minimum": 1 },
+        "burst": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "equipment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slotCode", "stateCode", "enhancementLevel", "manufacturerMatched", "overloadLines"],
+      "properties": {
+        "slotCode": { "enum": ["head", "torso", "arms", "legs"] },
+        "stateCode": { "enum": ["equipped", "unequipped"] },
+        "definitionVersionUid": {
+          "oneOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+        },
+        "enhancementLevel": { "type": ["integer", "null"], "minimum": 0 },
+        "manufacturerMatched": { "type": ["boolean", "null"] },
+        "overloadLines": {
+          "type": "array",
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/overloadLine" }
+        }
+      }
+    },
+    "overloadLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lineIndex", "optionDefinitionVersionUid", "unscaledValue", "decimalScale"],
+      "properties": {
+        "lineIndex": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "optionDefinitionVersionUid": { "$ref": "#/$defs/uuid" },
+        "unscaledValue": { "type": "integer" },
+        "decimalScale": { "type": "integer", "minimum": 0, "maximum": 9 }
+      }
+    },
+    "cube": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stateCode", "definitionVersionUid", "level"],
+      "properties": {
+        "stateCode": { "enum": ["equipped", "unequipped"] },
+        "definitionVersionUid": {
+          "oneOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+        },
+        "level": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "collectible": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kindCode", "level"],
+      "properties": {
+        "kindCode": { "enum": ["none", "generic_collection", "favorite", "unresolved"] },
+        "definitionVersionUid": {
+          "oneOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+        },
+        "level": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    }
+  }
+}

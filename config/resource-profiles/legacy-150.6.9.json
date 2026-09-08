@@ -1,0 +1,35 @@
+{
+  "contractId": "nll/sealed-resource-catalog-profile/v1",
+  "clientBuildCode": "build_150.6.9",
+  "clientExecutableSha256": "2cfaa12b7d708aa6a741faee17c3ac14d8e9cd6be1b5e4e773ee1535b6ddaa30",
+  "headerSha256": "5914cb58fd2146fe761ab531ecb4e321300527186a54b455e59de962ff6c044a",
+  "payloadClosureStatusCode": "not_evaluated",
+  "signatureVerificationStatusCode": "pair_hashes_only",
+  "members": [
+    {
+      "roleCode": "core",
+      "bodySha256": "a1dc8425ca034447a1e495d02f02e10fcbf92a772453aebfc214c3a88dd21d52",
+      "signatureSha256": "9c1ea4e701f0ca770d95dfa4607af233b2d7123cd1d3db6897155f107740f966"
+    },
+    {
+      "roleCode": "dp",
+      "bodySha256": "326c029414ccf06ff429dd2e017a8bbae6dc39fd295682c67f333a8611a6e5cb",
+      "signatureSha256": "16b319314a4ba278e9ae229b51f7ec462819a6566c595050ccf55e2f1b7fbfbc"
+    },
+    {
+      "roleCode": "fd",
+      "bodySha256": "af0307449ddb4455357c7d2e4e9bf363f5bb2d4a8615e11e37939629b2acc04c",
+      "signatureSha256": "876618c9a45663c60b09683f6c090b952edc76b7e9c9997d13085e30e8d9427c"
+    },
+    {
+      "roleCode": "saus",
+      "bodySha256": "a8ad0f199f5db1213658c3238369ad472a98db74bb3a15a274931119ca22d0df",
+      "signatureSha256": "01de2cc79b8f04297faf262666a7701242a942ba74d48b513c0998ab08b91fa2"
+    },
+    {
+      "roleCode": "en",
+      "bodySha256": "a1db64b599a415b25fa78f6fde0a4eca8b23f810742dff1e66924dd4480ad140",
+      "signatureSha256": "c22b63b6cbc83b2a2a56449bddf9ccfbc12998f95d897b2352a473b4f53b4e3b"
+    }
+  ]
+}

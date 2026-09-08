@@ -21,7 +21,8 @@
     "selectedManagerIntegrationCommitSha": "92a6ca228aeb580988907b96189b2857dff2c62d",
     "preflightSealCommitSha": "e32e5f900775974d5736e7fb2b50f8c62638a004",
     "preflightHardeningCommitSha": "4f7bd5b5eb2b9a6e03af503f1c09adc4c4f7f16f",
-    "latestExternalTreeCommitSha": "ce353eeebee3c76672e483c6f735bb27f0227815"
+    "latestExternalCommitSha": "519c3db51ec24ca19307e93e85acde7885928a72",
+    "latestExternalTreeCommitSha": "b9e8bfb1b1e065427a48d40cb2bcf2f30215436a"
   },
   "environment": {
     "environmentKindCode": "unresolved",

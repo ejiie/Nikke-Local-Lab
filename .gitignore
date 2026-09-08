@@ -16,6 +16,8 @@
 **/secrets.local.*
 
 # Local runtime state. Keep it outside the repository when possible.
+/.tmp*/
+**/.tmp*/
 /data/
 /Database/
 /raw/
@@ -38,6 +40,13 @@
 /NikkeLocalLab/
 /TestResults/
 /assets/game/
+
+# Machine-local SDK caches and external upstream checkouts are never source inputs.
+**/.dotnet-cli-home/
+**/.dotnet-cli/
+**/.nuget-packages/
+/.tooling/
+/.external/
 
 # Game containers and decoded Unity artifacts
 *.mpk
@@ -80,6 +89,7 @@ dump.cs
 *.webp
 *.gif
 *.bmp
+*.ico
 *.tga
 *.dds
 *.ktx

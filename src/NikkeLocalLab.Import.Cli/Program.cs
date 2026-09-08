@@ -87,6 +87,16 @@ internal static class ImportCli
               configuration,
               repositoryRoot,
               options).ConfigureAwait(false);
+        case "fetched-account-snapshot-materialize":
+          return await FetchedAccountSnapshotCli.MaterializeAsync(
+              configuration,
+              repositoryRoot,
+              options).ConfigureAwait(false);
+        case "fetched-progression-observation-materialize":
+          return await FetchedProgressionObservationCli.MaterializeAsync(
+              configuration,
+              repositoryRoot,
+              options).ConfigureAwait(false);
         default:
           return Fail("command_not_supported");
       }

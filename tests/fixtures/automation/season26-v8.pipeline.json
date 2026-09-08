@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "contractId": "nll/pipeline-run-manifest/v1",
+  "pipelineUid": "26000000-0000-4000-8000-000000000008",
+  "target": {
+    "kindCode": "season_checkpoint",
+    "seasonNumber": 26,
+    "clientBuildCode": "build_150.6.9",
+    "modeCode": "classic_challenge"
+  },
+  "inputs": [
+    {
+      "roleCode": "audit_receipt",
+      "relativePath": "metadata/audit.receipt.json",
+      "byteLength": 1230,
+      "sha256": "83f28d7aecd2d551604ebb575b3b0754db835f106b3b020e7f5595495ae09d53"
+    },
+    {
+      "roleCode": "baseline_database",
+      "relativePath": "artifacts/runtime/db.json",
+      "byteLength": 1396709,
+      "sha256": "dee9c6aa5421287ca030e325b81a90a302a5d9e113d57c3065e5d36f6e7c4019"
+    },
+    {
+      "roleCode": "content_manifest",
+      "relativePath": "metadata/content.manifest.json",
+      "byteLength": 186979,
+      "sha256": "4fbbe7132de0ed0d489bdae6f647a0dc98c4559328de057fd4f4dc891dc9b26e"
+    },
+    {
+      "roleCode": "deployment_receipt",
+      "relativePath": "evidence/deployment/deployment.receipt.json",
+      "byteLength": 3205,
+      "sha256": "8f88367eb79582be6c491ce04515dde5c2ccbbbbb2469262f42d76ddc4e0c51c"
+    },
+    {
+      "roleCode": "inner_completion",
+      "relativePath": "artifacts/tools/complete-phase3b2-epinel-solo-raid-damage-source-observer-v8-in-micron.ps1",
+      "byteLength": 29714,
+      "sha256": "4eb6abd1ede68c9bc37b31f06430b00c00280161b0af2f6e7a49368aef9a1109"
+    },
+    {
+      "roleCode": "inner_start",
+      "relativePath": "artifacts/tools/start-phase3b2-epinel-solo-raid-damage-source-observer-v8-in-micron.ps1",
+      "byteLength": 37981,
+      "sha256": "190d1583e306bf71e93dee01bcdfda37a4cb9b748cb548760a98f81a77426faa"
+    },
+    {
+      "roleCode": "outer_completion",
+      "relativePath": "artifacts/tools/Complete-Phase3B2-Epinel-SoloRaidDamageSourceObserver-v8.ps1",
+      "byteLength": 735,
+      "sha256": "c22e3f87d46abff37dd2da2c394b02f8c4d24402f7d4562b3a2d11da3545d661"
+    },
+    {
+      "roleCode": "outer_start",
+      "relativePath": "artifacts/tools/Start-Phase3B2-Epinel-SoloRaidDamageSourceObserver-v8.ps1",
+      "byteLength": 8861,
+      "sha256": "2819d06387aee08a959a1c6e9f8d9c79e26e4bd4dec88bce091440d712b62071"
+    },
+    {
+      "roleCode": "restore_plan",
+      "relativePath": "metadata/restore.plan.json",
+      "byteLength": 1643,
+      "sha256": "ba2a42e5d8c0acc3d18eaa3f014461f6df46f12515c35653815c3d1ff2f40cfc"
+    },
+    {
+      "roleCode": "seal_receipt",
+      "relativePath": "metadata/seal.receipt.json",
+      "byteLength": 2698,
+      "sha256": "d1b3339d6f3a1ddb9f57843d0d684e22ccc83fa5e1276f2cff49a99d85f3e506"
+    },
+    {
+      "roleCode": "server_dll",
+      "relativePath": "artifacts/runtime/EpinelPS.dll",
+      "byteLength": 15392256,
+      "sha256": "7220be7819121c38acfe9b221bfa6a89b7f894e737bd5df97a955289e2417519"
+    },
+    {
+      "roleCode": "source_manifest",
+      "relativePath": "evidence/deployment/source.manifest.tsv",
+      "byteLength": 2833,
+      "sha256": "4a0a1f71fe9b7a235703293d6a9c6adb9626ab18b0a8d8daf885c01008fe1f02"
+    }
+  ],
+  "steps": [
+    {
+      "stepId": "inventory",
+      "kindCode": "inventory",
+      "mutation": false,
+      "dependencyStepIds": [],
+      "outputRoleCodes": ["inventory_receipt"],
+      "actions": [],
+      "rollbackActions": []
+    },
+    {
+      "stepId": "validate",
+      "kindCode": "validate",
+      "mutation": false,
+      "dependencyStepIds": ["inventory"],
+      "outputRoleCodes": ["validation_receipt"],
+      "actions": [],
+      "rollbackActions": []
+    },
+    {
+      "stepId": "stage",
+      "kindCode": "stage",
+      "mutation": true,
+      "dependencyStepIds": ["validate"],
+      "outputRoleCodes": ["deployment_receipt"],
+      "actions": [
+        {
+          "actionCode": "install_runtime_overlay",
+          "targetRoleCode": "runtime_candidate"
+        },
+        {
+          "actionCode": "install_tool_overlay",
+          "targetRoleCode": "tool_candidate"
+        },
+        {
+          "actionCode": "create_cache_link",
+          "targetRoleCode": "cache_link"
+        }
+      ],
+      "rollbackActions": [
+        {
+          "actionCode": "remove_cache_link",
+          "targetRoleCode": "cache_link"
+        },
+        {
+          "actionCode": "deactivate_candidate_lane",
+          "targetRoleCode": "runtime_candidate"
+        },
+        {
+          "actionCode": "select_parent_lane",
+          "targetRoleCode": "parent_lane"
+        }
+      ]
+    }
+  ]
+}

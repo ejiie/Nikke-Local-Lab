@@ -11,7 +11,7 @@ internal static class RaidCatalogCli
 {
   private static readonly ExtractorDescriptor Extractor = new(
       "challenge_raid_catalog",
-      "2",
+      "v2",
       Sha256Digest.ComputeUtf8("nll/challenge-raid-catalog-extractor-contract/v2"));
 
   public static async Task<int> InspectAsync(

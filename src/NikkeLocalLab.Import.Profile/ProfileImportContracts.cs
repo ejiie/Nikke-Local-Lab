@@ -176,7 +176,8 @@ public sealed record OfflineProfileImportOptions
 public enum ProfileImportFactStatus
 {
   Ready,
-  Unresolved
+  Unresolved,
+  NotApplicable
 }
 
 public sealed record ProfileImportFact<T>
@@ -188,6 +189,7 @@ public sealed record ProfileImportFact<T>
     {
       ProfileImportFactStatus.Ready => value.HasValue && reasonCode is null,
       ProfileImportFactStatus.Unresolved => !value.HasValue && reasonCode is not null,
+      ProfileImportFactStatus.NotApplicable => !value.HasValue && reasonCode is null,
       _ => false
     };
     if (!valid)
@@ -211,6 +213,16 @@ public sealed record ProfileImportFact<T>
 
   public static ProfileImportFact<T> Unresolved(string reasonCode) =>
       new(ProfileImportFactStatus.Unresolved, null, reasonCode);
+
+  public static ProfileImportFact<T> NotApplicable() =>
+      new(ProfileImportFactStatus.NotApplicable, null, null);
+}
+
+public enum ProfileImportRarity
+{
+  R,
+  Sr,
+  Ssr
 }
 
 public enum ProfileImportEquipmentSlot
@@ -366,6 +378,7 @@ public sealed record ProfileAliasResolution<T>
 
 public sealed record ResolvedProfileCharacter(
     EntityUid CharacterUid,
+    ProfileImportRarity Rarity,
     ProfileImportCombatRole CombatRole,
     ProfileImportManufacturer Manufacturer,
     ProfileImportWeaponClass WeaponClass,

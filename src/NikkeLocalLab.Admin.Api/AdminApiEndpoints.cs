@@ -15,6 +15,17 @@ internal static class AdminApiEndpoints
   {
     var api = app.MapGroup("/admin-api/v1");
 
+    api.MapGet("/accounts", ListAccountsAsync);
+    api.MapGet("/accounts/{accountUid}/workspace", GetAccountWorkspaceAsync);
+    api.MapPut("/accounts/{accountUid}/workspace", SaveAccountWorkspaceAsync);
+    api.MapPost("/accounts/{accountUid}/workspace/save-as", SaveAccountWorkspaceAsAsync);
+    api.MapGet("/accounts/{accountUid}/workspace/saves", GetWorkspaceSaveRecoveryAsync);
+    api.MapPost("/accounts/{accountUid}/workspace/saves/resume", ResumeWorkspaceSaveAsync);
+    api.MapGet("/accounts/{accountUid}/revisions", GetAccountRevisionsAsync);
+    api.MapPut("/accounts/{accountUid}/label", RenameAccountAsync);
+    api.MapGet(
+        "/accounts/{accountUid}/runtime-projection-candidate",
+        ExportRuntimeProjectionCandidateAsync);
     api.MapGet("/accounts/{accountUid}/bootstrap", GetBootstrapAsync);
     api.MapPost("/accounts/{accountUid}/local-state", InitializeLocalStateAsync);
     api.MapGet("/accounts/{accountUid}/profile", GetProfileAsync);
@@ -22,6 +33,11 @@ internal static class AdminApiEndpoints
     api.MapPost("/accounts/{accountUid}/profile/preview", PreviewProfileAsync);
     api.MapPut("/accounts/{accountUid}/profile", SaveProfileAsync);
     api.MapPost("/accounts/{accountUid}/save-as", SaveAsProfileAsync);
+    api.MapPost("/accounts/{accountUid}/fetched-snapshots", RegisterFetchedSnapshotAsync);
+    api.MapGet("/accounts/{accountUid}/fetched-snapshots/latest", GetLatestFetchedSnapshotAsync);
+    api.MapGet("/fetched-snapshots/{snapshotUid}", GetFetchedSnapshotAsync);
+    api.MapPost("/fetched-snapshots/{snapshotUid}/lobby/diff", PreviewFetchedLobbyDiffAsync);
+    api.MapPost("/fetched-snapshots/{snapshotUid}/lobby/apply", ApplyFetchedLobbyAsync);
 
     api.MapGet("/import-drafts/{draftUid}", GetImportDraftAsync);
     api.MapPost("/import-drafts/{draftUid}/diff", PreviewImportDiffAsync);
@@ -38,6 +54,147 @@ internal static class AdminApiEndpoints
     api.MapGet("/accounts/{accountUid}/wallet", GetWalletAsync);
     api.MapPut("/accounts/{accountUid}/wallet", SaveWalletAsync);
     api.MapGet("/client-feature-manifest", GetFeatureManifestAsync);
+  }
+
+  private static async Task<IResult> ListAccountsAsync(
+      IProfileManagementService service,
+      CancellationToken cancellationToken)
+  {
+    var result = await service.ListAccountsAsync(cancellationToken).ConfigureAwait(false);
+    return Results.Json(result);
+  }
+
+  private static async Task<IResult> GetWorkspaceSaveRecoveryAsync(
+      string accountUid, IProfileManagementService service, CancellationToken cancellationToken) =>
+      Results.Json(await service.GetWorkspaceSaveRecoveryAsync(ParseUid(accountUid), cancellationToken).ConfigureAwait(false));
+
+  private static async Task<IResult> ResumeWorkspaceSaveAsync(
+      string accountUid, ResumeWorkspaceSaveRequest request, HttpContext context,
+      IProfileManagementService service, CancellationToken cancellationToken)
+  {
+    var receipt = await service.ResumeWorkspaceSaveAsync(new ResumeWorkspaceSaveCommand(
+        ParseUid(accountUid), ParseUid(request.OperationUid), RequireIfMatchDigest(context.Request)), cancellationToken).ConfigureAwait(false);
+    context.Response.Headers.ETag = QuoteEtag(receipt.RevisionSetSha256.ToString());
+    return Results.Json(receipt, statusCode: receipt.SaveAs ? StatusCodes.Status201Created : StatusCodes.Status200OK);
+  }
+
+  private static async Task<IResult> GetAccountWorkspaceAsync(
+      string accountUid,
+      IProfileManagementService service,
+      HttpContext context,
+      CancellationToken cancellationToken)
+  {
+    var result = await service.GetAccountWorkspaceAsync(ParseUid(accountUid), cancellationToken)
+        .ConfigureAwait(false) ?? throw NotFound("account_not_found");
+    context.Response.Headers.ETag = QuoteEtag(result.BaseRevisions.RevisionSetSha256.ToString());
+    return Results.Json(result);
+  }
+
+  private static async Task<IResult> GetAccountRevisionsAsync(
+      string accountUid,
+      IProfileManagementService service,
+      CancellationToken cancellationToken)
+  {
+    var result = await service.GetAccountRevisionHistoryAsync(
+        ParseUid(accountUid), cancellationToken).ConfigureAwait(false);
+    return result is null ? throw NotFound("account_not_found") : Results.Json(result);
+  }
+
+  private static async Task<IResult> RenameAccountAsync(
+      string accountUid,
+      RenameAccountRequest request,
+      IProfileManagementService service,
+      CancellationToken cancellationToken)
+  {
+    var result = await service.RenameAccountAsync(
+        new RenameAccountCommand(
+            ParseUid(accountUid),
+            ProfileManagementText.NormalizeAccountLabel(
+                request.ExpectedAccountLabel ?? throw Invalid("account_label_invalid")),
+            ProfileManagementText.NormalizeAccountLabel(
+                request.AccountLabel ?? throw Invalid("account_label_invalid"))),
+        cancellationToken).ConfigureAwait(false);
+    return Results.Json(result);
+  }
+
+  private static Task<IResult> SaveAccountWorkspaceAsync(
+      string accountUid,
+      SaveAccountWorkspaceRequest request,
+      IProfileManagementService service,
+      HttpContext context,
+      CancellationToken cancellationToken) =>
+      SaveAccountWorkspaceCoreAsync(
+          accountUid,
+          request,
+          saveAs: false,
+          service,
+          context,
+          cancellationToken);
+
+  private static Task<IResult> SaveAccountWorkspaceAsAsync(
+      string accountUid,
+      SaveAccountWorkspaceRequest request,
+      IProfileManagementService service,
+      HttpContext context,
+      CancellationToken cancellationToken) =>
+      SaveAccountWorkspaceCoreAsync(
+          accountUid,
+          request,
+          saveAs: true,
+          service,
+          context,
+          cancellationToken);
+
+  private static async Task<IResult> SaveAccountWorkspaceCoreAsync(
+      string accountUid,
+      SaveAccountWorkspaceRequest request,
+      bool saveAs,
+      IProfileManagementService service,
+      HttpContext context,
+      CancellationToken cancellationToken)
+  {
+    var result = await service.SaveAccountWorkspaceAsync(
+        new SaveAccountWorkspaceCommand(
+            ParseUid(request.OperationUid),
+            saveAs,
+            ParseUid(accountUid),
+            RequireIfMatchDigest(context.Request),
+            ParseUid(request.ExpectedProfileRevisionUid),
+            ParseUid(request.ExpectedLobbyRevisionUid),
+            ParseUid(request.ExpectedWalletRevisionUid),
+            ParseUid(request.CandidateDraftUid),
+            ParseDigest(request.CandidateSha256),
+            ParseDigest(request.ExpectedDiffSha256),
+            ProfileManagementText.NormalizeAccountLabel(
+                request.ExpectedAccountLabel ?? throw Invalid("account_label_invalid")),
+            ProfileManagementText.NormalizeAccountLabel(
+                request.AccountLabel ?? throw Invalid("account_label_invalid")),
+            ProfileManagementText.NormalizeDisplayName(
+                request.DisplayName ?? throw Invalid("lobby_presentation_value_invalid")),
+            request.CommanderLevel ?? throw Invalid("lobby_presentation_value_invalid"),
+            ParseOptionalUid(request.ProfileIconSelectionUid),
+            ParseOptionalUid(request.ProfileFrameSelectionUid),
+            ParseOptionalUid(request.LobbyCharacterSelectionUid),
+            ParseOptionalUid(request.LobbyBackgroundSelectionUid),
+            MapWalletBalances(request.Balances)),
+        cancellationToken).ConfigureAwait(false);
+    context.Response.Headers.ETag = QuoteEtag(result.RevisionSetSha256.ToString());
+    return Results.Json(
+        result,
+        statusCode: saveAs ? StatusCodes.Status201Created : StatusCodes.Status200OK);
+  }
+
+  private static async Task<IResult> ExportRuntimeProjectionCandidateAsync(
+      string accountUid,
+      IProfileManagementService service,
+      HttpContext context,
+      CancellationToken cancellationToken)
+  {
+    var result = await service.ExportRuntimeProjectionCandidateAsync(
+        ParseUid(accountUid), cancellationToken).ConfigureAwait(false) ??
+        throw NotFound("account_not_found");
+    context.Response.Headers.ETag = QuoteEtag(result.CandidateSha256.ToString());
+    return Results.Json(result);
   }
 
   private static async Task<IResult> GetBootstrapAsync(
@@ -192,7 +349,9 @@ internal static class AdminApiEndpoints
             RequireIfMatchUid(context.Request),
             candidateUid,
             candidateSha256,
-            ParseDigest(request.ExpectedDiffSha256)),
+            ParseDigest(request.ExpectedDiffSha256),
+            ProfileManagementText.NormalizeAccountLabel(
+                request.AccountLabel ?? throw Invalid("account_label_invalid"))),
         cancellationToken).ConfigureAwait(false);
     SetRevisionEtag(context, result.ProfileRevision.RevisionUid);
     return Results.Json(result, statusCode: StatusCodes.Status201Created);
@@ -213,6 +372,90 @@ internal static class AdminApiEndpoints
 
     EnsureDraftContract(result);
     SetRevisionEtag(context, result.DraftUid);
+    return Results.Json(result);
+  }
+
+  private static async Task<IResult> RegisterFetchedSnapshotAsync(
+      string accountUid,
+      RegisterFetchedAccountSnapshotRequest request,
+      IProfileManagementService service,
+      HttpContext context,
+      CancellationToken cancellationToken)
+  {
+    var result = await service.RegisterFetchedAccountSnapshotAsync(
+        new RegisterFetchedAccountSnapshotCommand(
+            ParseUid(accountUid),
+            RequireIfMatchUid(context.Request),
+            request.CanonicalSnapshotJson ?? throw Invalid("fetched_snapshot_payload_missing"),
+            request.CanonicalSanitizedDraftJson ??
+                throw Invalid("fetched_snapshot_sanitized_draft_missing"),
+            request.CanonicalProgressionObservationJson),
+        cancellationToken).ConfigureAwait(false);
+    SetRevisionEtag(context, result.SnapshotUid);
+    return Results.Json(result, statusCode: StatusCodes.Status201Created);
+  }
+
+  private static async Task<IResult> GetFetchedSnapshotAsync(
+      string snapshotUid,
+      IProfileManagementService service,
+      HttpContext context,
+      CancellationToken cancellationToken)
+  {
+    var result = await service.GetFetchedAccountSnapshotAsync(
+        ParseUid(snapshotUid), cancellationToken).ConfigureAwait(false) ??
+        throw NotFound("fetched_snapshot_not_found");
+    SetRevisionEtag(context, result.SnapshotUid);
+    return Results.Json(result);
+  }
+
+  private static async Task<IResult> GetLatestFetchedSnapshotAsync(
+      string accountUid,
+      IProfileManagementService service,
+      HttpContext context,
+      CancellationToken cancellationToken)
+  {
+    var result = await service.GetLatestFetchedAccountSnapshotAsync(
+        ParseUid(accountUid), cancellationToken).ConfigureAwait(false) ??
+        throw NotFound("fetched_snapshot_observation_not_found");
+    SetRevisionEtag(context, result.SnapshotUid);
+    return Results.Json(result);
+  }
+
+  private static async Task<IResult> PreviewFetchedLobbyDiffAsync(
+      string snapshotUid,
+      FetchedLobbyDiffRequest request,
+      IProfileManagementService service,
+      HttpContext context,
+      CancellationToken cancellationToken)
+  {
+    var result = await service.PreviewFetchedLobbyDiffAsync(
+        new PreviewFetchedLobbyDiffCommand(
+            ParseUid(request.OperationUid),
+            ParseUid(snapshotUid),
+            ParseUid(request.TargetAccountUid),
+            RequireIfMatchUid(context.Request),
+            NormalizeFetchedLobbyFields(request.Fields)),
+        cancellationToken).ConfigureAwait(false);
+    return Results.Json(result);
+  }
+
+  private static async Task<IResult> ApplyFetchedLobbyAsync(
+      string snapshotUid,
+      ApplyFetchedLobbyRequest request,
+      IProfileManagementService service,
+      HttpContext context,
+      CancellationToken cancellationToken)
+  {
+    var result = await service.ApplyFetchedLobbyAsync(
+        new ApplyFetchedLobbyCommand(
+            ParseUid(request.OperationUid),
+            ParseUid(snapshotUid),
+            ParseUid(request.TargetAccountUid),
+            RequireIfMatchUid(context.Request),
+            ParseDigest(request.ExpectedDiffSha256),
+            NormalizeFetchedLobbyFields(request.Fields)),
+        cancellationToken).ConfigureAwait(false);
+    SetRevisionEtag(context, result.Lobby.Revision.RevisionUid);
     return Results.Json(result);
   }
 
@@ -657,6 +900,19 @@ internal static class AdminApiEndpoints
     return result;
   }
 
+  private static IReadOnlyList<string> NormalizeFetchedLobbyFields(
+      IReadOnlyList<string>? fields)
+  {
+    var result = fields?.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray() ?? [];
+    if (result.Length == 0 || result.Length > 2 ||
+        result.Any(field => field is not ("commander_level" or "display_name")))
+    {
+      throw Invalid("fetched_lobby_field_set_invalid");
+    }
+
+    return result;
+  }
+
   private static string NormalizeLevelAuthority(string? value, bool allowUnresolved)
   {
     value ??= NoLevelAuthority;
@@ -695,6 +951,22 @@ internal static class AdminApiEndpoints
     }
 
     return ParseUid(value[1..^1]);
+  }
+
+  private static Sha256Digest RequireIfMatchDigest(HttpRequest request)
+  {
+    if (!request.Headers.TryGetValue("If-Match", out var values) || values.Count != 1)
+    {
+      throw new ApiRequestException(StatusCodes.Status428PreconditionRequired, "if_match_required");
+    }
+
+    var value = values[0];
+    if (value is null || value.Length != 66 || value[0] != '"' || value[^1] != '"')
+    {
+      throw Invalid("if_match_invalid");
+    }
+
+    return ParseDigest(value[1..^1]);
   }
 
   private static EntityUid RequireDraftIfMatch(string draftUid, HttpRequest request)

@@ -697,6 +697,18 @@ public sealed partial class PostgreSqlLocalGameStateStore
     return result;
   }
 
+  internal static async Task<LocalLobbyPresentationReceipt?> GetRuntimeLobbyAsync(
+      NpgsqlConnection connection,
+      NpgsqlTransaction transaction,
+      EntityUid accountUid,
+      CancellationToken cancellationToken)
+  {
+    var binding = await ReadBootstrapBindingAsync(connection, transaction, accountUid, cancellationToken).ConfigureAwait(false);
+    if (binding is null) return null;
+    await EnsureCurrentLobbyCompatibilityAsync(connection, transaction, binding, cancellationToken).ConfigureAwait(false);
+    return await ReadLobbyAsync(connection, transaction, binding.LobbyRevisionId, cancellationToken).ConfigureAwait(false);
+  }
+
   // Administrative repair reads intentionally do not apply the bootstrap's stale-lobby gate.
   // The returned head UID is required to publish a new lobby revision validated against the
   // current profile after a profile change.

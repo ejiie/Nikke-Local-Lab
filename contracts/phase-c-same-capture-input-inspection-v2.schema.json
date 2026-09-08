@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:phase-c-same-capture-input-inspection:v2",
+  "title": "PhaseCSameCaptureInputInspectionV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "inspectedAtUtc",
+    "inspectionUid",
+    "requestUid",
+    "runtimeCold",
+    "rawFetchPresent",
+    "rawFetchFresh",
+    "rawFetchShapeValid",
+    "localLowPresent",
+    "triggerArchiveCount",
+    "freshTriggerArchiveCount",
+    "matchedFreshTriggerArchiveCount",
+    "matchedTriggerArchiveCount",
+    "matchingTriggerArchiveFresh",
+    "freshTriggerArchiveRequired",
+    "stableTriggerReuseApplied",
+    "triggerArchiveFreshnessCode",
+    "triggerArchiveBindingCode",
+    "operatorSelectedProgressionTemplate",
+    "parentSealValid",
+    "parentGoldenDatabaseValid",
+    "staticDataPackValid",
+    "readyForOfflineMaterialization",
+    "reasonCodes",
+    "rawSourcePathPersisted",
+    "rawSourceHashPersisted",
+    "sourceTriggerArchivePathPersisted",
+    "sourceTriggerArchiveHashPersisted",
+    "officialUserIdentifierPersisted",
+    "credentialOrSessionPersisted",
+    "officialLoginAutomated",
+    "officialFetchAutomated",
+    "officialOutboundUsed",
+    "clientExecutionStarted",
+    "serverExecutionStarted",
+    "goldenModified",
+    "gameRuntimeModified",
+    "verdictCode",
+    "nextStepCode"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "nll/phase-c-same-capture-input-inspection/v2" },
+    "inspectedAtUtc": { "type": "string", "format": "date-time" },
+    "inspectionUid": { "type": "string", "format": "uuid" },
+    "requestUid": { "type": ["string", "null"], "format": "uuid" },
+    "requestedAtUtc": { "type": ["string", "null"], "format": "date-time" },
+    "runtimeCold": { "type": "boolean" },
+    "rawFetchPresent": { "type": "boolean" },
+    "rawFetchFresh": { "type": "boolean" },
+    "rawFetchShapeValid": { "type": "boolean" },
+    "profileBasicInfoPacketCount": { "type": "integer", "minimum": 0 },
+    "localLowPresent": { "type": "boolean" },
+    "triggerArchiveCount": { "type": "integer", "minimum": 0 },
+    "freshTriggerArchiveCount": { "type": "integer", "minimum": 0 },
+    "matchedFreshTriggerArchiveCount": { "type": "integer", "minimum": 0 },
+    "matchedTriggerArchiveCount": { "type": "integer", "minimum": 0 },
+    "matchingTriggerArchiveFresh": { "type": "boolean" },
+    "freshTriggerArchiveRequired": { "type": "boolean" },
+    "stableTriggerReuseApplied": { "type": "boolean" },
+    "triggerArchiveFreshnessCode": {
+      "enum": [
+        "fresh_after_request",
+        "reused_stable_progression",
+        "required_fresh_missing",
+        "no_unique_match"
+      ]
+    },
+    "triggerArchiveBindingCode": {
+      "enum": [
+        "raw_identity_matched_archive",
+        "operator_selected_progression_template",
+        "unresolved"
+      ]
+    },
+    "operatorSelectedProgressionTemplate": { "type": "boolean" },
+    "parentSealValid": { "type": "boolean" },
+    "parentGoldenDatabaseValid": { "type": "boolean" },
+    "staticDataPackValid": { "type": "boolean" },
+    "readyForOfflineMaterialization": { "type": "boolean" },
+    "reasonCodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,95}$" }
+    },
+    "rawSourcePathPersisted": { "const": false },
+    "rawSourceHashPersisted": { "const": false },
+    "sourceTriggerArchivePathPersisted": { "const": false },
+    "sourceTriggerArchiveHashPersisted": { "const": false },
+    "officialUserIdentifierPersisted": { "const": false },
+    "credentialOrSessionPersisted": { "const": false },
+    "officialLoginAutomated": { "const": false },
+    "officialFetchAutomated": { "const": false },
+    "officialOutboundUsed": { "const": false },
+    "clientExecutionStarted": { "const": false },
+    "serverExecutionStarted": { "const": false },
+    "goldenModified": { "const": false },
+    "gameRuntimeModified": { "const": false },
+    "verdictCode": {
+      "enum": [
+        "same_capture_inputs_ready_for_offline_materialization",
+        "same_capture_inputs_blocked"
+      ]
+    },
+    "nextStepCode": {
+      "enum": [
+        "materialize_progression_and_account_snapshot_with_shared_uid",
+        "satisfy_reason_codes_and_reinspect"
+      ]
+    }
+  }
+}

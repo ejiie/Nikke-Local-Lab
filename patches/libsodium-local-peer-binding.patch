@@ -1,0 +1,19 @@
+diff --git a/src/libsodium/crypto_kx/crypto_kx.c b/src/libsodium/crypto_kx/crypto_kx.c
+index 9f0c3ae..8c733ae 100644
+--- a/src/libsodium/crypto_kx/crypto_kx.c
++++ b/src/libsodium/crypto_kx/crypto_kx.c
+@@ -42,6 +42,14 @@ crypto_kx_client_session_keys(unsigned char rx[crypto_kx_SESSIONKEYBYTES],
+     unsigned char            keys[2 * crypto_kx_SESSIONKEYBYTES];
+     int                      i;
+ 
++#ifdef NLL_LOCAL_SERVER_PUBLIC_KEY
++    /* Local-only build: bind this existing key-exchange operation to the
++       reviewed local server. No memory patching or authentication bypass. */
++    static const unsigned char local_server_pk[crypto_kx_PUBLICKEYBYTES] =
++        NLL_LOCAL_SERVER_PUBLIC_KEY;
++    server_pk = local_server_pk;
++#endif
++
+     if (rx == NULL) {
+         rx = tx;
+     }

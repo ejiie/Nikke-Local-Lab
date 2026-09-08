@@ -110,7 +110,7 @@ public sealed class CharacterBuildTests
   }
 
   [Fact]
-  public void Game_legal_mode_checks_signed_discrete_values_but_does_not_invent_duplicate_policy()
+  public void Game_legal_mode_checks_application_magnitudes_but_does_not_invent_duplicate_policy()
   {
     var catalog = ProfileTestData.SupportCatalog();
     var legalDuplicate = new[]
@@ -118,13 +118,13 @@ public sealed class CharacterBuildTests
       new CharacterOverloadLineInput(1, catalog.AttackOption, new CombatSupportExactValue(410, 4)),
       new CharacterOverloadLineInput(3, catalog.AttackOption, new CombatSupportExactValue(420, 4))
     };
-    var legalSigned = new[]
-    {
-      new CharacterOverloadLineInput(1, catalog.ChargeSpeedOption, new CombatSupportExactValue(-410, 4))
-    };
-    var illegalMagnitude = new[]
+    var legalMagnitude = new[]
     {
       new CharacterOverloadLineInput(1, catalog.ChargeSpeedOption, new CombatSupportExactValue(410, 4))
+    };
+    var illegalSignedRaw = new[]
+    {
+      new CharacterOverloadLineInput(1, catalog.ChargeSpeedOption, new CombatSupportExactValue(-410, 4))
     };
 
     var duplicateRevision = ProfileTestData.ExplicitBuild(
@@ -139,14 +139,14 @@ public sealed class CharacterBuildTests
         23,
         10,
         catalog,
-        headLines: legalSigned,
+        headLines: legalMagnitude,
         validationMode: ProfileValidationMode.GameLegal);
     var invalidRevision = ProfileTestData.ExplicitBuild(
         24,
         25,
         10,
         catalog,
-        headLines: illegalMagnitude,
+        headLines: illegalSignedRaw,
         validationMode: ProfileValidationMode.GameLegal);
 
     Assert.Equal(ProfileReadiness.Ready, duplicateRevision.Readiness);
@@ -447,6 +447,38 @@ public sealed class CharacterBuildTests
         revision.Validation.CombatSemantics.Issues,
         issue => issue.FieldCode == "character_profile_element_combat_semantics");
     Assert.Equal("character_element_not_retained", issue.ReasonCode);
+  }
+
+  [Fact]
+  public void R_character_accepts_not_applicable_bond_with_legacy_ready_capability()
+  {
+    var catalog = ProfileTestData.SupportCatalog();
+    var account = ProfileTestData.Account();
+    var character = ProfileTestData.CharacterVersion(
+        rarity: NormalizedFact<CharacterRarity>.Ready(CharacterRarity.R));
+    var equipment = Enum.GetValues<CombatSupportEquipmentSlot>().Select((slot, index) =>
+        CharacterEquipmentInput.Detached(ProfileTestData.Uid(8_100 + index), slot));
+    var revision = CharacterBuildRevision.CreateExplicit(
+        ProfileTestData.Uid(8_110),
+        new CharacterBuild(ProfileTestData.Uid(8_111), account, character.CharacterUid),
+        1,
+        ProfileTestData.Provenance(),
+        ProfileTestData.Evidence(new[] { character }, catalog.All),
+        character,
+        ProfileValidationMode.Research,
+        new CharacterInvestmentState(
+            200,
+            ProfileFact<int>.Ready(3),
+            ProfileFact<int>.Ready(7),
+            ProfileFact<int>.NotApplicable()),
+        ReadySkills(),
+        equipment,
+        CharacterCubeInput.Detached(),
+        CharacterCollectibleInput.Detached());
+
+    Assert.DoesNotContain(
+        revision.Validation.Selection.Issues,
+        issue => issue.FieldCode == "bond_level");
   }
 
   private static CharacterInvestmentState ReadyInvestment() =>

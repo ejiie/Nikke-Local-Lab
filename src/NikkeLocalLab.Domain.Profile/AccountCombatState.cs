@@ -72,18 +72,22 @@ public sealed class ConsoleProgressState
   public ProfileFact<long> Experience { get; }
 }
 
+public sealed record OwnedCubeProgressState(CombatSupportDefinitionReference Definition, int Level);
+
 public sealed class AccountCombatStateRevisionContent
 {
   internal AccountCombatStateRevisionContent(
       ProfileDatasetBinding datasetBinding,
       ProfileValidationMode validationMode,
       ProfileFact<int> synchroLevel,
-      IReadOnlyList<ConsoleProgressState> consoles)
+      IReadOnlyList<ConsoleProgressState> consoles,
+      IReadOnlyList<OwnedCubeProgressState>? cubes = null)
   {
     DatasetBinding = datasetBinding ?? throw new ArgumentNullException(nameof(datasetBinding));
     ValidationMode = ProfileGuard.RequireEnum(validationMode, nameof(validationMode));
     SynchroLevel = ProfileGuard.RequireFact(synchroLevel, nameof(synchroLevel));
     Consoles = consoles ?? throw new ArgumentNullException(nameof(consoles));
+    Cubes = cubes ?? Array.Empty<OwnedCubeProgressState>();
   }
 
   public ProfileDatasetBinding DatasetBinding { get; }
@@ -93,6 +97,8 @@ public sealed class AccountCombatStateRevisionContent
   public ProfileFact<int> SynchroLevel { get; }
 
   public IReadOnlyList<ConsoleProgressState> Consoles { get; }
+
+  public IReadOnlyList<OwnedCubeProgressState> Cubes { get; }
 }
 
 public sealed class AccountCombatStateValidation

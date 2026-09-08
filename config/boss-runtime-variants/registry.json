@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "contractId": "nll/boss-runtime-variant-registry/v1",
+  "profiles": [
+    {
+      "seasonNumber": 26,
+      "profileCode": "season-26-providence",
+      "profileRelativePath": "season-26-providence.json",
+      "profileSha256": "f7610ae234b191cac955fd61cb7614338475c0dee00fc9d27991cae13dbe3646",
+      "operationalStatusCode": "enabled"
+    },
+    {
+      "seasonNumber": 29,
+      "profileCode": "season-29-mother-whale",
+      "profileRelativePath": "season-29-mother-whale.json",
+      "profileSha256": "251cfe852e831afc408f7a2e33b5113ecebbf60ab212851afc06391146ee41a6",
+      "operationalStatusCode": "enabled"
+    }
+  ]
+}

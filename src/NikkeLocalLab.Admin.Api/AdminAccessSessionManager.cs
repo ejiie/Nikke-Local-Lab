@@ -7,11 +7,14 @@ internal sealed class AdminAccessSessionManager
   public const string CookieName = "nll_admin_session";
 
   private static readonly TimeSpan BootstrapLifetime = TimeSpan.FromMinutes(5);
-  private static readonly TimeSpan SessionLifetime = TimeSpan.FromMinutes(30);
+  // The desktop host owns this process and stops it with the application. Keep
+  // an actively used local session alive for a full operator work period instead
+  // of expiring midway through account editing or a game validation run.
   private const int MaximumBootstrapAttempts = 5;
 
   private readonly object _gate = new();
   private readonly TimeProvider _timeProvider;
+  private readonly TimeSpan _sessionLifetime;
   private byte[]? _bootstrapCodeSha256;
   private readonly DateTimeOffset _bootstrapExpiresAtUtc;
   private int _failedBootstrapAttempts;
@@ -20,26 +23,34 @@ internal sealed class AdminAccessSessionManager
 
   private AdminAccessSessionManager(
       TimeProvider timeProvider,
+      TimeSpan sessionLifetime,
       byte[] bootstrapCodeSha256,
       DateTimeOffset bootstrapExpiresAtUtc)
   {
     _timeProvider = timeProvider;
+    _sessionLifetime = sessionLifetime;
     _bootstrapCodeSha256 = bootstrapCodeSha256;
     _bootstrapExpiresAtUtc = bootstrapExpiresAtUtc;
   }
 
   public static AdminAccessSessionManager Create(
       TimeProvider timeProvider,
+      TimeSpan sessionLifetime,
       Action<string> bootstrapCodeSink)
   {
     ArgumentNullException.ThrowIfNull(timeProvider);
     ArgumentNullException.ThrowIfNull(bootstrapCodeSink);
+    if (sessionLifetime < TimeSpan.FromMinutes(1) || sessionLifetime > TimeSpan.FromHours(24))
+    {
+      throw new ArgumentOutOfRangeException(nameof(sessionLifetime));
+    }
     var bytes = RandomNumberGenerator.GetBytes(32);
     try
     {
       var code = Base64Url(bytes);
       var manager = new AdminAccessSessionManager(
           timeProvider,
+          sessionLifetime,
           SHA256.HashData(bytes),
           timeProvider.GetUtcNow().Add(BootstrapLifetime));
       try
@@ -101,7 +112,7 @@ internal sealed class AdminAccessSessionManager
           try
           {
             _sessionTokenSha256 = SHA256.HashData(tokenBytes);
-            _sessionExpiresAtUtc = _timeProvider.GetUtcNow().Add(SessionLifetime);
+            _sessionExpiresAtUtc = _timeProvider.GetUtcNow().Add(_sessionLifetime);
             session = new AdminSessionGrant(Base64Url(tokenBytes), _sessionExpiresAtUtc.Value);
             return true;
           }
@@ -122,8 +133,9 @@ internal sealed class AdminAccessSessionManager
     }
   }
 
-  public bool IsSessionActive(string? token)
+  public bool TryRefreshSession(string? token, out DateTimeOffset expiresAtUtc)
   {
+    expiresAtUtc = default;
     byte[] tokenBytes;
     try
     {
@@ -148,7 +160,14 @@ internal sealed class AdminAccessSessionManager
             return false;
           }
 
-          return CryptographicOperations.FixedTimeEquals(candidateHash, _sessionTokenSha256);
+          if (!CryptographicOperations.FixedTimeEquals(candidateHash, _sessionTokenSha256))
+          {
+            return false;
+          }
+
+          _sessionExpiresAtUtc = _timeProvider.GetUtcNow().Add(_sessionLifetime);
+          expiresAtUtc = _sessionExpiresAtUtc.Value;
+          return true;
         }
       }
       finally

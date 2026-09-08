@@ -309,7 +309,11 @@ public sealed class CharacterBuildRevision
         .ToArray();
     var issues = new List<ProfileValidationIssue>();
     ValidateDefinitionBinding(content, build, characterDefinitionVersion, issues);
-    ValidateInvestment(content.Investment, characterDefinitionVersion.Content.Capabilities, issues);
+    ValidateInvestment(
+        content.Investment,
+        characterDefinitionVersion.Content.Profile,
+        characterDefinitionVersion.Content.Capabilities,
+        issues);
     ValidateSkills(content.Skills, characterDefinitionVersion.Content.Capabilities.SkillMaximums, issues);
     ValidateMaterializationProvenance(content.MaterializationPolicy, provenance, issues);
     ValidateCombatMaxPolicy(content, characterDefinitionVersion, support, issues);
@@ -362,13 +366,23 @@ public sealed class CharacterBuildRevision
 
   private static void ValidateInvestment(
       CharacterInvestmentState investment,
+      CharacterProfile profile,
       CharacterCapabilities capabilities,
       ICollection<ProfileValidationIssue> issues)
   {
     ValidateExplicitCharacterLevel(investment.CharacterLevel, capabilities.MaximumCharacterLevel, issues);
     ValidateBoundedFact(investment.LimitBreak, capabilities.MaximumLimitBreak, 0, false, "limit_break", issues);
     ValidateBoundedFact(investment.CoreLevel, capabilities.MaximumCoreLevel, 0, true, "core_level", issues);
-    ValidateBoundedFact(investment.BondLevel, capabilities.MaximumBondLevel, 1, false, "bond_level", issues);
+    var bondNotApplicable = profile.Rarity.Status == FactStatus.Ready &&
+        profile.Rarity.Value == CharacterRarity.R;
+    ValidateBoundedFact(
+        investment.BondLevel,
+        capabilities.MaximumBondLevel,
+        1,
+        bondNotApplicable,
+        "bond_level",
+        issues,
+        allowReadyMaximumAsNotApplicable: bondNotApplicable);
   }
 
   private static void ValidateExplicitCharacterLevel(
@@ -408,7 +422,8 @@ public sealed class CharacterBuildRevision
       int minimum,
       bool optional,
       string fieldCode,
-      ICollection<ProfileValidationIssue> issues)
+      ICollection<ProfileValidationIssue> issues,
+      bool allowReadyMaximumAsNotApplicable = false)
   {
     if (value.Status == ProfileFactStatus.Unresolved)
     {
@@ -418,7 +433,9 @@ public sealed class CharacterBuildRevision
 
     if (value.Status == ProfileFactStatus.NotApplicable)
     {
-      if (!optional || maximum.Status != FactStatus.NotApplicable)
+      if (!optional ||
+          (maximum.Status != FactStatus.NotApplicable &&
+           !(allowReadyMaximumAsNotApplicable && maximum.Status == FactStatus.Ready)))
       {
         issues.Add(ProfileGuard.Invalid(fieldCode, "not_applicable_mismatch"));
       }
@@ -631,7 +648,13 @@ public sealed class CharacterBuildRevision
       issues.Add(ProfileGuard.Invalid($"{prefix}_enhancement", "equipment_maximum_not_applicable"));
     }
 
-    ProfileGuard.AddRequiredFactIssue(state.ManufacturerMatch, $"{prefix}_manufacturer_match", issues);
+    if (state.ManufacturerMatch.Status != ProfileFactStatus.NotApplicable)
+    {
+      ProfileGuard.AddRequiredFactIssue(
+          state.ManufacturerMatch,
+          $"{prefix}_manufacturer_match",
+          issues);
+    }
     ValidateEquipmentManufacturer(
         definition.Manufacturer,
         character.Content.Profile.Manufacturer,
@@ -782,7 +805,7 @@ public sealed class CharacterBuildRevision
       resolvedTypes.Add((optionType, definition));
       if (content.ValidationMode == ProfileValidationMode.GameLegal &&
           !definition.LegalBands.SelectMany(static band => band.OrderedValues)
-              .Any(value => value.SourceRawValue / 10_000m == line.ApplicationValue.ToDecimal()))
+              .Any(value => value.EngineFraction == line.ApplicationValue))
       {
         issues.Add(ProfileGuard.Invalid($"{linePrefix}_value", "value_not_in_discrete_legal_set"));
       }

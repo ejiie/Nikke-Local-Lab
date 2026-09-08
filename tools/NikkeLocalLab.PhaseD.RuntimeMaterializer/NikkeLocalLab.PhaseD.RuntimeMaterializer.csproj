@@ -1,0 +1,77 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="..\..\src\NikkeLocalLab.Application.ProfileManagement\PhaseDExecutionDocuments.cs"
+             Link="PhaseDExecutionDocuments.cs" />
+    <Compile Include="..\..\src\NikkeLocalLab.Persistence.PostgreSql\ClassicSoloRaidRuntimeStateStore.cs"
+             Link="ClassicSoloRaidRuntimeStateStore.cs" />
+  </ItemGroup>
+
+  <Target Name="RequireEpinelReferenceRoot" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(EpinelReferenceRoot)' == ''"
+           Text="Set EpinelReferenceRoot to the exact pinned EpinelPS runtime path." />
+    <Error Condition="!Exists('$(EpinelReferenceRoot)\EpinelPS.dll')"
+           Text="EpinelPS.dll is absent from EpinelReferenceRoot." />
+    <Error Condition="!Exists('$(EpinelReferenceRoot)\Npgsql.dll')"
+           Text="Npgsql.dll is absent from EpinelReferenceRoot." />
+    <Error Condition="!Exists('$(EpinelReferenceRoot)\Newtonsoft.Json.dll')"
+           Text="Newtonsoft.Json.dll is absent from EpinelReferenceRoot." />
+    <Error Condition="!Exists('$(EpinelReferenceRoot)\Google.Protobuf.dll')"
+           Text="Google.Protobuf.dll is absent from EpinelReferenceRoot." />
+    <Error Condition="!Exists('$(EpinelReferenceRoot)\Microsoft.Data.Sqlite.dll')"
+           Text="Microsoft.Data.Sqlite.dll is absent from EpinelReferenceRoot." />
+    <Error Condition="!Exists('$(EpinelReferenceRoot)\SQLitePCLRaw.batteries_v2.dll')"
+           Text="SQLitePCLRaw.batteries_v2.dll is absent from EpinelReferenceRoot." />
+    <Error Condition="!Exists('$(EpinelReferenceRoot)\SQLitePCLRaw.core.dll')"
+           Text="SQLitePCLRaw.core.dll is absent from EpinelReferenceRoot." />
+    <Error Condition="!Exists('$(EpinelReferenceRoot)\SQLitePCLRaw.provider.e_sqlite3.dll')"
+           Text="SQLitePCLRaw.provider.e_sqlite3.dll is absent from EpinelReferenceRoot." />
+    <Error Condition="!Exists('$(EpinelReferenceRoot)\MemoryPack.Core.dll')"
+           Text="MemoryPack.Core.dll is absent from EpinelReferenceRoot." />
+    <Error Condition="!Exists('$(EpinelReferenceRoot)\System.Configuration.ConfigurationManager.dll')"
+           Text="System.Configuration.ConfigurationManager.dll is absent from EpinelReferenceRoot." />
+  </Target>
+
+  <ItemGroup>
+    <Reference Include="EpinelPS"
+               HintPath="$(EpinelReferenceRoot)\EpinelPS.dll"
+               Private="true" />
+    <Reference Include="Npgsql"
+               HintPath="$(EpinelReferenceRoot)\Npgsql.dll"
+               Private="true" />
+    <Reference Include="Newtonsoft.Json"
+               HintPath="$(EpinelReferenceRoot)\Newtonsoft.Json.dll"
+               Private="true" />
+    <Reference Include="Google.Protobuf"
+               HintPath="$(EpinelReferenceRoot)\Google.Protobuf.dll"
+               Private="true" />
+    <Reference Include="Microsoft.Data.Sqlite"
+               HintPath="$(EpinelReferenceRoot)\Microsoft.Data.Sqlite.dll"
+               Private="true" />
+    <Reference Include="SQLitePCLRaw.batteries_v2"
+               HintPath="$(EpinelReferenceRoot)\SQLitePCLRaw.batteries_v2.dll"
+               Private="true" />
+    <Reference Include="SQLitePCLRaw.core"
+               HintPath="$(EpinelReferenceRoot)\SQLitePCLRaw.core.dll"
+               Private="true" />
+    <Reference Include="SQLitePCLRaw.provider.e_sqlite3"
+               HintPath="$(EpinelReferenceRoot)\SQLitePCLRaw.provider.e_sqlite3.dll"
+               Private="true" />
+    <Reference Include="MemoryPack.Core"
+               HintPath="$(EpinelReferenceRoot)\MemoryPack.Core.dll"
+               Private="true" />
+    <Reference Include="System.Configuration.ConfigurationManager"
+               HintPath="$(EpinelReferenceRoot)\System.Configuration.ConfigurationManager.dll"
+               Private="true" />
+  </ItemGroup>
+</Project>

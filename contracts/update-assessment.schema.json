@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nikke-local-lab:update-assessment:v1",
+  "title": "UpdateAssessmentV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "assessmentUid",
+    "assessedAtUtc",
+    "previousBuildCode",
+    "candidateBuildCode",
+    "classificationCode",
+    "artifactChanges",
+    "affectedAccountCount",
+    "affectedSeasonNumbers",
+    "reasonCodes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "nll/update-assessment/v1" },
+    "assessmentUid": { "$ref": "#/$defs/uuid" },
+    "assessedAtUtc": { "type": "string", "format": "date-time" },
+    "previousBuildCode": { "$ref": "#/$defs/controlledCode" },
+    "candidateBuildCode": { "$ref": "#/$defs/controlledCode" },
+    "classificationCode": {
+      "enum": [
+        "no_change",
+        "compatible_rebuild",
+        "rebase_required",
+        "runtime_revalidation_required",
+        "blocked_unresolved"
+      ]
+    },
+    "artifactChanges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifactChange" }
+    },
+    "affectedAccountCount": { "type": "integer", "minimum": 0 },
+    "affectedSeasonNumbers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "integer", "minimum": 1 }
+    },
+    "reasonCodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/controlledCode" }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "controlledCode": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}$" },
+    "artifactChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["roleCode", "changeCode", "previousSha256", "candidateSha256"],
+      "properties": {
+        "roleCode": { "$ref": "#/$defs/controlledCode" },
+        "changeCode": { "enum": ["unchanged", "added", "removed", "content_changed", "schema_changed"] },
+        "previousSha256": {
+          "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+        },
+        "candidateSha256": {
+          "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+        }
+      }
+    }
+  }
+}

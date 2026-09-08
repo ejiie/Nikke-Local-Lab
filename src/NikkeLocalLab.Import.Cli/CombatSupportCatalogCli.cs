@@ -12,7 +12,7 @@ internal static class CombatSupportCatalogCli
 {
   private static readonly ExtractorDescriptor Extractor = new(
       "combat_support_catalog",
-      "1",
+      "v1",
       Sha256Digest.ComputeUtf8("nll/combat-support-catalog-extractor-contract/v1"));
 
   public static async Task<int> InspectAsync(

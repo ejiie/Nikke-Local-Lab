@@ -29,7 +29,8 @@ internal static class ProfilePersistedProjection
       ProfileDatasetBinding datasetBinding,
       ProfileValidationMode validationMode,
       ProfileFact<int> synchroLevel,
-      IEnumerable<ConsoleProgressState> consoles)
+      IEnumerable<ConsoleProgressState> consoles,
+      IEnumerable<OwnedCubeProgressState>? cubes = null)
   {
     ArgumentNullException.ThrowIfNull(datasetBinding);
     ArgumentNullException.ThrowIfNull(consoles);
@@ -52,11 +53,25 @@ internal static class ProfilePersistedProjection
 
     var normalized = coordinates.Select(coordinate =>
         values.Single(value => value.Coordinate == coordinate)).ToArray();
+    var owned = (cubes ?? []).OrderBy(static cube => cube.Definition.DefinitionUid.ToString(), StringComparer.Ordinal).ToArray();
+    if (owned.Any(static cube => cube.Level is < 1 or > 15) ||
+        owned.Select(static cube => cube.Definition.DefinitionUid).Distinct().Count() != owned.Length)
+    {
+      throw new ArgumentException("Persisted cube inventory is invalid.", nameof(cubes));
+    }
+
+    foreach (var cube in owned)
+    {
+      RequireDefinitionKind(cube.Definition, CombatSupportDefinitionKind.HarmonyCube, nameof(cubes));
+      RequireSupportDataset(cube.Definition, datasetBinding, nameof(cubes));
+    }
+
     return new AccountCombatStateRevisionContent(
         datasetBinding,
         ProfileGuard.RequireEnum(validationMode, nameof(validationMode)),
         ProfileGuard.RequireFact(synchroLevel, nameof(synchroLevel)),
-        Array.AsReadOnly(normalized));
+        Array.AsReadOnly(normalized),
+        Array.AsReadOnly(owned));
   }
 
   public static CharacterOverloadLine OverloadLine(

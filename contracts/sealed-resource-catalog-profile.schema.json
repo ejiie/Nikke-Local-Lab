@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Source-free sealed catalog profile, not native payload readiness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractId", "clientBuildCode", "clientExecutableSha256", "headerSha256", "payloadClosureStatusCode", "signatureVerificationStatusCode", "members"],
+  "properties": {
+    "contractId": { "const": "nll/sealed-resource-catalog-profile/v1" },
+    "clientBuildCode": { "type": "string", "pattern": "^build_[0-9]+\\.[0-9]+\\.[0-9]+$", "maxLength": 40 },
+    "clientExecutableSha256": { "$ref": "#/$defs/sha256" },
+    "headerSha256": { "$ref": "#/$defs/sha256" },
+    "payloadClosureStatusCode": { "const": "not_evaluated" },
+    "signatureVerificationStatusCode": { "const": "pair_hashes_only" },
+    "members": {
+      "type": "array", "minItems": 4, "maxItems": 7, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["roleCode", "bodySha256", "signatureSha256"],
+        "properties": {
+          "roleCode": { "enum": ["core", "dp", "fd", "saus", "en", "ko", "ja"] },
+          "bodySha256": { "$ref": "#/$defs/sha256" },
+          "signatureSha256": { "$ref": "#/$defs/sha256" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

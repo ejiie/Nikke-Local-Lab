@@ -4,11 +4,19 @@ param(
     [string]$BootstrapRoot = 'C:\NLL\Runtime\PhysicalBootstrap-v2',
     [string]$EvidenceRoot =
         'C:\NLL\Evidence\Phase3B2\Physical\epinel-minimal-reference-v1',
-    [string]$BootstrapEvidenceLane = 'p2-client-start-v2'
+    [string]$BootstrapEvidenceLane = 'p2-client-start-v2',
+    [string]$RequiredLocalAssetUrl = '',
+    [long]$RequiredLocalAssetByteLength = 0,
+    [string]$RequiredLocalAssetSha256 = '',
+    [string]$RequiredLocalCatalogContractPath = '',
+    [string]$RequiredLocalCatalogContractSha256 = '',
+    [string]$RequiredLocalSausContractPath = '',
+    [string]$RequiredLocalSausContractSha256 = ''
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+Add-Type -AssemblyName System.Net.Http
 
 function Assert-True {
     param([bool]$Condition, [string]$FailureCode)
@@ -18,6 +26,38 @@ function Assert-True {
 function Get-Sha256Hex {
     param([string]$Path)
     (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Get-ByteArraySha256Hex {
+    param([byte[]]$Bytes)
+
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ($algorithm.ComputeHash($Bytes) | ForEach-Object {
+                $_.ToString('x2')
+            }) -join ''
+    }
+    finally {
+        $algorithm.Dispose()
+    }
+}
+
+function Get-Crc32Unsigned {
+    param([byte[]]$Bytes)
+
+    [uint32]$crc = [uint32]::MaxValue
+    foreach ($value in $Bytes) {
+        $crc = $crc -bxor [uint32]$value
+        for ($bit = 0; $bit -lt 8; $bit++) {
+            if (($crc -band 1) -ne 0) {
+                $crc = ($crc -shr 1) -bxor [uint32]3988292384
+            }
+            else {
+                $crc = $crc -shr 1
+            }
+        }
+    }
+    return [uint32]($crc -bxor [uint32]::MaxValue)
 }
 
 function Write-AtomicUtf8NoBom {
@@ -82,9 +122,19 @@ $expectedSamplingLogRepairSha256 = `
 $expectedServerExeSha256 = `
     'a28c7ff227a74d260a29389b82caeed3fe196f91eef3d28cabe9977b5ed9d07b'
 $expectedServerDllSha256 = `
-    'ba46ae42b59c2058c7c8e5b02e31af1fe32a28e70d685f3a470e63adefc60cfc'
+    'aaa1e49d7a879a6b5ec17ad4c4094ce7d98ce86f860c1529a9ab4d6aecb51f7c'
+$expectedExternalHead = `
+    'aa01ad90b807be1c2ceffe958519cb529622d472'
+$expectedExternalTree = `
+    'c324c11d32365b1524f266cba6bc014e89545204'
 $expectedDbSha256 = `
-    'c103b44b7bc3dc4f1a317fd272253e2c8d827ca3ff174f07e0ecb6dfc298e194'
+    'e8c6c7d299be04c91435391bd44e346ad3dd84f31697654f18b1aa8a47052330'
+$expectedTutorialRevisionUid = `
+    '8ba2fb71-913c-4eaf-a56e-55c10c79d5c1'
+$expectedTutorialReceiptSha256 = `
+    '5685274460cd64bee2391a962ec0988b5938dbb0f3ee98ac64e16c8204e31f00'
+$expectedTutorialGoldenSealUid = `
+    '15089f3e-92f2-4833-ab1b-348d1463f9fc'
 $expectedHostsSha256 = `
     'dda2e817ccdc7426508cfcb30ef63b8907fd3e9ac5a1826456cd9091b2e2c1f0'
 $expectedAppliedHostsSha256 = `
@@ -116,11 +166,14 @@ $bootstrapPath = Join-Path $BootstrapRoot `
     'artifact\NikkeLocalLab.Phase3B2.PhysicalBootstrap.exe'
 $hostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
 $activePointerPath = Join-Path $EvidenceRoot 'active-run.pointer.json'
+$tutorialReceiptPath =
+    'C:\NLL\Evidence\Phase3B2\Physical\epinel-tutorial-only-v1\8ba2fb71-913c-4eaf-a56e-55c10c79d5c1\materialization.receipt.json'
 
 Assert-True (
     @($preflightPath, $deploymentPath, $samplingLogRepairPath,
         $contextPath, $serverPath,
-        $serverDllPath, $dbPath, $bootstrapPath, $hostsPath |
+        $serverDllPath, $dbPath, $bootstrapPath, $hostsPath,
+        $tutorialReceiptPath |
         Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }
     ).Count -eq 0 -and
     -not (Test-Path -LiteralPath $activePointerPath) -and
@@ -136,9 +189,34 @@ Assert-True (
     (Get-Sha256Hex $serverPath) -ceq $expectedServerExeSha256 -and
     (Get-Sha256Hex $serverDllPath) -ceq $expectedServerDllSha256 -and
     (Get-Sha256Hex $dbPath) -ceq $expectedDbSha256 -and
+    (Get-Sha256Hex $tutorialReceiptPath) -ceq `
+        $expectedTutorialReceiptSha256 -and
     (Get-Sha256Hex $hostsPath) -ceq $expectedHostsSha256 -and
     (Get-Sha256Hex $bootstrapPath) -ceq $expectedBootstrapSha256
 ) 'phase3b2_epinel_minimal_start_digest_invalid'
+
+$tutorialReceipt = Get-Content -LiteralPath $tutorialReceiptPath `
+    -Raw -Encoding UTF8 | ConvertFrom-Json
+Assert-True (
+    $tutorialReceipt.contractId -ceq
+        'nll/phase3b2-epinel-tutorial-only-materialization/v1' -and
+    $tutorialReceipt.revisionUid -ceq $expectedTutorialRevisionUid -and
+    $tutorialReceipt.goldenSealUid -ceq $expectedTutorialGoldenSealUid -and
+    $tutorialReceipt.databaseAfterSha256 -ceq $expectedDbSha256 -and
+    $tutorialReceipt.tutorialGroupCountAfter -eq 40 -and
+    -not $tutorialReceipt.nonTutorialStateChanged -and
+    $tutorialReceipt.characterCountBefore -eq 193 -and
+    $tutorialReceipt.characterCountAfter -eq 193 -and
+    $tutorialReceipt.contentsOpenUnlockCountBefore -eq 0 -and
+    $tutorialReceipt.contentsOpenUnlockCountAfter -eq 0 -and
+    $tutorialReceipt.stageClearHistoryCountBefore -eq 0 -and
+    $tutorialReceipt.stageClearHistoryCountAfter -eq 0 -and
+    -not $tutorialReceipt.cacheMutationPerformed -and
+    -not $tutorialReceipt.serverBinaryMutationPerformed -and
+    -not $tutorialReceipt.officialOutboundUsed -and
+    $tutorialReceipt.singleTutorialValidationRunAuthorized -and
+    -not $tutorialReceipt.validationRunConsumed
+) 'phase3b2_epinel_minimal_start_tutorial_revision_invalid'
 
 $preflight = Get-Content -LiteralPath $preflightPath -Raw -Encoding UTF8 |
     ConvertFrom-Json
@@ -211,6 +289,19 @@ $databaseBackupCreated = $false
 $serverProcess = $null
 $bootstrapProcess = $null
 $clientProcessId = 0
+$requiredLocalAssetPreflightPerformed = $false
+$requiredLocalAssetLoopbackResolved = $false
+$requiredLocalAssetHttpStatusCode = 0
+$requiredLocalAssetObservedByteLength = 0L
+$requiredLocalAssetObservedSha256 = ''
+$requiredLocalCatalogPreflightPerformed = $false
+$requiredLocalCatalogBodyCount = 0
+$requiredLocalCatalogSignatureCount = 0
+$requiredLocalCatalogAllSqlite = $false
+$requiredLocalSausPreflightPerformed = $false
+$requiredLocalSausBodyCount = 0
+$requiredLocalSausSignatureCount = 0
+$requiredLocalSausBodyCrc32Matched = $false
 $stageCode = 'mutation_preparation'
 
 try {
@@ -303,6 +394,308 @@ try {
     Assert-True $listenerReady `
         'phase3b2_epinel_minimal_start_loopback_listener_not_ready'
 
+    if (-not [string]::IsNullOrWhiteSpace($RequiredLocalAssetUrl)) {
+        $stageCode = 'required_local_asset_loopback_preflight'
+        $requiredUri = [Uri]$RequiredLocalAssetUrl
+        Assert-True (
+            $requiredUri.Scheme -ceq 'https' -and
+            $requiredUri.Host -ceq 'cloud.nikke-kr.com' -and
+            $requiredUri.AbsolutePath -ceq (
+                '/prdenv/150-b059c3f36c/StandaloneWindows64/pck/' +
+                'latest-651.txt'
+            ) -and
+            $RequiredLocalAssetByteLength -eq 139L -and
+            $RequiredLocalAssetSha256 -ceq `
+                '5914cb58fd2146fe761ab531ecb4e321300527186a54b455e59de962ff6c044a'
+        ) 'phase3b2_epinel_minimal_start_local_asset_contract_invalid'
+
+        $resolvedAddresses = @(
+            Resolve-DnsName -Name $requiredUri.Host -Type A `
+                -ErrorAction Stop | Where-Object {
+                    -not [string]::IsNullOrWhiteSpace($_.IPAddress)
+                } | ForEach-Object { [string]$_.IPAddress }
+        )
+        $requiredLocalAssetLoopbackResolved = (
+            $resolvedAddresses.Count -ge 1 -and
+            @($resolvedAddresses | Where-Object { $_ -cne '127.0.0.1' }).Count `
+                -eq 0
+        )
+        Assert-True $requiredLocalAssetLoopbackResolved `
+            'phase3b2_epinel_minimal_start_local_asset_not_loopback'
+
+        $handler = [Net.Http.HttpClientHandler]::new()
+        $handler.UseProxy = $false
+        $httpClient = [Net.Http.HttpClient]::new($handler)
+        $httpClient.Timeout = [TimeSpan]::FromSeconds(15)
+        try {
+            $response = $httpClient.GetAsync($requiredUri).GetAwaiter().GetResult()
+            try {
+                $requiredLocalAssetHttpStatusCode = [int]$response.StatusCode
+                $responseBytes = $response.Content.ReadAsByteArrayAsync().
+                    GetAwaiter().GetResult()
+            }
+            finally {
+                $response.Dispose()
+            }
+        }
+        finally {
+            $httpClient.Dispose()
+            $handler.Dispose()
+        }
+        $requiredLocalAssetObservedByteLength = [long]$responseBytes.Length
+        $requiredLocalAssetObservedSha256 = Get-ByteArraySha256Hex $responseBytes
+        Assert-True (
+            $requiredLocalAssetHttpStatusCode -eq 200 -and
+            $requiredLocalAssetObservedByteLength -eq `
+                $RequiredLocalAssetByteLength -and
+            $requiredLocalAssetObservedSha256 -ceq `
+                $RequiredLocalAssetSha256
+        ) 'phase3b2_epinel_minimal_start_local_asset_response_invalid'
+        $requiredLocalAssetPreflightPerformed = $true
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace(
+            $RequiredLocalCatalogContractPath)) {
+        $stageCode = 'required_local_catalog_transport_preflight'
+        Assert-True (
+            (Test-Path -LiteralPath $RequiredLocalCatalogContractPath `
+                -PathType Leaf) -and
+            $RequiredLocalCatalogContractSha256 -cmatch '^[0-9a-f]{64}$' -and
+            (Get-Sha256Hex $RequiredLocalCatalogContractPath) -ceq `
+                $RequiredLocalCatalogContractSha256
+        ) 'phase3b2_epinel_minimal_start_catalog_contract_digest_invalid'
+
+        $catalogContract = Get-Content `
+            -LiteralPath $RequiredLocalCatalogContractPath -Raw -Encoding UTF8 |
+            ConvertFrom-Json
+        $catalogMembers = @($catalogContract.members)
+        $expectedCatalogPaths = [ordered]@{
+            core = '/prdenv/150-b059c3f36c/StandaloneWindows64/pck/' +
+                'core/150.6.b15/catalog.db'
+            dp = '/prdenv/150-b059c3f36c/StandaloneWindows64/pck/' +
+                'dp/1d5645e/catalog.db'
+            fd = '/prdenv/150-b059c3f36c/StandaloneWindows64/pck/' +
+                'fd/85b12fc/catalog.db'
+        }
+        Assert-True (
+            $catalogContract.contractId -ceq `
+                'nll/phase3b2-epinel-native-cache-catalog-transport-contract/v1' -and
+            $catalogContract.externalHead -ceq $expectedExternalHead -and
+            $catalogContract.externalTree -ceq $expectedExternalTree -and
+            $catalogContract.serverDllSha256 -ceq `
+                $expectedServerDllSha256 -and
+            [int]$catalogContract.memberCount -eq 3 -and
+            $catalogMembers.Count -eq 3 -and
+            -not $catalogContract.rawDecryptedCatalogPersisted
+        ) 'phase3b2_epinel_minimal_start_catalog_contract_invalid'
+
+        $handler = [Net.Http.HttpClientHandler]::new()
+        $handler.UseProxy = $false
+        $httpClient = [Net.Http.HttpClient]::new($handler)
+        $httpClient.Timeout = [TimeSpan]::FromSeconds(30)
+        try {
+            foreach ($roleCode in @('core', 'dp', 'fd')) {
+                $member = @($catalogMembers | Where-Object {
+                        $_.roleCode -ceq $roleCode
+                    })
+                Assert-True ($member.Count -eq 1) `
+                    'phase3b2_epinel_minimal_start_catalog_member_invalid'
+                $bodyUri = [Uri][string]$member[0].bodyUrl
+                $signatureUri = [Uri][string]$member[0].signatureUrl
+                Assert-True (
+                    $bodyUri.Scheme -ceq 'https' -and
+                    $bodyUri.Host -ceq 'cloud.nikke-kr.com' -and
+                    $bodyUri.AbsolutePath -ceq $expectedCatalogPaths[$roleCode] -and
+                    $signatureUri.Scheme -ceq 'https' -and
+                    $signatureUri.Host -ceq 'cloud.nikke-kr.com' -and
+                    $signatureUri.AbsolutePath -ceq `
+                        ($expectedCatalogPaths[$roleCode] + '.nds') -and
+                    [long]$member[0].encryptedByteLength -gt 4L -and
+                    [string]$member[0].encryptedSha256 -cmatch `
+                        '^[0-9a-f]{64}$' -and
+                    [long]$member[0].decryptedByteLength -gt 100L -and
+                    [string]$member[0].decryptedSha256 -cmatch `
+                        '^[0-9a-f]{64}$' -and
+                    [long]$member[0].signatureByteLength -eq 96L -and
+                    [string]$member[0].signatureSha256 -cmatch `
+                        '^[0-9a-f]{64}$'
+                ) 'phase3b2_epinel_minimal_start_catalog_member_contract_invalid'
+
+                $bodyBytes = $null
+                $signatureBytes = $null
+                try {
+                    $bodyResponse = $httpClient.GetAsync($bodyUri).
+                        GetAwaiter().GetResult()
+                    try {
+                        Assert-True ([int]$bodyResponse.StatusCode -eq 200) `
+                            'phase3b2_epinel_minimal_start_catalog_body_status_invalid'
+                        $bodyBytes = $bodyResponse.Content.ReadAsByteArrayAsync().
+                            GetAwaiter().GetResult()
+                    }
+                    finally {
+                        $bodyResponse.Dispose()
+                    }
+                    Assert-True (
+                        $bodyBytes.Length -eq [long]$member[0].decryptedByteLength -and
+                        (Get-ByteArraySha256Hex $bodyBytes) -ceq `
+                            [string]$member[0].decryptedSha256 -and
+                        $bodyBytes.Length -ge 16 -and
+                        [Text.Encoding]::ASCII.GetString($bodyBytes, 0, 16) -ceq `
+                            "SQLite format 3$([char]0)"
+                    ) 'phase3b2_epinel_minimal_start_catalog_body_response_invalid'
+                    $requiredLocalCatalogBodyCount++
+
+                    $signatureResponse = $httpClient.GetAsync($signatureUri).
+                        GetAwaiter().GetResult()
+                    try {
+                        Assert-True ([int]$signatureResponse.StatusCode -eq 200) `
+                            'phase3b2_epinel_minimal_start_catalog_signature_status_invalid'
+                        $signatureBytes = $signatureResponse.Content.
+                            ReadAsByteArrayAsync().GetAwaiter().GetResult()
+                    }
+                    finally {
+                        $signatureResponse.Dispose()
+                    }
+                    Assert-True (
+                        $signatureBytes.Length -eq `
+                            [long]$member[0].signatureByteLength -and
+                        (Get-ByteArraySha256Hex $signatureBytes) -ceq `
+                            [string]$member[0].signatureSha256
+                    ) 'phase3b2_epinel_minimal_start_catalog_signature_response_invalid'
+                    $requiredLocalCatalogSignatureCount++
+                }
+                finally {
+                    if ($null -ne $bodyBytes) { [Array]::Clear($bodyBytes, 0, $bodyBytes.Length) }
+                    if ($null -ne $signatureBytes) {
+                        [Array]::Clear($signatureBytes, 0, $signatureBytes.Length)
+                    }
+                }
+            }
+        }
+        finally {
+            $httpClient.Dispose()
+            $handler.Dispose()
+        }
+        $requiredLocalCatalogAllSqlite = (
+            $requiredLocalCatalogBodyCount -eq 3 -and
+            $requiredLocalCatalogSignatureCount -eq 3
+        )
+        Assert-True $requiredLocalCatalogAllSqlite `
+            'phase3b2_epinel_minimal_start_catalog_preflight_incomplete'
+        $requiredLocalCatalogPreflightPerformed = $true
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace(
+            $RequiredLocalSausContractPath)) {
+        $stageCode = 'required_local_saus_pair_preflight'
+        Assert-True (
+            (Test-Path -LiteralPath $RequiredLocalSausContractPath `
+                -PathType Leaf) -and
+            $RequiredLocalSausContractSha256 -cmatch '^[0-9a-f]{64}$' -and
+            (Get-Sha256Hex $RequiredLocalSausContractPath) -ceq `
+                $RequiredLocalSausContractSha256
+        ) 'phase3b2_epinel_minimal_start_saus_contract_digest_invalid'
+
+        $sausContract = Get-Content `
+            -LiteralPath $RequiredLocalSausContractPath -Raw -Encoding UTF8 |
+            ConvertFrom-Json
+        $sausBodyUri = [Uri][string]$sausContract.bodyUrl
+        $sausSignatureUri = [Uri][string]$sausContract.signatureUrl
+        $expectedSausPath =
+            '/prdenv/150-b059c3f36c/StandaloneWindows64/pck/' +
+            'saus/19e939d/asset-catalog.cat'
+        Assert-True (
+            $sausContract.contractId -ceq
+                'nll/phase3b2-epinel-saus-http-pair-contract/v1' -and
+            $sausContract.sausRevision -ceq '19e939d' -and
+            $sausBodyUri.Scheme -ceq 'https' -and
+            $sausBodyUri.Host -ceq 'cloud.nikke-kr.com' -and
+            $sausBodyUri.AbsolutePath -ceq $expectedSausPath -and
+            $sausSignatureUri.Scheme -ceq 'https' -and
+            $sausSignatureUri.Host -ceq 'cloud.nikke-kr.com' -and
+            $sausSignatureUri.AbsolutePath -ceq ($expectedSausPath + '.nds') -and
+            [long]$sausContract.bodyByteLength -eq 13476L -and
+            [string]$sausContract.bodySha256 -ceq
+                'a8ad0f199f5db1213658c3238369ad472a98db74bb3a15a274931119ca22d0df' -and
+            [string]$sausContract.bodyCrc32UnsignedDecimal -ceq
+                '2651531605' -and
+            [long]$sausContract.signatureByteLength -eq 96L -and
+            [string]$sausContract.signatureSha256 -ceq
+                '01de2cc79b8f04297faf262666a7701242a942ba74d48b513c0998ab08b91fa2' -and
+            $sausContract.targetMappingVerified -and
+            $sausContract.signaturePairMappingVerified -and
+            -not $sausContract.signatureCryptographicVerificationPerformed -and
+            $sausContract.rawEncryptedBodyPreserved
+        ) 'phase3b2_epinel_minimal_start_saus_contract_invalid'
+
+        $handler = [Net.Http.HttpClientHandler]::new()
+        $handler.UseProxy = $false
+        $httpClient = [Net.Http.HttpClient]::new($handler)
+        $httpClient.Timeout = [TimeSpan]::FromSeconds(15)
+        $sausBodyBytes = $null
+        $sausSignatureBytes = $null
+        try {
+            $bodyResponse = $httpClient.GetAsync($sausBodyUri).
+                GetAwaiter().GetResult()
+            try {
+                Assert-True ([int]$bodyResponse.StatusCode -eq 200) `
+                    'phase3b2_epinel_minimal_start_saus_body_status_invalid'
+                $sausBodyBytes = $bodyResponse.Content.ReadAsByteArrayAsync().
+                    GetAwaiter().GetResult()
+            }
+            finally {
+                $bodyResponse.Dispose()
+            }
+            $observedCrc32 = Get-Crc32Unsigned $sausBodyBytes
+            Assert-True (
+                $sausBodyBytes.Length -eq [long]$sausContract.bodyByteLength -and
+                (Get-ByteArraySha256Hex $sausBodyBytes) -ceq
+                    [string]$sausContract.bodySha256 -and
+                $observedCrc32.ToString() -ceq
+                    [string]$sausContract.bodyCrc32UnsignedDecimal
+            ) 'phase3b2_epinel_minimal_start_saus_body_response_invalid'
+            $requiredLocalSausBodyCount = 1
+            $requiredLocalSausBodyCrc32Matched = $true
+
+            $signatureResponse = $httpClient.GetAsync($sausSignatureUri).
+                GetAwaiter().GetResult()
+            try {
+                Assert-True ([int]$signatureResponse.StatusCode -eq 200) `
+                    'phase3b2_epinel_minimal_start_saus_signature_status_invalid'
+                $sausSignatureBytes = $signatureResponse.Content.
+                    ReadAsByteArrayAsync().GetAwaiter().GetResult()
+            }
+            finally {
+                $signatureResponse.Dispose()
+            }
+            Assert-True (
+                $sausSignatureBytes.Length -eq
+                    [long]$sausContract.signatureByteLength -and
+                (Get-ByteArraySha256Hex $sausSignatureBytes) -ceq
+                    [string]$sausContract.signatureSha256
+            ) 'phase3b2_epinel_minimal_start_saus_signature_response_invalid'
+            $requiredLocalSausSignatureCount = 1
+        }
+        finally {
+            if ($null -ne $sausBodyBytes) {
+                [Array]::Clear($sausBodyBytes, 0, $sausBodyBytes.Length)
+            }
+            if ($null -ne $sausSignatureBytes) {
+                [Array]::Clear(
+                    $sausSignatureBytes, 0, $sausSignatureBytes.Length
+                )
+            }
+            $httpClient.Dispose()
+            $handler.Dispose()
+        }
+        Assert-True (
+            $requiredLocalSausBodyCount -eq 1 -and
+            $requiredLocalSausSignatureCount -eq 1 -and
+            $requiredLocalSausBodyCrc32Matched
+        ) 'phase3b2_epinel_minimal_start_saus_preflight_incomplete'
+        $requiredLocalSausPreflightPerformed = $true
+    }
+
     $stageCode = 'physical_bootstrap_and_sail_observation'
     $env:NLL_PHASE3B2_ASSESSMENT_UID = $assessmentUid
     $env:NLL_PHASE3B2_EVIDENCE_LANE = $BootstrapEvidenceLane
@@ -373,11 +766,35 @@ try {
         }
         Start-Sleep -Seconds 2
     }
+    # Record a terminal sample after the observation window. The previous
+    # implementation used the timestamp of the last pre-sleep sample as the
+    # total duration, so a healthy 30-second run could be reported as 27.x
+    # seconds and be terminated as a false failure.
+    $client = Get-PinnedProcess $clientProcessId 'nikke'
+    $server = Get-PinnedProcess $serverProcess.Id 'EpinelPS'
+    $bootstrap = Get-PinnedProcess $bootstrapProcess.Id `
+        'NikkeLocalLab.Phase3B2.PhysicalBootstrap'
+    Assert-True ($null -ne $client -and $null -ne $server -and
+        $null -ne $bootstrap) `
+        'phase3b2_epinel_minimal_start_process_lost_during_measurement'
+    $connections = @(
+        foreach ($observedProcessId in @($clientProcessId, $serverProcess.Id,
+            $bootstrapProcess.Id)) {
+            Get-NetTCPConnection -OwningProcess $observedProcessId `
+                -State Established -ErrorAction SilentlyContinue
+        }
+    )
+    $nonLoopback = @($connections | Where-Object {
+        $_.RemoteAddress -notin @('127.0.0.1', '::1')
+    })
+    $samples += [ordered]@{
+        offsetMilliseconds = [long]$deadline.Elapsed.TotalMilliseconds
+        clientResponding = [bool]$client.Responding
+        nonLoopbackConnectionCount = $nonLoopback.Count
+    }
     Write-AtomicUtf8NoBom $measurementPath `
         (($samples | ConvertTo-Json -Depth 4) + "`n")
-    $measurementElapsedMilliseconds = if ($samples.Count -gt 0) {
-        [long]$samples[-1].offsetMilliseconds
-    } else { 0L }
+    $measurementElapsedMilliseconds = [long]$deadline.Elapsed.TotalMilliseconds
     Assert-True (
         $samples.Count -ge 10 -and
         $measurementElapsedMilliseconds -ge 28000 -and
@@ -398,8 +815,15 @@ try {
         deploymentReceiptSha256 = $expectedDeploymentSha256
         samplingLogRepairReceiptSha256 = `
             $expectedSamplingLogRepairSha256
-        externalHead = [string]$samplingLogRepair.externalHead
-        externalTree = [string]$samplingLogRepair.externalTree
+        tutorialOnlyRevisionVerified = $true
+        tutorialOnlyRevisionUid = $expectedTutorialRevisionUid
+        tutorialOnlyRevisionReceiptSha256 = `
+            $expectedTutorialReceiptSha256
+        tutorialGroupCount = 40
+        accountProgressionStateCode = `
+            'tutorial_only_no_campaign_or_contents_open_projection'
+        externalHead = $expectedExternalHead
+        externalTree = $expectedExternalTree
         serverArguments = @('--headless', '--local-only')
         serverProcessId = $serverProcess.Id
         bootstrapProcessId = $bootstrapProcess.Id
@@ -418,6 +842,33 @@ try {
         globalMatchLoopbackMappingApplied = $true
         bootstrapOutboundBlockApplied = $true
         selectedManagerRuntimeBindingApplied = $true
+        requiredLocalAssetPreflightPerformed = `
+            $requiredLocalAssetPreflightPerformed
+        requiredLocalAssetLoopbackResolved = `
+            $requiredLocalAssetLoopbackResolved
+        requiredLocalAssetHttpStatusCode = `
+            $requiredLocalAssetHttpStatusCode
+        requiredLocalAssetObservedByteLength = `
+            $requiredLocalAssetObservedByteLength
+        requiredLocalAssetObservedSha256 = `
+            $requiredLocalAssetObservedSha256
+        requiredLocalCatalogContractSha256 = `
+            $RequiredLocalCatalogContractSha256
+        requiredLocalCatalogPreflightPerformed = `
+            $requiredLocalCatalogPreflightPerformed
+        requiredLocalCatalogBodyCount = $requiredLocalCatalogBodyCount
+        requiredLocalCatalogSignatureCount = `
+            $requiredLocalCatalogSignatureCount
+        requiredLocalCatalogAllSqlite = $requiredLocalCatalogAllSqlite
+        requiredLocalSausContractSha256 = `
+            $RequiredLocalSausContractSha256
+        requiredLocalSausPreflightPerformed = `
+            $requiredLocalSausPreflightPerformed
+        requiredLocalSausBodyCount = $requiredLocalSausBodyCount
+        requiredLocalSausSignatureCount = `
+            $requiredLocalSausSignatureCount
+        requiredLocalSausBodyCrc32Matched = `
+            $requiredLocalSausBodyCrc32Matched
         officialLauncherExecutionStarted = $false
         officialOutboundFallbackUsed = $false
         antiCheatSubstitutionApplied = $false
@@ -497,6 +948,8 @@ catch {
         rawSensitiveServerLogPersisted = $false
         officialLauncherExecutionStarted = $false
         officialOutboundFallbackUsed = $false
+        requiredLocalAssetPreflightPerformed = `
+            $requiredLocalAssetPreflightPerformed
         clientExecutionStarted = $clientProcessId -gt 0
     }
     Write-AtomicUtf8NoBom $runFailurePath `
