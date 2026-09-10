@@ -4389,59 +4389,69 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
       }
     }
 
+    var overloads = await ReadBuildOverloadLinesAsync(
+        connection,
+        transaction,
+        buildRevisionId,
+        cancellationToken).ConfigureAwait(false);
     var result = new List<LocalEquipmentWrite>(rows.Count);
     foreach (var row in rows)
     {
-      var overloads = await ReadOverloadLinesAsync(
-          connection,
-          transaction,
-          row.EquipmentStateId,
-          cancellationToken).ConfigureAwait(false);
       result.Add(new LocalEquipmentWrite(
           row.Slot,
           row.State,
           row.DefinitionUid,
           row.EnhancementLevel,
           row.ManufacturerMatched,
-          overloads,
+          overloads.TryGetValue(row.EquipmentStateId, out var lines) ? lines : [],
           row.UnresolvedReason));
     }
 
     return result;
   }
 
-  private static async Task<IReadOnlyList<LocalOverloadLineWrite>> ReadOverloadLinesAsync(
+  private static async Task<IReadOnlyDictionary<long, List<LocalOverloadLineWrite>>> ReadBuildOverloadLinesAsync(
       NpgsqlConnection connection,
       NpgsqlTransaction transaction,
-      long equipmentStateId,
+      long buildRevisionId,
       CancellationToken cancellationToken)
   {
     await using var command = new NpgsqlCommand(
         """
         SELECT
+            line.build_equipment_state_id,
             line.line_index,
             definition.definition_uid,
             line.unit_code,
             line.exact_unscaled_value,
             line.exact_decimal_scale
         FROM lab_profile.build_overload_line AS line
+        JOIN lab_profile.build_equipment_state AS equipment
+          ON equipment.build_equipment_state_id = line.build_equipment_state_id
         JOIN lab_combat_support.definition_entity AS definition
           ON definition.definition_entity_id = line.definition_entity_id
-        WHERE line.build_equipment_state_id = @equipment_state_id
-        ORDER BY line.line_index;
+        WHERE equipment.build_revision_id = @build_revision_id
+        ORDER BY line.build_equipment_state_id, line.line_index;
         """,
         connection,
         transaction);
-    Add(command, "equipment_state_id", NpgsqlDbType.Bigint, equipmentStateId);
-    var result = new List<LocalOverloadLineWrite>(3);
+    Add(command, "build_revision_id", NpgsqlDbType.Bigint, buildRevisionId);
+    var result = new Dictionary<long, List<LocalOverloadLineWrite>>(4);
     await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
     while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
     {
-      result.Add(new LocalOverloadLineWrite(
-          reader.GetInt16(0),
-          new EntityUid(reader.GetGuid(1)),
-          ParseValueUnit(reader.GetString(2)),
-          new LocalProfileExactValue(reader.GetInt64(3), reader.GetInt16(4))));
+      var equipmentStateId = reader.GetInt64(0);
+      if (!result.TryGetValue(equipmentStateId, out var lines))
+      {
+        lines = new List<LocalOverloadLineWrite>(3);
+        result.Add(equipmentStateId, lines);
+      }
+
+      lines.Add(new LocalOverloadLineWrite(
+          reader.GetInt16(1),
+          new EntityUid(reader.GetGuid(2)),
+          ParseValueUnit(reader.GetString(3)),
+          new LocalProfileExactValue(reader.GetInt64(4), reader.GetInt16(5))));
     }
 
     return result;

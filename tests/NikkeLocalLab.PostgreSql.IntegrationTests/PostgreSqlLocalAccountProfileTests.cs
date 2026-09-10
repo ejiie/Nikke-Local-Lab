@@ -7,7 +7,7 @@ using Npgsql;
 
 namespace NikkeLocalLab.PostgreSql.IntegrationTests;
 
-public sealed class PostgreSqlLocalAccountProfileTests
+public sealed partial class PostgreSqlLocalAccountProfileTests
 {
   private const string ResetToken = "allow-phase1a-disposable-schema-reset";
 
@@ -1836,6 +1836,12 @@ public sealed class PostgreSqlLocalAccountProfileTests
     var builder = new NpgsqlConnectionStringBuilder(validated);
     PostgreSqlTestDatabaseGuard.RequireDisposableDatabase(builder);
     return PostgreSqlDataSourceFactory.Create(validated);
+  }
+
+  private static async Task ResetOverloadReadDatabaseAsync(NpgsqlDataSource dataSource)
+  {
+    await ResetSchemasAsync(dataSource);
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
   }
 
   private static async Task ResetSchemasAsync(NpgsqlDataSource dataSource)

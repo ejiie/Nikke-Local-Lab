@@ -499,6 +499,80 @@ exit 0·restart checkpoint·cleanup을 확인했다. smoke의 시간 값은 위 
 조회 알고리즘을 복제하지 않고 실제 service/store/AdminApiHost를 호출한다. 운영 client나
 Epinel runtime을 시작하지 않는다. 새 최적화의 성능/동치 검증은 아직 수행하지 않았다.
 
+#### S-08 최소 overload batch — 2026-09-11
+
+운영자의 구현·테스트 요청으로 캐릭터별 네 장비의 overload 읽기를 한 번으로 묶었다.
+`ReadBuildOverloadLinesAsync`는 이미 고정된 build revision ID와 같은 connection/transaction을
+사용하고, equipment state ID별로 분리한 줄을 기존 equipment projection에 전달한다.
+줄 순서·signed Int64·decimal scale·빈 장비를 보존하며 `VerifyAggregateProjection`과
+기존 hash/shape 검증, pending-save 거절 및 snapshot 경계를 변경하지 않았다.
+제품 변경은 profile store 한 파일이다. 캐시·인덱스·migration·설치본 변경은 없다.
+
+추가한 `PostgreSqlOverloadReadTests`는 저장 receipt의 hash만 비교하지 않고 입력 write와
+재조회한 전체 canonical hash 및 장비/줄의 모든 필드를 직접 비교한다. 여러 캐릭터·부위의
+0/1/3줄과 sparse 1/3, 서로 다른 option UID, signed Int64 극값 근처와 scale 0/9,
+T10 기업 not-applicable, 강화값 unresolved, 미장착/미해결 장비를 포함한다.
+RepeatableRead snapshot을 고정한 뒤 다른 연결에서 OL 변경을 commit하고 기존 snapshot과
+새 current/과거 revision/다른 계정/새 data source의 조회가 각각 맞는지 확인한다.
+없는 option UID의 저장은 거절하고 current/operation receipt가 바뀌지 않음을 확인한다.
+누락·타계정 revision은 null이다. 이 검사는 DB 제약을 우회한 손상 row의 사후 검증을
+새로 구현했다는 뜻이 아니다.
+
+- 변경 전 전체 PostgreSQL 105개: `lifecycle-postgresql/36cb70a20c0940eeb1c8395bea5dd9f8`.
+- 새 동치 검사 2개를 **기존 읽기 코드**에서도 통과: `lifecycle-postgresql/eec005299d9e467cb1c85fbd648e969e`.
+- 변경 후 전체 PostgreSQL 107개 통과: `lifecycle-postgresql/47882ab342d0403a92d723e389b1bf59`.
+- 최종 migration/reset 정적 계약이 새 partial 파일의 분리된 호출을 거절해 기존 reset
+  소유 파일의 공용 초기화 helper로 연결했다. 제품 코드는 그대로이며 영향받는 2개 검사를
+  다시 통과했다: `lifecycle-postgresql/931f20e5c8684bcab3ce4695d7d1aebd`.
+  최초 계약 실패는 `s08-batch/commit-validation-reset-guard-failed.log`에 보존한다.
+
+위 경로는 모두 ignored `artifacts/stabilization/` 아래의 합성 검사 근거다.
+각 실행의 test exit 0, 재시작 checkpoint 및 최종 cleanup을 확인했다.
+처음 샌드박스 실행은 PostgreSQL restricted-token 생성 오류로 시작하지 못했으며
+`lifecycle-postgresql/affd774020c74dba9660fae555414a68`에 실패·정리 receipt를 보존했다.
+같은 검증기를 샌드박스 밖에서 실행해 위 결과를 얻었고 검사 조건을 완화하지 않았다.
+경로 별칭(junction)에서의 repository-root 검사 실패는 동일 저장소의 실제 경로에서 해소했다.
+
+**같은 조건의 전후 측정:** 계정 1/10개, roster 50, history 10, 각 6경로 × 150회로
+전후 각각 1,800개 표본이다. warm-up 5회와 50회 × 3묶음, SDK 8.0.407/PG 17.11,
+최고 성능 전원 정책/12 logical processors, cluster 설정 및 pool 상한 **32**가 같다.
+과거 pool 상한 100인 1차 표를 비교 기준으로 재사용하지 않았다. 측정 중 다른 빌드·회귀
+검사는 실행하지 않았다. 아래는 묶음별 p50/p95 세 값의 최소~최대(ms)이며 합친 p95가 아니다.
+
+| 계정 | 경로 | p50 전 → 후 ms | p95 전 → 후 ms | DB 명령 전 → 후 |
+|---:|---|---|---|---|
+| 1 | service 목록 | 77.54~78.20 → 51.16~51.82 | 80.84~85.37 → 51.92~57.86 | 311 → 161 |
+| 1 | HTTP 목록 | 75.60~77.14 → 51.71~51.90 | 80.08~81.17 → 52.90~55.46 | 311 → 161 |
+| 1 | HTTP 목록+로비 | 77.34~77.75 → 51.45~51.62 | 81.22~82.83 → 52.81~53.40 | 313 → 163 |
+| 1 | workspace | 78.10~78.43 → 55.71~56.28 | 79.46~79.71 → 56.60~56.94 | 311 → 161 |
+| 1 | export | 81.93~83.51 → 60.38~60.90 | 84.79~86.95 → 61.12~62.93 | 315 → 165 |
+| 1 | history | 0.77~0.78 → 0.77~0.77 | 0.79~0.88 → 0.78~0.78 | 1 → 1 |
+| 10 | service 목록 | 822.36~825.31 → 530.01~550.04 | 829.67~837.24 → 552.89~556.83 | 3,101 → 1,601 |
+| 10 | HTTP 목록 | 817.69~824.74 → 550.23~552.47 | 823.71~830.04 → 555.83~556.72 | 3,101 → 1,601 |
+| 10 | HTTP 목록+로비 | 832.74~833.35 → 561.20~562.62 | 843.89~845.89 → 568.38~587.12 | 3,121 → 1,621 |
+| 10 | workspace | 83.95~84.14 → 55.39~55.65 | 84.83~85.52 → 56.18~56.53 | 311 → 161 |
+| 10 | export | 87.96~89.08 → 60.19~60.44 | 90.46~94.43 → 61.34~62.04 | 315 → 165 |
+| 10 | history | 1.08~1.11 → 1.07~1.10 | 1.12~1.17 → 1.11~1.14 | 1 → 1 |
+
+service 목록 p50은 묶음별 약 **33~36%** 감소했다. 변경 대상 5경로의 모든 묶음에서
+p50/p95가 개선됐으며, 가장 느린 변경 후 p95도 가장 빠른 변경 전 p95보다 낮았다.
+history는 조회 변경이 없으며 작은 시간 차이를 최적화 효과로 주장하지 않는다.
+전후 오류/timeout은 0이고 모든 경로의 반환 객체 수·HTTP 요청 수·body byte가 같다.
+Npgsql 완료 이벤트로 센 명령 수는 SQL 문장 수·물리 I/O와 구분한다.
+실측한 두 규모의 목록 명령 수는 `1 + A × (10 + 6R)`에서 `1 + A × (10 + 3R)`로 줄었다.
+
+- 변경 전: `lifecycle-postgresql/a3b6fd195b4947d5a666901b53619089`.
+- 변경 후: `lifecycle-postgresql/98fab86e7dbf4260b956c8c67848f6f8`.
+- 각 `s08-summary.json`, 규모별 원시 JSON, `s08-environment.json`의 fixture/assembly hash와
+  `receipt.json`을 보존했다. 두 실행 모두 `passed_selected_scope`, exit 0, 재시작·정리 확인이다.
+- 단위·UI·runner·Phase/약점/Actions 마감 검사 출력은 `s08-batch/commit-validation.log`,
+  별도 자동화 단위 41개 통과는 `s08-batch/after-automation.log`에 보존한다.
+
+이 최소 batch는 합성 입력의 동치·성능 검증을 통과한 소스 변경이다. 운영 설치에 배포하지
+않았고 운영 DB·client·Epinel DLL은 변경하지 않았다. 기존 fixture의 제한과 50/100계정,
+roster/history 축 확장, process-cold·물리 I/O·DOM 측정은 남아 있어 S-08 전체 완료는 아니다.
+후속 최적화는 전체 profile batch를 별도 변경으로 검토하고 같은 검증 경계를 유지한다.
+
 ### S-09 / 중간 — 프로세스 identity와 복구 공통 코드가 부분적으로 다름
 
 - 확인: coordinator/watcher/recovery에 JSON 쓰기, PG 제어, receipt 검증, 복구 코드가
