@@ -362,9 +362,10 @@ stop/restart checkpoint·cleanup 확인은 아래 독립 폐기 DB receipt로 �
   immutable revision을 key로 하는 읽기 모델/캐시와 필요한 summary batch 조회를 검토한다.
   저장 검증을 생략하거나 임의 TTL 캐시로 stale revision을 허용하지 않는다.
 
-#### S-08 측정 착수 준비 (2026-09-11, 아직 미실행)
+#### S-08 측정 계획 (2026-09-11, 아래에 1차 부분 결과)
 
-이번 범위는 측정 계획 확정까지다. 제품 cache/batch/index 변경이나 운영 DB 측정은 하지 않았다.
+당초 준비 범위는 측정 계획 확정까지였다. 이후 1차 측정은 아래에 별도로 기록한다.
+제품 cache/batch/index 변경이나 운영 DB 측정은 하지 않았다.
 첫 실행은 다음 순서로 진행하고, 근거 없이 대형 파일 분리·전체 재작성으로 확대하지 않는다.
 
 1. **재현 fixture와 기준선 고정.** 현행 migration과 직접 만든 합성 account/profile/lobby를
@@ -401,6 +402,102 @@ stop/restart checkpoint·cleanup 확인은 아래 독립 폐기 DB receipt로 �
 정확성 실패나 timeout 증가가 있으면 채택하지 않는다. 유의미한 병목이 없으면 **변경 없음**도
 정상 결론이다. 상세 출력은 ignored `artifacts/stabilization/s08/`에, 합성·source-free 요약만
 이 문서에 남긴다. 실제 사용자 계정·원본 ID·게임 자료를 fixture나 commit에 포함하지 않는다.
+
+#### S-08 1차 기준선 — 계정 1/10개 (2026-09-11)
+
+**완료 범위:** 계정 1/10개, 각 roster 50명·서로 다른 profile revision 10개.
+각 규모에서 service 목록, HTTP 목록, HTTP 목록+로비, workspace, export, history의 6경로를
+warm-up 5회 후 50회 × 3묶음 측정했다. 총 **1,800개 원시 표본**을 보존했다.
+50/100개 계정, roster/history 축, process-cold, 물리 I/O 및 UI DOM 렌더링은 미측정이다.
+S-08 전체 완료나 성능 개선을 주장하지 않는다. 제품 코드는 변경하지 않았다.
+
+아래 시간은 각 50회 묶음의 p50/p95 **세 값의 최소~최대**(ms)다. 하나의 합쳐진 p95가 아니다.
+명령 수는 Npgsql `CommandExecutionCompleted` 이벤트 수이며 SQL 문장 수, transaction 제어를
+포함한 모든 wire 왕복 수, 실제 disk read 수와 구별한다. `SELECT 1` 하나가 정확히 1회로
+집계되는지 사전 검증했고, 원문 SQL·parameter·계정 payload는 출력하지 않았다.
+
+| 경로 | 계정 1개 p50 / p95 ms | 계정 10개 p50 / p95 ms | 명령 수 1개 → 10개 |
+|---|---|---|---|
+| service 계정 목록 | 75.33~77.94 / 78.98~83.01 | 826.50~829.99 / 836.33~842.77 | 311 → 3,101 |
+| HTTP 계정 목록 | 75.06~76.32 / 76.93~81.23 | 825.18~829.20 / 834.09~837.93 | 311 → 3,101 |
+| HTTP 목록 + 모든 로비 | 75.86~79.48 / 80.39~82.00 | 838.65~840.85 / 847.83~850.03 | 313 → 3,121 |
+| 단일 계정 workspace | 73.98~74.75 / 76.09~78.20 | 80.75~81.83 / 82.79~87.31 | 311 → 311 |
+| 단일 계정 export | 80.82~82.49 / 84.81~85.60 | 86.17~86.44 / 87.97~91.62 | 315 → 315 |
+| 단일 계정 history | 0.767~0.777 / 0.784~0.793 | 1.103~1.137 / 1.144~1.185 | 1 → 1 |
+
+환경: .NET SDK 8.0.407, PostgreSQL 17.11, 12 logical processors,
+최고 성능 전원 정책, loopback의 별도 cluster(shared_buffers 64MB, work_mem 2MB,
+max_connections 40). Release 빌드이며 측정 중 다른 회귀/빌드를 실행하지 않았다.
+초기 기준선은 Npgsql 기본 pool 상한 100에서 동시 로비 요청 최대 10개를 사용했다.
+후속 도구는 큰 규모에서 cluster 상한 40을 넘지 않도록 pool 상한을 32로 제한하고 summary에
+기록한다. 변경 전후 비교 시 같은 상한으로 다시 측정하며 이 설정 차이를 숨기지 않는다.
+반환 객체 수·HTTP body byte·process 전체 allocation도 표본에 있지만 SQL 반환 행 수,
+물리 disk byte 또는 특정 함수만의 allocation으로 해석하지 않는다. HTTP 묶음은 실제
+AdminApiHost의 bootstrap/session을 사용하며 editor의 요청 구조를 재현하지만 DOM/WebView는 아니다.
+초기 부분 중단 실행에는 runtime/OS 상세 요약이 남지 않았다. 후속 정상 종료 도구는 이를
+summary에 기록하며, smoke 실행의 상세 버전을 앞선 기준선에 소급하여 붙이지 않는다.
+fixture는 기존 research profile 생성기를 재사용한다. 첫 캐릭터의 head에 sparse OL이 있고
+나머지 장비는 미장착, 콘솔에는 unresolved 항목이 있어 실제 계정의 ready 상태/모든 장착
+조합을 대표하지 않는다. 명령 수와 호출 구조는 확인했지만 실계정 지연 시간을 단정하지 않는다.
+fixture의 의미 값은 고정하고 UUID는 실행마다 새로 만들었다. 요청 크기와 DB의 실제 profile
+revision 개수를 검증했다. 초기 fixture의 필수 wallet 누락과 동일 내용 revision 재사용 때문에
+멈춘 3회의 setup 실행은 성능 표본에서 제외하고 실패/정리 receipt는 보존했다.
+
+근거 디렉터리:
+`artifacts/stabilization/lifecycle-postgresql/650529e6076a42fc874d4827729a0d86/`.
+`s08-1-50-10.json`, `s08-10-50-10.json`의 각 6경로 × 150개 완료 표본만 유효하다.
+`s08-environment.json`에 당시 HEAD/working diff/fixture source와 실행 DLL hash·전원·SDK를
+기록했다. 당시 실행은 전체 행렬을 시작했으나 위 두 규모를 저장한 뒤 소유한 측정 child만
+중단했다. 따라서 상위 receipt는 **testExitCode=-1**이며 전체 성공으로 재분류하지 않는다.
+`cleanupVerified=true`, `postgresqlRestartCheckpointVerified=true`로 DB 정리는 확인했다.
+50개 계정 fixture 이후 데이터나 미완성 표본을 결과에 섞지 않았다.
+
+**원인 대조:** `PostgreSqlLocalAccountProfileStore.ReadVerifiedProfileAsync`는 receipt와
+profile을 읽고 `VerifyAggregateProjection`을 수행한다. 그 아래 다음 반복이 있다.
+
+- `ReadBuildReceiptsAsync` → 캐릭터별 `ReadEquipmentSlotReceiptsAsync`: R회
+- `ReadBuildWritesAsync` → 캐릭터별 `ReadEquipmentWritesAsync`: R회
+- `ReadEquipmentWritesAsync` → 각 4부위의 `ReadOverloadLinesAsync`: 4R회
+
+관측값은 계정 수 A, roster R에 대해 목록 **1 + A × (10 + 6R)**와 맞는다.
+R=50의 A=1/10에서 실측한 것이며 다른 규모의 실측을 대신하지 않는다.
+로비 추가 비용(계정당 2명령)보다 profile 내부 6R 반복이 먼저 확인된 개선 후보다.
+
+**다음 변경 후보(미적용):** 동일한 account/revision 및 RepeatableRead transaction 안에서
+장비 slot receipt·equipment·overload를 batch로 읽고 정렬/결손 검증을 유지한다.
+`VerifyAggregateProjection`, canonical hash 검증, workspace pending-save 거절과 snapshot
+revision 일치 검증은 제거하지 않는다. 캐시는 먼저 도입하지 않는다. 우선 한 반복 구간만
+바꿔 기존 결과와 동치인지 확인한 뒤 같은 fixture 전후 수치를 비교한다.
+첫 최소 변경 후보는 캐릭터의 4개 equipment state에 대한 overload 조회를 1회로 묶는 것이다.
+다른 읽기가 같다면 R=50/A=1의 명령 수는 산술상 311→161이 예상되지만 아직 측정값이 아니다.
+0/1/3개 OL 줄, 미장착, sparse 줄 순서, 결손 참조, T10 기업 없음 및 다른 계정/revision의
+행이 섞이지 않음을 실제 출력으로 대조해야 한다. 전체 profile batch는 그 다음 후보로 둔다.
+계정 전환·동시 save/read·결손 데이터에 대한 새 변경의 회귀 검사는 적용 단계에서 필수다.
+
+재실행 절차(소스 전용, 기존 정상 runtime/게임 종료 후):
+
+```powershell
+dotnet restore tests/NikkeLocalLab.ReadBenchmarks --locked-mode
+dotnet build tests/NikkeLocalLab.ReadBenchmarks -c Release --no-restore
+./scripts/test-nll-lifecycle-postgresql.ps1 -MeasureAccountReads -ShutdownTimeoutSeconds 60
+```
+
+기본은 계정 1/10의 focused 범위다. `-ReadMeasurementScope full`은 위 8개 warm 규모를
+장시간 실행하며, `smoke`는 1계정/5명/1revision에서 도구 연결만 확인하고 기준선으로 사용하지
+않는다. 실행 중 출력 디렉터리에 `stop-after-cell` 파일을 만들면 다음 완료 규모를 저장한 뒤
+`stopped_after_cell`로 정상 종료한다. cold/DOM/disk 측정을 이 옵션들이 수행하지는 않는다.
+CI는 도구 locked restore/build/format와 percentile/counter 자체 검사만 수행하며 성능 회귀의
+합격/불합격을 시간 임계값으로 정하지 않는다. 운영 DB·설치본·게임 DLL은 입력 대상이 아니다.
+
+도구 검증: percentile/counter 소스 자체 검사와 Release 빌드/format를 통과했다. 최종 pool 상한
+32를 포함한 smoke의 receipt는
+`artifacts/stabilization/lifecycle-postgresql/8b077715861c4823bb4cfe5a71149231/receipt.json`이며
+exit 0·restart checkpoint·cleanup을 확인했다. smoke의 시간 값은 위 기준선에 섞지 않았다.
+측정 옵션이 없는 기존 PostgreSQL 통합 **105개**도 다시 통과했다.
+근거: `artifacts/stabilization/lifecycle-postgresql/5a239dfe2e14493aac0cc6d8aab9a326/receipt.json`.
+소스 측정기는 기존 합성 fixture의 private helper에 reflection으로 연결하지만 production
+조회 알고리즘을 복제하지 않고 실제 service/store/AdminApiHost를 호출한다. 운영 client나
+Epinel runtime을 시작하지 않는다. 새 최적화의 성능/동치 검증은 아직 수행하지 않았다.
 
 ### S-09 / 중간 — 프로세스 identity와 복구 공통 코드가 부분적으로 다름
 

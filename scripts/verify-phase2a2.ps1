@@ -55,6 +55,11 @@ Invoke-Checked dotnet @('restore', $MaterializerChecks, '--locked-mode')
 Invoke-Checked dotnet @('build', $MaterializerChecks, '-c', 'Release', '--no-restore')
 Invoke-Checked dotnet @('format', $MaterializerChecks, '--verify-no-changes', '--no-restore')
 Write-Output 'Materializer checker source build passed; pinned output checks/bootstrap151/desktop local gate NOT executed by CI.'
+$ReadBenchmarks = Join-Path $RepositoryRoot 'tests/NikkeLocalLab.ReadBenchmarks/NikkeLocalLab.ReadBenchmarks.csproj'
+Invoke-Checked dotnet @('restore', $ReadBenchmarks, '--locked-mode')
+Invoke-Checked dotnet @('build', $ReadBenchmarks, '-c', 'Release', '--no-restore')
+Invoke-Checked dotnet @('format', $ReadBenchmarks, '--verify-no-changes', '--no-restore')
+Invoke-Checked dotnet @((Join-Path $RepositoryRoot 'tests/NikkeLocalLab.ReadBenchmarks/bin/Release/net8.0/NikkeLocalLab.ReadBenchmarks.dll'), '--self-test')
 Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-ui-reuse-assets.ps1'))
 if ($env:OS -eq 'Windows_NT') {
     $WindowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
