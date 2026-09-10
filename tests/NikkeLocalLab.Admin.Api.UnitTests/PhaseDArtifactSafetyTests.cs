@@ -275,9 +275,8 @@ public sealed class PhaseDArtifactSafetyTests
     Assert.Contains("StatType.Defence => \"방어력\"", materializer, StringComparison.Ordinal);
     Assert.Contains("PhaseDExecutionDocumentJson.CreateOptions()", materializer, StringComparison.Ordinal);
     Assert.Contains("phase_d_materializer_uncontrolled_failure", materializer, StringComparison.Ordinal);
-    Assert.Contains("matchingCubeItems.FirstOrDefault", materializer, StringComparison.Ordinal);
-    Assert.Contains("OrderBy(item => item.Isn)", materializer, StringComparison.Ordinal);
-    Assert.Contains("user.Items.Remove(duplicate)", materializer, StringComparison.Ordinal);
+    // Cube selection/deduplication is exercised against actual compiled output
+    // by the pinned Materializer.BehaviorChecks local gate, not source spelling.
     Assert.Contains("IntegerOrZeroWhenNotApplicable(values, \"core_level\"", materializer,
         StringComparison.Ordinal);
     Assert.Contains("IntegerOrZeroWhenNotApplicable(values, \"bond_level\"", materializer,
@@ -447,21 +446,6 @@ public sealed class PhaseDArtifactSafetyTests
         "throw new InvalidOperationException(\n            \"phase_d_active_raid_profile_revision_mismatch\")",
         source,
         StringComparison.Ordinal);
-  }
-
-  [Fact]
-  public void RuntimeMaterializerNeverProjectsAManufacturerOntoTierTenEquipment()
-  {
-    var root = FindRepositoryRoot();
-    var materializer = File.ReadAllText(Path.Combine(
-        root,
-        "tools",
-        "NikkeLocalLab.PhaseD.RuntimeMaterializer",
-        "Program.cs"));
-
-    Assert.Contains("(int)itemDefinition!.ItemRare == 10", materializer,
-        StringComparison.Ordinal);
-    Assert.Contains("? 0", materializer, StringComparison.Ordinal);
   }
 
   [Fact]

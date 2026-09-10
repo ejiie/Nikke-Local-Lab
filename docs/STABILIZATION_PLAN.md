@@ -262,15 +262,73 @@ terminal `launchProjection`이 있으면 준비 완료 문구를 갱신하지 �
 
 ### S-06 / 높음 — 회귀 검사의 일부가 동작 대신 구현 문자열에 결박됨
 
-- 확인: `PhaseDExecutionStateTests.cs:12,38`은 GET/Start 소스의 문구를 검사한다.
-  `PhaseDArtifactSafetyTests.cs:455`의 T10 검사는 `(int)itemDefinition!.ItemRare == 10`
-  과 `? 0`의 존재를 검사하며 실제 장비 출력의 manufacturer를 실행해 검사하지 않는다.
-  실제 동작 테스트도 있으므로 전체 테스트가 문자열 검사라는 뜻은 아니다.
+- 최초 점검: GET/Start와 T10 검사가 구현 문자열에 결박되어 있었다. 이후 실행 상태 검사는
+  가짜 runtime/owner와 실제 임시 파일을 사용하는 행동 검사로 전환했다. 2026-09-11에는
+  T10 기업·큐브 중복 선택의 문자열 검사를 제거하고 아래 실제 변환 출력 검사로 대체했다.
+  남은 정적 검사를 모두 행동 검사로 전환했다는 뜻은 아니다.
 - 확인: materializer/151 bootstrap/desktop은 기본 solution 밖의 별도 빌드 대상이다.
   CI의 기본 solution green이 배포 조합 전체의 실행 가능성을 보장하지 않는다.
 - 방향: 정적 정책 검사는 보조로 유지하고, 순수 변환 fixture와 가짜 process/clock/file
   adapter를 사용하는 행동 테스트, 폐기 DB의 failure-injection 테스트를 주 회귀선으로 둔다.
   원본 데이터 없이 가능한 CI 검사와 pinned 외부 runtime을 요구하는 로컬 검사를 분리한다.
+
+#### S-06 장비·큐브 행동 검사와 별도 빌드 경계 (2026-09-11)
+
+제품 코드를 변경하지 않고 `tests/NikkeLocalLab.Materializer.BehaviorChecks`를 추가했다.
+검사기는 .NET 8 소스만으로 빌드되며, 로컬에서만 SDK 10으로 새로 빌드한 materializer와
+기존 151 bundle이 봉인한 참조 DLL 10개를 사용한다. reflection은 private 컴파일 함수·타입에
+연결하기 위한 좁은 adapter다. 변환 알고리즘을 테스트에 복제하지 않는다.
+`GameData`의 파일 읽기 생성자·parser와 CLI 진입점은 호출하지 않으며, 메모리에 직접 만든
+합성 catalog/user/candidate를 실제 `Materialize`에 전달한다. 실제 Newtonsoft serializer의
+왕복 후에도 장비 기업 값·공유 큐브 참조가 유지되는지 확인한다.
+
+| 분류 | 이번 처리 / 검증 |
+|---|---|
+| T9/T10 기능 | 4부위 × true/false/not-applicable, stale 기업 값, 기존 instance 유지, 미장착 정리 |
+| OL 기능 | sparse 1/3번 줄·정확한 state-effect 값, 결손 mapping 거절 |
+| 큐브 기능 | 신규 기본 15, 기존 최고 레벨, 계정 레벨 권위, 공유 참조·중복 통합·재실행, 해제, 계정 분리 |
+| 결손 입력 | 장비/큐브 mapping, unresolved 기업, 불완전 보유 목록, 범위 초과·레벨 row 결손 거절 |
+| 정책 정적 검사 | 공식 경로·외부 통신·원본 자료 노출 금지 등의 보조 검사는 유지 |
+| 남은 기능 정적 검사 | 진행도/기록 캡처와 복구 순서의 일부 source guard는 기존 PG/runner 행동 검사와 함께 유지. 전부 동적 검증됐다고 간주하지 않음 |
+| CI | checker locked restore/build/format를 Phase 2A2에 연결. 외부 DLL 없이 실제 변환을 실행했다고 표시하지 않음 |
+| 로컬 gate | `test-nll-materializer-behavior.ps1`: bundle/ref 사전·사후 hash, 21개 행동 검사, 선택적 mutation control, materializer/151 bootstrap/desktop 별도 빌드 |
+
+로컬 사용은 아래와 같다. expected hash는 검토된 기존 bundle의 봉인값이며 검사 실행 중에
+자동으로 새 pin으로 갱신하지 않는다. 외부 참조가 없거나 pin이 다르면 실패한다.
+
+```powershell
+./scripts/test-nll-materializer-behavior.ps1 `
+    -BundlePath '<검토된 로컬 bundle.private.json>' `
+    -ExpectedBundleSha256 '<봉인된 SHA-256>' -MutationChecks
+```
+
+21개 통과. 생성한 복사본에서만 T10 기업 분기와 미보유 큐브 기본값을 각각 잘못 바꾼
+negative control 2개도 예상 행동 검사에서 실패했다. 운영 source는 전후 hash가 동일하다.
+별도 3개 빌드는 경고/오류 0이며 실행·배포하지 않았다. 151 bootstrap은 자체 global.json이
+없어 일반 디렉터리에서 SDK 8을 선택하는 문제가 확인되어, **검사 스크립트**가 기존
+materializer global.json의 SDK 10을 선택하도록 했다. repository SDK나 부트스트랩 코드는 변경하지 않았다.
+소스 변경 이후 도구 배포 전에는 이 로컬 gate를 다시 통과해야 하며 CI green으로 대체하지 않는다.
+
+검증 근거: `artifacts/stabilization/s06/509555d81dbf4e06911609478886522e/receipt.json`.
+검사 대상은 in-memory 변환과 직렬화다. CLI의 전체 candidate admission, 파일 쓰기 원자성,
+원본 client UI/전투, 원본 데이터 전체 catalog closure의 새로운 증거는 아니다. 운영 DB,
+client DLL/리소스, 기존 실행기·설치본과 S29 pin은 변경하지 않았다.
+
+수정 전 전체 기준선에서 `ExactChildExitDoesNotWaitForInheritedOutputHandles`가 자식 준비
+5초 제한에 1회 실패했으며, 동일 검사 단독 재실행은 통과했다. 제품 timeout/종료 코드는
+바꾸지 않았고 이 관측을 변환기 실패와 혼동하지 않는다. 변경 후 전체 실행에서는 해당 검사를
+포함해 .NET 단위 검사 **475개**가 모두 통과했다. 문자열 전용 T10 Fact 1개를 21개 행동
+검사로 대체하여 기존 단위 합계 476에서 475가 되었으며, 기능 검증을 단순 삭제한 것이 아니다.
+
+**이번 S-06 범위 마감:** repository/Phase 0, Phase 3B-1이 호출하는 전체 baseline chain
+(Phase 2A1/2A2/2B 및 역사적 Phase 3A/3B-0), Phase 3B-2 contract-only, boss variant,
+Actions contract, JS 저장 12개·상태 6개와 lifecycle UI, Windows 실행기 회귀를 통과했다.
+checker locked restore/build/format와 `git diff --check`도 통과했다. PostgreSQL **105개** 및
+stop/restart checkpoint·cleanup 확인은 아래 독립 폐기 DB receipt로 확인했다.
+`artifacts/stabilization/lifecycle-postgresql/2c2d98dfad76452da9d6f32bf710c691/receipt.json`
+(`testExitCode=0`, `cleanupVerified=true`, `postgresqlRestartCheckpointVerified=true`).
+운영 DB와 원본 client는 실행하지 않았다. 모든 source guard의 행동 검사 전환이나 새로운
+실게임 검증을 완료했다는 뜻은 아니다. 다음은 아래 S-08의 **측정**이며 최적화 적용은 그 후다.
 
 ### S-07 / 중간 — Save의 복구 가능한 다단계 작업이 거대 service에 집중됨
 
@@ -291,14 +349,58 @@ terminal `launchProjection`이 있으면 준비 완료 문구를 갱신하지 �
 
 ### S-08 / 중간 — 반복 전체 조회와 비대한 조정/매핑 파일
 
-- 확인: `PostgreSqlProfileManagementService.cs:98`은 계정 목록마다 current profile을
-  순차로 다시 읽어 readiness를 계산한다. `:424`의 export도 해당 profile을 재조회한다.
-  frontend `editor.js:593`은 계정별 lobby도 요청한다.
-- 구조 지표: profile store 5,384줄, profile service 4,739줄, materializer entrypoint
-  1,642줄. 줄 수만으로 재작성 필요나 속도 저하를 단정하지 않는다.
+- 현행 재확인(2026-09-11): `PostgreSqlProfileManagementService.ListAccountsAsync`는
+  목록의 각 계정에 `WithRuntimeMaterializationReadinessAsync`를 순차 호출한다.
+  후자는 해당 계정·revision의 `GetRevisionAsync` 결과를 매핑해 readiness를 계산한다.
+  frontend `editor.js`의 `listAccounts()`는 목록을 받은 뒤 계정별 lobby를 `Promise.all`로
+  요청한다. 실제 SQL 수·비용은 아직 미측정이다.
+- export는 현재 `ReadAccountSnapshotAsync(forRuntime: true)`를 사용한다. 과거 `:424`의
+  재조회 지적을 현행 결함으로 단정하지 않고 snapshot 내부 호출부터 다시 계측한다.
+- 최초 구조 지표: profile store 5,384줄, profile service 4,739줄, materializer entrypoint
+  1,642줄. 과거 줄 수이며 재작성 필요나 속도 저하의 증거로 사용하지 않는다.
 - 방향: 계정 수/로스터 수/이력 수별 SQL 횟수·읽기량·p50/p95를 측정한다.
   immutable revision을 key로 하는 읽기 모델/캐시와 필요한 summary batch 조회를 검토한다.
   저장 검증을 생략하거나 임의 TTL 캐시로 stale revision을 허용하지 않는다.
+
+#### S-08 측정 착수 준비 (2026-09-11, 아직 미실행)
+
+이번 범위는 측정 계획 확정까지다. 제품 cache/batch/index 변경이나 운영 DB 측정은 하지 않았다.
+첫 실행은 다음 순서로 진행하고, 근거 없이 대형 파일 분리·전체 재작성으로 확대하지 않는다.
+
+1. **재현 fixture와 기준선 고정.** 현행 migration과 직접 만든 합성 account/profile/lobby를
+   폐기 PostgreSQL에 구성한다. 기존 lifecycle 테스트의 분리 port·명시적 reset 승인 token·
+   finally 정리 절차를 재사용하고 운영 접속 문자열은 거절한다. commit + working diff hash,
+   SDK/PG 버전, fixture seed/hash, 장비·전원 조건, 실행 설정을 receipt에 기록한다.
+2. **첫 측정: 계정 목록.** 서비스 `ListAccountsAsync`와 API 목록 응답을 각각 측정한다.
+   UI 전체 비용은 목록 + 계정별 lobby fan-out 완료까지 별도로 측정한다. 서비스 단독 시간을
+   UI 응답 시간으로 표시하지 않는다. HTTP 수, SQL 수, 반환 행 수/응답 byte 수, process
+   allocation과 p50/p95를 기록한다. SQL 계측은 테스트 전용 Npgsql 진단 또는 폐기 DB 통계로
+   연결하고 원문 query parameter·계정 payload는 로그에 남기지 않는다.
+3. **규모 행렬.** 계정 수 1/10/50/100(계정당 roster 50, revision history 10 고정)을 먼저
+   비교한다. 이어 계정 10 고정에서 roster 5/50/200, history 1/10/100을 각각 한 축씩 바꾼다.
+   빈 DB·빈 roster·결손 revision은 성능 표와 분리된 정확성 검사다. 입력 규모에 따른 비용
+   증가와 고정 비용을 구분하며 처음부터 모든 축의 Cartesian product를 실행하지 않는다.
+4. **반복 규칙.** Release 빌드, 다른 회귀/빌드와 동시 실행하지 않는다. 프로세스 재시작 후
+   최초 요청 10회와 동일 프로세스 warm-up 5회 뒤 50회 요청 × 3묶음을 분리한다.
+   여기서 cold는 process-cold이며 OS/DB cache flush를 뜻하지 않는다. timeout/error는 별도
+   개수로 남기고 좋은 샘플만 골라내지 않는다. p95는 정렬된 표본의 nearest-rank로 계산한다.
+   원시 시간 표본도 보존한다. 물리 disk 읽기 byte와 반환 payload byte는 혼용하지 않는다.
+5. **두 번째 측정.** 계정 선택/workspace, runtime candidate export, revision history를 같은
+   fixture에서 측정한다. SQL·JSON 매핑·파일 읽기의 구간별 비용을 구분한다. 실행기 및 게임
+   launch는 제외한다. 결손/오류 응답의 동작은 정상 응답 성능과 별도로 검증한다.
+6. **변경 선택과 검증.** 가장 큰 반복 비용 한 곳만 batch projection 등으로 줄이는 안을
+   먼저 제안한다. cache가 필요하면 account + immutable revision + projection/schema/catalog
+   버전 등 실제 입력 의존성을 키에 포함한다. mutable head pointer 자체는 오래 재사용하지
+   않는다. 계정 전환·revision 변경·동시 save/read·프로세스 재시작·누락 revision에서 이전
+   데이터가 섞이지 않고, 기존 계약과 일치하는 snapshot 또는 명시적 conflict를 반환해야 한다.
+
+측정 종료 조건: fixture/환경이 고정된 원시 표본과 집계표, 호출별 SQL/HTTP 비용,
+정확성 결과, 상위 병목 후보와 근거를 남긴다. 예산/실행 환경 한계로 생략한 셀은 명시한다.
+최적화안은 같은 조건 전후 3묶음 모두의 p50/p95·읽기 비용을 비교하며, 반복 변동보다 작은
+차이는 개선으로 주장하지 않는다. SQL 수 감소만으로 전체 응답 개선을 주장하지 않는다.
+정확성 실패나 timeout 증가가 있으면 채택하지 않는다. 유의미한 병목이 없으면 **변경 없음**도
+정상 결론이다. 상세 출력은 ignored `artifacts/stabilization/s08/`에, 합성·source-free 요약만
+이 문서에 남긴다. 실제 사용자 계정·원본 ID·게임 자료를 fixture나 commit에 포함하지 않는다.
 
 ### S-09 / 중간 — 프로세스 identity와 복구 공통 코드가 부분적으로 다름
 

@@ -48,6 +48,13 @@ Invoke-Checked node @("--check", $EditorScript)
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/workspace-save-retry.test.cjs"))
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/raid-launch-status.test.cjs"))
 Invoke-Checked node @((Join-Path $ScriptDirectory "test-nll-phase-d-lifecycle-ui.cjs"))
+$MaterializerChecks = Join-Path $RepositoryRoot 'tests/NikkeLocalLab.Materializer.BehaviorChecks/NikkeLocalLab.Materializer.BehaviorChecks.csproj'
+# Source-only CI compiles the checker without Epinel/SDK/client inputs. Actual
+# output tests + separate deployment builds require the explicit pinned local gate.
+Invoke-Checked dotnet @('restore', $MaterializerChecks, '--locked-mode')
+Invoke-Checked dotnet @('build', $MaterializerChecks, '-c', 'Release', '--no-restore')
+Invoke-Checked dotnet @('format', $MaterializerChecks, '--verify-no-changes', '--no-restore')
+Write-Output 'Materializer checker source build passed; pinned output checks/bootstrap151/desktop local gate NOT executed by CI.'
 Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-ui-reuse-assets.ps1'))
 if ($env:OS -eq 'Windows_NT') {
     $WindowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'

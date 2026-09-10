@@ -71,6 +71,14 @@ push 이후에는 Actions run이 PR과 merge를 담당합니다. 실패 시 원�
 
 ## 로컬 검사
 
+S-06부터 Phase 2A2는 원본 데이터·외부 DLL 참조가 없는 materializer 행동 검사기의
+locked restore/build/format도 수행합니다. **CI에서는 실제 materializer 출력 검사와
+151 bootstrap/desktop 빌드를 실행하지 않습니다.** 배포 후보는 별도
+`scripts/test-nll-materializer-behavior.ps1`에 검토된 bundle 경로·SHA-256을 명시해 로컬
+검증해야 합니다. 합성 입력 21개, negative control과 별도 빌드의 범위·명령은
+[S-06](../STABILIZATION_PLAN.md#s-06--높음--회귀-검사의-일부가-동작-대신-구현-문자열에-결박됨)을 따릅니다.
+이 gate의 산출물·외부 DLL·receipt는 ignored artifacts에만 두고 Actions에 업로드하지 않습니다.
+
     pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode working -AllowRemote
     pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
     pwsh -NoProfile -File scripts/verify-phase3a.ps1
