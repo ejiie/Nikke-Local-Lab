@@ -25,10 +25,10 @@ internal sealed record ClassicSoloRaidRestoreProjection(
 
 internal static class ClassicSoloRaidRuntimeState
 {
-  private const string CaptureContractId = "nll/phase-d-classic-solo-raid-state-capture/v1";
-  private const string PayloadContractId = "nll/classic-solo-raid-runtime-state/v1";
+  private const string CaptureContractId = "nll/phase-d-classic-solo-raid-state-capture/v2";
+  private const string PayloadContractId = "nll/classic-solo-raid-runtime-state/v2";
   private const string PersistenceContractId =
-      "nll/phase-d-classic-solo-raid-state-persistence/v1";
+      "nll/phase-d-classic-solo-raid-state-persistence/v2";
   private static readonly byte[] ProtectedPayloadMagic = "NLLSRP01"u8.ToArray();
 
   internal static bool IsCaptureMode(IReadOnlyDictionary<string, string> options) =>
@@ -108,6 +108,10 @@ internal static class ClassicSoloRaidRuntimeState
         {
           var metrics = ProjectMetrics(payload);
           var capturedAtUtc = DateTimeOffset.UtcNow;
+          var preferences = binding.SelectedWeaknessCode == "unresolved" ? null :
+              RuntimePreferencesPersistence.Capture(core.Users[0], PreferencesKey(binding),
+                  LowerHex(binding.AccountRevisionSetSha256), binding.SelectedWeaknessCode,
+                  secret, launchUid, capturedAtUtc);
           var protectedPayloadSha256 = SHA256.HashData(protectedPayload);
           var requestCapture = new ClassicSoloRaidRuntimeStateCapture(
               StoreKey(binding),
@@ -129,7 +133,7 @@ internal static class ClassicSoloRaidRuntimeState
               ClassicSoloRaidRuntimeStateStore.ComputeRequestSha256(requestCapture);
           var receipt = new CaptureReceipt(
               1,
-              CaptureContractId,
+              preferences is null ? "nll/phase-d-classic-solo-raid-state-capture/v1" : CaptureContractId,
               capturedAtUtc,
               launchUid,
               binding.AccountUid,
@@ -151,12 +155,15 @@ internal static class ClassicSoloRaidRuntimeState
               metrics.OpenTeamCount,
               metrics.RaidDateDay,
               LowerHex(SHA256.HashData(await File.ReadAllBytesAsync(sourcePath))),
-              false);
+              false,
+              binding.SelectedWeaknessCode,
+              preferences is null ? null : RuntimePreferencesPersistence.PendingHash(preferences));
           var pendingEnvelope = new PendingEnvelope(
               1,
-              "nll/phase-d-classic-solo-raid-state-pending/v1",
+              preferences is null ? "nll/phase-d-classic-solo-raid-state-pending/v1" : "nll/phase-d-classic-solo-raid-state-pending/v2",
               receipt,
-              Convert.ToBase64String(protectedPayload));
+              Convert.ToBase64String(protectedPayload),
+              preferences);
           await WriteAtomicJsonAsync(pendingPath, pendingEnvelope);
           await WriteAtomicJsonAsync(receiptPath, receipt);
           Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(receipt, JsonOptions()));
@@ -189,10 +196,17 @@ internal static class ClassicSoloRaidRuntimeState
         pendingDocument, JsonOptions()) ??
         throw new InvalidOperationException("phase_d_raid_state_pending_payload_invalid");
     Require(envelope.SchemaVersion == 1 &&
-            envelope.ContractId == "nll/phase-d-classic-solo-raid-state-pending/v1",
+            envelope.ContractId is "nll/phase-d-classic-solo-raid-state-pending/v1" or "nll/phase-d-classic-solo-raid-state-pending/v2",
         "phase_d_raid_state_pending_payload_invalid");
     var capture = envelope.Capture;
     ValidateCaptureReceipt(capture);
+    var includesPreferences = capture.ContractId == CaptureContractId;
+    Require(includesPreferences == (envelope.Preferences is not null) &&
+            (includesPreferences
+                ? envelope.ContractId == "nll/phase-d-classic-solo-raid-state-pending/v2" &&
+                  capture.PreferencesPendingSha256 == RuntimePreferencesPersistence.PendingHash(envelope.Preferences!)
+                : envelope.ContractId == "nll/phase-d-classic-solo-raid-state-pending/v1"),
+        "phase_d_preferences_pending_binding_mismatch");
     if (File.Exists(captureReceiptPath))
     {
       var separateReceipt = System.Text.Json.JsonSerializer.Deserialize<CaptureReceipt>(
@@ -219,11 +233,12 @@ internal static class ClassicSoloRaidRuntimeState
     try
     {
       var clear = Unprotect(protectedPayload, secret, AssociatedData(binding));
+      StatePayload payload;
       try
       {
         Require(LowerHex(SHA256.HashData(clear)) == capture.StateContentSha256,
             "phase_d_raid_state_content_hash_mismatch");
-        var payload = JsonConvert.DeserializeObject<StatePayload>(Encoding.UTF8.GetString(clear)) ??
+        payload = JsonConvert.DeserializeObject<StatePayload>(Encoding.UTF8.GetString(clear)) ??
             throw new InvalidOperationException("phase_d_raid_state_payload_invalid");
         ValidatePayload(payload);
         Require(ProjectMetrics(payload) == MetricsFrom(capture),
@@ -238,6 +253,23 @@ internal static class ClassicSoloRaidRuntimeState
           "phase_d_database_environment_missing");
       await using var dataSource = NpgsqlDataSource.Create(connectionString);
       var store = new ClassicSoloRaidRuntimeStateStore(dataSource);
+      var previous = await store.GetHeadAsync(StoreKey(binding));
+      if (previous is not null && previous.RevisionUid == capture.ExpectedHeadRevisionUid)
+      {
+        var previousClear = Unprotect(previous.ProtectedPayload, secret, AssociatedData(binding with
+        {
+          AccountRevisionSetSha256 = previous.SourceProfileRevisionSetSha256
+        }));
+        try
+        {
+          Require(SHA256.HashData(previousClear).AsSpan().SequenceEqual(previous.StateContentSha256),
+              "phase_d_raid_state_content_hash_mismatch");
+          var previousPayload = JsonConvert.DeserializeObject<StatePayload>(Encoding.UTF8.GetString(previousClear)) ??
+              throw new InvalidOperationException("phase_d_raid_state_payload_invalid");
+          ClassicBattleHistoryPolicy.RequireAppendOnly(previousPayload.Raid, payload.Raid);
+        }
+        finally { CryptographicOperations.ZeroMemory(previousClear); }
+      }
       var captureRow = new ClassicSoloRaidRuntimeStateCapture(
           StoreKey(binding),
           capture.LaunchContextUid,
@@ -259,10 +291,14 @@ internal static class ClassicSoloRaidRuntimeState
           "phase_d_raid_state_request_hash_mismatch");
       captureRow = captureRow with { RequestSha256 = requestSha256 };
       var result = await store.PersistAsync(captureRow);
+      RuntimePreferencesResult? preferencesResult = null;
+      if (envelope.Preferences is not null && !result.Quarantined)
+        preferencesResult = await RuntimePreferencesPersistence.PersistAsync(envelope.Preferences,
+            dataSource, PreferencesKey(binding), capture.LaunchContextUid, secret);
       var persistenceReceipt = new
       {
         schemaVersion = 1,
-        contractId = PersistenceContractId,
+        contractId = includesPreferences ? PersistenceContractId : "nll/phase-d-classic-solo-raid-state-persistence/v1",
         persistedAtUtc = DateTimeOffset.UtcNow,
         launchContextUid = capture.LaunchContextUid,
         accountUid = capture.AccountUid,
@@ -272,6 +308,11 @@ internal static class ClassicSoloRaidRuntimeState
         raidSnapshotSha256 = capture.RaidSnapshotSha256,
         clientBuildCode = capture.ClientBuildCode,
         clientExecutableSha256 = capture.ClientExecutableSha256,
+        selectedWeaknessCode = capture.SelectedWeaknessCode,
+        preferencesPendingSha256 = capture.PreferencesPendingSha256,
+        preferencesResultCode = preferencesResult?.ResultCode,
+        preferencesHeadRevisionUid = preferencesResult?.RevisionUid,
+        preferencesExactReplay = preferencesResult?.ExactReplay,
         expectedHeadRevisionUid = capture.ExpectedHeadRevisionUid,
         pendingPayloadSha256 = pendingDocumentSha256,
         captureReceiptSha256,
@@ -282,7 +323,7 @@ internal static class ClassicSoloRaidRuntimeState
         headRevisionUid = result.HeadRevisionUid,
         resultStateContentSha256 = LowerHex(result.ResultStateContentSha256),
         stateAdvanced = result.StateAdvanced,
-        quarantined = result.Quarantined,
+        quarantined = result.Quarantined || preferencesResult?.Quarantined == true,
         exactReplay = result.ExactReplay,
         pendingPayloadDeleted = false,
         rawSourceIdentifierPersistedAsColumn = false
@@ -295,7 +336,7 @@ internal static class ClassicSoloRaidRuntimeState
           persistenceReceipt, JsonOptions()));
       var allowQuarantined = options.TryGetValue("allow-quarantined", out var value) &&
           value == "true";
-      Require(!result.Quarantined || allowQuarantined,
+      Require((!result.Quarantined && preferencesResult?.Quarantined != true) || allowQuarantined,
           "phase_d_raid_state_persistence_quarantined");
     }
     finally
@@ -327,7 +368,11 @@ internal static class ClassicSoloRaidRuntimeState
         operationalBinding.RaidSnapshotUid,
         operationalBinding.RaidSnapshotSha256,
         RequiredControlledCode(options, "client-build-code"),
-        RequiredSha256(options, "client-executable-sha256"));
+        RequiredSha256(options, "client-executable-sha256"),
+        RequiredWeakness(options));
+    // The seed is never record authority for an account/weakness, including an
+    // explicitly persisted empty state or an ineligible legacy migration.
+    user.SoloRaidData.Clear();
     var store = new ClassicSoloRaidRuntimeStateStore(dataSource);
     var head = await store.GetHeadAsync(StoreKey(binding));
     var sourceBinding = binding;
@@ -350,6 +395,8 @@ internal static class ClassicSoloRaidRuntimeState
     }
     if (head is null)
     {
+      // Seed DB records are not authority for this account/selected weakness.
+      // Legacy unscoped records remain untouched in PostgreSQL for evidence-based migration.
       return new ClassicSoloRaidRestoreProjection(
           false, false, null, null, null, 0, 0, false, false, false);
     }
@@ -361,7 +408,8 @@ internal static class ClassicSoloRaidRuntimeState
         binding.RaidSnapshotUid,
         binding.RaidSnapshotSha256,
         sourceBinding.ClientBuildCode,
-        sourceBinding.ClientExecutableSha256)));
+        sourceBinding.ClientExecutableSha256,
+        sourceBinding.SelectedWeaknessCode)));
     try
     {
       Require(CryptographicOperations.FixedTimeEquals(
@@ -415,16 +463,24 @@ internal static class ClassicSoloRaidRuntimeState
         // best is not. Apply the same state transition as the lobby Quit action:
         // discard exactly the open Trial and release its open counter while
         // retaining the closed best record for the new profile revision.
+        foreach (var openLevel in payload.Raid!.SoloRaidLevels.Where(level => level.IsOpen))
+          ClassicSoloRaidBattleReceipt.Close(payload.Raid, openLevel, "abandoned");
         var removedOpenRuns = payload.Raid!.SoloRaidLevels.RemoveAll(static level =>
             level.RaidLevel == 8 && (int)level.Type == 2 && level.IsOpen);
-        Require(removedOpenRuns == 1 && payload.Raid.TrialCount > 0,
+        Require(removedOpenRuns == 1 && payload.Raid.TrialCount >= 0,
             "phase_d_active_raid_profile_revision_mismatch");
-        payload.Raid.TrialCount--;
+        if (payload.Raid.TrialCount > 0) payload.Raid.TrialCount--;
         ValidatePayload(payload);
         metrics = ProjectMetrics(payload);
         Require(!metrics.HasOpenRun,
             "phase_d_active_raid_profile_revision_mismatch");
         openRunDiscardedForProfileRevisionMismatch = true;
+      }
+      if (!profileMatches)
+      {
+        foreach (var practice in payload.Raid!.SoloRaidLevels.Where(level => level.IsOpen && level.Type == SoloRaidType.Practice))
+          ClassicSoloRaidBattleReceipt.Close(payload.Raid, practice, "abandoned");
+        payload.Raid.SoloRaidLevels.RemoveAll(level => level.IsOpen && level.Type == SoloRaidType.Practice);
       }
       user.SelectedClassicSoloRaidManagerId = payload.SelectedManagerId;
       user.SoloRaidData[payload.SelectedManagerId!.Value] = payload.Raid!;
@@ -486,10 +542,17 @@ internal static class ClassicSoloRaidRuntimeState
       RaidOpenCount = raid.RaidOpenCount,
       TrialCount = raid.TrialCount,
       LastDateDay = raid.LastDateDay,
-      SoloRaidLevels = []
+      SoloRaidLevels = [],
+      BattleHistory = JsonConvert.DeserializeObject<List<ClassicSoloRaidBattleReceipt>>(
+          JsonConvert.SerializeObject(raid.BattleHistory)) ??
+          throw new InvalidOperationException("phase_d_raid_history_invalid"),
+      BattleRunStatus = new Dictionary<Guid, string>(raid.BattleRunStatus)
     };
     if (completedBest is not null) minimal.SoloRaidLevels.Add(CloneLevel(completedBest));
     if (openTrials.Length == 1) minimal.SoloRaidLevels.Add(CloneLevel(openTrials[0]));
+    minimal.SoloRaidLevels.AddRange(raid.SoloRaidLevels
+        .Where(static level => level.RaidLevel == 8 && level.Type == SoloRaidType.Practice)
+        .Select(CloneLevel));
     return new StatePayload(1, PayloadContractId, true, selected, minimal);
   }
 
@@ -497,7 +560,7 @@ internal static class ClassicSoloRaidRuntimeState
       StatePayload payload,
       bool allowLegacyPartialCompletion = false)
   {
-    Require(payload.SchemaVersion == 1 && payload.ContractId == PayloadContractId,
+    Require(payload.SchemaVersion == 1 && payload.ContractId is PayloadContractId or "nll/classic-solo-raid-runtime-state/v1",
         "phase_d_raid_state_payload_invalid");
     if (!payload.StatePresent)
     {
@@ -509,14 +572,14 @@ internal static class ClassicSoloRaidRuntimeState
     if (payload.SelectedManagerId is not > 0 || raid is null ||
         raid.RaidId != payload.SelectedManagerId ||
         raid.RaidOpenCount < 0 || raid.TrialCount < 0 || raid.LastDateDay < 0 ||
-            raid.SoloRaidLevels.Count > 2)
+            raid.SoloRaidLevels.Count > 4)
     {
       throw new InvalidOperationException("phase_d_raid_state_payload_invalid");
     }
     var levelKeys = new HashSet<(int RaidLevel, int Type, bool Open)>();
     foreach (var level in raid.SoloRaidLevels)
     {
-      Require(level.RaidLevel == 8 && (int)level.Type == 2 &&
+      Require(level.RaidLevel == 8 && level.Type is SoloRaidType.Trial or SoloRaidType.Practice &&
               level.RaidJoinCount is >= 0 and <= 5 &&
               level.Hp >= 0 && level.TotalDamage >= 0 &&
               level.Logs.Count <= 5 &&
@@ -552,6 +615,24 @@ internal static class ClassicSoloRaidRuntimeState
         }
       }
     }
+    var battleUids = new HashSet<Guid>();
+    var coordinates = new HashSet<(Guid, int)>();
+    long previousSequence = 0;
+    foreach (var battle in raid.BattleHistory)
+    {
+      Require(battle.BattleUid != Guid.Empty && battleUids.Add(battle.BattleUid) &&
+              battle.RunUid != Guid.Empty && battle.Ordinal is >= 1 and <= 5 &&
+              coordinates.Add((battle.RunUid, battle.Ordinal)) &&
+              battle.Sequence > previousSequence && battle.RaidLevel == 8 &&
+              battle.Type is SoloRaidType.Trial or SoloRaidType.Practice &&
+              raid.BattleRunStatus.TryGetValue(battle.RunUid, out var status) &&
+              status is "open" or "completed" or "abandoned" &&
+              (battle.Origin == "accepted_battle" && battle.AcceptedAtUtc.HasValue ||
+               battle.Origin == "legacy_snapshot" && battle.AcceptedAtUtc is null) &&
+              battle.Log is not null && battle.Log.Damage >= 0 && battle.Log.Team.Count <= 5,
+          "phase_d_raid_history_invalid");
+      previousSequence = battle.Sequence;
+    }
   }
 
   private static SoloRaidLevelData CloneLevel(SoloRaidLevelData level) =>
@@ -572,7 +653,7 @@ internal static class ClassicSoloRaidRuntimeState
         .OrderByDescending(static level => level.TotalDamage)
         .ThenByDescending(static level => level.Logs.Count)
         .FirstOrDefault();
-    var open = levels.Where(static level => level.IsOpen).ToArray();
+    var open = levels.Where(static level => level.IsOpen && level.Type == SoloRaidType.Trial).ToArray();
     return new StateMetrics(
         true,
         open.Length != 0,
@@ -605,7 +686,8 @@ internal static class ClassicSoloRaidRuntimeState
         RequiredGuid(options, "raid-snapshot-uid"),
         RequiredSha256(options, "raid-snapshot-sha256"),
         RequiredControlledCode(options, "client-build-code"),
-        RequiredSha256(options, "client-executable-sha256"));
+        RequiredSha256(options, "client-executable-sha256"),
+        options.ContainsKey("weakness-code") ? RequiredWeakness(options) : "unresolved");
   }
 
   private static Binding BindingFrom(CaptureReceipt receipt) => new(
@@ -615,7 +697,8 @@ internal static class ClassicSoloRaidRuntimeState
       receipt.RaidSnapshotUid,
       FromHex(receipt.RaidSnapshotSha256),
       receipt.ClientBuildCode,
-      FromHex(receipt.ClientExecutableSha256));
+      FromHex(receipt.ClientExecutableSha256),
+      receipt.SelectedWeaknessCode);
 
   private static ClassicSoloRaidRuntimeStateKey StoreKey(Binding binding) => new(
       binding.AccountUid,
@@ -623,19 +706,25 @@ internal static class ClassicSoloRaidRuntimeState
       binding.RaidSnapshotUid,
       binding.RaidSnapshotSha256,
       binding.ClientBuildCode,
-      binding.ClientExecutableSha256);
+      binding.ClientExecutableSha256,
+      binding.SelectedWeaknessCode);
+
+  private static RuntimePreferencesKey PreferencesKey(Binding binding) => new(
+      binding.AccountUid, binding.ClientBuildCode, binding.ClientExecutableSha256);
 
   private static byte[] AssociatedData(Binding binding) => Encoding.UTF8.GetBytes(string.Join('\n',
-      PayloadContractId,
+      "nll/classic-solo-raid-runtime-state/v1", // Keep the legacy authenticated binding byte-identical.
       binding.AccountUid.ToString("D"),
       LowerHex(binding.AccountRevisionSetSha256),
       binding.SeasonNumber.ToString(CultureInfo.InvariantCulture),
       binding.RaidSnapshotUid.ToString("D"),
       LowerHex(binding.RaidSnapshotSha256),
       binding.ClientBuildCode,
-      LowerHex(binding.ClientExecutableSha256)) + "\n");
+      LowerHex(binding.ClientExecutableSha256)) + "\n" +
+      (binding.SelectedWeaknessCode == "unresolved" ? "" :
+          "nll/classic-solo-raid-selected-weakness/v1\n" + binding.SelectedWeaknessCode + "\n"));
 
-  private static byte[] Protect(byte[] clear, byte[] secret, byte[] associatedData)
+  internal static byte[] Protect(byte[] clear, byte[] secret, byte[] associatedData)
   {
     var key = DeriveProtectionKey(secret);
     var nonce = RandomNumberGenerator.GetBytes(12);
@@ -662,7 +751,7 @@ internal static class ClassicSoloRaidRuntimeState
     }
   }
 
-  private static byte[] Unprotect(byte[] protectedPayload, byte[] secret, byte[] associatedData)
+  internal static byte[] Unprotect(byte[] protectedPayload, byte[] secret, byte[] associatedData)
   {
     Require(protectedPayload.Length >= 53 &&
             protectedPayload.AsSpan(0, ProtectedPayloadMagic.Length)
@@ -720,15 +809,20 @@ internal static class ClassicSoloRaidRuntimeState
 
   private static void ValidateCaptureReceipt(CaptureReceipt receipt)
   {
-    Require(receipt.SchemaVersion == 1 && receipt.ContractId == CaptureContractId &&
+    Require(receipt.SchemaVersion == 1 &&
+            (receipt.ContractId == CaptureContractId && receipt.SelectedWeaknessCode != "unresolved" &&
+                receipt.PreferencesPendingSha256 is not null && IsLowerHexSha256(receipt.PreferencesPendingSha256) ||
+             receipt.ContractId == "nll/phase-d-classic-solo-raid-state-capture/v1" && receipt.SelectedWeaknessCode == "unresolved" &&
+                receipt.PreferencesPendingSha256 is null) &&
             receipt.LaunchContextUid != Guid.Empty && receipt.AccountUid != Guid.Empty &&
             IsLowerHexSha256(receipt.AccountRevisionSetSha256) &&
             receipt.SeasonNumber > 0 && receipt.RaidSnapshotUid != Guid.Empty &&
             IsLowerHexSha256(receipt.RaidSnapshotSha256) &&
             IsControlledCode(receipt.ClientBuildCode) &&
             IsLowerHexSha256(receipt.ClientExecutableSha256) &&
+            receipt.SelectedWeaknessCode is "unresolved" or "iron" or "water" or "fire" or "wind" or "electric" &&
             IsLowerHexSha256(receipt.RequestSha256) &&
-            receipt.ProtectedPayloadByteLength is >= 53 and <= 1_048_576 &&
+            receipt.ProtectedPayloadByteLength is >= 53 and <= 67_108_864 &&
             IsLowerHexSha256(receipt.ProtectedPayloadSha256) &&
             IsLowerHexSha256(receipt.StateContentSha256) &&
             IsLowerHexSha256(receipt.SourceDatabaseSha256) &&
@@ -738,6 +832,14 @@ internal static class ClassicSoloRaidRuntimeState
             receipt.OpenTeamCount is >= 0 and <= 4 &&
             !receipt.RawSourceIdentifierWrittenToReceipt,
         "phase_d_raid_state_capture_receipt_invalid");
+  }
+
+  private static string RequiredWeakness(IReadOnlyDictionary<string, string> options)
+  {
+    var code = RequiredText(options, "weakness-code");
+    Require(code is "iron" or "water" or "fire" or "wind" or "electric",
+        "phase_d_raid_state_weakness_invalid");
+    return code;
   }
 
   private static byte[] ReadIdentitySecret(IReadOnlyDictionary<string, string> options)
@@ -851,11 +953,24 @@ internal static class ClassicSoloRaidRuntimeState
   {
     Directory.CreateDirectory(Path.GetDirectoryName(path)!);
     var temporary = path + ".partial-" + Guid.NewGuid().ToString("N");
-    await File.WriteAllTextAsync(
-        temporary,
-        System.Text.Json.JsonSerializer.Serialize(value, JsonOptions()) + "\n",
-        new UTF8Encoding(false));
-    File.Move(temporary, path, replaceExisting);
+    var bytes = new UTF8Encoding(false).GetBytes(System.Text.Json.JsonSerializer.Serialize(value, JsonOptions()) + "\n");
+    try
+    {
+      await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write,
+          FileShare.None, 65536, FileOptions.Asynchronous | FileOptions.WriteThrough))
+      {
+        await stream.WriteAsync(bytes);
+        await stream.FlushAsync();
+        stream.Flush(flushToDisk: true);
+      }
+      if (replaceExisting && File.Exists(path)) File.Replace(temporary, path, null);
+      else File.Move(temporary, path);
+    }
+    finally
+    {
+      CryptographicOperations.ZeroMemory(bytes);
+      if (File.Exists(temporary)) File.Delete(temporary);
+    }
   }
 
   private static System.Text.Json.JsonSerializerOptions JsonOptions() => new()
@@ -877,7 +992,8 @@ internal static class ClassicSoloRaidRuntimeState
       Guid RaidSnapshotUid,
       byte[] RaidSnapshotSha256,
       string ClientBuildCode,
-      byte[] ClientExecutableSha256);
+      byte[] ClientExecutableSha256,
+      string SelectedWeaknessCode = "unresolved");
 
   private sealed record StatePayload(
       int SchemaVersion,
@@ -898,7 +1014,8 @@ internal static class ClassicSoloRaidRuntimeState
       int SchemaVersion,
       string ContractId,
       CaptureReceipt Capture,
-      string ProtectedPayloadBase64);
+      string ProtectedPayloadBase64,
+      RuntimePreferencesPending? Preferences = null);
 
   private sealed record CaptureReceipt(
       int SchemaVersion,
@@ -924,5 +1041,7 @@ internal static class ClassicSoloRaidRuntimeState
       int OpenTeamCount,
       int? RaidDateDay,
       string SourceDatabaseSha256,
-      bool RawSourceIdentifierWrittenToReceipt);
+      bool RawSourceIdentifierWrittenToReceipt,
+      string SelectedWeaknessCode = "unresolved",
+      string? PreferencesPendingSha256 = null);
 }

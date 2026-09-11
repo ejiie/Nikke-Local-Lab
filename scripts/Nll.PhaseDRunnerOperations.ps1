@@ -33,6 +33,10 @@ function Invoke-PhaseDRunnerResourcePreflight {
 }
 function Invoke-PhaseDRunnerCapture {
     param([object]$Specification, [string]$SourceDatabasePath)
+    $scopeArguments = @()
+    if ($Specification.contractId -ceq 'nll/phase-d-runner-input/v2') {
+        $scopeArguments = @('--weakness-code', [string]$Specification.weaknessCode)
+    }
     $captureOutput = @(& $Specification.runtimeMaterializer --capture-solo-raid-state true `
         --source-db $SourceDatabasePath --pending-payload $Specification.soloRaidPendingPath `
         --receipt $Specification.soloRaidCaptureReceiptPath --account-uid $Specification.accountUid `
@@ -40,7 +44,7 @@ function Invoke-PhaseDRunnerCapture {
         --raid-snapshot-uid $Specification.raidSnapshotUid --raid-snapshot-sha256 $Specification.raidSnapshotSha256 `
         --client-build-code $Specification.clientBuildCode --client-executable-sha256 $Specification.clientExecutableSha256 `
         --launch-context-uid $Specification.launchContextUid --expected-head-revision-uid $Specification.expectedSoloRaidHeadRevisionUid `
-        --identity-secret-env $Specification.secretEnvironmentVariable 2>&1)
+        --identity-secret-env $Specification.secretEnvironmentVariable @scopeArguments 2>&1)
     $captureExitCode = $LASTEXITCODE
     if ($captureExitCode -ne 0) {
         $failureCode = @($captureOutput | ForEach-Object { [string]$_ } | Where-Object { $_ -cmatch '^phase_d_[a-z0-9._-]{3,128}$' }) | Select-Object -Last 1

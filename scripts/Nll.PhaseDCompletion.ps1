@@ -101,13 +101,36 @@ function Read-PhaseDSoloRaidPersistenceReceipt {
     $expectedHeadCapture = if ($null -eq $capture.expectedHeadRevisionUid) {
         ''
     } else { [string]$capture.expectedHeadRevisionUid }
+    $proofVersion = if ($capture.contractId -ceq 'nll/phase-d-classic-solo-raid-state-capture/v2') { 'v2' } else { 'v1' }
+    if ($context.PSObject.Properties.Name -contains 'runtimePersistenceContractId') {
+        Assert-PhaseDPersistenceProof ($context.runtimePersistenceContractId -ceq 'nll/runtime-persistence/v2' -and
+            $proofVersion -ceq 'v2') 'phase_d_preferences_persistence_downgrade'
+    }
+    if ($proofVersion -ceq 'v2') {
+        $preferencesHead = [guid]::Empty
+        Assert-PhaseDPersistenceProof `
+            ([string]$capture.selectedWeaknessCode -cin @('iron','water','fire','wind','electric') -and
+             [string]$capture.selectedWeaknessCode -ceq [string]$context.weaknessCode -and
+             [string]$receipt.selectedWeaknessCode -ceq [string]$capture.selectedWeaknessCode -and
+             [string]$pending.capture.selectedWeaknessCode -ceq [string]$capture.selectedWeaknessCode -and
+             [string]$capture.preferencesPendingSha256 -cmatch '^[0-9a-f]{64}$' -and
+             [string]$receipt.preferencesPendingSha256 -ceq [string]$capture.preferencesPendingSha256 -and
+             [string]$pending.capture.preferencesPendingSha256 -ceq [string]$capture.preferencesPendingSha256 -and
+             [string]$pending.preferences.accountUid -ceq [string]$capture.accountUid -and
+             [string]$pending.preferences.launchContextUid -ceq $LaunchContextUid -and
+             [string]$pending.preferences.clientBuildCode -ceq [string]$capture.clientBuildCode -and
+             [string]$pending.preferences.clientExecutableSha256 -ceq [string]$capture.clientExecutableSha256 -and
+             [string]$receipt.preferencesResultCode -cin @('state_advanced','state_unchanged') -and
+             [guid]::TryParse([string]$receipt.preferencesHeadRevisionUid, [ref]$preferencesHead) -and
+             $preferencesHead -ne [guid]::Empty) 'phase_d_preferences_persistence_proof_invalid'
+    }
     Assert-PhaseDPersistenceProof `
         ($receipt.contractId -ceq `
-            'nll/phase-d-classic-solo-raid-state-persistence/v1' -and
+            "nll/phase-d-classic-solo-raid-state-persistence/$proofVersion" -and
          $pending.contractId -ceq `
-            'nll/phase-d-classic-solo-raid-state-pending/v1' -and
+            "nll/phase-d-classic-solo-raid-state-pending/$proofVersion" -and
          $capture.contractId -ceq `
-            'nll/phase-d-classic-solo-raid-state-capture/v1' -and
+            "nll/phase-d-classic-solo-raid-state-capture/$proofVersion" -and
          -not [bool]$receipt.quarantined -and
          [string]$receipt.launchContextUid -ceq $LaunchContextUid -and
          [string]$capture.launchContextUid -ceq $LaunchContextUid -and

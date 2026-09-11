@@ -813,6 +813,7 @@ try {
         }
         else { [string]$materialization.soloRaidStateHeadRevisionUid }
     $runnerLaunchInput = [ordered]@{
+        weaknessCode = $WeaknessCode
         runtimeDbSha256 = $runtimeDbSha256
         expectedWeaknessVariantServerDllSha256 = $expectedWeaknessVariantServerDllSha256
         runtimeBundle = $runtimeBundle
@@ -918,6 +919,7 @@ try {
     $launchContext = [ordered]@{
         schemaVersion = 1
         contractId = 'nll/launch-context/v1'
+        runtimePersistenceContractId = 'nll/runtime-persistence/v2'
         launchContextUid = $LaunchContextUid
         createdAtUtc = $createdAtUtc
         accountUid = [string]$candidate.accountUid

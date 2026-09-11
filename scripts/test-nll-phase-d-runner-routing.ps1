@@ -47,6 +47,8 @@ foreach ($build in @('build_150.6.9','build_151.8.5')) {
     foreach ($variant in @($false,$true)) {
         $expected=[ordered]@{}; foreach ($key in $spec.Keys) { $expected[$key]=$spec[$key] }
         $expected.clientBuildCode=$build
+        $expected.contractId='nll/phase-d-runner-input/v2'
+        $expected.weaknessCode='iron'
         $expected.staticDataVariantRequired=$variant
         if ($variant) { $expected.variantStaticDataPack=Join-Path $root 'pack'; $expected.variantStaticDataSha256='6'*64 }
         $expected.resourcePreflightRequired=$build -ceq 'build_150.6.9'

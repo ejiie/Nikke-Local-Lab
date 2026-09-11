@@ -2,6 +2,7 @@
 param(
     [string]$PostgreSqlRoot = 'C:\NLL\Runtime\PostgreSQL-17-native',
     [string]$Filter = '',
+    [string]$RuntimeMaterializerPath = '',
     [switch]$MeasureAccountReads,
     [ValidateSet('focused', 'full', 'smoke', 'cold', 'cold-smoke', 'cold-full', 'diagnostic', 'dom', 'planner', 'dense-planner')][string]$ReadMeasurementScope = 'focused',
     [ValidateRange(1, 60)][int]$ShutdownTimeoutSeconds = 30
@@ -20,6 +21,9 @@ $initDb = Join-Path $PostgreSqlRoot 'bin\initdb.exe'
 $createDb = Join-Path $PostgreSqlRoot 'bin\createdb.exe'
 $psql = Join-Path $PostgreSqlRoot 'bin\psql.exe'
 $dotnet = (Get-Command dotnet -ErrorAction Stop).Source
+if ($RuntimeMaterializerPath -and ($MeasureAccountReads -or
+    -not (Test-Path -LiteralPath $RuntimeMaterializerPath -PathType Leaf) -or
+    -not [IO.Path]::IsPathRooted($RuntimeMaterializerPath))) { throw 'lifecycle_test_materializer_input_invalid' }
 if ($MeasureAccountReads -and -not [string]::IsNullOrWhiteSpace($Filter)) { throw 'lifecycle_test_measurement_filter_conflict' }
 $measurementDll = Join-Path $repositoryRoot 'tests\NikkeLocalLab.ReadBenchmarks\bin\Release\net8.0\NikkeLocalLab.ReadBenchmarks.dll'
 if ($MeasureAccountReads -and -not (Test-Path -LiteralPath $measurementDll -PathType Leaf)) { throw 'lifecycle_test_measurement_build_required' }
@@ -54,7 +58,8 @@ $null = New-Item -ItemType Directory -Path $workRoot
 $null = New-Item -ItemType Directory -Path $resultRoot -Force
 $environmentNames = @('PGPASSWORD', 'NIKKE_LAB_TEST_DB', 'NIKKE_LAB_TEST_EXPECTED_DATABASE',
     'NIKKE_LAB_TEST_RESET_TOKEN', 'DOTNET_CLI_HOME', 'NUGET_PACKAGES', 'DOTNET_CLI_TELEMETRY_OPTOUT', 'NLL_S08_OUTPUT',
-    'NLL_S08_DOM_SCRIPT', 'NLL_S08_NODE')
+    'NLL_S08_DOM_SCRIPT', 'NLL_S08_NODE', 'NLL_TEST_RUNTIME_MATERIALIZER',
+    'NLL_TEST_RUNTIME_MATERIALIZER_SHA256', 'NLL_TEST_RUNTIME_PERSISTENCE_RECEIPT')
 $previousEnvironment = @{}
 foreach ($name in $environmentNames) { $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 $bytes = [byte[]]::new(32)
@@ -93,6 +98,11 @@ try {
     $env:DOTNET_CLI_HOME = Join-Path $repositoryRoot '.dotnet-cli-home'
     $env:NUGET_PACKAGES = Join-Path $repositoryRoot '.nuget-packages'
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+    $env:NLL_TEST_RUNTIME_MATERIALIZER = $RuntimeMaterializerPath
+    if ($RuntimeMaterializerPath) {
+        $env:NLL_TEST_RUNTIME_MATERIALIZER_SHA256 = (Get-FileHash -LiteralPath $RuntimeMaterializerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $env:NLL_TEST_RUNTIME_PERSISTENCE_RECEIPT = Join-Path $resultRoot 'runtime-persistence.receipt.json'
+    }
     $stage = 'test'
     $testArguments = @('test', (Join-Path $repositoryRoot 'tests\NikkeLocalLab.PostgreSql.IntegrationTests'),
         '--configuration', 'Release', '--no-restore', '--logger', 'trx;LogFileName=integration.trx',
@@ -142,6 +152,11 @@ try {
         & $dotnet @testArguments
     }
     $testExitCode = $LASTEXITCODE
+    if ($testExitCode -eq 0 -and $RuntimeMaterializerPath) {
+        if (-not (Test-Path -LiteralPath $env:NLL_TEST_RUNTIME_PERSISTENCE_RECEIPT)) { throw 'lifecycle_test_materializer_not_executed' }
+        $runtimeCheck = Get-Content -LiteralPath $env:NLL_TEST_RUNTIME_PERSISTENCE_RECEIPT -Raw | ConvertFrom-Json
+        if ($runtimeCheck.status -cne 'passed' -or $runtimeCheck.actualCapturePersistRestore -ne $true) { throw 'lifecycle_test_materializer_failed' }
+    }
     $stage = 'restart'
     & $pgCtl stop -D $dataRoot -m fast -w -t $ShutdownTimeoutSeconds
     if ($LASTEXITCODE -ne 0 -or (Test-LifecycleListener)) { throw 'lifecycle_test_stop_failed' }
@@ -176,6 +191,7 @@ finally {
         cleanupVerified = $cleanupVerified; port = $port
         shutdownTimeoutSeconds = $ShutdownTimeoutSeconds
         postgresqlRestartCheckpointVerified = $restartVerified
+        runtimePersistenceAdapterRequested = [bool]$RuntimeMaterializerPath
         operatingDatabaseTouched = $false; originalClientExecuted = $false
         completedAtUtc = [DateTime]::UtcNow.ToString('o')
     }

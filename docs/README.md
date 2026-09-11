@@ -25,6 +25,7 @@
 - [프런트엔드 결함 이력](features/CONTROL_CENTER_FRONTEND_DEFECTS.md)
 - [계정 workspace / Save](features/PHASE_B_ACCOUNT_WORKSPACE.md)
 - [레이드 영속화·분석 필드](features/SOLO_RAID_PERSISTENCE_AND_ANALYTICS.md)
+- [실행 간 영속화 P-01~P-09·실게임 확인 순서](features/RUNTIME_PERSISTENCE.md)
 
 결함 기록의 오래된 우선순위나 당시 ‘미완료’ 문구는 현행 상태 선언이 아닙니다.
 현재 우선순위는 안정화 계획을, 개별 결함의 원인·수정 근거는 BE/FE 항목을 확인합니다.

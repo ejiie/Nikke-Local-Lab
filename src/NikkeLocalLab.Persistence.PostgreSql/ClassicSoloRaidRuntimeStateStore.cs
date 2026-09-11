@@ -19,7 +19,8 @@ public sealed record ClassicSoloRaidRuntimeStateKey(
     Guid RaidSnapshotUid,
     byte[] RaidSnapshotSha256,
     string ClientBuildCode,
-    byte[] ClientExecutableSha256);
+    byte[] ClientExecutableSha256,
+    string SelectedWeaknessCode = "unresolved");
 
 public sealed record ClassicSoloRaidRuntimeStateHead(
     Guid RevisionUid,
@@ -210,7 +211,8 @@ public sealed class ClassicSoloRaidRuntimeStateStore
            AND snapshot.raid_snapshot_uid = $3
            AND snapshot.content_sha256 = $4
            AND state.client_build_code = $5
-           AND state.client_executable_sha256 = $6;
+           AND state.client_executable_sha256 = $6
+           AND state.selected_weakness_code = $7;
         """;
     command.Parameters.AddWithValue(key.LocalAccountUid);
     command.Parameters.AddWithValue(key.SeasonNumber);
@@ -218,6 +220,7 @@ public sealed class ClassicSoloRaidRuntimeStateStore
     command.Parameters.AddWithValue(key.RaidSnapshotSha256);
     command.Parameters.AddWithValue(key.ClientBuildCode);
     command.Parameters.AddWithValue(key.ClientExecutableSha256);
+    command.Parameters.AddWithValue(key.SelectedWeaknessCode);
     await using var reader = await command.ExecuteReaderAsync(cancellationToken);
     if (!await reader.ReadAsync(cancellationToken)) return null;
     var head = ReadHead(reader);
@@ -387,6 +390,13 @@ public sealed class ClassicSoloRaidRuntimeStateStore
         capture.OpenTeamCount.ToString(CultureInfo.InvariantCulture),
         capture.RaidDateDay?.ToString(CultureInfo.InvariantCulture) ?? "none",
         capture.CapturedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)) + "\n";
+    // Keep historical pending replay byte-identical. New scoped operations bind
+    // the selected weakness with a distinct domain, even if ciphertext matches.
+    if (capture.Key.SelectedWeaknessCode != "unresolved")
+    {
+      canonical = "nll/classic-solo-raid-runtime-state-persist-request/v2\n" +
+          capture.Key.SelectedWeaknessCode + "\n" + canonical;
+    }
     return SHA256.HashData(Encoding.UTF8.GetBytes(canonical));
   }
 
@@ -445,6 +455,7 @@ public sealed class ClassicSoloRaidRuntimeStateStore
              AND season_number = $3
              AND client_build_code = $4
              AND client_executable_sha256 = $5
+             AND selected_weakness_code = $6
            FOR UPDATE;
           """;
       read.Parameters.AddWithValue(localAccountId);
@@ -452,6 +463,7 @@ public sealed class ClassicSoloRaidRuntimeStateStore
       read.Parameters.AddWithValue(key.SeasonNumber);
       read.Parameters.AddWithValue(key.ClientBuildCode);
       read.Parameters.AddWithValue(key.ClientExecutableSha256);
+      read.Parameters.AddWithValue(key.SelectedWeaknessCode);
       await using var reader = await read.ExecuteReaderAsync(cancellationToken);
       return await reader.ReadAsync(cancellationToken)
           ? new AggregateRow(reader.GetInt64(0), reader.GetGuid(1))
@@ -472,14 +484,16 @@ public sealed class ClassicSoloRaidRuntimeStateStore
               client_build_code,
               client_executable_sha256,
               current_classic_solo_raid_runtime_state_revision_id,
-              created_at_utc
-          ) VALUES ($1, $2, $3, $4, $5, $6, NULL, $7)
+              created_at_utc,
+              selected_weakness_code
+          ) VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8)
           ON CONFLICT (
               local_account_id,
               raid_snapshot_id,
               season_number,
               client_build_code,
-              client_executable_sha256
+              client_executable_sha256,
+              selected_weakness_code
           ) DO NOTHING;
           """;
       insert.Parameters.AddWithValue(Guid.NewGuid());
@@ -489,6 +503,7 @@ public sealed class ClassicSoloRaidRuntimeStateStore
       insert.Parameters.AddWithValue(key.ClientBuildCode);
       insert.Parameters.AddWithValue(key.ClientExecutableSha256);
       insert.Parameters.AddWithValue(DateTimeOffset.UtcNow);
+      insert.Parameters.AddWithValue(key.SelectedWeaknessCode);
       await insert.ExecuteNonQueryAsync(cancellationToken);
     }
     return await ReadAsync() ??
@@ -758,7 +773,8 @@ public sealed class ClassicSoloRaidRuntimeStateStore
     Require(key.LocalAccountUid != Guid.Empty && key.RaidSnapshotUid != Guid.Empty &&
             key.SeasonNumber > 0 && IsSha256(key.RaidSnapshotSha256) &&
             IsSha256(key.ClientExecutableSha256) &&
-            IsControlledCode(key.ClientBuildCode),
+            IsControlledCode(key.ClientBuildCode) &&
+            key.SelectedWeaknessCode is "unresolved" or "iron" or "water" or "fire" or "wind" or "electric",
         "phase_d_raid_state_key_invalid");
   }
 
@@ -767,7 +783,7 @@ public sealed class ClassicSoloRaidRuntimeStateStore
     ValidateKey(capture.Key);
     Require(capture.LaunchContextUid != Guid.Empty && IsSha256(capture.RequestSha256) &&
             IsSha256(capture.SourceProfileRevisionSetSha256) &&
-            capture.ProtectedPayload.Length is >= 53 and <= 1_048_576 &&
+            capture.ProtectedPayload.Length is >= 53 and <= 67_108_864 &&
             IsSha256(capture.ProtectedPayloadSha256) &&
             IsSha256(capture.StateContentSha256) &&
             CryptographicOperations.FixedTimeEquals(
@@ -799,7 +815,7 @@ public sealed class ClassicSoloRaidRuntimeStateStore
   {
     Require(head.RevisionUid != Guid.Empty && head.RevisionNumber >= 1 &&
             IsSha256(head.SourceProfileRevisionSetSha256) &&
-            head.ProtectedPayload.Length is >= 53 and <= 1_048_576 &&
+            head.ProtectedPayload.Length is >= 53 and <= 67_108_864 &&
             IsSha256(head.ProtectedPayloadSha256) &&
             IsSha256(head.StateContentSha256) &&
             CryptographicOperations.FixedTimeEquals(

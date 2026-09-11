@@ -379,6 +379,58 @@ public sealed class PostgreSqlClassicSoloRaidRuntimeStateTests
     await AssertStateCountsAsync(dataSource, 1, 2, 3);
   }
 
+  [Fact]
+  public async Task SelectedWeaknessSeparatesScoresReplayAndLegacyWithoutRelabeling()
+  {
+    await using var dataSource = PostgreSqlDataSourceFactory.Create(ConnectionString());
+    var legacy = await CreateFailureTestKeyAsync(dataSource);
+    var store = new ClassicSoloRaidRuntimeStateStore(dataSource);
+    var oldCapture = Capture(legacy, Guid.NewGuid(), null, 1, "legacy", 999, TestInstant);
+    var old = await store.PersistAsync(oldCapture);
+    var iron = legacy with { SelectedWeaknessCode = "iron" };
+    var water = legacy with { SelectedWeaknessCode = "water" };
+    Assert.Null(await store.GetHeadAsync(iron));
+    Assert.Null(await store.GetHeadAsync(water));
+    var ironCapture = Capture(iron, Guid.NewGuid(), null, 2, "iron", 150, TestInstant);
+    var ironResult = await store.PersistAsync(ironCapture);
+    Assert.Null(await store.GetHeadAsync(water));
+    var waterCapture = Capture(water, Guid.NewGuid(), null, 3, "water", 100, TestInstant);
+    var waterResult = await store.PersistAsync(waterCapture);
+    Assert.False(waterResult.Quarantined);
+    Assert.Equal(150, (await store.GetHeadAsync(iron))!.CompletedBestTotalDamage);
+    Assert.Equal(100, (await store.GetHeadAsync(water))!.CompletedBestTotalDamage);
+    Assert.Equal(old.HeadRevisionUid, (await store.GetHeadAsync(legacy))!.RevisionUid);
+    Assert.True((await store.PersistAsync(oldCapture)).ExactReplay);
+    Assert.True((await store.PersistAsync(waterCapture)).ExactReplay);
+    var swapped = waterCapture with { Key = iron };
+    swapped = swapped with { RequestSha256 = ClassicSoloRaidRuntimeStateStore.ComputeRequestSha256(swapped) };
+    Assert.NotEqual(waterCapture.RequestSha256, swapped.RequestSha256);
+    var reused = await Assert.ThrowsAsync<InvalidOperationException>(() => store.PersistAsync(swapped));
+    Assert.Equal("phase_d_raid_state_operation_uid_reuse", reused.Message);
+    var stale = Capture(water, Guid.NewGuid(), ironResult.HeadRevisionUid, 4, "wrong-head", 110, TestInstant);
+    var crossScope = await Assert.ThrowsAsync<PostgresException>(() => store.PersistAsync(stale));
+    Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, crossScope.SqlState);
+    await using var connection = await dataSource.OpenConnectionAsync();
+    await using var mutate = new NpgsqlCommand("""
+        UPDATE lab_private_server.classic_solo_raid_runtime_state
+           SET selected_weakness_code = 'fire' WHERE selected_weakness_code = 'iron';
+        """, connection);
+    await Assert.ThrowsAsync<PostgresException>(() => mutate.ExecuteNonQueryAsync());
+    Assert.Equal(ironResult.HeadRevisionUid, (await store.GetHeadAsync(iron))!.RevisionUid);
+    await AssertStateCountsAsync(dataSource, 3, 3, 3);
+    // The old 1 MiB ceiling must not silently truncate a full battle history.
+    var largePayload = Enumerable.Repeat((byte)7, 1048577).ToArray();
+    var large = Capture(iron, Guid.NewGuid(), ironResult.HeadRevisionUid, 7, "large-history", 150, TestInstant)
+        with
+    { ProtectedPayload = largePayload, ProtectedPayloadSha256 = SHA256.HashData(largePayload) };
+    large = large with { RequestSha256 = ClassicSoloRaidRuntimeStateStore.ComputeRequestSha256(large) };
+    var largeResult = await store.PersistAsync(large);
+    Assert.False(largeResult.Quarantined);
+    Assert.Equal(largePayload, (await store.GetHeadAsync(iron))!.ProtectedPayload);
+    Assert.True((await store.PersistAsync(large)).ExactReplay);
+    await RuntimePersistenceAdapterProbe.RunIfRequestedAsync(legacy with { ClientBuildCode = "synthetic-roundtrip" });
+  }
+
   private static async Task<ClassicSoloRaidRuntimeStateKey> CreateFailureTestKeyAsync(NpgsqlDataSource dataSource)
   {
     await ResetSchemasAsync(dataSource);
@@ -457,6 +509,68 @@ public sealed class PostgreSqlClassicSoloRaidRuntimeStateTests
             publication);
     Assert.Equal(6, receipt.Members.Count);
     return receipt;
+  }
+
+  [Fact]
+  public async Task PreferencesAreAccountScopedImmutableReplayableAndQuarantineConcurrentCaptures()
+  {
+    await using var source = PostgreSqlDataSourceFactory.Create(ConnectionString());
+    await ResetSchemasAsync(source);
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(source));
+    var account = await CreateInitializedAccountUidAsync(source);
+    var key = new RuntimePreferencesKey(account, "synthetic", Hash("preferences-client"));
+    var store = new RuntimePreferencesStore(source);
+    Assert.Null(await store.GetHeadAsync(key));
+    RuntimePreferencesCapture Capture(string value, Guid? previous = null)
+    {
+      var payload = System.Text.Encoding.UTF8.GetBytes(value.PadRight(60, '_'));
+      return new RuntimePreferencesCapture(key, Guid.NewGuid(), previous, payload, SHA256.HashData(payload), Hash(value), TestInstant);
+    }
+    var firstCapture = Capture("first");
+    var first = await store.PersistAsync(firstCapture);
+    Assert.Equal("state_advanced", first.ResultCode);
+    Assert.False(first.ExactReplay);
+    var replay = await store.PersistAsync(firstCapture);
+    Assert.Equal(first with { ExactReplay = true }, replay);
+    var firstHead = await store.GetHeadAsync(key);
+    Assert.Equal(1, firstHead!.RevisionNumber);
+    Assert.Equal(firstCapture.ProtectedPayload, firstHead.ProtectedPayload);
+    Assert.Null(await store.GetHeadAsync(key with { AccountUid = Guid.NewGuid() }));
+    Assert.Null(await store.GetHeadAsync(key with { ClientBuildCode = "another" }));
+    Assert.Null(await store.GetHeadAsync(key with { ClientExecutableSha256 = Hash("another") }));
+    var unchanged = await store.PersistAsync(Capture("first", first.RevisionUid));
+    Assert.Equal("state_unchanged", unchanged.ResultCode);
+    Assert.Equal(first.RevisionUid, unchanged.RevisionUid);
+    var a = Capture("changed-a", first.RevisionUid);
+    var b = Capture("changed-b", first.RevisionUid);
+    var outcomes = await Task.WhenAll(store.PersistAsync(a), store.PersistAsync(b));
+    Assert.Single(outcomes, outcome => outcome.ResultCode == "state_advanced");
+    Assert.Single(outcomes, outcome => outcome.Quarantined);
+    var finalHead = await store.GetHeadAsync(key);
+    Assert.Equal(2, finalHead!.RevisionNumber);
+    Assert.Equal(outcomes.Single(outcome => !outcome.Quarantined).RevisionUid, finalHead.RevisionUid);
+    var replayA = await store.PersistAsync(a);
+    var replayB = await store.PersistAsync(b);
+    Assert.Equal(outcomes[0] with { ExactReplay = true }, replayA);
+    Assert.Equal(outcomes[1] with { ExactReplay = true }, replayB);
+    var reuse = await Assert.ThrowsAsync<InvalidOperationException>(() => store.PersistAsync(
+        Capture("wrong") with { LaunchContextUid = firstCapture.LaunchContextUid }));
+    Assert.Equal("runtime_preferences_operation_reuse", reuse.Message);
+    await using var connection = await source.OpenConnectionAsync();
+    Assert.Equal(2, await ScalarAsync(connection, "SELECT count(*) FROM lab_private_server.runtime_preferences_revision;"));
+    Assert.Equal(4, await ScalarAsync(connection, "SELECT count(*) FROM lab_private_server.runtime_preferences_operation;"));
+    Assert.Equal(1, await ScalarAsync(connection, "SELECT count(*) FROM lab_private_server.runtime_preferences_operation WHERE quarantined_payload IS NOT NULL;"));
+    foreach (var sql in new[]
+    {
+      "UPDATE lab_private_server.runtime_preferences SET client_build_code = 'rewrite';",
+      "DELETE FROM lab_private_server.runtime_preferences;",
+      "UPDATE lab_private_server.runtime_preferences_revision SET content_sha256 = decode(repeat('aa',32),'hex');",
+      "DELETE FROM lab_private_server.runtime_preferences_operation;",
+    })
+    {
+      await using var command = new NpgsqlCommand(sql, connection);
+      await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
+    }
   }
 
   private static async Task<Guid> CreateInitializedAccountUidAsync(

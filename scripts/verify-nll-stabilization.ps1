@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([string]$RuntimeMaterializerPath)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $repository = Split-Path -Parent $PSScriptRoot
@@ -29,7 +29,12 @@ try {
     Check 'desktop' 'dotnet' @('build','tools/NikkeLocalLab.ControlCenter.Desktop','-c','Release','--no-restore','--verbosity','minimal')
     Check 'release-behavior' 'pwsh' @('-NoProfile','-File','scripts/test-nll-stabilization-release.ps1')
     # Includes every PostgreSQL integration test, not a filter or an operational DB.
-    Check 'postgresql' 'pwsh' @('-NoProfile','-File','scripts/test-nll-lifecycle-postgresql.ps1','-ShutdownTimeoutSeconds','60')
+    $postgresArguments = @('-NoProfile','-File','scripts/test-nll-lifecycle-postgresql.ps1','-ShutdownTimeoutSeconds','60')
+    if ($RuntimeMaterializerPath) {
+        Check 'runtime-preferences' $RuntimeMaterializerPath @('--verify-runtime-persistence','true')
+        $postgresArguments += @('-RuntimeMaterializerPath',$RuntimeMaterializerPath)
+    }
+    Check 'postgresql' 'pwsh' $postgresArguments
     if (@(& git status --porcelain).Count -ne 0 -or (& git rev-parse HEAD).Trim() -cne $head) { throw 'stabilization_verification_source_changed' }
     $passed = $true
 }

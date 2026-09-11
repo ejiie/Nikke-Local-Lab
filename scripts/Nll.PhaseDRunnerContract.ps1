@@ -11,10 +11,15 @@ function Assert-PhaseDRunnerSpecification {
             'resourcePreflightToolSha256','resourceCatalogReceiptPath','resourceCatalogReceiptSha256','runtimeMaterializer',
             'soloRaidPendingPath','soloRaidCaptureReceiptPath','secretEnvironmentVariable','derivedSourceManifestSha256','runIntentCode')
         if ($null -eq $Specification) { throw 'invalid' }
+        $versionTwo = $Specification.contractId -ceq 'nll/phase-d-runner-input/v2'
+        if ($versionTwo) {
+            $fields += 'weaknessCode'
+            if ($Specification.weaknessCode -cnotin @('iron','water','fire','wind','electric')) { throw 'invalid' }
+        }
         $names = if ($Specification -is [Collections.IDictionary]) { @($Specification.Keys) } else { @($Specification.PSObject.Properties.Name) }
         if ($names.Count -ne $fields.Count -or @($names | Where-Object { $_ -cnotin $fields }).Count -ne 0) { throw 'invalid' }
         if (($Specification.schemaVersion -isnot [int] -and $Specification.schemaVersion -isnot [long]) -or
-            $Specification.schemaVersion -ne 1 -or $Specification.contractId -cne 'nll/phase-d-runner-input/v1' -or
+            $Specification.schemaVersion -ne 1 -or ($Specification.contractId -cne 'nll/phase-d-runner-input/v1' -and -not $versionTwo) -or
             $Specification.engineCode -cne 'parameterized/v1' -or
             $Specification.clientBuildCode -cnotin @('build_150.6.9','build_151.8.5') -or
             $Specification.runIntentCode -cnotin @('challenge','practice')) { throw 'invalid' }
@@ -93,6 +98,10 @@ function New-PhaseDRunnerSpecification {
         runtimeMaterializer=$LaunchInput.runtimeMaterializer; soloRaidPendingPath=$LaunchInput.soloRaidPendingPath
         soloRaidCaptureReceiptPath=$LaunchInput.soloRaidCaptureReceiptPath; secretEnvironmentVariable=$LaunchInput.secretEnvironmentVariable
         derivedSourceManifestSha256=$SourceManifestSha256; runIntentCode=$RunIntentCode
+    }
+    if ($LaunchInput.Contains('weaknessCode')) {
+        $spec.contractId = 'nll/phase-d-runner-input/v2'
+        $spec.weaknessCode = $LaunchInput.weaknessCode
     }
     Assert-PhaseDRunnerSpecification $spec
     return $spec

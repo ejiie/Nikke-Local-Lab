@@ -171,6 +171,40 @@ try {
     Write-AtomicJson $pendingPath $pending
     $receipt.pendingPayloadSha256 = Get-PhaseDPersistenceProofHash $pendingPath
     Write-AtomicJson $receiptPath $receipt
+    # v2 completes only after both raid and account preferences are proven.
+    $context.runtimePersistenceContractId = 'nll/runtime-persistence/v2'
+    $context.weaknessCode = 'iron'
+    Write-AtomicJson $contextPath $context
+    Reject-Test { Read-Proof } # A new launch must not accept a downgraded v1 receipt.
+    $capture.contractId = 'nll/phase-d-classic-solo-raid-state-capture/v2'
+    $capture.selectedWeaknessCode = 'iron'
+    $capture.preferencesPendingSha256 = '9' * 64
+    $pending.contractId = 'nll/phase-d-classic-solo-raid-state-pending/v2'
+    $pending.capture = $capture
+    $pending.preferences = @{ accountUid=$context.accountUid; launchContextUid=$contextUid
+        clientBuildCode=$context.clientBuildCode; clientExecutableSha256=$context.clientExecutableSha256 }
+    Write-AtomicJson $capturePath $capture
+    Write-AtomicJson $pendingPath $pending
+    $receipt.contractId = 'nll/phase-d-classic-solo-raid-state-persistence/v2'
+    $receipt.selectedWeaknessCode = 'iron'
+    $receipt.preferencesPendingSha256 = $capture.preferencesPendingSha256
+    $receipt.preferencesResultCode = 'state_advanced'
+    $receipt.preferencesHeadRevisionUid = [guid]::NewGuid().ToString()
+    $receipt.pendingPayloadSha256 = Get-PhaseDPersistenceProofHash $pendingPath
+    $receipt.captureReceiptSha256 = Get-PhaseDPersistenceProofHash $capturePath
+    Write-AtomicJson $receiptPath $receipt
+    Assert-Test ((Read-Proof).preferencesResultCode -ceq 'state_advanced')
+    foreach ($change in @(
+        @{field='selectedWeaknessCode';value='water'}, @{field='preferencesResultCode';value='stale_head_quarantined'},
+        @{field='preferencesResultCode';value='STATE_ADVANCED'}, @{field='preferencesPendingSha256';value=('8'*64)},
+        @{field='preferencesHeadRevisionUid';value=[guid]::Empty.ToString()}
+    )) {
+        $changed = ($receipt | ConvertTo-Json -Depth 8 | ConvertFrom-Json)
+        $changed.($change.field) = $change.value
+        Write-AtomicJson $receiptPath $changed
+        Reject-Test { Read-Proof }
+    }
+    Write-AtomicJson $receiptPath $receipt
     Remove-Item -LiteralPath $capturePath
     Reject-Test { Read-Proof }
 

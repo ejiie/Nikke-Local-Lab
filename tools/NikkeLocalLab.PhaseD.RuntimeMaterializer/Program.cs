@@ -54,6 +54,16 @@ static bool IsSafeFailureCode(string value) =>
 static async Task ExecuteAsync(string[] args)
 {
 var options = ParseArguments(args);
+if (options.ContainsKey("verify-runtime-persistence-integration"))
+{
+  await RuntimePersistenceIntegrationChecks.RunAsync(options);
+  return;
+}
+if (options.ContainsKey("verify-runtime-persistence"))
+{
+  RuntimePersistenceChecks.Run();
+  return;
+}
 if (options.ContainsKey("verify-runtime-migration"))
 {
   RuntimeMigrationChecks.Run();
@@ -355,6 +365,17 @@ try
   var user = core.Users[0];
   var sourceProgression = RuntimeProgressionSnapshot.Capture(user);
   Materialize(user, candidate, lobby, mappings);
+  var preferenceCharacterUids = new Dictionary<long, string>();
+  foreach (var character in user.Characters)
+  {
+    if (GameData.Instance.CharacterTable.TryGetValue(character.Tid, out var row) &&
+        mappings.CharacterUidByNameCode.TryGetValue(row.NameCode, out var uid))
+      preferenceCharacterUids.Add(character.Csn, uid);
+  }
+  var preferencesHeadUid = await RuntimePreferencesPersistence.RestoreAsync(user, dataSource, identitySecret,
+      new NikkeLocalLab.Persistence.PostgreSql.RuntimePreferencesKey(accountUid,
+          RequiredText(options, "client-build-code"), Convert.FromHexString(RequiredText(options, "client-executable-sha256"))),
+      candidate.BaseRevisions.RevisionSetSha256, RequiredText(options, "weakness-code"), preferenceCharacterUids);
   var operationalSoloRaidBinding =
       await ClassicSoloRaidRuntimeState.ResolveOperationalBindingAsync(
           dataSource,
@@ -412,6 +433,7 @@ try
     consoleCount = user.ResearchProgress.Count,
     commanderLevel = user.userPointData.UserLevel,
     progressionPreserved = true,
+    preferencesHeadRevisionUid = preferencesHeadUid,
     progressionSha256 = sourceProgression,
     tutorialGroupCount = user.ClearedTutorialDataNew.Count,
     completedScenarioCount = user.CompletedScenarios.Count,

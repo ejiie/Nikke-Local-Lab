@@ -70,7 +70,7 @@ if ($PSCmdlet.ParameterSetName -eq 'Prepare') {
     $manifest = [ordered]@{
         contractId='nll/stabilization-app-release/v1'; packageUid=$PackageUid
         sourceHead=(& git -C $repository rev-parse HEAD).Trim(); candidate=$tree; changes=$delta
-        schemaVersion=18; migrationExecutionAllowed=$false; gameRuntimeChanged=$false
+        schemaVersion=21; migrationExecutionAllowed=$false; gameRuntimeChanged=$false
         installedOnlyFiles='preserve'; actualPlay='operator_pending'
     }
     Write-AtomicJson (Join-Path $package 'manifest.json') $manifest
@@ -94,7 +94,7 @@ $candidate = Join-Path $package 'candidate'
 Assert-NllPackageTree $candidate @($manifest.candidate)
 $auditPath = Join-Path $repository ('artifacts/stabilization/workspace-backup/' + $AuditUid + '/receipt.json')
 $audit = Get-Content -LiteralPath $auditPath -Raw | ConvertFrom-Json
-if ($audit.passed -ne $true -or $audit.schemaVersionObserved -ne 18 -or $audit.readOnlyAudit.integrityMismatchCount -ne 0 -or $audit.legacyPendingCount -ne 0 -or $audit.readOnlyAudit.encryptedPendingFiles -ne 0) { throw 'stabilization_release_database_audit_required' }
+if ($manifest.schemaVersion -ne 21 -or $audit.passed -ne $true -or $audit.schemaVersionObserved -ne $manifest.schemaVersion -or $audit.readOnlyAudit.integrityMismatchCount -ne 0 -or $audit.legacyPendingCount -ne 0 -or $audit.readOnlyAudit.encryptedPendingFiles -ne 0) { throw 'stabilization_release_database_audit_required' }
 $backup = Join-Path 'D:\NikkeLocalLab\Backups' ('stabilization-audit-' + $AuditUid)
 Plain-Ancestors $backup
 $coldTree = Get-Content -LiteralPath (Join-Path $backup 'cold-data.manifest.private.json') -Raw | ConvertFrom-Json

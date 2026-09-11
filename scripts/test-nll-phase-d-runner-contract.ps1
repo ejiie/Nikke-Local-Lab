@@ -89,5 +89,19 @@ foreach ($key in @($spec.Keys)) {
     try { Assert-PhaseDRunnerSpecification $bad } catch { $rejected = $_.Exception.Message -ceq 'phase_d_runner_input_invalid' }
     Assert-Test $rejected; $count++
 }
+foreach ($weakness in @('iron','water','fire','wind','electric')) {
+    $scoped = [ordered]@{}; foreach ($name in $spec.Keys) { $scoped[$name] = $spec[$name] }
+    $scoped.contractId = 'nll/phase-d-runner-input/v2'
+    $scoped.weaknessCode = $weakness
+    Assert-PhaseDRunnerSpecification $scoped
+    Assert-PhaseDRunnerSpecification ($scoped | ConvertTo-Json -Depth 5 | ConvertFrom-Json)
+    $count++
+}
+foreach ($invalidWeakness in @('unresolved','IRON','', $null)) {
+    $scoped.weaknessCode = $invalidWeakness
+    $rejected = $false
+    try { Assert-PhaseDRunnerSpecification $scoped } catch { $rejected = $_.Exception.Message -ceq 'phase_d_runner_input_invalid' }
+    Assert-Test $rejected; $count++
+}
 Assert-Test (-not (Test-Path -LiteralPath $root))
 Write-Output "Runner input: $count data-only, version/variant, round-trip, missing/extra field and invalid-input checks passed; no I/O."

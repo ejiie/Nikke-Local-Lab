@@ -15,6 +15,8 @@
              Link="PhaseDExecutionDocuments.cs" />
     <Compile Include="..\..\src\NikkeLocalLab.Persistence.PostgreSql\ClassicSoloRaidRuntimeStateStore.cs"
              Link="ClassicSoloRaidRuntimeStateStore.cs" />
+    <Compile Include="..\..\src\NikkeLocalLab.Persistence.PostgreSql\RuntimePreferencesStore.cs"
+             Link="RuntimePreferencesStore.cs" />
   </ItemGroup>
 
   <Target Name="RequireEpinelReferenceRoot" BeforeTargets="ResolveReferences">

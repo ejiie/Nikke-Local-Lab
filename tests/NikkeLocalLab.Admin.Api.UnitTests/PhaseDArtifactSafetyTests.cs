@@ -439,9 +439,9 @@ public sealed class PhaseDArtifactSafetyTests
 
     Assert.Contains("var removedOpenRuns = payload.Raid!.SoloRaidLevels.RemoveAll", source,
         StringComparison.Ordinal);
-    Assert.Contains("removedOpenRuns == 1 && payload.Raid.TrialCount > 0", source,
+    Assert.Contains("removedOpenRuns == 1 && payload.Raid.TrialCount >= 0", source,
         StringComparison.Ordinal);
-    Assert.Contains("payload.Raid.TrialCount--;", source, StringComparison.Ordinal);
+    Assert.Contains("if (payload.Raid.TrialCount > 0) payload.Raid.TrialCount--;", source, StringComparison.Ordinal);
     Assert.Contains("openRunDiscardedForProfileRevisionMismatch = true;", source,
         StringComparison.Ordinal);
     Assert.DoesNotContain(

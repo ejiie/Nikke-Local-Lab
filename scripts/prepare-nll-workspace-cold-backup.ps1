@@ -112,7 +112,7 @@ try {
         $expectedHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($sqlText))).ToLowerInvariant()
         if ($expectedHash -cne $parts[2]) { throw 'workspace_backup_migration_checksum_mismatch' }
     }
-    if ($index -lt 11 -or $index -gt $(if ($AuditCurrent) { 18 } else { 17 })) { throw 'workspace_backup_schema_outside_pre18_range' }
+    if ($index -lt 11 -or $index -gt $(if ($AuditCurrent) { 21 } else { 17 })) { throw 'workspace_backup_schema_outside_supported_range' }
     $counts = (Read-ProbeSql "BEGIN READ ONLY; SELECT count(*), count(*) FILTER (WHERE operation_status='pending'), count(*) FILTER (WHERE operation_status='pending' AND operation_kind='save_as') FROM lab_profile.account_workspace_save_operation; COMMIT;").Split('|')
     if ($counts.Count -ne 3) { throw 'workspace_backup_count_shape_invalid' }
     if ($AuditCurrent) {
@@ -129,6 +129,12 @@ try {
             raidOperationResultMismatch = 'SELECT count(*) FROM lab_private_server.classic_solo_raid_runtime_state_operation o JOIN lab_private_server.classic_solo_raid_runtime_state_revision r ON r.classic_solo_raid_runtime_state_revision_uid=o.result_revision_uid WHERE r.classic_solo_raid_runtime_state_id<>o.classic_solo_raid_runtime_state_id OR r.state_content_sha256 IS DISTINCT FROM o.result_state_content_sha256'
             raidPendingOperations = 'SELECT count(*) FROM lab_private_server.classic_solo_raid_runtime_state_operation WHERE operation_status=''pending'''
             workspacePendingOlderThanDay = 'SELECT count(*) FROM lab_profile.account_workspace_save_operation WHERE operation_status=''pending'' AND created_at_utc < now()-interval ''1 day'''
+        }
+        if ($index -ge 20) {
+            $auditQueries.preferencesHeadMismatch = 'SELECT count(*) FROM lab_private_server.runtime_preferences s LEFT JOIN lab_private_server.runtime_preferences_revision r ON r.revision_uid=s.current_revision_uid AND r.preferences_uid=s.preferences_uid WHERE s.current_revision_uid IS NOT NULL AND r.revision_uid IS NULL'
+            $auditQueries.preferencesPayloadMismatch = 'SELECT count(*) FROM lab_private_server.runtime_preferences_revision WHERE sha256(protected_payload)<>protected_payload_sha256'
+            $auditQueries.preferencesLineageMismatch = 'SELECT count(*) FROM lab_private_server.runtime_preferences_revision r LEFT JOIN lab_private_server.runtime_preferences_revision p ON p.revision_uid=r.previous_revision_uid WHERE r.revision_number>1 AND (p.revision_uid IS NULL OR p.preferences_uid<>r.preferences_uid OR p.revision_number<>r.revision_number-1)'
+            $auditQueries.preferencesResultMismatch = 'SELECT count(*) FROM lab_private_server.runtime_preferences_operation o JOIN lab_private_server.runtime_preferences_revision r ON r.revision_uid=o.result_revision_uid WHERE r.preferences_uid<>o.preferences_uid'
         }
         $audit = [ordered]@{}
         foreach ($entry in $auditQueries.GetEnumerator()) {
