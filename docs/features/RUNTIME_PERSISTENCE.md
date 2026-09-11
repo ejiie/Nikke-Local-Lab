@@ -1,7 +1,8 @@
 # 실행 간 영속화 P-01~P-09
 
-상태: 2026-09-12 구현·개별 자동 검사 완료, 최종 검사·운영 배포 진행 중.
-운영자 실게임 인수는 별도 수행한다. 요구의 권위는 [안정화 계획](../STABILIZATION_PLAN.md)이다.
+상태: 2026-09-12 구현·전체 자동 검사·운영 DB/앱/v6 배포 완료.
+설치 후 API smoke는 정상 UAC 승격 승인 대기이며, 운영자 실게임 인수는 별도 수행한다.
+요구의 권위는 [안정화 계획](../STABILIZATION_PLAN.md)이다.
 
 ## 범위와 순서
 
@@ -38,7 +39,9 @@
 - [x] 재전송·재기동·Quit·일일 경계·회수 실패/복구·CAS 충돌
 - [x] 편성 01~05/빈 슬롯/마지막 팀, 현재 Csn 재매핑과 과거 snapshot 불변
 - [x] P-02/P-03/P-06~P-09 승인 필드 왕복, 새 알림/타계정 키 격리
-- [ ] 전체 자동 검사, 운영 반영의 before/after hash·backup, 실게임 안내
+- [x] 전체 자동 검사, 운영 반영의 before/after hash·backup, 실게임 안내
+- [ ] 설치 후 관리자 호스트 API smoke — UAC 승인 후 receipt 확인
+- [ ] 운영자 원본 게임 인수
 
 CI의 기존 Linux S-08 self-test 실패 수정은 운영자가 보류했으며 이 작업에 섞지 않는다.
 
@@ -66,6 +69,32 @@ CI의 기존 Linux S-08 self-test 실패 수정은 운영자가 보류했으며 
   pending/검사 불일치 0개. 원본 2,204파일·91,788,843byte 불변 확인.
   복제 migration `efea2f50dd224db88d881f3cc853478e`: schema 18→21,
   모든 기존 application table의 행 수/내용 지문 불변, legacy unresolved, 새 설정 table 빈 상태 확인.
+
+### 최종 운영 반영 — 2026-09-12
+
+- 제품 코드 `debc6e7336950cc8a0bd9abfa8b31914277a5f21`을 agent branch에 commit했다.
+  이번 작업에서 새 push/PR/merge 및 보류된 Linux CI 수정을 하지 않았다.
+- 전체 verification `b7453b2bb1804f83a656a0bfcf8b554e`: 모든 gate exit 0.
+  단위 486개, PG 114개(기존 1MiB를 넘는 payload/replay 포함), 실제 왕복 41개, 설정 합성 32개.
+  PG `8134fb55de044c7d8a888b7478e36e6a`의 stop/restart checkpoint와 최종 종료도 통과했다.
+- 실제 계정 백업 복제본의 S26 철갑/수냉 v6 `ValidateOnly` 및 설정 Capture가 통과했다.
+  진행도를 유지했으며 원본 게임·운영 DB를 사용하지 않았다. private 검사 위치는
+  `C:\NLL\Staging\PersistencePreparation-77c368ee5fe4498993a04351ed5078fa`다.
+- 최종 commit rehearsal `55232d2d395a444980faeef819e9c352`와 동일한 CLI 파일 pin으로
+  운영 migration `61f4dae2c7ee428bb973b3b7496784cf`를 완료했다. schema 18→21,
+  모든 기존 application table의 행 수/내용 지문 불변, legacy unresolved, 새 설정 0행, PG 정상 종료.
+  앞선 병렬 rehearsal 한 번은 다른 검사 프로세스로 인해 최종 cold 게이트가 거절되어 승인 근거로 사용하지 않았다.
+- 전환 후 cold 감사/backup `dd0476aa1095480ead51281bb86f8854`: schema 21,
+  Save operation 105개, pending/기존 및 새 설정의 head·lineage·payload 검사 불일치 0개.
+- 앱 배포 `833a8d579da24861bfceff222dbb898f`: 34개 파일을 backup·before/after hash 검증 후 교체.
+  manifest SHA-256 `3d2eb509a5f5b7a9a4d6bf16a97446658b851c26767ef3d4c32c46c2741c4150`.
+  같은 package의 `runtime-activation.receipt.json`은 v6 포인터 원자 교체 완료를 기록한다.
+  v5·원본 client·기존 native/인증서/방화벽은 보존했다.
+- 설치 API smoke 첫 시도는 `control_center_start_boundary_invalid`로 bootstrap 전에 종료했다.
+  이 시도는 정상 시작/종료 검증 성공이 아니며 앱/PG/게임 시작 전의 관리자 권한 거절이다.
+  `installed-smoke.non-elevated.receipt.json`에 보존하고, 기존 UAC `RunAs` 경로의 승인을 요청했다.
+  승인 뒤 같은 package의 `installed-smoke.receipt.json`에서 `passed=true`와
+  `safeHostStopVerified=true`를 확인해야 한다. 권한 게이트를 완화하거나 우회하지 않는다.
 
 ## 운영 배포 절차
 
