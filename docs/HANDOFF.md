@@ -129,18 +129,22 @@ desktop 별도 빌드를 통과했습니다. CI는 외부 참조 없는 검사�
 제품 코드·운영 DB·설치본·실게임 실행은 변경하지 않았습니다. 상세와 남은 검사 경계는
 [S-06](STABILIZATION_PLAN.md#s-06--높음--회귀-검사의-일부가-동작-대신-구현-문자열에-결박됨)을 따릅니다.
 
-S-08은 1차 측정 뒤 운영자의 구현·테스트 요청으로 캐릭터별 네 장비의 overload 조회를
-같은 transaction/build revision의 1회 batch로 변경했습니다. 새 동치 검사 2개는 기존
-읽기 코드에서도 통과했고, 변경 후 폐기 PostgreSQL **107개**가 통과했습니다.
-동일한 pool 상한 32·합성 계정 1/10개(roster 50, history 10)에서 전후 각각 1,800개 표본을
-측정했습니다. service 목록 명령은 **311→161 / 3,101→1,601회**, p50은
-**77.54~78.20→51.16~51.82 / 822.36~825.31→530.01~550.04ms**입니다.
-변경 대상 5경로의 세 묶음 모두 p50/p95가 개선됐고 응답 크기·객체 수는 동일하며 오류는 0입니다.
-동시 Save의 고정 snapshot, 과거 revision·타계정 분리, sparse/exact OL과 결손 참조 거절을
-검증했습니다. 모든 PG 실행은 재시작 checkpoint·정리를 확인했습니다(최초 sandbox 시작 실패 제외).
-근거와 상세 표는 안정화 계획 S-08을 따릅니다. 캐시·인덱스·migration은 추가하지 않았고
-**설치본에는 미배포**입니다. 전체 profile batch, 큰 규모·cold·물리 I/O·DOM 측정은 후속이며
-S-08 전체 완료를 주장하지 않습니다. 운영 DB·게임·Epinel DLL은 변경하지 않았습니다.
+S-08은 캐릭터별 overload 최소 batch 이후, 운영자 승인으로 slot receipt·equipment·overload를
+각각 **exact profile revision 전체의 1회 batch**로 변경했습니다. 같은 connection/transaction,
+immutable membership과 기존 hash·shape 검증을 유지합니다. 새 회귀 3개는 기존 reader에서도
+통과했고 변경 후 폐기 PostgreSQL **110개**가 통과했습니다. 공유 build revision, roster·squad
+변경/빈 roster, 동시 Save의 고정 snapshot, 과거 Create/Save/GetByOperation replay와 타계정
+분리를 검증했습니다. 기존 sparse/exact OL·결손 참조 검사도 유지합니다.
+동일한 pool 상한 32·합성 계정 1/10개(roster 50, history 10)에서 전후 각각 1,800표본을
+비교했습니다. 이번 service 목록 명령은 **161→14 / 1,601→131회**, p50은
+**52.27~52.53→11.61~13.20 / 543.98~548.71→110.77~111.72ms**입니다.
+변경 대상 5경로의 세 묶음 모두 p50/p95가 개선됐고 응답 크기·객체 수·HTTP 요청 수가 같습니다.
+변경 후 50/100계정 및 roster/history **8조건 warm 행렬, 총 7,200표본**도 완료했습니다.
+오류 0, 모든 표본의 예상 명령 수 일치와 DB 재시작/정리를 확인했습니다. 100계정 목록은
+1,301명령·p50 1.17~1.19초이며, 큰 규모의 변경 전 개선율은 추정하지 않습니다. p95 변동과
+fixture 한계, 원시 표본·마감 검사 근거는 안정화 계획 S-08을 따릅니다. 캐시·인덱스·migration은
+추가하지 않았고 **설치본에는 미배포**입니다. process-cold·물리 I/O·DOM·query plan 분석은
+남아 있어 S-08 전체 완료를 주장하지 않습니다. 운영 DB·게임·Epinel DLL은 변경하지 않았습니다.
 
 ## 별도 보류
 

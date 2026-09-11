@@ -573,6 +573,112 @@ Npgsql 완료 이벤트로 센 명령 수는 SQL 문장 수·물리 I/O와 구�
 roster/history 축 확장, process-cold·물리 I/O·DOM 측정은 남아 있어 S-08 전체 완료는 아니다.
 후속 최적화는 전체 profile batch를 별도 변경으로 검토하고 같은 검증 경계를 유지한다.
 
+#### S-08 프로필 revision batch — 2026-09-11
+
+운영자의 후속 착수 승인으로 slot receipt·equipment·overload를 각각 **선택한 profile
+revision 전체에서 한 번** 읽도록 변경했다. 제품 변경은 `PostgreSqlLocalAccountProfileStore.cs`
+한 파일이며 API·writer·migration·인덱스·캐시는 변경하지 않았다.
+
+세 조회 모두 `profile_template_revision_build`의 exact profile revision membership으로
+범위를 제한한다. 여러 profile에서 같은 build revision을 재사용할 수 있으므로 current
+account/build 포인터나 다른 profile의 membership을 대신 읽지 않는다. 슬롯/장비는 build
+revision ID, overload는 equipment state ID로 묶고 기존 build ordinal·slot code·sparse line
+순서를 유지한다. equipment definition의 LEFT JOIN, 같은 connection/transaction과
+cancellation token, 기존 constructor·hash·aggregate 검증은 보존한다. 빈 roster는 추가
+장비 조회 없이 반환한다. receipt 조회를 사용하는 Create/Save 및 과거 operation replay도
+별도의 hydration이나 새 transaction을 만들지 않는다.
+
+`PostgreSqlProfileBatchReadTests`의 새 3개 검사는 기존 overload 부분 검사와 함께 전체
+입력 write의 canonical hash·직렬화된 필드, receipt identity/lineage/readiness/issue와
+네 slot의 UID·순서를 대조한다. 부분 build 변경과 unchanged revision 공유, roster 제거/
+재추가·입력 순서 정규화, squad 제거/순서 변경/복원, 빈 roster 및 복원, 고정 RepeatableRead
+동안 다른 연결의 Save, 과거/현재/타계정/결손 revision과 새 data source를 검사한다.
+최신 Save 이후 과거 Create/Save 및 GetByOperation replay가 당시 receipt를 반환하고
+current membership을 바꾸지 않는지도 확인한다. 기존 aggregate 검증을 개별 hydrated
+장비 payload의 완전 재해시 검증으로 확대 해석하지 않는다.
+
+변경 전 근거(모두 ignored `artifacts/stabilization/` 아래):
+
+- 전체 PostgreSQL **107개**: `lifecycle-postgresql/4594c5d2ce6e4813a90a06eed132eccd`.
+- 새 3개 검사를 **기존 reader에서 통과**: `lifecycle-postgresql/f8fface6ce954189831f9d1f3139e2dd`.
+- 변경 전 1/10계정 측정 **1,800표본**, 오류 0:
+  `lifecycle-postgresql/50c9e41de54644419f391a5ca67b78b6`.
+- 각 실행의 exit 0·재시작 checkpoint·cleanup 확인. 사전 repository/Phase 0/완료된
+  Phase 2B 및 3A·3B-0·3B-1 chain/3B-2·약점·Actions 검사는
+  `s08-profile-batch/before-*.log`에 보존했다.
+
+변경 후 전체 PostgreSQL **110개**가 통과했다:
+`lifecycle-postgresql/8db4e6a6965b40949ea110517d829723`. exit 0·재시작 checkpoint·cleanup을
+확인했고, 별도 자동화 단위 41개도 통과했다(`s08-profile-batch/after-automation.log`).
+독립 read-only diff 검토에서도 schema scope·column ordinal·정렬·reader 수명·replay의
+수정 필요 사항은 발견되지 않았다. 이 검토를 실제 runtime 검증으로 대신하지 않는다.
+
+**동일 조건 전후 비교:** 기존 합성 fixture의 1/10계정·roster 50·history 10에서 각각
+6경로 × 150회, 전후 각 **1,800표본**을 비교했다. warm-up 5회 뒤 50회 × 3묶음이며
+pool 상한 32, SDK 8.0.407, PG 17.11, 12 logical processors, 최고 성능 전원 정책과
+cluster 설정(shared_buffers 64MB, work_mem 2MB, max_connections 40), fixture source hash가
+동일하다. 측정 중 다른 빌드·회귀 검사는 실행하지 않았다. 이전 최소 batch의 수치를 재활용하지
+않고 이 작업의 직전 reader로 다시 측정했다. 아래는 묶음별 p50/p95의 최소~최대(ms)다.
+
+| 계정 | 경로 | p50 전 → 후 ms | p95 전 → 후 ms | DB 명령 전 → 후 |
+|---:|---|---|---|---|
+| 1 | service 목록 | 52.27~52.53 → 11.61~13.20 | 53.41~56.17 → 12.49~14.58 | 161 → 14 |
+| 1 | HTTP 목록 | 52.37~53.17 → 11.82~11.97 | 53.65~53.99 → 12.65~12.98 | 161 → 14 |
+| 1 | HTTP 목록+로비 | 53.42~54.05 → 12.66~13.10 | 54.78~54.96 → 13.38~14.15 | 163 → 16 |
+| 1 | workspace | 50.81~51.11 → 11.06~11.17 | 51.64~52.29 → 11.89~12.10 | 161 → 14 |
+| 1 | export | 55.83~56.13 → 15.52~15.84 | 56.84~57.77 → 16.34~17.33 | 165 → 18 |
+| 1 | history | 0.75~0.77 → 0.75~0.76 | 0.78~0.84 → 0.79~0.82 | 1 → 1 |
+| 10 | service 목록 | 543.98~548.71 → 110.77~111.72 | 551.00~603.60 → 112.16~123.68 | 1,601 → 131 |
+| 10 | HTTP 목록 | 547.44~548.47 → 110.83~112.63 | 552.25~558.77 → 112.75~120.54 | 1,601 → 131 |
+| 10 | HTTP 목록+로비 | 561.73~564.45 → 124.88~138.26 | 566.05~576.32 → 132.01~152.80 | 1,621 → 151 |
+| 10 | workspace | 55.40~56.16 → 13.91~13.98 | 56.43~57.50 → 14.73~14.86 | 161 → 14 |
+| 10 | export | 61.09~61.34 → 18.51~18.66 | 62.27~63.63 → 19.48~20.73 | 165 → 18 |
+| 10 | history | 1.06~1.09 → 0.87~0.93 | 1.11~1.13 → 1.05~1.13 | 1 → 1 |
+
+변경 대상 5경로의 모든 세 묶음에서 p50/p95가 개선됐다. service 목록 p50은 약 75~80% 감소했다.
+history는 조회 변경이 없으므로 시간 차이를 최적화 효과로 주장하지 않는다.
+모든 대응 표본의 반환 객체 수·HTTP body byte·HTTP 요청 수가 같다. 목록 명령 수는
+실측 범위에서 `1 + A × (10 + 3R)`에서 `1 + 13A`로 줄었으며 모든 표본에서 같은 수를
+확인했다. 이는 Npgsql completed-command 이벤트 수이지 SQL 문장·전체 wire 왕복·물리
+disk read 수가 아니다. payload 처리 비용까지 roster 크기와 무관해졌다는 뜻도 아니다.
+
+**변경 후 warm 행렬 완료:** 위 두 셀을 포함한 기존 `full`의 8조건 × 6경로 × 150회,
+총 **7,200표본**을 보존했다. 변경 전 1,800표본을 합한 이번 측정 총계는 9,000개다.
+변경 후 근거는 `lifecycle-postgresql/ab74b126d47e4458966f3ee64ecb3b56`이며
+`s08-summary.json`의 `passed_selected_scope`, 오류 0, receipt의 exit 0·재시작 checkpoint·
+cleanup을 확인했다. 모든 표본의 group/iteration 개수와 순서, 유한한 비음수 시간 및
+명령 수도 검산했다. 아래는 service 목록의 대표 표이며 각 조건의 나머지 다섯 경로,
+HTTP byte/요청 수와 process 전체 allocation은 같은 디렉터리의 원시 JSON에 있다.
+
+| 계정 | roster | history | service 목록 p50 ms | p95 ms | DB 명령 |
+|---:|---:|---:|---|---|---:|
+| 1 | 50 | 10 | 11.61~13.20 | 12.49~14.58 | 14 |
+| 10 | 50 | 10 | 110.77~111.72 | 112.16~123.68 | 131 |
+| 50 | 50 | 10 | 851.64~862.24 | 861.20~1082.31 | 651 |
+| 100 | 50 | 10 | 1174.81~1186.40 | 1196.20~1230.69 | 1,301 |
+| 10 | 5 | 10 | 99.19~99.57 | 100.81~344.85 | 131 |
+| 10 | 200 | 10 | 231.14~233.42 | 245.35~445.08 | 131 |
+| 10 | 50 | 1 | 113.14~114.20 | 114.18~115.73 | 131 |
+| 10 | 50 | 100 | 165.26~167.39 | 168.02~169.32 | 131 |
+
+전체 행렬에서 목록은 `1 + 13A`, 목록+로비는 `1 + 15A`, 단일 workspace/export/history는
+각각 14/18/1명령이었다. roster 5/50/200 및 history 1/10/100에서 profile 내부 반복 조회가
+늘어나지 않음을 확인했지만 응답 시간은 고정되지 않는다. roster 5/200 조건의 첫 묶음에서
+p95 344.85/445.08ms의 변동도 보존했고 원인을 GC·cache 등으로 추측하지 않았다.
+이력 100 조건도 같은 131명령에서 p50이 높아, 후속 원인 분석에는 query plan·구간별 CPU/
+allocation·I/O 근거가 더 필요하다. 이번에 새 인덱스나 캐시를 추가할 근거로 단정하지 않는다.
+
+큰 규모에는 변경 전 대응 표본이 없으므로 그 규모의 개선율을 추정하지 않는다. fixture는
+첫 캐릭터 head의 두 sparse OL과 나머지 미장착 장비를 주로 사용하므로 dense/ready 장비를
+갖춘 실제 계정 전체를 대표하지 않는다. 빈 roster/결손 참조는 정확성 검사이며 성능 셀이
+아니다. process-cold·DOM·물리 I/O·SQL 반환 행 수 측정은 여전히 후속이다. 따라서 이
+profile batch와 warm 행렬은 완료했지만 S-08 전체 완료나 운영 지연 보장을 주장하지 않는다.
+
+단위·UI·runner·Phase/약점/Actions 마감 검사 출력은
+`s08-profile-batch/commit-validation.log`, working-tree 정책 검사는
+`s08-profile-batch/after-repository.log`에 보존한다. 설치본·운영 DB·게임·Epinel DLL 변경,
+실제 게임 실행 및 remote push는 없다.
+
 ### S-09 / 중간 — 프로세스 identity와 복구 공통 코드가 부분적으로 다름
 
 - 확인: coordinator/watcher/recovery에 JSON 쓰기, PG 제어, receipt 검증, 복구 코드가
