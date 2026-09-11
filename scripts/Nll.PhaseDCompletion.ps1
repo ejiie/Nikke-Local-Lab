@@ -1,4 +1,4 @@
-# Pure derivation of the hash-pinned v9 completion template. No runtime I/O.
+# Completion helpers: pure legacy derivation and read-only persistence proof validation.
 # Cleanup is operational; optional battle observations are not cleanup proof.
 function ConvertTo-PhaseDCompletionText {
     param([Parameter(Mandatory = $true)][string]$Text)
@@ -57,4 +57,105 @@ else {
     $null = [Management.Automation.Language.Parser]::ParseInput($result, [ref]$tokens, [ref]$parseErrors)
     if ($parseErrors.Count -ne 0) { throw 'phase_d_completion_diagnostics_derivation_invalid' }
     return $result
+}
+
+# Shared completion/recovery proof validator. Explicit context inputs; no ambient
+# launch variables, DB writes or process actions. Included in the existing seal member.
+function Assert-PhaseDPersistenceProof([bool]$Condition, [string]$Code) {
+    if (-not $Condition) { throw $Code }
+}
+function Get-PhaseDPersistenceProofHash([string]$Path) {
+    (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Read-PhaseDSoloRaidPersistenceReceipt {
+    param(
+        [string]$Path,
+        [string]$LaunchRoot,
+        [string]$LaunchContextUid,
+        [string]$PendingPayloadPath,
+        [string]$CaptureReceiptPath
+    )
+    Assert-PhaseDPersistenceProof (Test-Path -LiteralPath $Path -PathType Leaf) `
+        'phase_d_raid_state_persistence_receipt_missing'
+    Assert-PhaseDPersistenceProof `
+        ((Test-Path -LiteralPath $PendingPayloadPath -PathType Leaf) -and
+         (Test-Path -LiteralPath $CaptureReceiptPath -PathType Leaf)) `
+        'phase_d_raid_state_persistence_proof_missing'
+    $receipt = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 |
+        ConvertFrom-Json
+    $pending = Get-Content -LiteralPath $PendingPayloadPath -Raw -Encoding UTF8 |
+        ConvertFrom-Json
+    $capture = Get-Content -LiteralPath $CaptureReceiptPath -Raw -Encoding UTF8 |
+        ConvertFrom-Json
+    $context = Get-Content -LiteralPath (Join-Path $LaunchRoot 'launch-context.json') `
+        -Raw -Encoding UTF8 | ConvertFrom-Json
+    $headRevisionUid = [Guid]::Empty
+    $headRevisionPresent = $null -ne $receipt.headRevisionUid -and
+        [Guid]::TryParse([string]$receipt.headRevisionUid, [ref]$headRevisionUid) -and
+        $headRevisionUid -ne [Guid]::Empty
+    $resultCode = [string]$receipt.resultCode
+    $expectedHeadReceipt = if ($null -eq $receipt.expectedHeadRevisionUid) {
+        ''
+    } else { [string]$receipt.expectedHeadRevisionUid }
+    $expectedHeadCapture = if ($null -eq $capture.expectedHeadRevisionUid) {
+        ''
+    } else { [string]$capture.expectedHeadRevisionUid }
+    Assert-PhaseDPersistenceProof `
+        ($receipt.contractId -ceq `
+            'nll/phase-d-classic-solo-raid-state-persistence/v1' -and
+         $pending.contractId -ceq `
+            'nll/phase-d-classic-solo-raid-state-pending/v1' -and
+         $capture.contractId -ceq `
+            'nll/phase-d-classic-solo-raid-state-capture/v1' -and
+         -not [bool]$receipt.quarantined -and
+         [string]$receipt.launchContextUid -ceq $LaunchContextUid -and
+         [string]$capture.launchContextUid -ceq $LaunchContextUid -and
+         [string]$pending.capture.launchContextUid -ceq $LaunchContextUid -and
+         [string]$receipt.pendingPayloadSha256 -ceq `
+            (Get-PhaseDPersistenceProofHash $PendingPayloadPath) -and
+         [string]$receipt.captureReceiptSha256 -ceq `
+            (Get-PhaseDPersistenceProofHash $CaptureReceiptPath) -and
+         [string]$receipt.accountUid -ceq [string]$capture.accountUid -and
+         [string]$receipt.accountUid -ceq [string]$context.accountUid -and
+         [string]$receipt.accountRevisionSetSha256 -ceq `
+            [string]$capture.accountRevisionSetSha256 -and
+         [string]$receipt.accountRevisionSetSha256 -ceq `
+            [string]$context.accountRevisionSetSha256 -and
+         [int]$receipt.seasonNumber -eq [int]$capture.seasonNumber -and
+         [int]$receipt.seasonNumber -eq [int]$context.seasonNumber -and
+         [string]$receipt.raidSnapshotUid -ceq `
+            [string]$capture.raidSnapshotUid -and
+         [string]$receipt.raidSnapshotUid -ceq `
+            [string]$context.raidSnapshotUid -and
+         [string]$receipt.raidSnapshotSha256 -ceq `
+            [string]$capture.raidSnapshotSha256 -and
+         [string]$receipt.raidSnapshotSha256 -ceq `
+            [string]$context.raidSnapshotSha256 -and
+         [string]$receipt.clientBuildCode -ceq `
+            [string]$capture.clientBuildCode -and
+         [string]$receipt.clientBuildCode -ceq `
+            [string]$context.clientBuildCode -and
+         [string]$receipt.clientExecutableSha256 -ceq `
+            [string]$capture.clientExecutableSha256 -and
+         [string]$receipt.clientExecutableSha256 -ceq `
+            [string]$context.clientExecutableSha256 -and
+         $expectedHeadReceipt -ceq $expectedHeadCapture -and
+         [string]$receipt.protectedPayloadSha256 -ceq `
+            [string]$capture.protectedPayloadSha256 -and
+         [string]$receipt.requestSha256 -ceq [string]$capture.requestSha256 -and
+         [string]$receipt.stateContentSha256 -ceq `
+            [string]$capture.stateContentSha256 -and
+         [string]$receipt.resultStateContentSha256 -ceq `
+            [string]$receipt.stateContentSha256 -and
+         $resultCode -cin @('no_state','state_unchanged','state_advanced') -and
+         (($resultCode -ceq 'no_state' -and $null -eq $receipt.headRevisionUid) -or
+          ($resultCode -cne 'no_state' -and $headRevisionPresent)) -and
+         [string]$receipt.requestSha256 -cmatch '^[0-9a-f]{64}$' -and
+         [string]$receipt.pendingPayloadSha256 -cmatch '^[0-9a-f]{64}$' -and
+         [string]$receipt.captureReceiptSha256 -cmatch '^[0-9a-f]{64}$' -and
+         [string]$receipt.stateContentSha256 -cmatch '^[0-9a-f]{64}$' -and
+         [string]$receipt.resultStateContentSha256 -cmatch '^[0-9a-f]{64}$') `
+        'phase_d_raid_state_persistence_receipt_invalid'
+    $receipt
 }

@@ -15,7 +15,12 @@ using Npgsql;
 
 static partial class Benchmark
 {
-  static readonly string[] ColdRoutes = ["service_accounts", "http_accounts", "http_accounts_and_lobbies"];
+  static readonly string[] ColdRoutes = ["service_accounts",
+    "http_accounts",
+    "http_accounts_and_lobbies",
+    "service_workspace",
+    "service_export",
+    "service_history"];
   static readonly JsonSerializerOptions ProtocolJson = new(JsonSerializerDefaults.Web)
   { UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow };
 
@@ -208,8 +213,9 @@ static partial class Benchmark
     }
     Require(result.Commands > 0 && result.Output is not null);
     var output = result.Output!;
-    Require(output.ReturnedObjects == request.Fixture.Accounts);
-    var httpRequests = request.Route == "service_accounts" ? 0 :
+    Require(output.ReturnedObjects == (request.Route is "service_workspace" or "service_export" or "service_history" ?
+        1 : request.Fixture.Accounts));
+    var httpRequests = request.Route.StartsWith("service_", StringComparison.Ordinal) ? 0 :
         request.Route == "http_accounts" ? 1 : 1 + request.Fixture.Accounts;
     Require(output.HttpRequests == httpRequests && (httpRequests == 0 ? output.Bytes == 0 : output.Bytes > 0));
   }
@@ -218,7 +224,7 @@ static partial class Benchmark
   {
     Require(request.TrialUid != Guid.Empty && ColdRoutes.Contains(request.Route) && request.Fixture is not null);
     var fixture = request.Fixture!;
-    Require((fixture.Accounts is 1 or 10 && fixture.Roster == 50 && fixture.History == 10) ||
+    Require(FullCells.Contains((fixture.Accounts, fixture.Roster, fixture.History)) ||
         (fixture.Accounts == 1 && fixture.Roster == 5 && fixture.History == 1));
     Require(fixture.Revisions is not null && fixture.Revisions.Count == fixture.Accounts &&
         fixture.Revisions.All(row => Guid.TryParseExact(row.Key, "D", out var uid) && uid != Guid.Empty &&
@@ -302,6 +308,27 @@ static partial class Benchmark
   static async Task<Observation> ExecuteColdOperationAsync(ColdRequest request,
       PostgreSqlProfileManagementService service, HttpClient? client)
   {
+    var first = new EntityUid(Guid.Parse(request.Fixture.Revisions.Keys.First()));
+    var revision = request.Fixture.Revisions[first.ToString()];
+    if (request.Route == "service_workspace")
+    {
+      var row = await service.GetAccountWorkspaceAsync(first);
+      Require(row?.BaseRevisions.ProfileRevisionUid.ToString() == revision);
+      return new(1, 0, 0);
+    }
+    if (request.Route == "service_export")
+    {
+      var row = await service.ExportRuntimeProjectionCandidateAsync(first);
+      Require(row is not null);
+      return new(1, 0, 0);
+    }
+    if (request.Route == "service_history")
+    {
+      var row = await service.GetAccountRevisionHistoryAsync(first);
+      Require(row is not null && row.Revisions.Count == request.Fixture.History &&
+          row.Revisions[0].ProfileRevision.RevisionUid.ToString() == revision);
+      return new(1, 0, 0);
+    }
     if (request.Route == "service_accounts")
     {
       var rows = await service.ListAccountsAsync();

@@ -1,4 +1,18 @@
 # Shared exact-child invocation; importing this file has no side effects.
+function Invoke-PhaseDPgCtl {
+    param([string]$PgCtlPath, [string[]]$Arguments)
+    # Keep the existing pg_ctl -w/-t policy and exact-child wait. A wrapper
+    # timeout alone cannot prove the PostgreSQL descendant stopped safely.
+    $info = [Diagnostics.ProcessStartInfo]::new()
+    $info.FileName = $PgCtlPath
+    $info.Arguments = (($Arguments | ForEach-Object { '"' + $_.Replace('"', '\"') + '"' }) -join ' ')
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $process = [Diagnostics.Process]::Start($info)
+    try { $process.WaitForExit(); [int]$process.ExitCode }
+    finally { $process.Dispose() }
+}
+
 function ConvertTo-PhaseDPowerShellLiteral {
     param([string]$Value)
     "'" + $Value.Replace("'", "''") + "'"

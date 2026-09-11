@@ -759,15 +759,152 @@ UI/실행기·Phase 0~2B·Phase 3A/3B0/3B1·3B2 scaffold·약점·Actions 계약
 `s08-process-cold/after-gates.log`, `after-postgresql.log`와 `commit-validation.log`에 보존한다.
 제품 소스·운영 DB·설치본·게임·Epinel DLL 변경과 remote push는 없다.
 
+### S-08 후속 진단·DOM·확장 cold — 2026-09-11
+
+운영자의 **“1~2 진행”** 범위는 S-08 후속 계측과 안정화 잔여 점검이다. P-01~P-09,
+운영 DB 보정, 설치 앱 배포, 실게임 재실행은 이번 범위가 아니다. 이 절은 위 focused cold
+60표본의 후속이며 과거 수치와 통계 모집단을 합치지 않는다.
+
+재실행은 `test-nll-lifecycle-postgresql.ps1 -MeasureAccountReads`의 `-ReadMeasurementScope`
+`diagnostic`, `dom`, `cold-full`을 사용한다. 사전에 ReadBenchmarks Release 빌드가 필요하며,
+측정 중 build/test를 병행하지 않는다. 모든 DB는 loopback 55432의 새 합성 폐기 cluster다.
+기존 pending, 공식 계정·클라이언트·게임 서버를 입력으로 쓰지 않는다.
+
+#### 실제 쿼리 진단 및 합성 DB 성장
+
+`lifecycle-postgresql/f0634e4819d04e49a38d21065823886f`에서 8조건 × 6구간 × 3회,
+**144개 진단 표본과 2,997개 실제 명령의 EXPLAIN 재실행**을 완료했다. 구간은 summary rows,
+단일 current profile 복원, service 목록/workspace/export/history다. 각 구간은 서로 중첩하므로
+시간을 더하거나 차감해 순수 매핑 비용이라고 부르지 않는다.
+
+- 관측: 실제 읽기 명령의 typed parameter를 Npgsql tracing callback에서 메모리에만 복사한다.
+  parameter logging은 켜지 않고 SQL·매개변수·Activity tag·plan Filter/Index Cond는 저장하지 않는다.
+  Npgsql 10.0.3의 [공식 tracing callback 구현](https://raw.githubusercontent.com/npgsql/npgsql/v10.0.3/src/Npgsql/NpgsqlCommand.cs)을 확인했다.
+- 서비스 계측과 EXPLAIN은 분리한다. 첫 진단 표본의 SELECT를 **계측 후** read-only session에서
+  재실행하며, 반환 행/버퍼 수는 그 재실행의 관측이다. 원래 요청의 SQL 반환 행으로 둔갑시키지 않는다.
+- CPU·할당량은 ReadBenchmarks 프로세스 전체이고 tracing 비용을 포함한다(PG/Edge CPU는 미포함).
+  Windows CPU 시계의 해상도 때문에
+  짧은 구간의 0ms는 CPU 사용이 없다는 뜻이 아니다. 세 표본은 latency baseline이나 p95 보장에 불충분하다.
+- 모든 replay의 최상위 shared read blocks 합은 0이었다. OS cache/physical disk bytes는 계측하지
+  않았으므로 **물리 I/O는 unresolved**다. cache flush나 운영 DB 설정 변경은 하지 않았다.
+
+| 계정/로스터/이력 | 목록 진단 평균 ms | 평균 할당 MiB | SELECT replay 실행 합 ms | 합성 lab 관계 총 MiB |
+| --- | ---: | ---: | ---: | ---: |
+| 1/50/10 | 14.43 | 1.12 | 1.88 | 7.57 |
+| 10/50/10 | 131.76 | 11.05 | 30.81 | 10.04 |
+| 50/50/10 | 1,130.77 | 55.20 | 661.32 | 20.48 |
+| 100/50/10 | 1,247.91 | 110.40 | 282.29 | 33.07 |
+| 10/5/10 | 102.84 | 2.57 | 13.41 | 7.88 |
+| 10/200/10 | 206.18 | 39.50 | 77.05 | 17.50 |
+| 10/50/1 | 124.80 | 11.05 | 28.41 | 8.93 |
+| 10/50/100 | 178.55 | 11.05 | 82.52 | 21.08 |
+
+기존 sparse/mostly-unequipped 합성 fixture를 유지했다. 장비·overload가 밀집한 실계정의 분포나
+동시 운영 부하를 대표한다고 주장하지 않는다.
+
+100계정 summary rows만 읽는 구간은 평균 1.77ms·1명령인데 전체 service 목록은 1,301명령이다.
+따라서 추가 최적화 후보는 목록에서 매 계정의 프로필 전체를 복원하는 경로다. 50계정 조건에서
+`build_equipment_state` 11,800행 Seq Scan/Hash Join을 포함한 plan도 관측했다. 100계정보다 작은
+조건이 더 느린 구간을 단순 선형 크기 효과로 설명하지 않는다. planner/statistics·scan 선택의
+기여는 추가 통제 실험이 필요하며, 이번에는 인덱스·캐시·migration을 임의 추가하지 않는다.
+
+각 조건에서 profile revision 수 `accounts × history`, current head 계정 일치, previous revision의
+계정/연속 번호를 확인했고 오류는 0이었다. 관계별 heap/index/total byte도 보존했다. V0016의
+`ck_classic_solo_raid_runtime_state_revision_completed_best_shape`는 과거 immutable 행 보존 때문에
+의도된 `NOT VALID`다. 처음 작성한 진단이 이를 손상으로 처리한 실패는
+`lifecycle-postgresql/dc813882564e4a1a9eed2fb57449ac00`에 남기고, 역사 제약을 별도 관측값으로
+구분해 재검증했다. 두 실행 모두 DB restart checkpoint와 cleanup을 확인했다.
+이는 **합성 fixture 검사**이며 운영 pending의 장기 잔존, encrypted pending과 committed revision의
+실제 대조 또는 전체 provenance 감사를 수행한 것은 아니다.
+
+#### 실제 편집기 DOM 경계
+
+`lifecycle-postgresql/deddb713f36140c1a038fd8b245026e2`에서 1/10계정 각각 3회, **6/6 통과**했다.
+새 headless Edge 프로필과 실제 checked-in editor의 `refresh-accounts` handler를 사용한다.
+HTTP 200, 실제 계정 UID 집합·로비 레벨·표시 가능한 DOM, 명령 16/151회를 검증했다.
+Edge 버전 `152.0.4191.66`과 실행 파일 hash, editor asset hash는 receipt에 기록한다.
+
+| 계정 | HTTP 완료 ms (3회 원시값) | HTTP→DOM 갱신 ms | 두 rAF 도달 ms (요청 시작 기준) |
+| --- | --- | --- | --- |
+| 1 | 153.20 / 26.90 / 45.90 | 1.60 / 1.40 / 1.90 | 160.90 / 49.10 / 66.20 |
+| 10 | 310.90 / 399.10 / 168.50 | 1.50 / 2.40 / 2.90 | 324.70 / 410.40 / 181.30 |
+
+ResourceTiming responseEnd, MutationObserver와 두 번의 requestAnimationFrame callback을 구분했다.
+브라우저·호스트 startup, 전체 login/presentation catalog 흐름은 제외했다. 같은 cell의 server/service
+pool은 재사용되므로 process-cold 표본과 합치지 않는다. **compositor paint·설치 WebView2·원본 게임
+UI의 지연을 측정한 것은 아니다.** 외부 page 요청은 차단하고 새 프로필은 정리했으며 운영 설치본은
+열지 않았다. 3회 표본의 편차를 숨기거나 DOM overhead가 항상 3ms 이하라고 보장하지 않는다.
+
+#### 확장 process-cold 및 마감 검사
+
+`cold-full`은 기존 8조건 모두에서 목록/HTTP 목록/목록+로비/workspace/export/history를 각 10개의
+새 프로세스로 읽는다. `lifecycle-postgresql/de79bdf575af424980c98e65d1298b81`의 **480/480**이
+통과했고 오류·timeout은 0이다. raw 파일/summary 일치, 서로 다른 480개 PID+시작 시각,
+ready 이전 DB 명령/operation 0, fixture/source hash와 경로별 예상 명령을 독립적으로 대조했다.
+startup/request p50/p95 **192개**도 원시 표본에서 재계산했다. 8조건 모두 workspace 14,
+export 18, history 1명령이며 목록 `1+13A`, 목록+로비 `1+15A`다. 첫 요청과 시작 시간은
+분리하고 OS/DB cache는 초기화하지 않았다. DB restart checkpoint와 cleanup도 통과했다.
+독립 대조 메모는 `s08-s09-followup/receipt-audit.txt`에 보존한다.
+
+아래 완료된 1/10/50/100계정 조건은 roster 50·history 10이다. 각 행 10표본의 nearest-rank
+p95는 최댓값이며 이상치를 제외하지 않았다. startup은 첫 요청 시간에 합산하지 않았다.
+
+| 계정 | service 목록 첫 요청 p50/p95 ms | HTTP 목록+로비 첫 요청 p50/p95 ms |
+| --- | --- | --- |
+| 1 | 281.19 / 296.55 | 313.51 / 317.76 |
+| 10 | 431.87 / 437.85 | 624.71 / 756.18 |
+| 50 | 1,533.52 / 1,548.05 | 1,792.17 / 2,083.78 |
+| 100 | 1,806.29 / 1,934.28 | 2,145.82 / 2,203.31 |
+
+마감 검사:
+
+- 변경 전 repository/Phase 0~2B/3A/3B0/3B1/3B2 scaffold/약점/Actions 계약 통과. 변경 전
+  PostgreSQL **110/110** receipt는 `ecbb7a6ed95a4f94b84c4e49c7a25f51`이다.
+- 변경 후 단위 **475개**, 저장/실행 UI·runner 봉인/복구 행동·위 전체 계약 및 build/format 통과.
+  계측기 DB-free 자식 **12회**, DOM helper의 loopback guard, 공통 상태/증빙 **53개**도 통과했다.
+- 기존 warm smoke **12표본** receipt는 `44180ef220c044b1822afe1606f58c61`, 변경 후 PostgreSQL
+  **110/110**은 `ff7829f2e59446ebbb27f9b93e17dc15`다. 두 실행 모두 restart checkpoint/cleanup을
+  확인했다. 모든 receipt UID의 상위 경로는 `artifacts/stabilization/lifecycle-postgresql/`이다.
+- 상세 로그는 `artifacts/stabilization/s08-s09-followup/`의 `before-gates.log`,
+  `before-postgresql.log`, `diagnostic-retry.log`, `dom.log`, `cold-full.log`, `after-gates.log`,
+  `after-postgresql.log`에 보존한다. 공통화 후 함수 위치에 묶인 예전 검사 실패와 테스트의 script
+  import 정책 실패는 `focused-checks.log`/`admin-retry.log`에 보존했으며, 실제 공통 writer/소비자
+  경로를 검사하도록 수정했다. 시스템 실행 정책이나 NuGet audit 옵션은 변경하지 않았다.
+
+이로써 이번 소스 범위의 계측·공통화·회귀 검증을 마감한다. **S-08/S-09 전체 종료 판정은 아니다.**
+물리 I/O, planner/statistics 통제 실험, 목록 read model의 추가 최적화, 설치 WebView2/실게임 인수와
+아래 운영 DB·전수 리뷰 경계는 남아 있다. 이 결과를 P-01~P-09 착수나 운영 변경 승인으로 확대하지 않는다.
+
 ### S-09 / 중간 — 프로세스 identity와 복구 공통 코드가 부분적으로 다름
 
-- 확인: coordinator/watcher/recovery에 JSON 쓰기, PG 제어, receipt 검증, 복구 코드가
-  반복된다. watcher `:246`의 `Stop-PinnedProcess`는 PID와 이름을 확인하지만 시작 시각은
-  확인하지 않는다. 반면 orphan recovery는 watcher를 PID+시작 시각으로 식별한다.
-- 위험: PID 재사용 등에서 같은 이름의 다른 프로세스와 혼동할 여지가 있다. 잘못된
-  프로세스를 실제 종료했다는 주장은 아니다.
-- 방향: process identity, exact-child wait, atomic state 쓰기와 복구 proof를 공통화한다.
-  active process에 대해 검증을 약화시키거나 이름 기반 일괄 종료를 추가하지 않는다.
+- 초기 점검의 PID/name-only `Stop-PinnedProcess` 지적은 **과거 상태**다. 현행은 PID·시작 시각·
+  경로를 확인한 동일 native handle로 wait/stop하고, 잔류 서버도 배타적 ownership proof를 요구한다.
+  2026-09-07 보강을 다시 미구현으로 취급하지 않는다.
+- 2026-09-11: coordinator/watcher/recovery의 JSON 저장을 기존 봉인 member인
+  `Nll.PhaseDProcessIdentity.ps1`로, pg_ctl exact-child wait를 `Nll.PhaseDChildProcess.ps1`로 공통화했다.
+  JSON은 같은 디렉터리의 임시 파일을 만든 뒤 기존 파일에는 `File.Replace`, 최초 생성에는
+  `File.Move`를 쓴다. 교체 실패 시 이전 JSON을 유지하고 자신의 partial만 정리한다. filesystem
+  atomic replacement이지 전원 장애에 대한 fsync/durability 보장이라고 부르지 않는다.
+- watcher/recovery의 Solo Raid persistence proof는 기존 `Nll.PhaseDCompletion.ps1`의 공통 함수로
+  옮겼다. launch root/context를 명시적으로 받고 기존 account/revision/snapshot/build/hash 결박을
+  보존한다. 대문자 result code와 malformed/empty-Guid `no_state` head가 허용되던 분기를 닫았다.
+- 새 합성 행동 검사 **53개**는 실제 파일·hash·context 변조, 실패한 JSON 교체의 이전 값 보존,
+  exact pg_ctl 자식의 인자/exit code와 두 소비자 wrapper를 검사한다. 예전 두 permissive predicate를
+  되돌린 negative control이 잘못된 fixture를 허용하는 것도 확인했다. 소스 문자열 검사 일부는
+  helper import/binding 확인만 남기고 의미 검증은 이 행동 검사와 기존 종료/복구 검사로 옮겼다.
+- runner member 목록/contract version은 바꾸지 않는다. 이미 생성된 bundle은 자신의 옛 helper를
+  계속 쓰며, 새 실행만 새 hash closure를 생성한다. 설치 앱 파일을 배포하지 않았지만 **설치된
+  실행 경로가 저장소 스크립트를 직접 읽으므로 다음 새 실행은 이 소스를 소비할 수 있다.**
+  변경 전 복원 기준은 `0d362ad`의 동일 스크립트 집합이다. 이미 봉인된 bundle과 임의 혼용하지 않는다.
+- 남음: 실행/복구 단계별 timeout 및 실패 후 ownership 정책의 추가 통합. pg_ctl의 기존 `-w/-t`와
+  exact-child wait를 유지했고, timeout만으로 PostgreSQL descendant를 강제 종료하지 않는다.
+  운영 DB pending/provenance 대조와 실제 게임 종료 인수도 별도다.
+
+이번 잔여 코드 점검은 프로세스·완료/복구 helper, workspace Save/CAS/provenance와 raid state의
+기존 rollback/replay/경합 통합 검사, automation inventory/state-machine, desktop entry/stop 흐름을
+대상으로 했다. importer/domain 전체 파일을 전수 검토했다고 표시하지 않는다. desktop의 async
+시작 실패·stderr backpressure/실제 WebView2 구간은 별도 재현 검사가 더 필요하다. 이번에 desktop
+설치본을 열거나 자동화된 전체 UI 인수를 수행한 것은 아니다.
 
 ### S-10 / 높음 — 현재 운영 명세와 과거 단계 기록, 빌드 기준선의 분리 부족
 

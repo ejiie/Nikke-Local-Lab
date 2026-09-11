@@ -45,6 +45,8 @@ Invoke-Checked dotnet @(
     "--no-restore"
 )
 Invoke-Checked node @("--check", $EditorScript)
+Invoke-Checked node @('--check', (Join-Path $ScriptDirectory 'measure-nll-editor-dom.cjs'))
+Invoke-Checked node @((Join-Path $ScriptDirectory 'measure-nll-editor-dom.cjs'), '--self-test')
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/workspace-save-retry.test.cjs"))
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/raid-launch-status.test.cjs"))
 Invoke-Checked node @((Join-Path $ScriptDirectory "test-nll-phase-d-lifecycle-ui.cjs"))
@@ -66,7 +68,8 @@ if ($env:OS -eq 'Windows_NT') {
     foreach ($test in @('test-nll-phase-d-preparation.ps1', 'test-nll-phase-d-launch-tools.ps1',
         'test-nll-phase-d-runner-contract.ps1', 'test-nll-phase-d-runner-seal.ps1',
         'test-nll-phase-d-runner-behavior.ps1', 'test-nll-phase-d-runner-differential.ps1',
-        'test-nll-phase-d-runner-routing.ps1', 'test-nll-phase-d-runner-dependencies.ps1')) {
+        'test-nll-phase-d-runner-routing.ps1', 'test-nll-phase-d-runner-dependencies.ps1',
+        'test-nll-phase-d-shared-state.ps1')) {
         Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory $test))
     }
 } else {

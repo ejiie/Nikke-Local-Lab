@@ -28,6 +28,24 @@ static partial class Benchmark
     Reject(() => ValidateColdRequest(request with { Route = "unsupported" }));
     Reject(() => ValidateColdRequest(request with { Fixture = fixture with { Accounts = 10 } }));
     Reject(() => ValidateColdRequest(request with { Fixture = fixture with { Roster = 200 } }));
+    foreach (var cell in FullCells)
+      foreach (var route in ColdRoutes)
+      {
+        var expanded = request with
+        {
+          Route = route,
+          Fixture = new(cell.Accounts, cell.Roster, cell.History,
+            Enumerable.Range(0, cell.Accounts).ToDictionary(_ => Guid.NewGuid().ToString(), _ => Guid.NewGuid().ToString()))
+        };
+        ValidateColdRequest(expanded);
+        var http = route.StartsWith("http_", StringComparison.Ordinal);
+        var objects = route is "service_workspace" or "service_export" or "service_history" ? 1 : cell.Accounts;
+        ValidateResult(result with
+        {
+          Output = new(objects, http ? 100 : 0,
+            !http ? 0 : route == "http_accounts" ? 1 : 1 + cell.Accounts)
+        }, expanded);
+      }
     Reject(() => JsonSerializer.Deserialize<ColdReady>("{}", ProtocolJson));
     Reject(() => JsonSerializer.Deserialize<ColdReady>(JsonSerializer.Serialize(ready, ProtocolJson)
         .Replace("\"priorCommands\":0", "\"unexpected\":0", StringComparison.Ordinal), ProtocolJson));

@@ -345,6 +345,7 @@ public sealed class PhaseDExecutionStateTests
       var command = """
           $ErrorActionPreference = 'Stop'
           $source = Get-Content -LiteralPath $env:NLL_TEST_COORDINATOR -Raw -Encoding UTF8
+          $source += "`n" + (Get-Content -LiteralPath (Join-Path (Split-Path -Parent $env:NLL_TEST_COORDINATOR) 'Nll.PhaseDProcessIdentity.ps1') -Raw -Encoding UTF8)
           $tokens = $null
           $errors = $null
           $ast = [Management.Automation.Language.Parser]::ParseInput(

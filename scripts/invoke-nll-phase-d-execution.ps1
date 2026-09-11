@@ -59,37 +59,8 @@ function Assert-PhaseDCacheArtifactIdentity {
     $matchCount
 }
 
-function Write-AtomicJson {
-    param([string]$Path, [object]$Value, [int]$Depth = 8)
-    $temporary = $Path + '.partial-' + [guid]::NewGuid().ToString('N')
-    [IO.File]::WriteAllText(
-        $temporary,
-        (($Value | ConvertTo-Json -Depth $Depth) + "`n"),
-        [Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $temporary -Destination $Path -Force
-}
 
 
-function Invoke-PhaseDPgCtl {
-    param(
-        [string]$PgCtlPath,
-        [string[]]$Arguments
-    )
-    # Wait for pg_ctl's exact PID. Start-Process -Wait can wait for its postgres
-    # descendant as well and deadlock a start operation until the DB is stopped.
-    $info = [Diagnostics.ProcessStartInfo]::new()
-    $info.FileName = $PgCtlPath
-    $info.Arguments = (($Arguments | ForEach-Object {
-        '"' + $_.Replace('"', '\"') + '"'
-    }) -join ' ')
-    $info.UseShellExecute = $false
-    $info.CreateNoWindow = $true
-    $process = [Diagnostics.Process]::Start($info)
-    $process.WaitForExit()
-    $exitCode = [int]$process.ExitCode
-    $process.Dispose()
-    $exitCode
-}
 
 function Invoke-PhaseDEmergencyRollback {
     param([string]$EvidencePath, [string]$RuntimePath)

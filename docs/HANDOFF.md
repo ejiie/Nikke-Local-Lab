@@ -24,7 +24,7 @@ exact replay하고, 실행 중 경합은 즉시 거절하며 pending을 임의�
 신규 pending은 창을 다시 열어도 조회 후 명시적으로 이어 저장하고, 원문 없는 구형 pending은
 자동 삭제·추정 복원하지 않습니다. 완료 receipt 조회와 Save As source/복제본 구분을 유지합니다.
 운영자 승인으로 원문 없는 구형 pending 3행만 정리한 뒤, **준비된 앱 파일 15개와 V0018을 운영에
-적용**했습니다. 현재 스키마는 **18**, 정상 Save 75건·pending 0건이며 관리도구와 DB는 정상 종료했습니다.
+적용**했습니다. 해당 배포 검증 당시 스키마는 **18**, 정상 Save 75건·pending 0건이었으며 관리도구와 DB는 정상 종료했습니다.
 기존 132개 테이블은 migration 이력 외 행/시퀀스가 동일하고, 시험용 Save/복제 계정은 운영 DB에 만들지 않았습니다.
 격리 DB의 실제 HTTP/editor 화면에서 Save 응답 유실 exact 재전송, Save As 원본 보존,
 서버·창 재시작 후 신규 pending 복구를 검증했습니다. 설치 WebView2에서는 Windows 접근성 API로
@@ -148,11 +148,29 @@ fixture 한계, 원시 표본·마감 검사 근거는 안정화 계획 S-08을 
 ready 전 DB 명령 0, exact 프로세스/fixture binding과 원시 표본·통계 재계산을 확인했습니다.
 service 목록 첫 조회 p50은 283.75/432.51ms이며, 시작 시간 p50 175.33/174.29ms와 분리합니다.
 이는 합성 측정기 경계이고 설치 앱 startup이나 DOM 표시 시간이 아닙니다. OS/DB cache를
-초기화하지 않았고 운영 DB·게임·Epinel DLL도 변경하지 않았습니다. 다른 규모·경로의 cold,
-물리 I/O·DOM·query plan 분석은 남아 있어 S-08 전체 완료를 주장하지 않습니다.
+초기화하지 않았고 운영 DB·게임·Epinel DLL도 변경하지 않았습니다. 당시 다른 규모·경로의 cold,
+물리 I/O·DOM·query plan 분석은 남았으며, 아래 후속 결과와 구분합니다.
 이번 측정기 변경도 단위 475개·폐기 PostgreSQL 110개·계측기 DB-free 프로세스 12개·UI/전체 계약을
 통과했고, cold/warm smoke와 모든 폐기 DB의 재시작 checkpoint·정리를 확인했습니다. 수치·경계·
 재실행 명령과 receipt는 [S-08 process-cold](STABILIZATION_PLAN.md#s-08-process-cold-계측--2026-09-11)에 있습니다.
+
+2026-09-11 “1~2 진행” 후속에서는 S-08 진단 8조건 **144표본·2,997개 EXPLAIN 재실행**과
+실제 편집기 headless Edge DOM **6/6회**, 확장 process-cold **480/480표본**을 완료했습니다.
+오류·timeout 0, 원시 표본 및 p50/p95 192개 재계산과 DB restart/cleanup을 확인했습니다.
+summary query 자체보다 매 계정의
+프로필 전체 복원 비용이 큽니다. plan·구간 CPU/할당량·합성 DB 크기를 기록했으며, 물리 디스크
+I/O와 설치 WebView2 성능으로 일반화하지 않습니다. 확장 cold/마감 검사 상태와 receipt는
+[후속 진단](STABILIZATION_PLAN.md#s-08-후속-진단dom확장-cold--2026-09-11)을 따릅니다.
+S-09의 JSON 교체·pg_ctl exact-child 대기·watcher/recovery 영속화 증빙 검증을 공통화했고,
+대문자 result code 및 잘못된 `no_state` head 수락을 차단하는 **53개 합성 행동 검사**를 통과했습니다.
+과거 PID-only watcher 지적은 현행 미구현 목록에서 제외했습니다. 설치 앱 파일·운영 DB·게임·DLL은
+변경하지 않았지만 **저장소 실행 스크립트는 다음 새 실행에서 소비될 수 있습니다.** 기존 봉인
+bundle의 코드/복구 경로는 유지합니다. 운영 pending/provenance 대조, 단계별 timeout 정책의
+추가 통합, importer/domain 전체 리뷰와 설치/실게임 인수는 여전히 남아 있습니다. P-01~P-09는
+이번 범위에 포함하지 않았습니다.
+변경 후 **단위 475개·PostgreSQL 110개·warm smoke 12표본·UI/전체 계약**을 통과했습니다.
+폐기 DB의 restart checkpoint/cleanup을 확인했고 운영 DB·설치 앱 배포·원격 push는 하지 않았습니다.
+이번 소스 범위는 마감하지만 S-08/S-09 전체 종료 판정은 아닙니다.
 
 ## 별도 보류
 

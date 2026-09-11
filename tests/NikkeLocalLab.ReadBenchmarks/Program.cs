@@ -33,6 +33,15 @@ static partial class Benchmark
   static readonly DateTimeOffset Instant = new(2026, 8, 20, 1, 0, 0, TimeSpan.Zero);
   static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
   static readonly Type Fixture = typeof(PostgreSqlLocalGameStateTests);
+  static readonly (int Accounts, int Roster, int History)[] FullCells =
+      [(1, 50, 10),
+        (10, 50, 10),
+        (50, 50, 10),
+        (100, 50, 10),
+        (10, 5, 10),
+        (10, 200, 10),
+        (10, 50, 1),
+        (10, 50, 100)];
   static object Invoke(string name, params object?[] arguments) => Fixture.GetMethod(name,
       BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, arguments)!;
   static async Task<object> InvokeAsync(string name, params object?[] arguments)
@@ -54,15 +63,20 @@ static partial class Benchmark
       counter.Log(LogLevel.Information, new EventId(2, "unrelated"), "unused", null, (_, _) => throw new Exception());
       Require(counter.Count == 1); counter.Reset(); Require(counter.Count == 0);
       await ColdSelfTestAsync();
+      DiagnosticSelfTest();
       Console.WriteLine("S08 source-only statistics/counter checks passed; no DB measurement executed.");
       return 0;
     }
     if (args.SequenceEqual(new[] { "--cold-child" })) return await RunColdChildAsync();
     if (args.Length == 2 && args[0] == "--cold-probe") return await RunColdProbeAsync(args[1]);
     Require(args.Length == 0 || args.SequenceEqual(new[] { "--full" }) || args.SequenceEqual(new[] { "--smoke" }) ||
-        args.SequenceEqual(new[] { "--cold" }) || args.SequenceEqual(new[] { "--cold-smoke" }));
-    var cold = args.Contains("--cold") || args.Contains("--cold-smoke");
-    var full = args.Contains("--full");
+        args.SequenceEqual(new[] { "--cold" }) || args.SequenceEqual(new[] { "--cold-smoke" }) ||
+        args.SequenceEqual(new[] { "--cold-full" }) || args.SequenceEqual(new[] { "--diagnostic" }) ||
+        args.SequenceEqual(new[] { "--dom" }));
+    var cold = args.Contains("--cold") || args.Contains("--cold-smoke") || args.Contains("--cold-full");
+    var diagnostic = args.Contains("--diagnostic");
+    var dom = args.Contains("--dom");
+    var full = args.Contains("--full") || args.Contains("--cold-full") || diagnostic;
     var smoke = args.Contains("--smoke") || args.Contains("--cold-smoke");
     var connection = DisposableConnection();
     // The disposable cluster allows 40 connections. Keep 100-account fan-out
@@ -76,9 +90,7 @@ static partial class Benchmark
     commands.Reset();
     await using (var probe = source.CreateCommand("SELECT 1")) await probe.ExecuteScalarAsync();
     Require(commands.Count == 1);
-    var fullCells = new[] { (1, 50, 10), (10, 50, 10), (50, 50, 10), (100, 50, 10),
-        (10, 5, 10), (10, 200, 10), (10, 50, 1), (10, 50, 100) };
-    var cells = smoke ? new[] { (1, 5, 1) } : full ? fullCells : fullCells.Take(2).ToArray();
+    var cells = smoke ? new[] { (1, 5, 1) } : full ? FullCells : FullCells.Take(2).ToArray();
     var completed = new List<object>();
     var errors = 0;
     foreach (var (accounts, roster, history) in cells)
@@ -114,6 +126,16 @@ static partial class Benchmark
       await using (var count = source.CreateCommand("SELECT count(*) FROM lab_profile.profile_template_revision"))
         Require(Convert.ToInt64(await count.ExecuteScalarAsync()) == accounts * history);
 
+      if (dom)
+      {
+        completed.Add(await MeasureDomCellAsync(output, accounts, roster, history, expected));
+        continue;
+      }
+      if (diagnostic)
+      {
+        completed.Add(await MeasureDiagnosticCellAsync(output, accounts, roster, history, expected));
+        continue;
+      }
       if (cold)
       {
         var coldCell = await MeasureColdCellAsync(output, accounts, roster, history, expected, smoke ? 1 : 10);
@@ -213,9 +235,11 @@ static partial class Benchmark
     }
     await File.WriteAllTextAsync(Path.Combine(output, "s08-summary.json"), JsonSerializer.Serialize(new
     {
-      contractId = cold ? "nll/synthetic-process-cold-read/v1" : "nll/synthetic-read-baseline/v1",
+      contractId = dom ? "nll/synthetic-editor-dom-read/v1" : diagnostic ? "nll/synthetic-read-diagnostics/v1" :
+          cold ? "nll/synthetic-process-cold-read/v1" : "nll/synthetic-read-baseline/v1",
       status = errors > 0 ? "failed_selected_scope" : completed.Count == cells.Length ? "passed_selected_scope" : "stopped_after_cell",
-      scope = cold ? (smoke ? "process_cold_smoke_not_a_baseline" : "accounts_1_and_10_process_cold") :
+      scope = dom ? "accounts_1_and_10_editor_dom" : diagnostic ? "full_diagnostic_matrix_not_a_latency_baseline" :
+          cold ? (smoke ? "process_cold_smoke_not_a_baseline" : full ? "full_process_cold_matrix" : "accounts_1_and_10_process_cold") :
           smoke ? "smoke_not_a_baseline" : full ? "full_warm_matrix" : "accounts_1_and_10_warm",
       plannedCells = cells.Length,
       cells = completed,
@@ -237,7 +261,7 @@ static partial class Benchmark
         timeouts = "60s startup / 60s first operation / 15s child exit; HTTP client 30s",
         performanceThresholdGate = false
       } : null,
-      domRenderingMeasured = false,
+      domRenderingMeasured = dom,
       diskReadBytesMeasured = false,
       originalClientExecuted = false,
       operatingDatabaseTouched = false,

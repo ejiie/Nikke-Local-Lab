@@ -161,8 +161,10 @@ public sealed class PhaseDArtifactSafetyTests
     Assert.DoesNotContain("'-t' '60' |", coordinator + watcher, StringComparison.Ordinal);
     Assert.DoesNotContain("Start-Process -FilePath $PgCtlPath", coordinator + watcher,
         StringComparison.Ordinal);
-    Assert.Contains("[Diagnostics.Process]::Start($info)", coordinator + watcher,
-        StringComparison.Ordinal);
+    Assert.Contains("'Nll.PhaseDChildProcess.ps1'", coordinator, StringComparison.Ordinal);
+    Assert.Contains("'Nll.PhaseDChildProcess.ps1'", watcher, StringComparison.Ordinal);
+    // Shared helper's real exit-code/argument/descendant behavior is exercised
+    // by the exact-child and shared-state checks, not by its spelling here.
     Assert.Contains(
         "$failureStatusCode = if ($coordinatorRollbackProven) { 'failed' } else { 'started' }",
         coordinator,
@@ -547,14 +549,11 @@ public sealed class PhaseDArtifactSafetyTests
         "if (-not (Test-Path -LiteralPath $SoloRaidPersistenceReceiptPath",
         persistenceBody,
         StringComparison.Ordinal);
-    Assert.Contains(
-        "pendingPayloadSha256",
-        watcher,
-        StringComparison.Ordinal);
-    Assert.Contains(
-        "captureReceiptSha256",
-        watcher,
-        StringComparison.Ordinal);
+    // Binding checks only: shared-state PowerShell behavior tests mutate the
+    // actual validator's files/hashes/contexts, rather than trusting token presence.
+    Assert.Contains("'Nll.PhaseDCompletion.ps1'", watcher, StringComparison.Ordinal);
+    Assert.Contains("Read-PhaseDSoloRaidPersistenceReceipt -Path $Path -LaunchRoot $LaunchRoot -LaunchContextUid $LaunchContextUid",
+        watcher, StringComparison.Ordinal);
     Assert.Contains("$orphanRecoveryRequired", watcher, StringComparison.Ordinal);
     Assert.Contains(
         "$pendingReplayRequired -or $orphanRecoveryRequired",

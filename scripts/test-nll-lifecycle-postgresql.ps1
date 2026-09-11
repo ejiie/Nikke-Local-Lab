@@ -3,7 +3,7 @@ param(
     [string]$PostgreSqlRoot = 'C:\NLL\Runtime\PostgreSQL-17-native',
     [string]$Filter = '',
     [switch]$MeasureAccountReads,
-    [ValidateSet('focused', 'full', 'smoke', 'cold', 'cold-smoke')][string]$ReadMeasurementScope = 'focused',
+    [ValidateSet('focused', 'full', 'smoke', 'cold', 'cold-smoke', 'cold-full', 'diagnostic', 'dom')][string]$ReadMeasurementScope = 'focused',
     [ValidateRange(1, 60)][int]$ShutdownTimeoutSeconds = 30
 )
 
@@ -53,7 +53,8 @@ $resultRoot = Join-Path $repositoryRoot ('artifacts\stabilization\lifecycle-post
 $null = New-Item -ItemType Directory -Path $workRoot
 $null = New-Item -ItemType Directory -Path $resultRoot -Force
 $environmentNames = @('PGPASSWORD', 'NIKKE_LAB_TEST_DB', 'NIKKE_LAB_TEST_EXPECTED_DATABASE',
-    'NIKKE_LAB_TEST_RESET_TOKEN', 'DOTNET_CLI_HOME', 'NUGET_PACKAGES', 'DOTNET_CLI_TELEMETRY_OPTOUT', 'NLL_S08_OUTPUT')
+    'NIKKE_LAB_TEST_RESET_TOKEN', 'DOTNET_CLI_HOME', 'NUGET_PACKAGES', 'DOTNET_CLI_TELEMETRY_OPTOUT', 'NLL_S08_OUTPUT',
+    'NLL_S08_DOM_SCRIPT', 'NLL_S08_NODE')
 $previousEnvironment = @{}
 foreach ($name in $environmentNames) { $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 $bytes = [byte[]]::new(32)
@@ -99,6 +100,8 @@ try {
     if (-not [string]::IsNullOrWhiteSpace($Filter)) { $testArguments += @('--filter', $Filter) }
     if ($MeasureAccountReads) {
         $env:NLL_S08_OUTPUT = $resultRoot
+        $env:NLL_S08_DOM_SCRIPT = Join-Path $PSScriptRoot 'measure-nll-editor-dom.cjs'
+        $env:NLL_S08_NODE = (Get-Command node -ErrorAction Stop).Source
         $measurementDiff = (& git -C $repositoryRoot diff HEAD --no-ext-diff) -join "`n"
         $measurementDiffBytes = [Text.Encoding]::UTF8.GetBytes($measurementDiff)
         $measurementHasher = [Security.Cryptography.SHA256]::Create()
@@ -115,6 +118,10 @@ try {
             sdk = (& $dotnet --version).Trim(); postgresqlVersion = '17.11'
             powerScheme = (& powercfg /GETACTIVESCHEME) -join ' '
             processorCount = [Environment]::ProcessorCount
+            domScriptSha256 = (Get-FileHash -LiteralPath $env:NLL_S08_DOM_SCRIPT -Algorithm SHA256).Hash.ToLowerInvariant()
+            editorAssets = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src/NikkeLocalLab.Admin.Api/wwwroot/editor') -File | Sort-Object Name | ForEach-Object {
+                @{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+            })
             isolated = $true; sharedBuffers = '64MB'; workMem = '2MB'; maxConnections = 40
             assemblies = @(Get-ChildItem -LiteralPath (Split-Path $measurementDll) -Filter '*.dll' -File | Sort-Object Name | ForEach-Object {
                 @{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
@@ -126,6 +133,9 @@ try {
         if ($ReadMeasurementScope -eq 'smoke') { $measurementArguments += '--smoke' }
         if ($ReadMeasurementScope -eq 'cold') { $measurementArguments += '--cold' }
         if ($ReadMeasurementScope -eq 'cold-smoke') { $measurementArguments += '--cold-smoke' }
+        if ($ReadMeasurementScope -eq 'cold-full') { $measurementArguments += '--cold-full' }
+        if ($ReadMeasurementScope -eq 'diagnostic') { $measurementArguments += '--diagnostic' }
+        if ($ReadMeasurementScope -eq 'dom') { $measurementArguments += '--dom' }
         & $dotnet @measurementArguments
     } else {
         & $dotnet @testArguments
