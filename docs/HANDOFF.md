@@ -13,14 +13,16 @@
 
 ## 지금 할 작업
 
-### 2026-09-12 안정화 인수 준비
+### 2026-09-12 안정화 인수 완료 및 소스 게시
 
 운영자 요청은 직접 하는 실 테스트를 제외한 안정화 후속 완료다. revision readiness의
 256개 bounded cache, desktop pipe/async 예외·정상 종료 확인, 준비/완료/pg_ctl 자식의
 기한·사전 identity reservation·복구 admission, automation reparse 경계를 보강했다.
 운영 DB는 cold-copy에서 감사하며 행 삭제·추정 복원·새 migration을 하지 않는다.
 **제품 소스 `1cf8784`의 전체 검사·설치 반영·설치 API smoke를 완료**했다.
-실제 WebView2 조작·원본 Challenge 전투는 운영자 인수로 남는다. GitHub 게시 차단은 별도다.
+운영자가 6단계 실 테스트에 대해 "모두 정상 동작을 확인했다"고 보고하여 이번 안정화의
+WebView2 조작·저장·재시작·151/S26 Challenge·종료 후 재실행 인수를 완료했다.
+이는 운영자 확인이며 agent가 새 actual-play receipt를 수집했다는 뜻이 아니다.
 
 - 최종 검증 `7ed9a463711d42b9aff415860bcf3b9b`: 단위 **486개**, 격리 PostgreSQL **112개**,
   저장소·Phase 0·완료된 Phase 2A1/2A2/2B·역사 Phase 3A·3B0/3B1/3B2·약점·Actions 계약,
@@ -62,10 +64,10 @@
   dense 100계정 cache-miss 목록 평균은 전 1,382.913ms / 후 1,394.918ms다.
   명확한 개선이 없어 운영 통계·인덱스를 변경하지 않았다. PDH disk byte는 호스트 전체 disk-stack
   관측이지 해당 DB/요청 단독 I/O나 NAND byte가 아니다.
-- GitHub metadata의 실제 visibility가 `public`이므로 **원격 push/PR/merge는 보류**했다.
-  문서의 비공개 원격 전제와 불일치하며 visibility·권한을 임의 변경하지 않는다.
-  [게시 경계](operations/GITHUB_AUTOMATION.md)의 현재 차단을 따른다.
-- 사용자 실 테스트는 [6단계 인수 체크리스트](operations/STABILIZATION_ACCEPTANCE.md)다.
+- 공개 원격 때문에 게시를 보류했던 상태는 운영자의 "private으로 돌리고 push" 승인으로 해제했다.
+  정확한 저장소 ID를 확인하고 visibility만 비공개로 전환한 뒤 API로 재확인했다.
+  소스 게시·Actions 검증·PR/merge는 [게시 경계](operations/GITHUB_AUTOMATION.md)를 따른다.
+- 운영자가 완료를 확인한 범위는 [6단계 인수 체크리스트](operations/STABILIZATION_ACCEPTANCE.md)다.
   별도 P-01~P-09, S29/신규 보스/실드/150 보관 이동을 이번 완료 범위로 확대하지 않는다.
 
 ### 이전 작업과의 연결

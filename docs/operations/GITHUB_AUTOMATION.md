@@ -1,12 +1,13 @@
 # GitHub Actions automation
 
-## 현재 게시 차단 — 2026-09-12
+## 비공개 전환과 게시 차단 해제 — 2026-09-12
 
-이번 안정화 작업에서 GitHub repository metadata를 읽었을 때
-`ejiie/Nikke-Local-Lab`의 visibility는 `public`이었다. 아래 `private`는 이 워크플로의
-필수 보안 전제이지 현재 관측값이 아니다. 비공개 원격이라는 전제가 다시 확인되기 전에는
-push·PR·merge를 진행하지 않는다. 이 작업에서 visibility나 권한을 변경하지 않았다.
-로컬 `agent/**` commit과 검증·설치 인수는 별도로 진행할 수 있다.
+안정화 직후 원격이 `public`으로 관측되어 push를 보류했으나, 운영자가
+"private으로 돌리고 push"를 명시 승인했다. 지정 저장소 `ejiie/Nikke-Local-Lab`
+(repository ID `1338065668`)의 기존 소유자 인증으로 visibility만 변경했고 GitHub API에서
+`private=true`, `visibility=private`를 재확인했다. 다른 권한·설정은 변경하지 않았다.
+비공개 게시 전제가 회복됐으므로 아래 경계 검사 후 `agent/**` push 경로를 사용한다.
+실제 Actions 결과는 해당 push SHA의 run/PR에서 확인하며, 이 기록만으로 merge 성공을 주장하지 않는다.
 
 ## 목적
 
