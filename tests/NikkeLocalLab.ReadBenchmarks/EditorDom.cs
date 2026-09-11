@@ -60,7 +60,7 @@ static partial class Benchmark
         result = document.RootElement.Clone();
         Require(result.GetProperty("status").GetString() == "passed" && result.GetProperty("accounts").GetInt32() == accounts);
         commands = counter.Count;
-        Require(commands == 1 + 15L * accounts);
+        Require(commands == 1 + (iteration == 0 ? 15L : 2L) * accounts);
         await process.WaitForExitAsync(deadline.Token);
         Require(process.ExitCode == 0 && await process.StandardOutput.ReadLineAsync(deadline.Token) is null);
         status = "passed";

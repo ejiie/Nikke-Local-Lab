@@ -57,8 +57,12 @@ internal static class Program
     private readonly string stopSignal = Path.Combine(
         Path.GetTempPath(), $"nll-control-center-stop-{Guid.NewGuid():N}.signal");
     private Process? host;
+    private DesktopHostSession? hostSession;
+    private readonly CancellationTokenSource closing = new();
     private string? bootstrapCode;
     private bool allowClose;
+    private bool stopping;
+    private readonly TaskCompletionSource<bool> navigation = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     internal MainForm()
     {
@@ -68,15 +72,18 @@ internal static class Program
       MinimumSize = new Size(1180, 760);
       Size = new Size(1500, 940);
       Controls.Add(loading);
-      Shown += async (_, _) => await StartAsync();
+      Shown += async (_, _) => await DesktopLifecycle.GuardAsync(StartAsync, StartupFailedAsync);
       FormClosing += OnClosing;
+      FormClosed += (_, _) => { closing.Cancel(); hostSession?.Dispose(); host?.Dispose(); webView.Dispose(); closing.Dispose(); };
     }
 
     private async Task StartAsync()
     {
       host = StartHost();
-      bootstrapCode = await ReadBootstrapAsync(host, TimeSpan.FromSeconds(90));
-      await webView.EnsureCoreWebView2Async();
+      hostSession = new DesktopHostSession(host.StandardOutput, host.StandardError);
+      bootstrapCode = await hostSession.ReadBootstrapAsync(TimeSpan.FromSeconds(90), closing.Token);
+      await webView.EnsureCoreWebView2Async().WaitAsync(TimeSpan.FromSeconds(60), closing.Token);
+      closing.Token.ThrowIfCancellationRequested();
       webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
       webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
       webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
@@ -85,6 +92,7 @@ internal static class Program
       Controls.Add(webView);
       webView.BringToFront();
       webView.Source = new Uri("http://127.0.0.1:17878/editor/");
+      Require(await navigation.Task.WaitAsync(TimeSpan.FromSeconds(60), closing.Token), "desktop_navigation_failed");
     }
 
     private Process StartHost()
@@ -104,36 +112,37 @@ internal static class Program
       return Process.Start(info) ?? throw new InvalidOperationException("로컬 서버를 시작하지 못했습니다.");
     }
 
-    private static async Task<string> ReadBootstrapAsync(Process process, TimeSpan timeout)
+    private Task StartupFailedAsync()
     {
-      using var cancellation = new CancellationTokenSource(timeout);
-      while (!process.HasExited)
-      {
-        var line = await process.StandardOutput.ReadLineAsync(cancellation.Token);
-        if (line is null) break;
-        const string marker = "NLL_DESKTOP_BOOTSTRAP:";
-        if (!line.StartsWith(marker, StringComparison.Ordinal)) continue;
-        return Encoding.UTF8.GetString(Convert.FromBase64String(line[marker.Length..]));
-      }
-      var error = await process.StandardError.ReadToEndAsync(cancellation.Token);
-      throw new InvalidOperationException(string.IsNullOrWhiteSpace(error)
-          ? "로컬 관리 서버가 시작되지 않았습니다."
-          : $"로컬 관리 서버 시작 실패: {error.Trim()}");
+      bootstrapCode = null;
+      if (stopping || IsDisposed) return Task.CompletedTask;
+      MessageBox.Show("관리 도구 초기화에 실패했습니다. 안전 종료를 시도합니다. 반복되면 desktop_start_failed를 알려 주세요.",
+          "NLL 지휘관 관리 도구", MessageBoxButtons.OK, MessageBoxIcon.Error);
+      Close();
+      return Task.CompletedTask;
     }
 
     private async void LoginAfterNavigation(object? sender, CoreWebView2NavigationCompletedEventArgs args)
     {
-      if (!args.IsSuccess || string.IsNullOrWhiteSpace(bootstrapCode)) return;
+      navigation.TrySetResult(args.IsSuccess);
+      if (stopping || string.IsNullOrWhiteSpace(bootstrapCode)) return;
       var encoded = JsonSerializer.Serialize(bootstrapCode);
-      await webView.ExecuteScriptAsync(
-          $"document.getElementById('bootstrap-code').value={encoded};" +
-          "document.getElementById('admin-login').click();");
       bootstrapCode = null;
+      await DesktopLifecycle.GuardAsync(async () =>
+      {
+        Require(args.IsSuccess && webView.Source?.AbsoluteUri == "http://127.0.0.1:17878/editor/",
+            "desktop_navigation_failed");
+        await webView.ExecuteScriptAsync(
+            $"document.getElementById('bootstrap-code').value={encoded};" +
+            "document.getElementById('admin-login').click();").WaitAsync(TimeSpan.FromSeconds(30), closing.Token);
+      }, StartupFailedAsync);
     }
 
     private void OnClosing(object? sender, FormClosingEventArgs args)
     {
       if (allowClose) return;
+      args.Cancel = true;
+      if (stopping) return;
       var gameRunning = new[] { "nikke", "EpinelPS", "NikkeLocalLab.Phase3B2.PhysicalBootstrap" }
           .Any(name => Process.GetProcessesByName(name).Length > 0);
       if (gameRunning)
@@ -143,7 +152,8 @@ internal static class Program
             "종료할 수 없음", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         return;
       }
-      args.Cancel = true;
+      stopping = true;
+      closing.Cancel();
       Enabled = false;
       loading.Text = "안전하게 종료하고 있습니다…";
       Controls.Clear();
@@ -157,31 +167,44 @@ internal static class Program
       try
       {
         await File.WriteAllTextAsync(stopSignal, "stop\n", new UTF8Encoding(false));
-        if (host is not null && !host.HasExited)
+        if (host is not null)
         {
-          using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(90));
-          await host.WaitForExitAsync(cancellation.Token);
+          await DesktopLifecycle.RequireSuccessfulExitAsync(host, TimeSpan.FromSeconds(90));
+          if (hostSession is not null) await hostSession.DrainAsync(TimeSpan.FromSeconds(5));
         }
+        RequireDatabaseStopped();
         stopped = true;
       }
-      catch (Exception exception)
+      catch (Exception)
       {
         try
         {
           await RunStopFallbackAsync();
+          if (host is not null)
+          {
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await host.WaitForExitAsync(cancellation.Token);
+            if (hostSession is not null) await hostSession.DrainAsync(TimeSpan.FromSeconds(5));
+          }
+          RequireDatabaseStopped();
           stopped = true;
         }
-        catch (Exception fallbackException)
+        catch (Exception)
         {
           MessageBox.Show(
-              $"종료 정리 중 오류가 발생했습니다: {exception.Message}\n" +
-              $"복구 종료도 실패했습니다: {fallbackException.Message}",
+              "안전 종료를 확인하지 못했습니다(desktop_stop_unproven). 프로세스를 강제 종료하지 말고 복구를 요청해 주세요.",
               "NLL 지휘관 관리 도구", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
       }
       finally
       {
-        if (File.Exists(stopSignal)) File.Delete(stopSignal);
+        // A late host must still see the stop request after a timeout.
+        if (stopped)
+        {
+          try { if (File.Exists(stopSignal)) File.Delete(stopSignal); }
+          catch (IOException) { }
+          catch (UnauthorizedAccessException) { }
+        }
         if (stopped)
         {
           allowClose = true;
@@ -190,6 +213,7 @@ internal static class Program
         else
         {
           Enabled = true;
+          stopping = false;
           Controls.Clear();
           Controls.Add(webView);
           webView.BringToFront();
@@ -211,14 +235,20 @@ internal static class Program
         StandardOutputEncoding = Encoding.UTF8,
         StandardErrorEncoding = Encoding.UTF8
       }) ?? throw new InvalidOperationException("복구 종료 프로세스를 시작하지 못했습니다.");
-      var outputTask = process.StandardOutput.ReadToEndAsync();
-      var errorTask = process.StandardError.ReadToEndAsync();
-      using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(90));
-      await process.WaitForExitAsync(cancellation.Token);
-      var output = await outputTask;
-      var error = await errorTask;
-      Require(process.ExitCode == 0,
-          string.IsNullOrWhiteSpace(error) ? output.Trim() : error.Trim());
+      using var pipes = new DesktopHostSession(process.StandardOutput, process.StandardError);
+      await DesktopLifecycle.RequireSuccessfulExitAsync(process, TimeSpan.FromSeconds(90));
+      await pipes.DrainAsync(TimeSpan.FromSeconds(5));
+    }
+
+    private static void RequireDatabaseStopped()
+    {
+      // Read-only admission check, never a name-based termination policy.
+      foreach (var name in new[] { "postgres", "pg_ctl" })
+      {
+        var processes = Process.GetProcessesByName(name);
+        try { Require(processes.Length == 0, "desktop_database_stop_unproven"); }
+        finally { foreach (var process in processes) process.Dispose(); }
+      }
     }
   }
 }

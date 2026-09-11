@@ -69,7 +69,7 @@ if ($env:OS -eq 'Windows_NT') {
         'test-nll-phase-d-runner-contract.ps1', 'test-nll-phase-d-runner-seal.ps1',
         'test-nll-phase-d-runner-behavior.ps1', 'test-nll-phase-d-runner-differential.ps1',
         'test-nll-phase-d-runner-routing.ps1', 'test-nll-phase-d-runner-dependencies.ps1',
-        'test-nll-phase-d-shared-state.ps1')) {
+        'test-nll-phase-d-shared-state.ps1', 'test-nll-stabilization-release.ps1')) {
         Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory $test))
     }
 } else {

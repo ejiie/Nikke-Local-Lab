@@ -1,5 +1,21 @@
 # Decisions
 
+현재 상태 권위는 [HANDOFF](HANDOFF.md)와 [안정화 계획](STABILIZATION_PLAN.md)다.
+아래 최초 Phase의 150 first-proof/미정 항목은 당시 결정 이력이며, 현재 151 경로를 다시
+미실행 상태로 되돌리거나 이미 완료된 안정화 작업을 재지시하지 않는다.
+
+## 2026-09-12 안정화 인수 경계
+
+- 운영자는 직접 하는 실 테스트를 제외한 남은 안정화 작업의 완료와 테스트 안내를 요청했다.
+- 불변 revision의 준비 상태만 process-local bounded cache로 재사용한다. DB head/가변 summary,
+  run admission과 runtime export는 cache로 대체하지 않는다.
+- 자식 기한 초과/identity 기록 실패는 자식 또는 PostgreSQL 종료의 증거가 아니다.
+  뒤늦은 자식과 rollback이 겹치지 않도록 비종료 상태·identity reservation을 보존한다.
+- 새 앱 배포는 검증한 커밋·개별 파일 hash·스키마 18 cold backup/읽기 전용 감사에 결박한다.
+  이 배포 경로는 SQL migration·계정 변경·게임/외부 runtime 교체를 하지 않는다.
+- S-08/S-09 안정화와 별도 P-01~P-09 기능은 구분한다. 자동 검사나 HTTP smoke를
+  원본 UI/HUD/result의 실게임 인수로 승격하지 않는다.
+
 ## 확정
 
 - 별도 신규 저장소이며 기존 Git history를 상속하지 않는다.

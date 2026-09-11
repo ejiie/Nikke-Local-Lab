@@ -26,6 +26,42 @@ function Read-Proof {
         -PendingPayloadPath $pendingPath -CaptureReceiptPath $capturePath
 }
 try {
+    $childInfo = [Diagnostics.ProcessStartInfo]::new()
+    $childInfo.FileName = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $childInfo.Arguments = '-NoLogo -NoProfile -Command "Start-Sleep -Seconds 30"'
+    $childInfo.UseShellExecute = $false; $childInfo.CreateNoWindow = $true
+    $child = [Diagnostics.Process]::Start($childInfo)
+    $ownedPath = Join-Path $root 'phase-d-child-test.identity.json'
+    try {
+        Reject-Test { Wait-PhaseDChildDeadline -Process $child -TimeoutSeconds 1 -OwnershipPath $ownedPath }
+        Assert-Test (-not $child.HasExited)
+        Assert-Test ((Get-Content -LiteralPath $ownedPath -Raw | ConvertFrom-Json).processId -eq $child.Id)
+        Reject-Test { Assert-PhaseDChildrenExited -LaunchRoot $root -RequireEvidence }
+        Assert-Test (-not $child.HasExited)
+    } finally {
+        # Exact synthetic fixture only; never the production timeout policy.
+        if (-not $child.HasExited) { $child.Kill() }
+        $child.WaitForExit(); $child.Dispose()
+    }
+    Assert-PhaseDChildrenExited -LaunchRoot $root -RequireEvidence
+    Assert-Test $true
+    $stubPath = Join-Path $root 'synthetic-child.ps1'
+    [IO.File]::WriteAllText($stubPath, 'param([string]$Text) Write-Output $Text; exit 7', [Text.UTF8Encoding]::new($false))
+    $childResult = Invoke-PhaseDChildScript -ScriptPath $stubPath -Arguments @{Text="synthetic ' quote"} `
+        -StandardOutputPath (Join-Path $root 'out.log') -StandardErrorPath (Join-Path $root 'err.log') `
+        -TimeoutSeconds 10 -OwnershipPath (Join-Path $root 'phase-d-child-stub.identity.json')
+    Assert-Test ($childResult.ExitCode -eq 7 -and $childResult.StandardOutput.Trim() -ceq "synthetic ' quote")
+    Assert-PhaseDChildrenExited -LaunchRoot $root -RequireEvidence
+    Assert-Test $true
+    Write-PhaseDChildReservation -OwnershipPath $ownedPath -ExecutablePath $childInfo.FileName
+    Reject-Test { Assert-PhaseDChildrenExited -LaunchRoot $root -RequireEvidence }
+    $missingExecutable = Join-Path $root 'nonexistent-synthetic-child.exe'
+    $startFailure = $null
+    try { Invoke-PhaseDPgCtl -PgCtlPath $missingExecutable -Arguments @() -OwnershipPath $ownedPath | Out-Null }
+    catch { $startFailure = $_.Exception.Message }
+    Assert-Test ($startFailure -ceq 'phase_d_child_deadline_unproven')
+    Assert-Test ((Get-Content -LiteralPath $ownedPath -Raw | ConvertFrom-Json).processId -eq 0)
+    Reject-Test { Assert-PhaseDChildrenExited -LaunchRoot $root -RequireEvidence }
     Write-AtomicJson $path @{ revision=1; text='synthetic Unicode: \u2603' }
     $before = [IO.File]::ReadAllBytes($path)
     Assert-Test ($before[0] -ne 239 -and $before[-1] -eq 10)

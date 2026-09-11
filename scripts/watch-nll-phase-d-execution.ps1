@@ -236,6 +236,7 @@ try {
             ExpectedBundleSha256=$ExpectedRunnerBundleSha256; ObservedStageCode='startup_only'; OutcomeCode='client_exit' }
     }
     $completionResult = Invoke-PhaseDChildScript `
+        -TimeoutSeconds 180 -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-completion.identity.json') `
         -ScriptPath $CompletionScriptPath `
         -Arguments $completionArguments `
         -StandardOutputPath (Join-Path $LaunchRoot 'derived-completion.stdout.log') `
@@ -266,6 +267,7 @@ try {
             restorationOwnerCode = 'phase_d_completion_watcher'
         })
     $pgStartExitCode = Invoke-PhaseDPgCtl `
+        -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-pg.identity.json') `
         -PgCtlPath $ControlCenterPgCtlPath `
         -Arguments @(
             'start', '-D', $ControlCenterPgDataPath,
@@ -322,6 +324,15 @@ catch {
         $primaryFailure.Exception.Message
     }
     else { 'phase_d_completion_uncontrolled_failure' }
+    if ($failureCode -ceq 'phase_d_child_deadline_unproven') {
+        Invoke-PhaseDStateLock -LaunchRoot $LaunchRoot -Action {
+            $state = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $state.statusCode = 'started'
+            $state.failureCode = $failureCode
+            Write-AtomicJson $statePath $state
+        }
+        throw $failureCode
+    }
     $rolledBack = $false
     if (-not $completionApplied) {
         try {
@@ -362,6 +373,7 @@ catch {
     if (($completionApplied -or $rolledBack) -and $controlCenterHostsRestored -and -not $databaseRestarted) {
         try {
             $pgStartExitCode = Invoke-PhaseDPgCtl `
+                -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-pg.identity.json') `
                 -PgCtlPath $ControlCenterPgCtlPath `
                 -Arguments @(
                     'start', '-D', $ControlCenterPgDataPath,

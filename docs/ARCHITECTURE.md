@@ -3,6 +3,13 @@
 기준: 2026-09-06, 운영자가 실게임 검증한 151 / S26 경로.
 정확한 설치 경로·선택 bundle은 [MICRON_CURRENT_PATHS.md](MICRON_CURRENT_PATHS.md)를 따릅니다.
 
+2026-09-12 안정화 소스: 계정 목록은 최신 summary를 항상 조회하고, 같은 서비스 인스턴스에서
+검증한 `(account, revision UID/hash/number)`의 준비 상태만 최대 256개 재사용한다. 실제 실행용
+export/aggregate hash 검증은 생략하지 않는다. 실행 자식의 기한 초과는 강제 종료/자동 원복이
+아니라 ownership 증거를 보존하는 비종료 상태다. 복구는 해당 자식의 종료를 먼저 확인한다.
+최신 설치·자동 검사 상태는 [HANDOFF](HANDOFF.md), 화면/게임 인수는
+[운영자 체크리스트](operations/STABILIZATION_ACCEPTANCE.md)를 따른다.
+
 ## 실제 실행 흐름
 
 ```text
@@ -89,7 +96,8 @@ manifest는 이름·이미지 경로·검산 hash만 포함하고 계정·로스
 신규 claim과 원래 요청은 V0018에서 함께 보존합니다. editor는 같은 창에서 원래 요청을 재전송하고,
 새 창에서는 조회 후 사용자가 명시적으로 복구합니다. 재시도 preview·최신 revision 재지정은 하지 않습니다.
 원문 없는 구형 pending은 그대로 보존하며 자동 수선하지 않습니다.
-위 소스 정비는 설치본에 아직 배포하지 않았습니다.
+V0018과 Save 복구 UI는 운영 적용 이력이 있다. 이후 변경까지 모두 설치됐다고 일반화하지 않고,
+변경별 최신 배포 receipt와 [HANDOFF](HANDOFF.md)를 확인한다.
 근거·미확인 위험·정비 순서는 [STABILIZATION_PLAN.md](STABILIZATION_PLAN.md)에만 관리합니다.
 이 문서의 흐름도는 현행 설명이지 정비 구현 완료 선언이 아닙니다.
 

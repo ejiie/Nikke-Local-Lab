@@ -31,6 +31,7 @@
 
 ## 운영 절차
 
+- [안정화 변경 후 직접 테스트할 순서](operations/STABILIZATION_ACCEPTANCE.md)
 - [Windows PostgreSQL](operations/WINDOWS_NATIVE_POSTGRESQL_RUNTIME.md)
 - [계정 fresh capture 경로·절차](operations/PHASE_C_FRESH_CAPTURE_PATHS.md)
 - [향후 용량 정리 후보](operations/STORAGE_CLEANUP_AUDIT.md)

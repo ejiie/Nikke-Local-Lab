@@ -1005,6 +1005,7 @@ try {
          (Test-Path -LiteralPath $controlCenterPgData -PathType Container)) `
         'phase_d_control_center_database_binding_missing'
     $pgStopExitCode = Invoke-PhaseDPgCtl `
+        -OwnershipPath (Join-Path $launchRoot 'phase-d-child-pg.identity.json') `
         -PgCtlPath $controlCenterPgCtl `
         -Arguments @('stop', '-D', $controlCenterPgData, '-m', 'fast', '-w', '-t', '60')
     Assert-PhaseD ($pgStopExitCode -eq 0) `
@@ -1019,6 +1020,7 @@ try {
     $null = Read-PhaseDRunnerBundle -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
     $startArguments = [ordered]@{ Phase='start'; LaunchRoot=$launchRoot; ExpectedBundleSha256=$runnerBundle.sha256 }
     $startToolResult = Invoke-PhaseDChildScript `
+        -TimeoutSeconds 300 -OwnershipPath (Join-Path $launchRoot 'phase-d-child-start.identity.json') `
         -ScriptPath $derivedStart `
         -Arguments $startArguments `
         -StandardOutputPath (Join-Path $launchRoot 'derived-start.stdout.log') `
@@ -1132,6 +1134,10 @@ catch {
         $primaryFailure.Exception.Message
     }
     else { 'phase_d_uncontrolled_failure' }
+    if ($failureCode -ceq 'phase_d_child_deadline_unproven') {
+        Set-ExecutionState -StatusCode 'started' -FailureCode $failureCode
+        throw $failureCode
+    }
     if ($watcherOwnershipTransferred) {
         # A live or reconcilable watcher owns every mutable resource after the
         # identity handoff. Preserve its state/evidence and fail this request only.
@@ -1202,6 +1208,7 @@ catch {
     if ($coordinatorRollbackProven -and $controlCenterDatabaseStopped) {
         try {
             $pgStartExitCode = Invoke-PhaseDPgCtl `
+                -OwnershipPath (Join-Path $launchRoot 'phase-d-child-pg.identity.json') `
                 -PgCtlPath $controlCenterPgCtl `
                 -Arguments @(
                     'start', '-D', $controlCenterPgData,

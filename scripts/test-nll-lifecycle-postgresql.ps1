@@ -3,7 +3,7 @@ param(
     [string]$PostgreSqlRoot = 'C:\NLL\Runtime\PostgreSQL-17-native',
     [string]$Filter = '',
     [switch]$MeasureAccountReads,
-    [ValidateSet('focused', 'full', 'smoke', 'cold', 'cold-smoke', 'cold-full', 'diagnostic', 'dom')][string]$ReadMeasurementScope = 'focused',
+    [ValidateSet('focused', 'full', 'smoke', 'cold', 'cold-smoke', 'cold-full', 'diagnostic', 'dom', 'planner', 'dense-planner')][string]$ReadMeasurementScope = 'focused',
     [ValidateRange(1, 60)][int]$ShutdownTimeoutSeconds = 30
 )
 
@@ -136,6 +136,7 @@ try {
         if ($ReadMeasurementScope -eq 'cold-full') { $measurementArguments += '--cold-full' }
         if ($ReadMeasurementScope -eq 'diagnostic') { $measurementArguments += '--diagnostic' }
         if ($ReadMeasurementScope -eq 'dom') { $measurementArguments += '--dom' }
+        if ($ReadMeasurementScope -in @('planner', 'dense-planner')) { $measurementArguments += ('--' + $ReadMeasurementScope) }
         & $dotnet @measurementArguments
     } else {
         & $dotnet @testArguments

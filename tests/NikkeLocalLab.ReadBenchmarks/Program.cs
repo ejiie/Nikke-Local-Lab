@@ -72,7 +72,9 @@ static partial class Benchmark
     Require(args.Length == 0 || args.SequenceEqual(new[] { "--full" }) || args.SequenceEqual(new[] { "--smoke" }) ||
         args.SequenceEqual(new[] { "--cold" }) || args.SequenceEqual(new[] { "--cold-smoke" }) ||
         args.SequenceEqual(new[] { "--cold-full" }) || args.SequenceEqual(new[] { "--diagnostic" }) ||
-        args.SequenceEqual(new[] { "--dom" }));
+        args.SequenceEqual(new[] { "--dom" }) || args.SequenceEqual(new[] { "--planner" }) || args.SequenceEqual(new[] { "--dense-planner" }));
+    var planner = args.Contains("--planner") || args.Contains("--dense-planner");
+    var dense = args.Contains("--dense-planner");
     var cold = args.Contains("--cold") || args.Contains("--cold-smoke") || args.Contains("--cold-full");
     var diagnostic = args.Contains("--diagnostic");
     var dom = args.Contains("--dom");
@@ -90,7 +92,8 @@ static partial class Benchmark
     commands.Reset();
     await using (var probe = source.CreateCommand("SELECT 1")) await probe.ExecuteScalarAsync();
     Require(commands.Count == 1);
-    var cells = smoke ? new[] { (1, 5, 1) } : full ? FullCells : FullCells.Take(2).ToArray();
+    var cells = planner ? FullCells.Where(cell => cell.Accounts is 50 or 100).ToArray() :
+        smoke ? new[] { (1, 5, 1) } : full ? FullCells : FullCells.Take(2).ToArray();
     var completed = new List<object>();
     var errors = 0;
     foreach (var (accounts, roster, history) in cells)
@@ -98,7 +101,7 @@ static partial class Benchmark
       Console.WriteLine($"S08 fixture: accounts={accounts}, roster={roster}, history={history}");
       await InvokeAsync("ResetAndMigrateAsync", source);
       var catalogs = await InvokeAsync("PublishCatalogFixtureAsync", source, roster);
-      var profile = (LocalAccountProfileWrite)Invoke("CreateSyntheticProfileWithOwnedCube", catalogs, null);
+      var profile = MeasurementProfile(catalogs, null, dense);
       Require(profile.Builds.Count == roster);
       var store = new PostgreSqlLocalAccountProfileStore(source, new RandomEntityUidGenerator());
       var service = (PostgreSqlProfileManagementService)Invoke("Service", source);
@@ -111,7 +114,7 @@ static partial class Benchmark
         for (var revision = 1; revision < history; revision++)
           saved = await store.SaveAsync(new SaveLocalAccountProfileCommand(EntityUid.New(), saved.AccountUid,
               saved.ProfileTemplateRevisionUid,
-              (LocalAccountProfileWrite)Invoke("CreateSyntheticProfileWithOwnedCube", catalogs, 200 + revision),
+              MeasurementProfile(catalogs, 200 + revision, dense),
               Instant.AddSeconds(revision)));
         expected.Add(saved.AccountUid, saved.ProfileTemplateRevisionUid);
         await service.InitializeLocalStateAsync(new InitializeLocalStateCommand(EntityUid.New(), saved.AccountUid,
@@ -126,6 +129,11 @@ static partial class Benchmark
       await using (var count = source.CreateCommand("SELECT count(*) FROM lab_profile.profile_template_revision"))
         Require(Convert.ToInt64(await count.ExecuteScalarAsync()) == accounts * history);
 
+      if (planner)
+      {
+        completed.Add(await MeasurePlannerAsync(output, accounts, roster, history, dense, expected));
+        continue;
+      }
       if (dom)
       {
         completed.Add(await MeasureDomCellAsync(output, accounts, roster, history, expected));
@@ -235,10 +243,10 @@ static partial class Benchmark
     }
     await File.WriteAllTextAsync(Path.Combine(output, "s08-summary.json"), JsonSerializer.Serialize(new
     {
-      contractId = dom ? "nll/synthetic-editor-dom-read/v1" : diagnostic ? "nll/synthetic-read-diagnostics/v1" :
+      contractId = planner ? "nll/synthetic-read-planner/v1" : dom ? "nll/synthetic-editor-dom-read/v1" : diagnostic ? "nll/synthetic-read-diagnostics/v1" :
           cold ? "nll/synthetic-process-cold-read/v1" : "nll/synthetic-read-baseline/v1",
       status = errors > 0 ? "failed_selected_scope" : completed.Count == cells.Length ? "passed_selected_scope" : "stopped_after_cell",
-      scope = dom ? "accounts_1_and_10_editor_dom" : diagnostic ? "full_diagnostic_matrix_not_a_latency_baseline" :
+      scope = planner ? "accounts_50_and_100_before_after_analyze" : dom ? "accounts_1_and_10_editor_dom" : diagnostic ? "full_diagnostic_matrix_not_a_latency_baseline" :
           cold ? (smoke ? "process_cold_smoke_not_a_baseline" : full ? "full_process_cold_matrix" : "accounts_1_and_10_process_cold") :
           smoke ? "smoke_not_a_baseline" : full ? "full_warm_matrix" : "accounts_1_and_10_warm",
       plannedCells = cells.Length,
@@ -262,7 +270,7 @@ static partial class Benchmark
         performanceThresholdGate = false
       } : null,
       domRenderingMeasured = dom,
-      diskReadBytesMeasured = false,
+      diskReadBytesMeasured = planner,
       originalClientExecuted = false,
       operatingDatabaseTouched = false,
       fixtureIdentity = "synthetic semantic values; per-run random UUIDs, no original identifiers",

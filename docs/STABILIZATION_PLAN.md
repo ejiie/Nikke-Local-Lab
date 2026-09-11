@@ -1,5 +1,40 @@
 # Backend stabilization — current work plan
 
+## 현재 인수 작업 — 2026-09-12
+
+운영자 요청: 직접 하는 실 테스트를 제외한 안정화 후속 작업을 완료하고 테스트 순서·합격
+기준을 제공한다. 이번 소스 정비는 구현됐으며 **최종 전체 검사·설치 반영 확인 전**이다.
+최종 결과는 [HANDOFF](HANDOFF.md)의 최신 절에 기록한다. 아래 날짜별 발견/‘남음’은
+그 시점 이력이며 이 절과 최신 인계보다 우선하지 않는다.
+
+- S-08: bounded revision-readiness cache로 반복 목록 조회의 full-profile 재구성을 제거한다.
+  최초 조회/실행 export는 hash-verified aggregate를 유지한다. 256개 제한, account/revision/hash
+  분리, Save 경합, 새 서비스 및 eviction을 합성 PostgreSQL에서 검증한다.
+- S-08 측정: 50/100계정의 명시적 ANALYZE 전후와 dense(모든 캐릭터 4장비·각 OL 3줄) fixture를
+  비교한다. PDH의 물리 디스크 전체 raw 누적 byte 차이는 **호스트 전체 disk-stack I/O**이며
+  해당 DB/요청에 단독 귀속하거나 SSD NAND write로 표현하지 않는다. PostgreSQL buffer와 구분한다.
+- S-09: 준비 300초 / 완료 180초 / pg_ctl wrapper 90초. pg_ctl 자체 `-w/-t`는 보존한다.
+  사전 identity reservation → PID/start/path 기록 → exact-child wait 순서다. 기한 초과는
+  강제 종료·동시 rollback을 하지 않고 `started`/controlled failure를 유지한다. 재실행 복구는
+  기록된 모든 자식의 종료를 확인하며 누락/변조/PID reuse는 fail closed한다. 사용자가 실제로
+  플레이하는 동안 watcher가 client를 기다리는 것은 이 준비/완료 기한과 구분한다.
+- S-09 desktop: stdout/stderr 동시·bounded drain, 시작/navigation 예외 관측, 시작/페이지/스크립트
+  기한, 실패 exit code, 중복 종료 방지, 늦은 host의 stop signal 보존. stop을 만든 desktop/test가
+  host 종료 확인 후 해당 signal만 지운다. UI/게임은 합성 프로세스 검사와 별도 인수다.
+- S-09 감사: 운영 DB를 켜지 않은 cold backup 복제본에서 스키마/체크섬, head/lineage/Save 결과
+  소유자/provenance/암호화 payload hash를 확인했다. 최종 감사 `cb9ea3de443649e7ba92fd3153073f7b`는
+  schema 18, Save operation 102개, DB pending·암호화 pending 0개, 검사 불일치 0개다.
+  복제본 종료와 원본/백업 파일 hash 일치를 검증했다. 실 DB의 행을 정리하거나 추정 복원하지 않았다.
+- 잔여 코드 검토의 종료 범위는 importer 입력 크기/정규화/controlled error, domain revision·collection
+  불변성, automation inventory/state transition, desktop 시작·종료와 해당 회귀 검사다.
+  automation inventory의 root/ancestor reparse 우회를 닫고 같은 hash의 외부 파일도 거부한다.
+  프로젝트 전체 모든 줄의 형식적 증명/무결함 인증을 주장하지 않는다.
+- S-10: 현재 인수 상태, 날짜별 발견 기록과 Phase 역사 명세를 구분하고 단일
+  [실 테스트 체크리스트](operations/STABILIZATION_ACCEPTANCE.md)로 연결한다.
+
+P-01~P-09, S29/신규 보스/실드/150 보관 이동은 이 안정화 완료 요청에 자동 포함하지 않는다.
+원격 metadata의 visibility가 `public`이므로 비공개 게시 전제 확인 전까지 push/PR/merge는 보류한다.
+
 ## 상태와 범위 — 2026-09-06
 
 운영자가 **관리도구 → 151 → S26 실게임 검증 완료**를 보고했고 리소스 변화 대응을 종료했다.

@@ -93,7 +93,8 @@ function Invoke-RecoveryPgCtl {
         [string]$PgCtlPath,
         [string[]]$Arguments
     )
-    Invoke-PhaseDPgCtl -PgCtlPath $PgCtlPath -Arguments $Arguments
+    Invoke-PhaseDPgCtl -PgCtlPath $PgCtlPath -Arguments $Arguments `
+        -OwnershipPath (Join-Path $launchRoot 'phase-d-child-pg-recovery.identity.json')
 }
 
 function Read-SoloRaidPersistenceReceipt {
@@ -273,6 +274,9 @@ if (Test-Path -LiteralPath $watcherIdentityPath -PathType Leaf) {
     }
 }
 
+# No rollback, replay, process stop or trust restoration may race a late child.
+Assert-PhaseDChildrenExited -LaunchRoot $launchRoot `
+    -RequireEvidence:($state.failureCode -ceq 'phase_d_child_deadline_unproven')
 $residualServerStopped = Stop-PhaseDResidualServer -LaunchRoot $launchRoot
 Assert-Recovery `
     (@(Get-Process -Name EpinelPS,nikke,nikke_launcher,

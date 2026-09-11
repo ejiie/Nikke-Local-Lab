@@ -9,6 +9,7 @@
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\..\tools\NikkeLocalLab.ControlCenter.Desktop\DesktopHostSession.cs" Link="DesktopHostSession.cs" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Admin.Api\NikkeLocalLab.Admin.Api.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Application.PrivateServer\NikkeLocalLab.Application.PrivateServer.csproj" />

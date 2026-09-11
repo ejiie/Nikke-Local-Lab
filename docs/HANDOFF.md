@@ -1,6 +1,6 @@
 # 작업 인계
 
-최종 갱신: 2026-09-11. 이 문서는 짧은 현황 요약이며, 상세 기록을 계속 덧붙이는 로그가 아닙니다.
+최종 갱신: 2026-09-12. 이 문서는 짧은 현황 요약이며, 상세 기록을 계속 덧붙이는 로그가 아닙니다.
 작업 전 읽기 순서·불변 규칙은 [AGENTS](../AGENTS.md), 문서 위치는 [색인](README.md)을 따릅니다.
 
 ## 확인된 현재 상태
@@ -13,8 +13,46 @@
 
 ## 지금 할 작업
 
+### 2026-09-12 안정화 인수 준비
+
+운영자 요청은 직접 하는 실 테스트를 제외한 안정화 후속 완료다. revision readiness의
+256개 bounded cache, desktop pipe/async 예외·정상 종료 확인, 준비/완료/pg_ctl 자식의
+기한·사전 identity reservation·복구 admission, automation reparse 경계를 보강했다.
+운영 DB는 cold-copy에서 감사하며 행 삭제·추정 복원·새 migration을 하지 않는다.
+**최종 commit 기준 전체 검사와 설치 반영은 아직 진행 중**이다. 이 문구를 인수 완료로 읽지 않는다.
+
+- 반복 읽기 전체 8셀·7,200개 관측 통과: `92a2edc3d6da46bba862ada01b481e77`.
+  R50/H10에서 계정 1/10/50/100개의 HTTP 목록 p50은 1.15/1.24/1.55/1.82ms,
+  목록+로비는 2.25/3.42/9.80/18.19ms였다. 합성 데이터·warm 반복 측정이며 앱 첫 실행 시간은 아니다.
+- headless Edge DOM 6회 통과: `75faa8cefe4f42b89ff0a39d853b33b3`.
+  설치 WebView2나 원본 게임을 실행한 증거가 아니다.
+- 1/10계정의 새 프로세스 첫 요청 120회 통과: `203c935721fe45f3b0bf7563f8213bed`.
+  오류·timeout 0개다. 프로세스 시작과 요청 시간을 분리했으며 OS cache를 비우지 않았다.
+  위 warm/DOM/cold 모두 격리 PostgreSQL의 stop/restart checkpoint와 최종 정리를 확인했다.
+- 최종 운영 DB cold-copy 감사 `cb9ea3de443649e7ba92fd3153073f7b` 통과:
+  schema 18, migration checksum 일치, Save operation 102개, DB/암호화 pending 0개,
+  검사한 head·lineage·결과 소유권·provenance·암호화 payload hash 불일치 0개다.
+  원본 DB 2,203개 파일 / 90,992,840byte를 전후 hash 대조했고 원본을 시작·수정하지 않았다.
+  복제본은 정상 종료했고 `D:\NikkeLocalLab\Backups\stabilization-audit-cb9ea3de443649e7ba92fd3153073f7b`
+  아래 검증된 private cold backup은 보존했다.
+- ANALYZE 전후 sparse/dense 총 24회 통과:
+  `b4fc342310a245f7b0bf6f7bfc42ac29`, `7ad006a74da14807b16f2fcdc03c8fff`.
+  dense 100계정 cache-miss 목록 평균은 전 1,382.913ms / 후 1,394.918ms다.
+  명확한 개선이 없어 운영 통계·인덱스를 변경하지 않았다. PDH disk byte는 호스트 전체 disk-stack
+  관측이지 해당 DB/요청 단독 I/O나 NAND byte가 아니다.
+- GitHub metadata의 실제 visibility가 `public`이므로 **원격 push/PR/merge는 보류**했다.
+  문서의 비공개 원격 전제와 불일치하며 visibility·권한을 임의 변경하지 않는다.
+  [게시 경계](operations/GITHUB_AUTOMATION.md)의 현재 차단을 따른다.
+- 사용자 실 테스트는 [6단계 인수 체크리스트](operations/STABILIZATION_ACCEPTANCE.md)다.
+  별도 P-01~P-09, S29/신규 보스/실드/150 보관 이동을 이번 완료 범위로 확대하지 않는다.
+
+### 이전 작업과의 연결
+
 [안정화 계획](STABILIZATION_PLAN.md)의 회귀 검사·실행 생명주기·저장 일관성·성능 측정을 진행합니다.
-1차 구조 점검은 끝났지만 전체 파일 검토, DB 무결성 검사와 최적화 구현은 남아 있습니다.
+2026-09-12 현재 안정화 소스 후속 정비와 운영 DB cold-copy 감사가 진행됐습니다.
+최종 전체 검사·설치 반영 결과는 아래 최신 날짜 절을 확인합니다. 과거의 ‘남음’ 목록을
+현재 상태로 재사용하지 않습니다. 운영자가 직접 수행할 항목은
+[안정화 인수 체크리스트](operations/STABILIZATION_ACCEPTANCE.md)로 분리했습니다.
 확인된 현행 흐름은 [아키텍처](ARCHITECTURE.md)에 있습니다.
 
 S-03의 실행 입력 snapshot에 이어 S-07의 Save 순서 조정기와 단계 adapter를 분리했습니다.

@@ -1,5 +1,13 @@
 # GitHub Actions automation
 
+## 현재 게시 차단 — 2026-09-12
+
+이번 안정화 작업에서 GitHub repository metadata를 읽었을 때
+`ejiie/Nikke-Local-Lab`의 visibility는 `public`이었다. 아래 `private`는 이 워크플로의
+필수 보안 전제이지 현재 관측값이 아니다. 비공개 원격이라는 전제가 다시 확인되기 전에는
+push·PR·merge를 진행하지 않는다. 이 작업에서 visibility나 권한을 변경하지 않았다.
+로컬 `agent/**` commit과 검증·설치 인수는 별도로 진행할 수 있다.
+
 ## 목적
 
 소스 코드와 계약만 비공개 GitHub 저장소에 보관하고, 소유자가 `agent/**` 브랜치를 push하면 검증부터 PR 생성과 squash merge까지 GitHub Actions가 처리합니다.

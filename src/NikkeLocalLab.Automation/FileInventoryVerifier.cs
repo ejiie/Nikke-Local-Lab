@@ -71,6 +71,7 @@ public static class FileInventoryVerifier
     {
       throw new DirectoryNotFoundException("The pipeline inventory root does not exist.");
     }
+    RequirePlainPath(root);
 
     var boundary = root.EndsWith(Path.DirectorySeparatorChar)
         ? root
@@ -84,6 +85,7 @@ public static class FileInventoryVerifier
       {
         throw new PipelineManifestException("pipeline_input_path_escaped_root");
       }
+      RequirePlainPath(path);
 
       if (!File.Exists(path))
       {
@@ -114,5 +116,18 @@ public static class FileInventoryVerifier
     }
 
     return new InventoryObservationSet(observations);
+  }
+
+  private static void RequirePlainPath(string path)
+  {
+    // A lexical root check does not constrain a junction/symlink target. Check
+    // every existing ancestor before opening bytes, including the root itself.
+    // Concurrent hostile reparse replacement remains outside the local threat model.
+    for (string? current = path; current is not null; current = Path.GetDirectoryName(current))
+    {
+      if ((File.Exists(current) || Directory.Exists(current)) &&
+          (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+        throw new PipelineManifestException("pipeline_input_reparse_rejected");
+    }
   }
 }

@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([switch]$AuditCurrent)
 
 # Physical backup of a SHUT DOWN operational cluster; run only its new clone.
 # No operational PostgreSQL start, migration, SQL write, or automatic restoration.
@@ -12,7 +12,7 @@ $backupParent = 'D:\NikkeLocalLab\Backups'
 $native = 'C:\NLL\Runtime\PostgreSQL-17-native\bin'
 $port = 55434
 $uid = [guid]::NewGuid().ToString('N')
-$backupRoot = Join-Path $backupParent ('workspace-pre-v18-' + $uid)
+$backupRoot = Join-Path $backupParent ($(if ($AuditCurrent) { 'stabilization-audit-' } else { 'workspace-pre-v18-' }) + $uid)
 $backupData = Join-Path $backupRoot 'cold-data'
 $clone = Join-Path $backupRoot 'restore-rehearsal'
 $resultRoot = Join-Path $repositoryRoot ('artifacts/stabilization/workspace-backup/' + $uid)
@@ -112,9 +112,41 @@ try {
         $expectedHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($sqlText))).ToLowerInvariant()
         if ($expectedHash -cne $parts[2]) { throw 'workspace_backup_migration_checksum_mismatch' }
     }
-    if ($index -lt 11 -or $index -gt 17) { throw 'workspace_backup_schema_outside_pre18_range' }
+    if ($index -lt 11 -or $index -gt $(if ($AuditCurrent) { 18 } else { 17 })) { throw 'workspace_backup_schema_outside_pre18_range' }
     $counts = (Read-ProbeSql "BEGIN READ ONLY; SELECT count(*), count(*) FILTER (WHERE operation_status='pending'), count(*) FILTER (WHERE operation_status='pending' AND operation_kind='save_as') FROM lab_profile.account_workspace_save_operation; COMMIT;").Split('|')
     if ($counts.Count -ne 3) { throw 'workspace_backup_count_shape_invalid' }
+    if ($AuditCurrent) {
+        if ($index -lt 17) { throw 'workspace_backup_audit_schema_unsupported' }
+        $auditQueries = [ordered]@{
+            profileHeadMismatch = 'SELECT count(*) FROM lab_profile.local_account a LEFT JOIN lab_profile.profile_template_revision r ON r.profile_template_revision_id=a.current_profile_template_revision_id AND r.local_account_id=a.local_account_id WHERE r.profile_template_revision_id IS NULL'
+            profileLineageMismatch = 'SELECT count(*) FROM lab_profile.profile_template_revision r LEFT JOIN lab_profile.profile_template_revision p ON p.profile_template_revision_id=r.previous_profile_template_revision_id WHERE r.revision_number>1 AND (p.profile_template_revision_id IS NULL OR p.local_account_id<>r.local_account_id OR p.revision_number<>r.revision_number-1)'
+            saveResultOwnerMismatch = 'SELECT count(*) FROM lab_profile.account_workspace_save_operation o JOIN lab_profile.local_account a ON a.local_account_uid=o.result_account_uid JOIN lab_profile.profile_template_revision r ON r.profile_template_revision_uid=o.result_profile_revision_uid WHERE r.local_account_id<>a.local_account_id'
+            saveLobbyWalletOwnerMismatch = 'SELECT count(*) FROM lab_profile.account_workspace_save_operation o JOIN lab_profile.local_account a ON a.local_account_uid=o.result_account_uid JOIN lab_local_game.lobby_presentation_revision l ON l.lobby_presentation_revision_uid=o.result_lobby_revision_uid JOIN lab_local_game.wallet_revision w ON w.wallet_revision_uid=o.result_wallet_revision_uid WHERE l.local_account_id<>a.local_account_id OR w.local_account_id<>a.local_account_id'
+            provenanceMismatch = 'SELECT count(*) FROM lab_profile.account_observation_provenance_binding b JOIN lab_profile.local_account a ON a.local_account_id=b.target_local_account_id LEFT JOIN lab_profile.account_workspace_save_operation o ON o.operation_uid=b.save_operation_uid WHERE b.binding_kind=''save_as/v1'' AND (o.operation_uid IS NULL OR o.operation_status<>''completed'' OR o.operation_kind<>''save_as'' OR o.result_account_uid<>a.local_account_uid OR o.source_account_uid<>b.save_as_source_account_uid OR o.resolved_observation_snapshot_uid IS DISTINCT FROM b.source_snapshot_uid)'
+            raidHeadMismatch = 'SELECT count(*) FROM lab_private_server.classic_solo_raid_runtime_state s LEFT JOIN lab_private_server.classic_solo_raid_runtime_state_revision r ON r.classic_solo_raid_runtime_state_revision_id=s.current_classic_solo_raid_runtime_state_revision_id AND r.classic_solo_raid_runtime_state_id=s.classic_solo_raid_runtime_state_id WHERE s.current_classic_solo_raid_runtime_state_revision_id IS NOT NULL AND r.classic_solo_raid_runtime_state_revision_id IS NULL'
+            encryptedRevisionMismatch = 'SELECT count(*) FROM lab_private_server.classic_solo_raid_runtime_state_revision WHERE sha256(protected_payload)<>protected_payload_sha256 OR octet_length(protected_payload)<>protected_payload_byte_length'
+            raidLineageMismatch = 'SELECT count(*) FROM lab_private_server.classic_solo_raid_runtime_state_revision r LEFT JOIN lab_private_server.classic_solo_raid_runtime_state_revision p ON p.classic_solo_raid_runtime_state_revision_id=r.previous_classic_solo_raid_runtime_state_revision_id WHERE r.revision_number>1 AND (p.classic_solo_raid_runtime_state_revision_id IS NULL OR p.classic_solo_raid_runtime_state_id<>r.classic_solo_raid_runtime_state_id OR p.revision_number<>r.revision_number-1)'
+            raidOperationResultMismatch = 'SELECT count(*) FROM lab_private_server.classic_solo_raid_runtime_state_operation o JOIN lab_private_server.classic_solo_raid_runtime_state_revision r ON r.classic_solo_raid_runtime_state_revision_uid=o.result_revision_uid WHERE r.classic_solo_raid_runtime_state_id<>o.classic_solo_raid_runtime_state_id OR r.state_content_sha256 IS DISTINCT FROM o.result_state_content_sha256'
+            raidPendingOperations = 'SELECT count(*) FROM lab_private_server.classic_solo_raid_runtime_state_operation WHERE operation_status=''pending'''
+            workspacePendingOlderThanDay = 'SELECT count(*) FROM lab_profile.account_workspace_save_operation WHERE operation_status=''pending'' AND created_at_utc < now()-interval ''1 day'''
+        }
+        $audit = [ordered]@{}
+        foreach ($entry in $auditQueries.GetEnumerator()) {
+            $value = Read-ProbeSql ('BEGIN READ ONLY; ' + $entry.Value + '; COMMIT;')
+            if ($value -cnotmatch '^[0-9]+$') { throw 'workspace_backup_audit_count_invalid' }
+            $audit[$entry.Key] = [long]$value
+        }
+        $pendingRoot = 'C:\NLL\ControlCenter\state\phase-d-solo-raid'
+        $pendingTree = @(Get-NllPackageTree $pendingRoot)
+        Copy-NllPackageTree $pendingRoot (Join-Path $backupRoot 'raid-state-private') $pendingTree
+        $audit.encryptedPendingFiles = @($pendingTree | Where-Object { $_.relativePath -like '*/payload.pending.json' }).Count
+        # No guessed replay/cleanup. A real pending payload requires its exact
+        # captured request + receipt comparison, so refuse to call it reconciled.
+        $audit.pendingReconciliation = if ($audit.encryptedPendingFiles -eq 0 -and $audit.raidPendingOperations -eq 0) { 'no_pending_pair' } else { 'requires_exact_replay_review' }
+        $audit.integrityMismatchCount = ($audit.GetEnumerator() | Where-Object { $_.Key -like '*Mismatch' } | ForEach-Object Value | Measure-Object -Sum).Sum
+        if ($audit.integrityMismatchCount -ne 0) { throw 'workspace_backup_audit_integrity_mismatch' }
+        Assert-NllPackageTree $pendingRoot $pendingTree
+    }
     $verified = $true
 } catch {
     $failure = 'workspace_backup_verification_failed'
@@ -150,6 +182,7 @@ finally {
     if ($verified) {
         $receipt.schemaVersionObserved = $index; $receipt.migrationChecksumsMatch = $true
         $receipt.workspaceOperationCount = [long]$counts[0]; $receipt.legacyPendingCount = [long]$counts[1]; $receipt.legacyPendingSaveAsCount = [long]$counts[2]
+        if ($AuditCurrent) { $receipt.readOnlyAudit = $audit }
     }
     $receipt | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $resultRoot 'receipt.json') -Encoding UTF8
     Write-Output $resultRoot
