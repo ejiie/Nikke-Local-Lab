@@ -28,7 +28,7 @@ catch (Exception exception)
   return 1;
 }
 
-static class Benchmark
+static partial class Benchmark
 {
   static readonly DateTimeOffset Instant = new(2026, 8, 20, 1, 0, 0, TimeSpan.Zero);
   static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -53,16 +53,18 @@ static class Benchmark
       counter.Log(LogLevel.Information, new EventId(1, "CommandExecutionCompleted"), "unused", null, (_, _) => throw new Exception());
       counter.Log(LogLevel.Information, new EventId(2, "unrelated"), "unused", null, (_, _) => throw new Exception());
       Require(counter.Count == 1); counter.Reset(); Require(counter.Count == 0);
+      await ColdSelfTestAsync();
       Console.WriteLine("S08 source-only statistics/counter checks passed; no DB measurement executed.");
       return 0;
     }
-    Require(args.Length == 0 || args.SequenceEqual(new[] { "--full" }) || args.SequenceEqual(new[] { "--smoke" }));
+    if (args.SequenceEqual(new[] { "--cold-child" })) return await RunColdChildAsync();
+    if (args.Length == 2 && args[0] == "--cold-probe") return await RunColdProbeAsync(args[1]);
+    Require(args.Length == 0 || args.SequenceEqual(new[] { "--full" }) || args.SequenceEqual(new[] { "--smoke" }) ||
+        args.SequenceEqual(new[] { "--cold" }) || args.SequenceEqual(new[] { "--cold-smoke" }));
+    var cold = args.Contains("--cold") || args.Contains("--cold-smoke");
     var full = args.Contains("--full");
-    var smoke = args.Contains("--smoke");
-    var connection = new NpgsqlConnectionStringBuilder(Environment.GetEnvironmentVariable("NIKKE_LAB_TEST_DB"));
-    Require(connection.Host == "127.0.0.1" && connection.Port == 55432 &&
-        connection.Database == "nikke_local_lab_lifecycle_test" && connection.Username == "nll_lifecycle_test" &&
-        Environment.GetEnvironmentVariable("NIKKE_LAB_TEST_RESET_TOKEN") == "allow-phase1a-disposable-schema-reset");
+    var smoke = args.Contains("--smoke") || args.Contains("--cold-smoke");
+    var connection = DisposableConnection();
     // The disposable cluster allows 40 connections. Keep 100-account fan-out
     // inside that boundary; pooling wait is part of the end-to-end observation.
     connection.MaxPoolSize = 32;
@@ -78,6 +80,7 @@ static class Benchmark
         (10, 5, 10), (10, 200, 10), (10, 50, 1), (10, 50, 100) };
     var cells = smoke ? new[] { (1, 5, 1) } : full ? fullCells : fullCells.Take(2).ToArray();
     var completed = new List<object>();
+    var errors = 0;
     foreach (var (accounts, roster, history) in cells)
     {
       Console.WriteLine($"S08 fixture: accounts={accounts}, roster={roster}, history={history}");
@@ -110,6 +113,15 @@ static class Benchmark
       // History row count is checked directly, outside timing; do not infer it from requested fixture size.
       await using (var count = source.CreateCommand("SELECT count(*) FROM lab_profile.profile_template_revision"))
         Require(Convert.ToInt64(await count.ExecuteScalarAsync()) == accounts * history);
+
+      if (cold)
+      {
+        var coldCell = await MeasureColdCellAsync(output, accounts, roster, history, expected, smoke ? 1 : 10);
+        completed.Add(coldCell);
+        errors += coldCell.Errors;
+        if (File.Exists(Path.Combine(output, "stop-after-cell"))) break;
+        continue;
+      }
 
       string? code = null;
       await using var app = AdminApiHost.Build([], new AdminApiHostOptions
@@ -201,25 +213,49 @@ static class Benchmark
     }
     await File.WriteAllTextAsync(Path.Combine(output, "s08-summary.json"), JsonSerializer.Serialize(new
     {
-      contractId = "nll/synthetic-read-baseline/v1",
-      status = completed.Count == cells.Length ? "passed_selected_scope" : "stopped_after_cell",
-      scope = smoke ? "smoke_not_a_baseline" : full ? "full_warm_matrix" : "accounts_1_and_10_warm",
+      contractId = cold ? "nll/synthetic-process-cold-read/v1" : "nll/synthetic-read-baseline/v1",
+      status = errors > 0 ? "failed_selected_scope" : completed.Count == cells.Length ? "passed_selected_scope" : "stopped_after_cell",
+      scope = cold ? (smoke ? "process_cold_smoke_not_a_baseline" : "accounts_1_and_10_process_cold") :
+          smoke ? "smoke_not_a_baseline" : full ? "full_warm_matrix" : "accounts_1_and_10_warm",
       plannedCells = cells.Length,
       cells = completed,
       runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
       os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
       instrumentation = "Npgsql completed command events; not SQL statement or disk read count",
       maxPoolSize = connection.MaxPoolSize,
-      processColdMeasured = false,
+      processColdMeasured = cold,
+      processColdBoundary = cold ? new
+      {
+        routes = ColdRoutes,
+        processesPerRoutePerCell = smoke ? 1 : 10,
+        startup = "parent process-start call to validated ready message; includes child runtime/service setup and HTTP host/bootstrap when applicable",
+        firstRequest = "child stopwatch around exactly one selected read graph including response consumption and correctness checks",
+        httpBoundary = "fresh in-process AdminApiHost and HttpClient; bootstrap is startup, first account GET is measured; not a cold external browser",
+        databaseBoundary = "parent seeds and verifies; child opens its first read-only connection during the measured operation",
+        caches = "OS and PostgreSQL caches are not flushed or restarted between trials",
+        allocation = "process-wide allocated bytes during first request; includes both HTTP server and harness when applicable",
+        timeouts = "60s startup / 60s first operation / 15s child exit; HTTP client 30s",
+        performanceThresholdGate = false
+      } : null,
       domRenderingMeasured = false,
       diskReadBytesMeasured = false,
       originalClientExecuted = false,
       operatingDatabaseTouched = false,
       fixtureIdentity = "synthetic semantic values; per-run random UUIDs, no original identifiers",
-      errors = 0,
+      errors,
       completedAtUtc = DateTimeOffset.UtcNow
     }, Json));
-    return 0;
+    return errors == 0 ? 0 : 1;
+  }
+
+  static NpgsqlConnectionStringBuilder DisposableConnection()
+  {
+    var connection = new NpgsqlConnectionStringBuilder(Environment.GetEnvironmentVariable("NIKKE_LAB_TEST_DB"));
+    Require(connection.Host == "127.0.0.1" && connection.Port == 55432 &&
+        connection.Database == "nikke_local_lab_lifecycle_test" && connection.Username == "nll_lifecycle_test" &&
+        Environment.GetEnvironmentVariable("NIKKE_LAB_TEST_RESET_TOKEN") == "allow-phase1a-disposable-schema-reset");
+    connection.MaxPoolSize = 32;
+    return connection;
   }
 
   static async Task<Observation> ReadHttpAsync(HttpClient client, string path, int? count)

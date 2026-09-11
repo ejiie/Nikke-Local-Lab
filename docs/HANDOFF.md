@@ -143,8 +143,16 @@ immutable membership과 기존 hash·shape 검증을 유지합니다. 새 회귀
 오류 0, 모든 표본의 예상 명령 수 일치와 DB 재시작/정리를 확인했습니다. 100계정 목록은
 1,301명령·p50 1.17~1.19초이며, 큰 규모의 변경 전 개선율은 추정하지 않습니다. p95 변동과
 fixture 한계, 원시 표본·마감 검사 근거는 안정화 계획 S-08을 따릅니다. 캐시·인덱스·migration은
-추가하지 않았고 **설치본에는 미배포**입니다. process-cold·물리 I/O·DOM·query plan 분석은
-남아 있어 S-08 전체 완료를 주장하지 않습니다. 운영 DB·게임·Epinel DLL은 변경하지 않았습니다.
+추가하지 않았고 **설치본에는 미배포**입니다. 후속 승인으로 service 목록·HTTP 목록·목록+로비의
+**1/10계정 process-cold 60표본**을 별도 새 프로세스에서 측정했습니다. 오류·timeout 0,
+ready 전 DB 명령 0, exact 프로세스/fixture binding과 원시 표본·통계 재계산을 확인했습니다.
+service 목록 첫 조회 p50은 283.75/432.51ms이며, 시작 시간 p50 175.33/174.29ms와 분리합니다.
+이는 합성 측정기 경계이고 설치 앱 startup이나 DOM 표시 시간이 아닙니다. OS/DB cache를
+초기화하지 않았고 운영 DB·게임·Epinel DLL도 변경하지 않았습니다. 다른 규모·경로의 cold,
+물리 I/O·DOM·query plan 분석은 남아 있어 S-08 전체 완료를 주장하지 않습니다.
+이번 측정기 변경도 단위 475개·폐기 PostgreSQL 110개·계측기 DB-free 프로세스 12개·UI/전체 계약을
+통과했고, cold/warm smoke와 모든 폐기 DB의 재시작 checkpoint·정리를 확인했습니다. 수치·경계·
+재실행 명령과 receipt는 [S-08 process-cold](STABILIZATION_PLAN.md#s-08-process-cold-계측--2026-09-11)에 있습니다.
 
 ## 별도 보류
 

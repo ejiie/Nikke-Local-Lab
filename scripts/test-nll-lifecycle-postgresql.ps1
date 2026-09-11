@@ -3,7 +3,7 @@ param(
     [string]$PostgreSqlRoot = 'C:\NLL\Runtime\PostgreSQL-17-native',
     [string]$Filter = '',
     [switch]$MeasureAccountReads,
-    [ValidateSet('focused', 'full', 'smoke')][string]$ReadMeasurementScope = 'focused',
+    [ValidateSet('focused', 'full', 'smoke', 'cold', 'cold-smoke')][string]$ReadMeasurementScope = 'focused',
     [ValidateRange(1, 60)][int]$ShutdownTimeoutSeconds = 30
 )
 
@@ -108,6 +108,10 @@ try {
             head = (& git -C $repositoryRoot rev-parse HEAD).Trim()
             workingDiffSha256 = $measurementDiffHash
             fixtureSourceSha256 = (Get-FileHash -LiteralPath (Join-Path $repositoryRoot 'tests\NikkeLocalLab.ReadBenchmarks\Program.cs') -Algorithm SHA256).Hash.ToLowerInvariant()
+            measurementScope = $ReadMeasurementScope
+            measurementSources = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests\NikkeLocalLab.ReadBenchmarks') -Filter '*.cs' -File | Sort-Object Name | ForEach-Object {
+                @{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+            })
             sdk = (& $dotnet --version).Trim(); postgresqlVersion = '17.11'
             powerScheme = (& powercfg /GETACTIVESCHEME) -join ' '
             processorCount = [Environment]::ProcessorCount
@@ -120,6 +124,8 @@ try {
         $measurementArguments = @($measurementDll)
         if ($ReadMeasurementScope -eq 'full') { $measurementArguments += '--full' }
         if ($ReadMeasurementScope -eq 'smoke') { $measurementArguments += '--smoke' }
+        if ($ReadMeasurementScope -eq 'cold') { $measurementArguments += '--cold' }
+        if ($ReadMeasurementScope -eq 'cold-smoke') { $measurementArguments += '--cold-smoke' }
         & $dotnet @measurementArguments
     } else {
         & $dotnet @testArguments

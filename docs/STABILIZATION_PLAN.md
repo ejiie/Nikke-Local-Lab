@@ -679,6 +679,86 @@ profile batch와 warm 행렬은 완료했지만 S-08 전체 완료나 운영 지
 `s08-profile-batch/after-repository.log`에 보존한다. 설치본·운영 DB·게임·Epinel DLL 변경,
 실제 게임 실행 및 remote push는 없다.
 
+#### S-08 process-cold 계측 — 2026-09-11
+
+운영자 승인 범위는 **측정기 보강과 1/10계정 최초 요청 검증**이다. 제품 조회·Save·schema·
+cache·index는 변경하지 않는다. 기존 warm fixture 생성·검증은 부모 프로세스에만 두고,
+서비스 목록, HTTP 목록, HTTP 목록+로비 세 경로를 각기 새 자식 프로세스에서 한 번 실행한다.
+각 경로·규모마다 10회이며 총 60개 프로세스다. roster 50/history 10과 pool 상한 32를 유지한다.
+50/100계정, 다른 roster/history 축과 workspace/export/history의 cold는 이 범위에 포함하지 않는다.
+
+측정 경계:
+
+- **시작 시간**: 부모의 process start 호출 직전부터 신원·fixture binding을 검증한 ready 수신까지.
+  .NET 시작, 서비스/계측기 구성, IPC를 포함한다. HTTP 경로는 loopback AdminApiHost 시작과
+  process-local 인증 bootstrap도 포함한다. 운영 설치 앱 전체의 startup 시간이 아니다.
+- **첫 조회 시간**: 자식의 단일 서비스 호출 또는 HTTP 조회 graph 실행 직전부터 응답 소비와
+  count/account/revision 검증까지. HTTP+로비는 첫 목록 응답 후 로비 fan-out을 포함한 한 graph이며,
+  각 로비를 별개의 cold 요청으로 부르지 않는다. 브라우저·DOM·WebView 렌더링은 포함하지 않는다.
+- 자식은 data source를 만들되 사전 SELECT/probe/preload/fixture 조회를 하지 않는다.
+  ready에 DB completed-command 0회와 측정 operation 0회를 기록한다. 첫 DB 연결은 측정 구간에서
+  열고 `default_transaction_read_only=on`을 적용한다. 부모의 fixture reset 권한과 분리한다.
+- PostgreSQL은 규모당 fixture를 부모에서 생성·검산한 상태다. trial마다 OS/DB cache를 flush하거나
+  PostgreSQL을 재시작하지 않는다. 이 수치는 process-cold이지 disk-cold가 아니다.
+- UUID trial, PID+UTC 시작 시각, exact fixture hash와 account→profile revision 집합을 표본에 결박한다.
+  결과는 Npgsql completed-command 수, process 전체 allocation, 반환 객체·HTTP byte/요청 수를 보존한다.
+  명령 수는 SQL statement/반환 행 수/물리 I/O가 아니며 HTTP allocation은 서버와 측정 client를 합친 값이다.
+- 시작/조회 60초, child exit 15초, HTTP client 30초의 자원 제한을 둔다. 오류·timeout·신원 불일치·
+  중복 결과·비정상 exit를 성공으로 치환하지 않는다. 매 시도 뒤 원시 표본을 저장하고 직접 시작한
+  Process만 종료·확인한다. 정리 불명 상태에서는 다음 fixture reset을 중단한다.
+- 통계는 성공 표본만 사용하되 시도/성공/오류/timeout 개수를 함께 표시하고 실패 표본도 보존한다.
+  nearest-rank p95는 표본 10개에서 최댓값이다. 시간 임계값을 CI 성능 합격선으로 사용하지 않는다.
+
+실행 명령(기존 runtime/게임 종료 후, 소스 전용):
+
+```powershell
+dotnet build tests/NikkeLocalLab.ReadBenchmarks -c Release --no-restore
+dotnet tests/NikkeLocalLab.ReadBenchmarks/bin/Release/net8.0/NikkeLocalLab.ReadBenchmarks.dll --self-test
+./scripts/test-nll-lifecycle-postgresql.ps1 -MeasureAccountReads -ReadMeasurementScope cold-smoke -ShutdownTimeoutSeconds 60
+./scripts/test-nll-lifecycle-postgresql.ps1 -MeasureAccountReads -ReadMeasurementScope cold -ShutdownTimeoutSeconds 60
+```
+
+`cold-smoke`는 1계정/roster 5/history 1에서 경로당 한 번인 연결 검사이며 기준선과 섞지 않는다.
+기존 `focused/full/smoke`는 계속 warm 옵션이다. `stop-after-cell`은 cold에서도 완료 규모 뒤 멈추며
+`stopped_after_cell`을 남긴다. 측정 환경 receipt에는 새 C# 파일을 포함한 source hash와 실행 DLL hash를
+기록한다. CI의 기존 `--self-test`는 DB 없는 순수 판정 검사와 12개 자식 프로세스 성공/실패/timeout
+검사만 실행하고 실제 PostgreSQL 성능 측정은 하지 않는다.
+
+**실측 결과:** `lifecycle-postgresql/e2dfb5cfe69042d88d385a83d4f9987c`의 본 측정은
+`passed_selected_scope`, 60/60 성공·오류 0·timeout 0이다. 전체 표본의 서로 다른 PID+시작 시각과
+trial UID, 6경로·규모 조합 × 순서가 고정된 10표본, 개별 파일과 summary 동등성, fixture SHA-256,
+ready의 사전 명령/operation 0, 유한한 비음수 지표와 nearest-rank 통계를 독립 재계산했다.
+`artifacts/stabilization/s08-process-cold/raw-verification.log`에 검산 결과를 남겼다.
+
+| 계정 | 경로 | 시작 p50/p95 ms | 첫 조회 p50/p95 ms | DB 명령 |
+|---:|---|---:|---:|---:|
+| 1 | service 목록 | 175.33 / 206.00 | 283.75 / 304.54 | 14 |
+| 1 | HTTP 목록 | 474.52 / 494.40 | 297.70 / 302.86 | 14 |
+| 1 | HTTP 목록+로비 | 473.58 / 495.51 | 313.57 / 320.32 | 16 |
+| 10 | service 목록 | 174.29 / 175.44 | 432.51 / 439.88 | 131 |
+| 10 | HTTP 목록 | 472.20 / 474.51 | 446.35 / 557.70 | 131 |
+| 10 | HTTP 목록+로비 | 473.94 / 476.45 | 620.86 / 646.02 | 151 |
+
+모든 표본에서 명령 수는 warm 때의 목록 `1 + 13A`, 목록+로비 `1 + 15A`와 같다.
+첫 조회 지연은 따뜻해진 프로세스와 다르지만 JIT·첫 DB 연결·SQL·매핑 각각의 기여율을 측정한 것은
+아니다. HTTP client까지 같은 새 프로세스에 있으므로 실제 외부 브라우저의 cold 지연으로 일반화하거나
+warm 대비 제품 성능 저하율로 표현하지 않는다. 10계정 HTTP 목록의 최대 557.70ms도 제외하지 않았다.
+50/100계정 및 다른 read 경로의 cold, query plan·구간별 CPU/할당·반환 행 수·물리 I/O·DOM 측정은 남았다.
+따라서 이번 focused process-cold 계측은 완료하되 S-08 전체 종료나 운영 지연 보장을 주장하지 않는다.
+
+연결 검사 receipt는 cold smoke `599700e748714955b05f80dc0acc23a3`(3표본), 기존 warm smoke
+`926e3f76072548b291440514638b0280`(12표본)이며 본 측정과 통계를 섞지 않는다. 두 smoke와 본 측정의
+exit 0·DB 재시작 checkpoint·cleanup을 확인했다. 변경 전 PostgreSQL 110개 통과 근거는
+`37658ac2bbd84ec09f4064c9bb40b5d2`다. 초기 기준선 restore의 NuGet 접근 제한 `NU1900`과 그 상태를
+읽은 첫 PG 검사 실패도 `s08-process-cold/before-*.log`에 보존했다. 감사/경고 옵션을 끄지 않고
+정상 권한의 locked restore 후 재실행했으며, 실패한 첫 폐기 DB도 checkpoint/cleanup을 확인했다.
+마감 검사는 단위 **475개**, cold 계측기의 DB-free 자식 프로세스 **12개** 및 순수 negative 검사,
+UI/실행기·Phase 0~2B·Phase 3A/3B0/3B1·3B2 scaffold·약점·Actions 계약과 build/format를 통과했다.
+변경 후 PostgreSQL **110/110** 및 restart checkpoint/cleanup 근거는
+`lifecycle-postgresql/ef959c43eec7485fb1af55236f48526e`다. 검사 로그는
+`s08-process-cold/after-gates.log`, `after-postgresql.log`와 `commit-validation.log`에 보존한다.
+제품 소스·운영 DB·설치본·게임·Epinel DLL 변경과 remote push는 없다.
+
 ### S-09 / 중간 — 프로세스 identity와 복구 공통 코드가 부분적으로 다름
 
 - 확인: coordinator/watcher/recovery에 JSON 쓰기, PG 제어, receipt 검증, 복구 코드가
