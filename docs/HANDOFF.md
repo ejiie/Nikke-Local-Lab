@@ -19,7 +19,25 @@
 256개 bounded cache, desktop pipe/async 예외·정상 종료 확인, 준비/완료/pg_ctl 자식의
 기한·사전 identity reservation·복구 admission, automation reparse 경계를 보강했다.
 운영 DB는 cold-copy에서 감사하며 행 삭제·추정 복원·새 migration을 하지 않는다.
-**최종 commit 기준 전체 검사와 설치 반영은 아직 진행 중**이다. 이 문구를 인수 완료로 읽지 않는다.
+**제품 소스 `1cf8784`의 전체 검사·설치 반영·설치 API smoke를 완료**했다.
+실제 WebView2 조작·원본 Challenge 전투는 운영자 인수로 남는다. GitHub 게시 차단은 별도다.
+
+- 최종 검증 `7ed9a463711d42b9aff415860bcf3b9b`: 단위 **486개**, 격리 PostgreSQL **112개**,
+  저장소·Phase 0·완료된 Phase 2A1/2A2/2B·역사 Phase 3A·3B0/3B1/3B2·약점·Actions 계약,
+  전체 solution 서식과 desktop build를 통과했다. PG receipt는
+  `e54a18ea708542fb9eee7e4d4b4669eb`이며 stop/restart checkpoint·최종 정리도 통과했다.
+- 배포 `697effd6d6c64f478b4224bf3f53193c`: 앱 31개·desktop 3개·Start 스크립트 1개를
+  before/after hash 검증 후 교체했다. 설치 전용 asset·의존 외부 DLL은 보존했다.
+  manifest SHA-256은 `ff1beb42110f3239375cff76cbdd61a3accc7d1253052b9e9c23f3fcbee42c80`이다.
+  검증한 이전 파일은 아래 cold backup의 `app-release-697effd6d6c64f478b4224bf3f53193c`에 있다.
+  이 백업은 해당 앱 파일 복원용이며 별도 저장소 실행 스크립트까지 자동 복원하는 전체 rollback은 아니다.
+- 설치 API smoke: **계정 2개·workspace 2개·editor·로컬 bootstrap·정상 종료 통과**.
+  목록 3회 wall time은 185.165/5.523/2.380ms였다. Save/import·WebView UI·게임 요청은 하지 않았다.
+  앞선 점검 2회는 로그 공유 읽기 충돌로 조회 전에 실패했고 각각 안전 종료했다. 실패 receipt를
+  보존했으며 점검기의 `FileShare.ReadWrite`·64KiB 한계와 controlled 진단으로 수정한 뒤 재검증했다.
+  공유 상태 65개와 배포/점검기 파일 행동 21개가 통과했다. 후속 변경은 점검기·그 합성 검사·문서뿐이다.
+  원본 게임 DLL/클라이언트·선택 설정·DB migration/행은 변경하지 않았다. 앱 smoke의 정상 PG
+  시작/종료는 내부 WAL/통계 파일을 바꿀 수 있으므로 DB 물리 byte 불변 주장은 배포 단계까지만 적용한다.
 
 - 반복 읽기 전체 8셀·7,200개 관측 통과: `92a2edc3d6da46bba862ada01b481e77`.
   R50/H10에서 계정 1/10/50/100개의 HTTP 목록 p50은 1.15/1.24/1.55/1.82ms,
@@ -29,12 +47,16 @@
 - 1/10계정의 새 프로세스 첫 요청 120회 통과: `203c935721fe45f3b0bf7563f8213bed`.
   오류·timeout 0개다. 프로세스 시작과 요청 시간을 분리했으며 OS cache를 비우지 않았다.
   위 warm/DOM/cold 모두 격리 PostgreSQL의 stop/restart checkpoint와 최종 정리를 확인했다.
-- 최종 운영 DB cold-copy 감사 `cb9ea3de443649e7ba92fd3153073f7b` 통과:
+- 배포 전 운영 DB cold-copy 감사 `cb9ea3de443649e7ba92fd3153073f7b` 통과:
   schema 18, migration checksum 일치, Save operation 102개, DB/암호화 pending 0개,
   검사한 head·lineage·결과 소유권·provenance·암호화 payload hash 불일치 0개다.
   원본 DB 2,203개 파일 / 90,992,840byte를 전후 hash 대조했고 원본을 시작·수정하지 않았다.
   복제본은 정상 종료했고 `D:\NikkeLocalLab\Backups\stabilization-audit-cb9ea3de443649e7ba92fd3153073f7b`
   아래 검증된 private cold backup은 보존했다.
+- 설치 smoke 후 동일 감사 `912d47e8331645abb69eefb14e2cbef1`도 통과했다.
+  schema 18·Save operation 102개·pending 0개·검사 불일치 0개를 재확인했다.
+  인수 직전 DB backup은 `D:\NikkeLocalLab\Backups\stabilization-audit-912d47e8331645abb69eefb14e2cbef1`이다.
+  마지막 대조에서 설치 파일 불일치 0개, runtime selection hash 불변, 관련 프로세스·운영 port 없음이다.
 - ANALYZE 전후 sparse/dense 총 24회 통과:
   `b4fc342310a245f7b0bf6f7bfc42ac29`, `7ad006a74da14807b16f2fcdc03c8fff`.
   dense 100계정 cache-miss 목록 평균은 전 1,382.913ms / 후 1,394.918ms다.
@@ -50,7 +72,7 @@
 
 [안정화 계획](STABILIZATION_PLAN.md)의 회귀 검사·실행 생명주기·저장 일관성·성능 측정을 진행합니다.
 2026-09-12 현재 안정화 소스 후속 정비와 운영 DB cold-copy 감사가 진행됐습니다.
-최종 전체 검사·설치 반영 결과는 아래 최신 날짜 절을 확인합니다. 과거의 ‘남음’ 목록을
+최종 전체 검사·설치 반영 결과는 위 2026-09-12 절을 확인합니다. 과거의 ‘남음’ 목록을
 현재 상태로 재사용하지 않습니다. 운영자가 직접 수행할 항목은
 [안정화 인수 체크리스트](operations/STABILIZATION_ACCEPTANCE.md)로 분리했습니다.
 확인된 현행 흐름은 [아키텍처](ARCHITECTURE.md)에 있습니다.

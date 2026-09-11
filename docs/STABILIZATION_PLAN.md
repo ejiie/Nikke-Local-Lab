@@ -3,8 +3,10 @@
 ## 현재 인수 작업 — 2026-09-12
 
 운영자 요청: 직접 하는 실 테스트를 제외한 안정화 후속 작업을 완료하고 테스트 순서·합격
-기준을 제공한다. 이번 소스 정비는 구현됐으며 **최종 전체 검사·설치 반영 확인 전**이다.
-최종 결과는 [HANDOFF](HANDOFF.md)의 최신 절에 기록한다. 아래 날짜별 발견/‘남음’은
+기준을 제공한다. **제품 소스 `1cf8784`의 전체 자동 검사·설치 반영·설치 API smoke를 완료**했다.
+단위 486개·격리 PG 112개·계약/서식/build 통과와 실제 계정 2개의 읽기·정상 종료를 확인했다.
+직접 하는 WebView2/원본 Challenge 인수와 비공개 원격 전제 확인은 남는다.
+정확한 receipt·실패 점검의 수정·백업 범위는 [HANDOFF](HANDOFF.md)의 최신 절에 기록한다. 아래 날짜별 발견/‘남음’은
 그 시점 이력이며 이 절과 최신 인계보다 우선하지 않는다.
 
 - S-08: bounded revision-readiness cache로 반복 목록 조회의 full-profile 재구성을 제거한다.
@@ -22,9 +24,10 @@
   기한, 실패 exit code, 중복 종료 방지, 늦은 host의 stop signal 보존. stop을 만든 desktop/test가
   host 종료 확인 후 해당 signal만 지운다. UI/게임은 합성 프로세스 검사와 별도 인수다.
 - S-09 감사: 운영 DB를 켜지 않은 cold backup 복제본에서 스키마/체크섬, head/lineage/Save 결과
-  소유자/provenance/암호화 payload hash를 확인했다. 최종 감사 `cb9ea3de443649e7ba92fd3153073f7b`는
+  소유자/provenance/암호화 payload hash를 확인했다. 배포 전 감사 `cb9ea3de443649e7ba92fd3153073f7b`는
   schema 18, Save operation 102개, DB pending·암호화 pending 0개, 검사 불일치 0개다.
   복제본 종료와 원본/백업 파일 hash 일치를 검증했다. 실 DB의 행을 정리하거나 추정 복원하지 않았다.
+  설치 smoke 후 감사 `912d47e8331645abb69eefb14e2cbef1`에서도 같은 스키마·operation 수와 pending/불일치 0개를 확인했다.
 - 잔여 코드 검토의 종료 범위는 importer 입력 크기/정규화/controlled error, domain revision·collection
   불변성, automation inventory/state transition, desktop 시작·종료와 해당 회귀 검사다.
   automation inventory의 root/ancestor reparse 우회를 닫고 같은 hash의 외부 파일도 거부한다.

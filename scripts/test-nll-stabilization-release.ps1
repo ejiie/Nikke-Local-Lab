@@ -42,6 +42,23 @@ try {
     $markerOffset = $startAst.Extent.Text.IndexOf("Write-Output ('NLL_DESKTOP_BOOTSTRAP:'", [StringComparison]::Ordinal)
     Assert-Test ($markerOffset -gt 0)
     Assert-Test (-not $startAst.Extent.Text.Substring(0,$markerOffset).Contains('Remove-Item -LiteralPath $DesktopStopSignalPath'))
+    $smokeAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'test-nll-stabilization-installed.ps1'), [ref]$tokens, [ref]$errors)
+    Assert-Test ($errors.Count -eq 0)
+    $readDefinition=$smokeAst.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Read-SmokeBootstrapLines'},$true)
+    . ([scriptblock]::Create($readDefinition.Extent.Text))
+    $redirectPath=Join-Path $root 'synthetic-redirect.log'
+    $writer=[IO.File]::Open($redirectPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+    try {
+        $bytes=[Text.Encoding]::UTF8.GetBytes("synthetic log`nNLL_DESKTOP_BOOTSTRAP:c3ludGhldGlj`n")
+        $writer.Write($bytes,0,$bytes.Length); $writer.Flush()
+        # Negative control: the former reader fails against the still-open writer.
+        Reject-Test { [IO.File]::ReadAllLines($redirectPath) }
+        $lines=@(Read-SmokeBootstrapLines $redirectPath)
+        Assert-Test ($lines.Count -eq 3 -and $lines[1] -ceq 'NLL_DESKTOP_BOOTSTRAP:c3ludGhldGlj')
+        $bytes=[Text.Encoding]::UTF8.GetBytes(('x'*65537))
+        $writer.Write($bytes,0,$bytes.Length); $writer.Flush()
+        Reject-Test { Read-SmokeBootstrapLines $redirectPath }
+    } finally { $writer.Dispose() }
 }
 finally {
     $resolved = (Resolve-Path -LiteralPath $root).ProviderPath
