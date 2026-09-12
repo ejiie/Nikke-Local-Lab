@@ -19,8 +19,8 @@ this role statement alone does not certify that a particular run passed those ga
 | Role | Exact path | Mutation authority |
 |---|---|---|
 | Official current NIKKE installation | `C:\NIKKE` | The official launcher may install and update it. Local Lab/EpinelPS tools must not patch it or use it as a private-server execution target. |
-| Retained 150 client pending cold retirement | `C:\NLL\Clients\NIKKE-150.6.9-Physical` | Full D: archival copy verified on 2026-09-12; source still retained while the operator tests 151. Not the selected runtime. Contains derived cache/overlay state, not an official-current mirror. |
-| Verified 150 archival copy | `D:\NikkeLocalLab\Backups\client-150-archive-20260912-01\NIKKE-150.6.9-Physical` | 39,504 files / 27,264,219,735 bytes, full source-before/source-after/destination manifest equality. Archival only; no direct D: execution. Source retirement remains pending. |
+| Removed 150 client / original restore target | `C:\NLL\Clients\NIKKE-150.6.9-Physical` | Removed on explicit operator approval at 2026-09-12 12:42 KST after cold and full source/backup re-verification. Path is absent, not an active runtime. Restore here only if 150 rollback is requested. |
+| Verified 150 archival copy | `D:\NikkeLocalLab\Backups\client-150-archive-20260912-01\NIKKE-150.6.9-Physical` | 39,504 files / 27,264,219,735 bytes, full manifest equality reverified before C: source removal. Backup retained. Archival only; no direct D: execution. |
 | Independent cube-localization repair input | `C:\NLL\RuntimeInputs\CubeLocale-150-v1` | Two private, exact hash-pinned locale inputs for the cold Control Center repair. Independent of the old client tree; never committed. |
 | Selected 151 Control Center client (S26 first) | `C:\NLL\Clients\NIKKE-151.8.5-ResourceProbe` | On 2026-09-06 the operator confirmed actual-game validation after the existing-account integration and closed resource-change work. Keep the unchanged Epinel DLL and manifest-backed clone-only certificate overlay. S29 remains separately deferred. See `archive/RESOURCE_COMPATIBILITY_151_PROGRESS.md`. |
 | Active repository | `C:\Users\nlloperator\Documents\Github\Nikke-Local-Lab` | Normal source workspace. |
@@ -38,8 +38,8 @@ frozen Phase3B2 lane.
 
 ## Official update and fresh-capture sequence
 
-1. Keep `C:\NLL\Clients\NIKKE-150.6.9-Physical` unchanged as the existing
-   Phase3B2 derived lane.
+1. Preserve the verified 150 D: archive and its original rollback evidence.
+   Its former C: path is absent; do not restore it merely for an official update.
 2. Before the official launcher updates `C:\NIKKE`, preserve the current
    official tree under a new versioned name if an exact pre-update baseline is
    required. Do not overwrite the Phase3B2 derived lane.
@@ -64,7 +64,7 @@ The historical `C:\Recovered_OldSSD\NLL_PreWipe_20260822` source on Samsung was
 removed by the operator after the verified migration. This does not authorize
 cleanup of unrelated Samsung applications or `E:\NIKKE`.
 
-## 150 archive (approved 2026-09-05; copy verified 2026-09-12)
+## 150 archive (approved 2026-09-05; completed 2026-09-12)
 
 The operator renewed the archive request while testing persistence in 151.
 The selected v6 bootstrap/client use 151 and have no 150 client reference or runtime
@@ -75,8 +75,11 @@ permission to silently change the current 151 selection.
 
 Full source-before/source-after/destination manifests match SHA-256
 `7afd6f48e14301b1cfb7ffe9bc50c339cfe5b49b440130196cccdcd64b448d7d`.
-The copy receipt is `copy_verified_source_retained`. C: removal is pending game,
-Control Center, server, watcher and PG coldness, followed by re-verification.
+The historical copy receipt remains `copy_verified_source_retained`. After the
+operator confirmed testing and explicitly approved removal, coldness and both full
+manifests were reverified. The separate `retirement.receipt.json` records
+`archived_source_removed` at 2026-09-12 12:42 KST. The C: source is absent and D:
+backup retained; current 151/v6 pins and selection passed unchanged.
 Preserve the original rollback evidence and restore the original C: path if 150
 rollback is requested. This does not authorize D: execution, old-receipt edits,
 official-install movement, or removal of shared historical runtime/seed folders.
