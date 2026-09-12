@@ -260,6 +260,8 @@ bundle의 코드/복구 경로는 유지합니다. 운영 pending/provenance 대
 
 ## 별도 보류
 
+- 시즌 선택 창(시즌 1~현재, 보스 사진·기본 약점) → 선택 시즌 카드 하나와 5속성 설정 화면:
+  [UI-RAID-01 TODO](STABILIZATION_PLAN.md#ui-raid-01--시즌-목록과-선택-보스-설정-화면-분리)에 요구사항만 등록, 미구현.
 - S29 profile v3와 registry v2 불일치, 미완료 속성 실드 확장
 - 신규 보스와 전투 분석 UI 등 기능 추가
 
