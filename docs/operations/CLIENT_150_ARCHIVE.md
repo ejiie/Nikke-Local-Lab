@@ -1,12 +1,13 @@
 # 150 클라이언트 보관 이전
 
 2026-09-12 운영자는 영속화 실게임 검증과 병행하여 GitHub 복구 및 150의 D: 이동을 요청했다.
-현재 상태는 **D: 전체 복사/검산 완료, C: 원본 제거는 실게임/관리도구 종료 대기**다.
-공간 회수까지 끝난 이동 완료로 해석하지 않는다.
+현재 상태는 **D: 전체 복사/검산 및 C: 원본 제거 완료**다.
+운영자가 "확인 완료. C에 있는 150 제거하라"고 승인했고, 2026-09-12 12:42 KST에
+cold 상태와 양쪽 전체 manifest를 재검증한 뒤 정확한 C: 150 폴더만 제거했다.
 
 ## 정확한 범위
 
-- 원본: `C:\NLL\Clients\NIKKE-150.6.9-Physical`
+- 제거된 원본 / 복원 시 대상: `C:\NLL\Clients\NIKKE-150.6.9-Physical`
 - 보관: `D:\NikkeLocalLab\Backups\client-150-archive-20260912-01\NIKKE-150.6.9-Physical`
 - 원본 조사: 39,504개 파일, 27,264,219,735 byte, reparse point 0개.
 - 공식 `C:\NIKKE`, 151 ResourceProbe, v6 bundle, 운영 DB와 과거 sealed receipt는 이동·수정하지 않는다.
@@ -60,7 +61,22 @@ reparse point는 0개이며 manifest에도 150 client 참조가 없다.
 이는 원본 전후 불변 및 복사 일치 증거이며 C: 제거 완료 receipt가 아니다.
 
 `dependency-audit.receipt.json`과 `operation-tools/manifest.json`에는 의존성 조사와
-이번 copy/retire 절차 코드의 pin을 보존했다. 게임과 관리도구를 정상 종료한 뒤
-`operation-tools/retire-verified-source.ps1`에 위 manifest hash를 명시하면
-cold/151 pin/복구 입력과 원본·보관본 전체를 다시 검증한 뒤 정확한 C: 150 경로만 제거한다.
-제거 완료 증거는 별도의 `retirement.receipt.json`이며 **아직 발급되지 않았다**.
+이번 최초 copy/retire 절차 코드의 pin을 보존했다. 이 기록은 당시 상태 그대로 유지한다.
+
+## 확인된 제거 결과
+
+최종 실행 코드는 별도 `operation-tools-v2/manifest.json`에 pin했다. 숨김 파일 stream을
+포함하고 루트/숨김 디렉터리의 named stream은 fail closed로 거부하도록 보강했으며,
+합성 검사 10개를 통과했다. 실제 디렉터리 named stream은 없었다. 제거 직전에는
+양쪽 전체 reparse/디렉터리 stream을 다시 조사하고 cold 상태를 재확인했다.
+
+`operation-tools-v2/retire-verified-source.ps1`은 위 expected manifest hash를 명시하여
+실행했다. C: 원본과 D: 보관본 전체가 기존 hash에 일치했고, 151/v6 파일 pin·선택 포인터·
+독립 복구 입력 검증도 통과했다. `retirement.receipt.json`은 `archived_source_removed`,
+`sourceRemoved=true`, `backupRetained=true`, `selectionUnchanged=true`로 발급됐다.
+제거 후 C: 원본 부재와 D: 39,504개 파일 보존을 확인했다. 운영 DB·공식 설치본·151 및
+hosts/trust/firewall을 변경하거나 실행 중인 게임/서버를 중단하지 않았다.
+
+D: 보관본과 원래 rollback evidence는 유지한다. 150 복원이 필요하면 위 원래 C: 경로로
+복사하고 전체 manifest를 검증한다. 직접 D: 실행이나 기존 제거 절차 재실행은 하지 않는다.
+27,264,219,735 byte는 논리 파일 크기이며 실제 디스크 회수량 측정값은 아니다.
