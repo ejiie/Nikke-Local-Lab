@@ -1,5 +1,6 @@
 # Executes fixed Start/Complete functions, with every OS/service/process boundary
 # replaced. All file paths and all bytes are synthetic, including Player.log root.
+param([switch]$JobContract)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'test-nll-phase-d-runner-contract.ps1')
@@ -46,6 +47,17 @@ function Get-NetTCPConnection {
 }
 function Get-NetUDPEndpoint { param($OwningProcess,$ErrorAction) }
 function Invoke-PhaseDRunnerResourcePreflight { param($Specification) $script:preflightCalled=$true }
+function Start-PhaseDRunnerBootstrap {
+    param($Specification,$Path)
+    Start-Process -FilePath $Path -WorkingDirectory (Split-Path -Parent $Path) -PassThru -WindowStyle Hidden
+}
+function Assert-PhaseDRunnerJobProcess {
+    param($Specification,$ProcessId)
+    if ($Specification.contractId -ceq 'nll/phase-d-runner-input/v3') {
+        Assert-Test ($ProcessId -in @(901,902,903))
+        $script:membershipChecks.Add($ProcessId)
+    }
+}
 function Write-TestJson($Path,$Value) { [IO.File]::WriteAllText($Path, ($Value | ConvertTo-Json -Depth 8)) }
 function Start-Process {
     param($FilePath,$ArgumentList,$WorkingDirectory,[switch]$PassThru,[switch]$NoNewWindow,$WindowStyle,$RedirectStandardOutput,$RedirectStandardError)
@@ -103,6 +115,11 @@ try {
         $caseRoot=Join-Path $root "$build-$variant-$case"
         $spec=[ordered]@{}; foreach ($key in $originalSpec.Keys) { $spec[$key]=$originalSpec[$key] }
         $spec.launchRoot=Join-Path $caseRoot $id
+        $script:membershipChecks=[Collections.Generic.List[int]]::new()
+        if ($JobContract) {
+            $spec.contractId='nll/phase-d-runner-input/v3'; $spec.jobNonce=[guid]::NewGuid().ToString('N')
+            $spec.executionFx=$null; $spec.weaknessCode='iron'
+        }
         $spec.clientBuildCode=$build; $spec.staticDataVariantRequired=$variant
         $spec.resourcePreflightRequired=$build -ceq 'build_150.6.9'
         if ($spec.resourcePreflightRequired) {
@@ -138,9 +155,11 @@ try {
         Assert-Test ($failed -eq $shouldFail)
         foreach ($name in $environmentNames) { Assert-Test ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($name))) }
         if ($shouldFail) {
-            Assert-Test ((Get-PhaseDRunnerHash $hosts) -ceq $baseHash -and $script:rules.Count -eq 0)
+            if (-not $JobContract -or $case -eq 'digest-failure') {
+                Assert-Test ((Get-PhaseDRunnerHash $hosts) -ceq $baseHash -and $script:rules.Count -eq 0)
+                Assert-Test ($script:processes.Count -eq 0)
+            }
             Assert-Test ((Get-PhaseDRunnerHash $db) -ceq $spec.runtimeDbSha256)
-            Assert-Test ($script:processes.Count -eq 0)
             if ($case -eq 'digest-failure') {
                 Assert-Test ($errorCode -ceq 'phase3b2_epinel_minimal_start_digest_invalid')
                 Assert-Test (-not (Test-Path -LiteralPath (Join-Path $spec.launchRoot 'evidence')))
@@ -148,6 +167,14 @@ try {
             }
             $failurePath=@(Get-ChildItem -LiteralPath $spec.launchRoot -Recurse -Filter run-failure.receipt.json)[0].FullName
             $failure=Get-Content -LiteralPath $failurePath -Raw | ConvertFrom-Json
+            if ($JobContract) {
+                Assert-Test (-not $failure.automaticRollbackCompleted -and $failure.recoveryOwnerCode -ceq 'outside_execution_job')
+                Assert-Test ($script:processes.Count -gt 0 -and $script:rules.Count -gt 0)
+                $journal=Get-Content -LiteralPath (Join-Path $spec.launchRoot 'evidence/active-run.pointer.json') -Raw | ConvertFrom-Json
+                Assert-Test ($journal.databaseBeforeSha256 -ceq $spec.runtimeDbSha256 -and
+                    (Get-PhaseDRunnerHash $hosts) -ceq $script:hostPins.applied)
+                $count++; continue
+            }
             Assert-Test $failure.automaticRollbackCompleted
             $expectedFailure=@{
                 'listener-failure'=@('server_start_and_listener_observation','phase3b2_epinel_minimal_start_loopback_listener_not_ready')
@@ -159,8 +186,10 @@ try {
         }
         Assert-Test ($script:rules.Count -eq $(if ($build -eq 'build_151.8.5') {2} else {1}))
         Assert-Test ($script:preflightCalled -eq $spec.resourcePreflightRequired)
+        if ($JobContract) { Assert-Test (($script:membershipChecks -join ',') -ceq '901,902,903') }
         Assert-Test (-not $start.requiredLocalCatalogPreflightPerformed -and -not $start.officialOutboundFallbackUsed)
         $script:processes.Remove(903) # operator closes the synthetic client
+        if ($JobContract) { $script:processes.Clear() } # outside Job owner has proven zero before completion entry
         [IO.File]::WriteAllText($db,'{"Users":[],"changed":true}')
         if ($case -eq 'observed-exit') {
             $null=New-Item -ItemType Directory -Path (Join-Path $runtimeRoot 'logs')

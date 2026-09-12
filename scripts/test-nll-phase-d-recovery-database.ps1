@@ -1,5 +1,7 @@
 # Run the real DB-readiness block with fake pg_ctl and temporary bindings only.
 $ErrorActionPreference = 'Stop'
+$jobRequired = $false
+$replayOnly = $false
 Set-StrictMode -Version Latest
 $tokens = $null; $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'recover-nll-phase-d-orphaned-execution.ps1'),[ref]$tokens,[ref]$errors)

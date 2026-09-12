@@ -54,6 +54,13 @@ static bool IsSafeFailureCode(string value) =>
 static async Task ExecuteAsync(string[] args)
 {
 var options = ParseArguments(args);
+if (options.ContainsKey("retire-execution-fx"))
+{
+  NikkeLocalLab.Automation.ExecutionAssetRetirement.Retire(Required(options, "launch-root"),
+      RequiredText(options, "expected-bundle-sha256"), RequiredText(options, "expected-termination-sha256"));
+  Console.WriteLine("{\"contractId\":\"nll/execution-fx-cleanup/v1\",\"statusCode\":\"private_delivery_retired\"}");
+  return;
+}
 if (options.ContainsKey("verify-boss-qte"))
 {
   BossQuickTimeEventChecks.Run();

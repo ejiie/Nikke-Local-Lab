@@ -45,6 +45,7 @@ public sealed class ExecutionAssetOverlay : IDisposable
     try
     {
       Require(!File.Exists(Path.Combine(root, ".retiring")) &&
+          !File.Exists(Path.Combine(root, ".recovery")) &&
           !File.Exists(Path.Combine(root, "retired.json")), "execution_fx_retired");
       var manifest = ReadManifest(root, manifestSha256, binding);
       CheckInventory(root, retiringAllowed: false);
@@ -98,6 +99,47 @@ public sealed class ExecutionAssetOverlay : IDisposable
     root = PlainDirectory(root);
     ReadManifest(root, manifestSha256, binding);
     using var ownedLease = Lease.Acquire(root);
+    RetireOwned(root, manifestSha256, binding);
+  }
+
+  /// <summary>
+  /// Production recovery entry point. The coordinator must verify its sealed
+  /// execution and SAME Job Object's terminal zero-process evidence in the
+  /// callback. A PID check, timeout or an absent/recreated Job is not evidence.
+  /// This component does not authenticate OS observations from JSON. The receipt
+  /// hash binds the caller's verified evidence to the irreversible intent.
+  /// Ordinary Retire deliberately continues to reject abandoned leases.
+  /// </summary>
+  public static void RetireAfterProcessTreeExit(string root, string manifestSha256,
+      ExecutionAssetBinding binding, string terminationReceiptSha256, Action verifyProcessTreeExit)
+  {
+    ArgumentNullException.ThrowIfNull(verifyProcessTreeExit);
+    Require(IsSha(terminationReceiptSha256), "execution_fx_exit_proof_invalid");
+    root = PlainDirectory(root);
+    ReadManifest(root, manifestSha256, binding);
+    verifyProcessTreeExit(); // No writes or lease adoption before external authority.
+    using var ownedLease = Lease.AcquireForRecovery(root);
+    ReadManifest(root, manifestSha256, binding);
+    CheckInventory(root, retiringAllowed: true);
+    verifyProcessTreeExit(); // Still exclusive; recheck immediately before intent.
+    var marker = Path.Combine(root, ".recovery");
+    var markerBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
+    {
+      contractId = "nll/execution-fx-recovery/v1",
+      executionCode = binding.ExecutionCode,
+      manifestSha256,
+      terminationReceiptSha256
+    }));
+    if (File.Exists(marker))
+      Require(ReadSmall(marker).SequenceEqual(markerBytes), "execution_fx_recovery_drifted");
+    else
+      WriteNew(marker, markerBytes); // Survives interruption; Open can never revive this run.
+    ownedLease.AllowRemoval(); // Only sticky intent makes a later lease removal safe.
+    RetireOwned(root, manifestSha256, binding);
+  }
+
+  private static void RetireOwned(string root, string manifestSha256, ExecutionAssetBinding binding)
+  {
     var manifest = ReadManifest(root, manifestSha256, binding);
     CheckInventory(root, retiringAllowed: true);
     var marker = Path.Combine(root, ".retiring");
@@ -257,7 +299,7 @@ public sealed class ExecutionAssetOverlay : IDisposable
     var allowed = new HashSet<string>(StringComparer.Ordinal)
             { "manifest.private.json", "original.bundle", "overlay.bundle", ".lease" };
     if (retiringAllowed)
-      allowed.UnionWith([".retiring", "retired.json"]);
+      allowed.UnionWith([".retiring", ".recovery", "retired.json"]);
     foreach (var file in Directory.EnumerateFileSystemEntries(root))
     {
       Require(allowed.Contains(Path.GetFileName(file)), "execution_fx_foreign_member");
@@ -285,6 +327,29 @@ public sealed class ExecutionAssetOverlay : IDisposable
 
   private sealed class Lease(string path, FileStream stream) : IDisposable
   {
+    private bool removeOnDispose = true;
+
+    public void AllowRemoval() => removeOnDispose = true;
+
+    public static Lease AcquireForRecovery(string root)
+    {
+      var path = Path.Combine(root, ".lease");
+      FileStream? stream = null;
+      try
+      {
+        if (File.Exists(path)) PlainFile(path);
+        stream = new FileStream(path, File.Exists(path) ? FileMode.Open : FileMode.CreateNew,
+            FileAccess.ReadWrite, FileShare.None);
+        Require(stream.Length == 0, "execution_fx_lease_drifted");
+        return new Lease(path, stream) { removeOnDispose = false };
+      }
+      catch
+      {
+        stream?.Dispose(); // A failed adoption must preserve the old lease.
+        throw;
+      }
+    }
+
     public static Lease Acquire(string root)
     {
       var path = Path.Combine(root, ".lease");
@@ -303,6 +368,7 @@ public sealed class ExecutionAssetOverlay : IDisposable
       // The lease remains on an unclean process exit. Never infer that an
       // existing lease is stale, and never unlink a substituted directory.
       stream.Dispose();
+      if (!removeOnDispose) return;
       PlainFile(path);
       Require(new FileInfo(path).Length == 0, "execution_fx_lease_drifted");
       File.Delete(path);

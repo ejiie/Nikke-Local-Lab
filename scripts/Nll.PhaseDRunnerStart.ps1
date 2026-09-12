@@ -232,6 +232,15 @@ function Invoke-PhaseDRunnerStart {
             (Get-Sha256Hex $dbBeforePath) -ceq $expectedDbSha256 -and
             (Get-Sha256Hex $hostsBeforePath) -ceq $expectedHostsSha256
         ) 'phase3b2_epinel_minimal_start_backup_failed'
+        if ($Specification.contractId -ceq 'nll/phase-d-runner-input/v3') {
+            # Publish rollback baseline BEFORE the first operational mutation.
+            # Start failure cannot clean up its own Job; an outside owner does it.
+            Write-AtomicUtf8NoBom $activePointerPath (([ordered]@{
+                schemaVersion=1; contractId='nll/phase3b2-epinel-minimal-active-run-pointer/v1'
+                assessmentUid=$assessmentUid; runRoot=$runRoot; serverProcessId=0; bootstrapProcessId=0; clientProcessId=0
+                databaseBeforeSha256=(Get-Sha256Hex $dbBeforePath); hostsBeforeSha256=(Get-Sha256Hex $hostsBeforePath)
+            } | ConvertTo-Json) + "`n")
+        }
     
         $hostsText = [Text.UTF8Encoding]::new($true, $true).GetString(
             [IO.File]::ReadAllBytes($hostsPath)
@@ -291,6 +300,7 @@ function Invoke-PhaseDRunnerStart {
                 -WorkingDirectory $ServerRoot -PassThru -NoNewWindow `
                 -RedirectStandardOutput $stdoutPath `
                 -RedirectStandardError $stderrPath
+            Assert-PhaseDRunnerJobProcess -Specification $Specification -ProcessId $serverProcess.Id
         }
         finally {
             Remove-Item Env:\EPINELPS_CLASSIC_SOLO_RAID_ACCOUNT_ID,
@@ -336,8 +346,8 @@ function Invoke-PhaseDRunnerStart {
         $env:NLL_PHASE3B2_ASSESSMENT_UID = $assessmentUid
         $env:NLL_PHASE3B2_EVIDENCE_LANE = $BootstrapEvidenceLane
         try {
-            $bootstrapProcess = Start-Process -FilePath $bootstrapPath `
-                -WorkingDirectory (Split-Path -Parent $bootstrapPath) -PassThru -WindowStyle Hidden
+            $bootstrapProcess = Start-PhaseDRunnerBootstrap -Specification $Specification -Path $bootstrapPath
+            Assert-PhaseDRunnerJobProcess -Specification $Specification -ProcessId $bootstrapProcess.Id
         }
         finally {
             Remove-Item Env:\NLL_PHASE3B2_ASSESSMENT_UID,
@@ -361,6 +371,7 @@ function Invoke-PhaseDRunnerStart {
         $bootstrapStart = Get-Content -LiteralPath $bootstrapStartPath -Raw `
             -Encoding UTF8 | ConvertFrom-Json
         $clientProcessId = [int]$bootstrapStart.clientProcessId
+        Assert-PhaseDRunnerJobProcess -Specification $Specification -ProcessId $clientProcessId
         Assert-True (
             $bootstrapStart.contractId -ceq `
                 'nll/phase3b2-physical-bootstrap-client-start/v1' -and
@@ -504,6 +515,14 @@ function Invoke-PhaseDRunnerStart {
     }
     catch {
         $failureMessage = $_.Exception.Message
+        if ($Specification.contractId -ceq 'nll/phase-d-runner-input/v3') {
+            # No restore, PID stop, firewall removal or claimed rollback in this Job.
+            Write-AtomicUtf8NoBom $runFailurePath (([ordered]@{
+                contractId='nll/phase-d-job-start-failure/v1'; failedStageCode=$stageCode
+                automaticRollbackCompleted=$false; recoveryOwnerCode='outside_execution_job'
+            } | ConvertTo-Json) + "`n")
+            throw 'phase_d_job_start_failed'
+        }
         if ($clientProcessId -gt 0) {
             Stop-PinnedProcess $clientProcessId 'nikke'
         }

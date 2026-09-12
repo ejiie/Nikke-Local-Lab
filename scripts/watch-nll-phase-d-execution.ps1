@@ -128,7 +128,9 @@ function Invoke-EmergencyRollback {
             $EvidenceRoot.TrimEnd('\') + '\',
             [StringComparison]::OrdinalIgnoreCase)) `
         'phase_d_emergency_rollback_run_root_invalid'
-    Stop-PhaseDVerifiedProcessSet -Pointer $pointer -Identities $runtimeProcessIdentities
+    if ($jobRequired) {
+        Invoke-PhaseDWithJobZeroProof $LaunchRoot $ExpectedRunnerBundleSha256 { }
+    } else { Stop-PhaseDVerifiedProcessSet -Pointer $pointer -Identities $runtimeProcessIdentities }
     $dbBefore = Join-Path $runRoot 'db.before.bin'
     $hostsBefore = Join-Path $runRoot 'hosts.before.bin'
     Assert-Watcher (Test-Path -LiteralPath $dbBefore -PathType Leaf) `
@@ -202,6 +204,15 @@ $controlCenterHostsRestored = $false
 $completionApplied = $false
 $raidStatePersisted = $false
 $runtimeProcessIdentities = $null
+$executionJob = $null
+$physicalCleanupCommitted = $false
+$jobRequired = $null -ne $sealedRunner -and $sealedRunner.specification.contractId -ceq 'nll/phase-d-runner-input/v3'
+if ($jobRequired) {
+    . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerContract.ps1')
+    . (Join-Path $PSScriptRoot 'Nll.PhaseDJob.ps1')
+    # No operational catch/rollback before the explicit handoff has committed.
+    $executionJob = Receive-PhaseDJobHandoff $LaunchRoot $ExpectedRunnerBundleSha256
+}
 
 try {
     Assert-Watcher `
@@ -226,6 +237,11 @@ try {
         try { $client.WaitForExit() } finally { $client.Dispose() }
     }
 
+    if ($jobRequired) {
+        Stop-PhaseDExecutionJob $LaunchRoot $ExpectedRunnerBundleSha256
+        Protect-PhaseDJobServerLog $LaunchRoot $ExpectedRunnerBundleSha256
+        Invoke-PhaseDExecutionFxCleanup $LaunchRoot $ExpectedRunnerBundleSha256
+    }
     $completionArguments = [ordered]@{
         ObservedStageCode = 'startup_only'; OutcomeCode = 'client_exit'
         ServerRoot = $ServerRoot; EvidenceRoot = $EvidenceRoot
@@ -266,6 +282,10 @@ try {
                 (Join-Path $env:SystemRoot 'System32\drivers\etc\hosts')
             restorationOwnerCode = 'phase_d_completion_watcher'
         })
+    if ($jobRequired) {
+        Write-PhaseDPhysicalCleanupCheckpoint $LaunchRoot $ExpectedRunnerBundleSha256 $completionPath
+        $physicalCleanupCommitted = $true
+    }
     $pgStartExitCode = Invoke-PhaseDPgCtl `
         -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-pg.identity.json') `
         -PgCtlPath $ControlCenterPgCtlPath `
@@ -334,6 +354,22 @@ catch {
         throw $failureCode
     }
     $rolledBack = $false
+    if ($jobRequired -and -not $physicalCleanupCommitted) {
+        try {
+            Assert-PhaseDChildrenExited -LaunchRoot $LaunchRoot
+            Stop-PhaseDExecutionJob $LaunchRoot $ExpectedRunnerBundleSha256
+            Protect-PhaseDJobServerLog $LaunchRoot $ExpectedRunnerBundleSha256
+            Invoke-PhaseDExecutionFxCleanup $LaunchRoot $ExpectedRunnerBundleSha256
+        } catch {
+            # No cleanup after an unproven late child, Job or FX retirement.
+            Invoke-PhaseDStateLock -LaunchRoot $LaunchRoot -Action {
+                $state = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 | ConvertFrom-Json
+                $state.statusCode='started'; $state.failureCode='phase_d_job_cleanup_unproven'
+                Write-AtomicJson $statePath $state
+            }
+            throw 'phase_d_job_cleanup_unproven'
+        }
+    }
     if (-not $completionApplied) {
         try {
             $rolledBack = [bool](Invoke-EmergencyRollback)
@@ -358,6 +394,7 @@ catch {
         Get-Sha256Lower (Join-Path $env:SystemRoot 'System32\drivers\etc\hosts')
     }
     catch { $null }
+    if (-not $physicalCleanupCommitted) {
     Write-AtomicJson (Join-Path $LaunchRoot 'hosts-restoration.receipt.json') `
         ([ordered]@{
             schemaVersion = 1
@@ -370,8 +407,13 @@ catch {
             finalSha256 = $finalHostsSha256
             restorationOwnerCode = 'phase_d_completion_watcher_failure_path'
         })
+    }
     if (($completionApplied -or $rolledBack) -and $controlCenterHostsRestored -and -not $databaseRestarted) {
         try {
+            if ($jobRequired -and -not $physicalCleanupCommitted) {
+                Write-PhaseDRollbackCleanupCheckpoint $LaunchRoot $ExpectedRunnerBundleSha256
+                $physicalCleanupCommitted=$true
+            }
             $pgStartExitCode = Invoke-PhaseDPgCtl `
                 -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-pg.identity.json') `
                 -PgCtlPath $ControlCenterPgCtlPath `
@@ -439,3 +481,4 @@ catch {
         "$failureCode`n",
         [Text.UTF8Encoding]::new($false))
 }
+finally { if ($null -ne $executionJob) { $executionJob.Dispose() } }

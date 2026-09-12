@@ -65,6 +65,14 @@ function Assert-PhaseDCacheArtifactIdentity {
 function Invoke-PhaseDEmergencyRollback {
     param([string]$EvidencePath, [string]$RuntimePath)
     $pointerPath = Join-Path $EvidencePath 'active-run.pointer.json'
+    if ($jobAttempted -and -not (Test-Path -LiteralPath $pointerPath -PathType Leaf)) {
+        # New start publishes its baseline before any mutation. No pointer means
+        # no mutable start phase, but still require live same-job zero proof.
+        Invoke-PhaseDWithJobZeroProof $launchRoot $runnerBundle.sha256 {
+            Assert-PhaseD ((Get-Sha256Lower $runtimeDbPath) -ceq $runtimeDbSha256) 'phase_d_job_unjournaled_runtime_drift'
+        }
+        return $true
+    }
     Assert-PhaseD `
         (Test-Path -LiteralPath $pointerPath -PathType Leaf) `
         'phase_d_emergency_rollback_pointer_missing'
@@ -80,7 +88,12 @@ function Invoke-PhaseDEmergencyRollback {
             ([IO.Path]::GetFullPath($EvidencePath).TrimEnd('\') + '\'),
             [StringComparison]::OrdinalIgnoreCase)) `
         'phase_d_emergency_rollback_run_root_invalid'
-    Stop-PhaseDVerifiedProcessSet -Pointer $pointer -Identities $runtimeProcessIdentities
+    if ($jobAttempted) {
+        Invoke-PhaseDWithJobZeroProof $launchRoot $runnerBundle.sha256 { }
+        Assert-PhaseDChildrenExited -LaunchRoot $launchRoot -RuntimeStartJob $executionJob
+        Protect-PhaseDJobServerLog $launchRoot $runnerBundle.sha256
+        Invoke-PhaseDExecutionFxCleanup $launchRoot $runnerBundle.sha256
+    } else { Stop-PhaseDVerifiedProcessSet -Pointer $pointer -Identities $runtimeProcessIdentities }
     $dbBefore = Join-Path $runRoot 'db.before.bin'
     $hostsBefore = Join-Path $runRoot 'hosts.before.bin'
     Assert-PhaseD (Test-Path -LiteralPath $dbBefore -PathType Leaf) `
@@ -90,9 +103,13 @@ function Invoke-PhaseDEmergencyRollback {
         ((Get-Sha256Lower $runtimeDbPath) -cne (Get-Sha256Lower $dbBefore))
     if ($runtimeChanged -and
         -not (Test-Path -LiteralPath $soloRaidPendingPath -PathType Leaf)) {
+        if ($jobAttempted) {
+            . (Join-Path $runnerBundle.root 'Nll.PhaseDRunnerOperations.ps1')
+            Invoke-PhaseDRunnerCapture -Specification $runnerSpec -SourceDatabasePath $runtimeDbPath
+        }
         # The recovery path owns capture when the coordinator has not received
         # an authenticated pending envelope. Never overwrite changed state here.
-        throw 'phase_d_raid_state_capture_missing_before_rollback'
+        if (-not (Test-Path -LiteralPath $soloRaidPendingPath -PathType Leaf)) { throw 'phase_d_raid_state_capture_missing_before_rollback' }
     }
     [IO.File]::WriteAllBytes(
         $runtimeDbPath, [IO.File]::ReadAllBytes($dbBefore))
@@ -281,6 +298,9 @@ $runtimeProcessIdentities = $null
 $coordinatorStage = 'preparation'
 $controlCenterHostsPrepared = $false
 $watcherOwnershipTransferred = $false
+$watcherSpawned = $false
+$executionJob = $null
+$jobAttempted = $false
 $controlCenterHostsOriginalSha256 = $null
 $controlCenterHostsBackupPath = Join-Path $launchRoot 'control-center-hosts.before.bin'
 
@@ -845,6 +865,9 @@ try {
     $runnerSpec = New-PhaseDRunnerSpecification -LaunchInput $runnerLaunchInput `
         -PreparationBindingSha256 $preparation.bindingSha256 -ProfileSha256 $bossRuntimeVariantProfileSha256 `
         -SourceManifestSha256 $sourceManifestSha256 -RunIntentCode $ValidationKind
+    $runnerSpec.contractId = 'nll/phase-d-runner-input/v3'
+    $runnerSpec.jobNonce = [guid]::NewGuid().ToString('N')
+    $runnerSpec.executionFx = $null # Native 151 delivery is not admitted by this lifecycle change.
     $runnerBundle = New-PhaseDRunnerBundle -Specification $runnerSpec -ScriptsRoot $PSScriptRoot
     $derivedStart = Join-Path $runnerBundle.root 'invoke-nll-phase-d-runner.ps1'
     $derivedCompletion = $derivedStart
@@ -1021,7 +1044,11 @@ try {
     $coordinatorStage = 'derived_start'
     $null = Read-PhaseDRunnerBundle -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
     $startArguments = [ordered]@{ Phase='start'; LaunchRoot=$launchRoot; ExpectedBundleSha256=$runnerBundle.sha256 }
+    . (Join-Path $runnerBundle.root 'Nll.PhaseDJob.ps1')
+    $jobAttempted = $true
+    $executionJob = New-PhaseDExecutionJob -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
     $startToolResult = Invoke-PhaseDChildScript `
+        -ExecutionJob $executionJob `
         -TimeoutSeconds 300 -OwnershipPath (Join-Path $launchRoot 'phase-d-child-start.identity.json') `
         -ScriptPath $derivedStart `
         -Arguments $startArguments `
@@ -1087,9 +1114,12 @@ try {
     $watcherArguments += @('-ExpectedRunnerBundleSha256', $runnerBundle.sha256)
     $watcherProcess = Start-Process -FilePath $powershell `
         -ArgumentList $watcherArguments -WindowStyle Hidden -PassThru
-    # Process creation transfers mutable-runtime ownership immediately. Even if
-    # identity publication fails, the coordinator must never race this watcher.
+    # Spawn alone grants NO mutable ownership; watcher waits for explicit commit.
+    $watcherSpawned = $true
+    Confirm-PhaseDJobHandoff -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256 -Watcher $watcherProcess
     $watcherOwnershipTransferred = $true
+    $executionJob.Dispose()
+    $executionJob = $null
     $watcherProcessStartedAtUtc = $watcherProcess.StartTime.ToUniversalTime().ToString('o')
     Write-AtomicJson (Join-Path $launchRoot 'completion-watcher.identity.json') `
         ([ordered]@{
@@ -1136,7 +1166,28 @@ catch {
         $primaryFailure.Exception.Message
     }
     else { 'phase_d_uncontrolled_failure' }
-    if ($failureCode -ceq 'phase_d_child_deadline_unproven') {
+    if ($watcherSpawned -and -not $watcherOwnershipTransferred) {
+        try {
+            $watcherOwnershipTransferred=Test-PhaseDJobHandoffCommitted $launchRoot $runnerBundle.sha256 $watcherProcess
+            if (-not $watcherOwnershipTransferred) {
+                # Before commit the watcher cannot run any cleanup/child. Retain
+                # the exact created handle and prove its exit before coordinator takeover.
+                if (-not $watcherProcess.HasExited) { $watcherProcess.Kill() }
+                if (-not $watcherProcess.WaitForExit(10000)) { throw 'phase_d_job_handoff_unproven' }
+            }
+        } catch {
+            Set-ExecutionState -StatusCode 'started' -FailureCode 'phase_d_job_handoff_unproven'
+            throw 'phase_d_job_handoff_unproven'
+        }
+    }
+    if ($jobAttempted -and -not $watcherOwnershipTransferred) {
+        try { Stop-PhaseDExecutionJob -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256 }
+        catch {
+            Set-ExecutionState -StatusCode 'started' -FailureCode 'phase_d_job_zero_unproven'
+            throw 'phase_d_job_zero_unproven'
+        }
+    }
+    if ($failureCode -ceq 'phase_d_child_deadline_unproven' -and -not $jobAttempted) {
         Set-ExecutionState -StatusCode 'started' -FailureCode $failureCode
         throw $failureCode
     }
@@ -1209,6 +1260,7 @@ catch {
     $failureStatusCode = if ($coordinatorRollbackProven) { 'failed' } else { 'started' }
     if ($coordinatorRollbackProven -and $controlCenterDatabaseStopped) {
         try {
+            if ($jobAttempted) { Write-PhaseDRollbackCleanupCheckpoint $launchRoot $runnerBundle.sha256 }
             $pgStartExitCode = Invoke-PhaseDPgCtl `
                 -OwnershipPath (Join-Path $launchRoot 'phase-d-child-pg.identity.json') `
                 -PgCtlPath $controlCenterPgCtl `
@@ -1226,4 +1278,7 @@ catch {
     }
     Set-ExecutionState -StatusCode $failureStatusCode -FailureCode $failureCode
     throw $failureCode
+}
+finally {
+    if ($null -ne $executionJob) { $executionJob.Dispose() }
 }

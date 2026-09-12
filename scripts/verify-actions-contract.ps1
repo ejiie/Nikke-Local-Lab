@@ -115,6 +115,9 @@ Assert-Contains $Hook 'verify-phase3b2\.ps1\s+-ContractOnly' "Pre-commit hook mu
 Assert-Contains $Hook 'verify-automation-boss-weakness-variant\.ps1' "Pre-commit hook must verify the boss weakness variant automation contract."
 Assert-Contains $Hook 'verify-actions-contract\.ps1' "Pre-commit hook must verify Actions automation."
 Assert-Contains $Phase3B1 'verify-phase3b0\.ps1' "Phase 3B-1 must preserve the Phase 3B-0, historical Phase 3A, and completed baseline chain."
+Assert-Contains $Phase3B1 'test-nll-execution-fx-retirement\.ps1' "Windows full baseline must verify real Job / synthetic FX retirement after building Automation."
+$phase2A2 = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts/verify-phase2a2.ps1') -Raw
+Assert-Contains $phase2A2 'test-nll-phase-d-job\.ps1' "Windows baseline must exercise atomic Job creation, handoff and same-job zero proof."
 Assert-Contains $Phase3B2 'verify-phase3b1\.ps1' "Phase 3B-2 must preserve the Phase 3B-1 and completed baseline chain."
 Assert-Contains $Phase3B2 'not_executed_contract_scaffold_only' "Phase 3B-2 Wave 0 must explicitly preserve the not-executed scaffold verdict."
 

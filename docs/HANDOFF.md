@@ -14,6 +14,33 @@
 
 ## 지금 할 작업
 
+### 2026-09-12 전체 트리 정리와 native 전달 잔여
+
+요청은 **1번 나머지(native 전달/rollback)와 2번 전체(트리 종료/정리)**다.
+2번의 새 소스 경로는 원자적 Job 소속 → watcher 인계 → 같은 Job 잔류 0 검증 →
+completion/rollback 및 선택적 FX 정리로 연결했다. runner input v3/bundle v2를 사용하고
+구 v1 봉인은 보존한다. FX 복구는 receipt JSON만 믿지 않고 실제 Job을 query-only로
+열어 확인하며, 비정상 빈 lease의 독점 접근과 proof hash 결박 후 private 사본만 정리한다.
+Automation 83개(신규 9개), 실제 Windows Job 44개, capture/실패·복구 순서 38개,
+FX 정리의 실제 Windows Job 합성 9개와 같은 9개 실제 materializer CLI 호출,
+Python 63개가 통과했다. 설치 v6 96개 pin·선택·등록 보존도 재검증했다.
+설치 v6/운영 DB/게임 실행에는 반영하지 않았다.
+
+**1번 실제 native 전달은 아직 완료하지 못했다.** 정확한 디스크 호출 범위 검사에서
+서명 실패/오류 분기를 확인했으나, 151 local provider 경로와 승인된 unchanged sodium의
+수정 카탈로그 수락 경로를 입증하지 못했다. CIDX trailer도 미해소다. 원래 서명을 수정
+내용의 검증 증거로 재사용하거나 새 native 패치를 추가하지 않았다. 입력 pin/명령 변조
+대조 2개와 source-free blocker receipt는 `artifacts/native-delivery-static-20260912/`에 있다.
+
+설치 선택 v6와 S29 차단은 유지한다. 신규 coordinator의 `executionFx`는 null이며
+이전 HTTP 경로를 native 151 전달로 승격하지 않는다. 모든 Job 소유자 crash로 live
+Job 증거를 잃은 미정리 실행은 fail closed한다. 물리 정리를 완료·봉인한 실행은 별도
+checkpoint로 DB replay만 재시도하며, 과거 receipt로 물리 정리를 다시 허용하지 않는다.
+배포/실게임 수신·화면·복구 인수도 미완료다.
+다음에 남은 것은 위 native 전달 gate 해소와 격리 전달/rollback 검증이다. 그 뒤 v3
+admission·게시/job API·UI를 진행한다. 상세는
+[보스 파이프라인](features/BOSS_ONBOARDING_PIPELINE.md#native-delivery-blockers-and-whole-tree-retirement--2026-09-12)을 따른다.
+
 ### 2026-09-12 정확한 151 FX 오프라인 재결박
 
 기존 후보의 내부 자산 키 → 내장/core 카탈로그 동일 의존 관계 → 설치 청크의 정확한

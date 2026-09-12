@@ -2,6 +2,83 @@
 
 > 상태 참고 (2026-09-06): 아래 S29 결과는 당시 admission 기록입니다. 현재 S29의 profile v3/등록 v2 불일치는 별도 보류이며, 151 실게임 완료는 S26 기준입니다. [안정화 계획](../STABILIZATION_PLAN.md)을 함께 확인합니다.
 
+## Native delivery blockers and whole-tree retirement — 2026-09-12
+
+The follow-up request covers the remainder of native delivery/rollback and the
+entire process-tree cleanup integration. **Do not mark native delivery complete.**
+Bounded disk-only inspection of the exact 151 assembly and approved, unchanged
+sodium found a signature failure/error branch, not proof that modified catalogs
+are accepted. The installed metadata file is empty. Asset API strings and the
+`is_local` database column are not a resolved native provider call chain.
+
+The private reproduction helper and source-free result are under
+`artifacts/native-delivery-static-20260912/`. Input pins were rechecked; two
+negative controls rejected pin/instruction drift. No target DLL was loaded and
+no game, DB, network, catalog replacement or native binary patch was performed.
+Three gates remain:
+
+- `native_local_provider_path_unresolved`: the exact local path and effective
+  embedded/core catalog/cache precedence are not established.
+- `modified_catalog_signature_acceptance_unresolved`: an original NDS signature
+  is not evidence that modified bytes are valid. The approved DLL's existing
+  load-time effect on this exact call chain is unresolved.
+- `native_chunk_index_trailer_unresolved`: the chunkstore alternative also needs
+  a valid CIDX trailer and consistent new chunk/catalog mappings. It cannot use
+  the old trailer as a claimed checksum for changed bytes.
+
+The lifecycle implementation is independent of those gates. New runner input v3
+and bundle v2 bind a random per-execution Job nonce. The start PowerShell is
+assigned atomically during Windows process creation; server/bootstrap/client
+descendants inherit that Job. Breakaway is not enabled and the last owner handle
+closing kills members. Coordinator, watcher, completion and PostgreSQL control
+workers remain outside. Watcher ready/commit handoff retains a live handle.
+Microsoft documents the [creation-time Job list](https://devblogs.microsoft.com/oldnewthing/20230209-00/?p=107812)
+and [Job inheritance/limits](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
+
+Termination success alone is insufficient: cleanup consumes an immutable,
+execution/bundle/nonce-bound zero-process receipt and queries the **same live
+kernel Job**, while retaining its handle. Missing jobs are never recreated as
+proof. If all owners crash and that evidence is lost, recovery stays fail closed;
+it does not restore isolation or erase leases based on absent PIDs. Jobs do not
+provide network isolation, and externally delegated process creation (such as
+WMI/service creation) is not silently included in a Job inheritance claim.
+Existing whole-tree non-loopback admission requirements remain separate.
+
+Physical cleanup and subsequent PostgreSQL replay are different phases. Once
+physical cleanup is verified and durably checkpointed while the Job is still
+owned, a later PG/persistence failure may retry **only database replay/pending
+cleanup** using those pinned completion/rollback records. It cannot repeat
+runtime writes, hosts restoration, firewall removal or FX lease adoption without
+live Job proof. This prevents a closed, already-cleaned Job from making pending
+state permanently unrecoverable. Before handoff commit the coordinator retains
+cleanup responsibility and must prove the exact waiting watcher's exit before
+taking over; a published commit, including an uncertain write outcome, belongs
+to the watcher.
+
+The optional input `executionFx` binds the HTTP delivery manifest, candidate,
+profile and weakness. Its root is fixed at `runtime/execution-fx`. Current
+coordinator preparation leaves it null: this change does not admit the old
+HTTP manifest as native 151 delivery. Unbound delivery folders are rejected.
+The sealed materializer's `--retire-execution-fx` mode rechecks code/input pins,
+opens the Job with query-only access, checks zero members and calls
+`ExecutionAssetOverlay.RetireAfterProcessTreeExit`. Ordinary `Retire` still
+rejects abandoned leases. The recovery entry point requires exclusive access to
+a zero-byte lease and binds sticky `.recovery` intent to the termination receipt
+hash before removing either of its two hash-checked private copies. Interrupted
+cleanup can retry that exact proof; it cannot reopen the delivery route.
+
+The installed v6, operating DB, approved sodium and S29 admission block remain
+unchanged. No native-load/render/rollback acceptance is claimed by these
+synthetic lifecycle checks. The pre-existing offline native candidate remains
+available for a future resolved native delivery path.
+
+Focused local checks passed: Automation 83 cases (9 new lease recovery cases),
+actual Windows Job 44, capture/failure/replay ordering 38, and actual Job-bound
+FX retirement 9 both through the library and through the built materializer
+CLI. Python regression checks remain 63. The installed v6's 96 file pins and
+selection/registration were rechecked unchanged; the local preservation receipt
+is `artifacts/job-retirement-preservation-f8e265fa86484700a275a8d99d263e2e.json`.
+
 ## Exact 151 native FX binding — 2026-09-12
 
 **Completed: offline native payload binding and regenerated 151 FX candidates.
