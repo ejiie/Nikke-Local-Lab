@@ -250,6 +250,9 @@ class CandidateTests(unittest.TestCase):
     def test_common_powershell_success_failure_retry_and_duplicate(self):
         pwsh = shutil.which("pwsh")
         self.assertIsNotNone(pwsh, "PowerShell 7 is required for the common pipeline checks")
+        # Linux commonly exposes /usr/bin/pwsh as a symlink. Pass the actual
+        # executable, preserving the production pipeline's no-reparse boundary.
+        pwsh = str(Path(pwsh).resolve())
         fixture, source = self.complete_fixture()
         (self.cache / "behavior.bundle").rename(self.cache / "externalbehavior_assets_all_abcdef.bundle")
         inputs = self.root / "inputs"
