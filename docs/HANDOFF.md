@@ -14,6 +14,25 @@
 
 ## 지금 할 작업
 
+### 2026-09-12 공통 v3 후보 자동 조립
+
+`invoke-nll-boss-onboarding.ps1 -CandidateOnly`로 새 discovery/원본 행동 트리 → QTE 포함
+v3 조립 → 격리 FX 3종 → 5속성 검증 → 최종 후보 봉인을 연결했다. S26의 no-QTE v2
+후보도 같은 경로로 통과한다. 합성 12개에는 실제 PowerShell 호출의 중간 실패·QTE/FX
+변조·입력 drift·재시도·중복 폴더 거부·등록 불변·private 임시 파일 정리를 포함한다.
+실제 151/v6 입력 S29/S26 10개 속성 검사는
+`artifacts/boss-onboarding-checks/91e8c23bd7b546d09aeec5877741c756/receipt.json`에 있다.
+Windows 임시 파일 핸들 문제를 byte-backed FX reader로 수정했고, 기존 기대 해시 3종 및
+복구 2회도 `16cad47968eb456d940758d3d2e30748` 검사에서 재현했다.
+로컬 단위 486개, 저장소/Phase 0/완료된 2A1·2A2·2B/역사 3A·3B0·3B1/3B2/약점/Actions
+검사와 Python 46개(신규 후보 12·기존 QTE 4·FX 29·Git 1)가 통과했다. 로컬 운영 PG는
+시작하지 않았으며 CI의 격리 PG 결과는 해당 source commit의 Actions에서 따로 확인한다.
+후보 상태는 `verified_candidate_pending_runtime_delivery`, 실행 admission은 `not_assessed`다.
+**다음 작업은 원본 client FX 전달과 실행별 rollback/정리**이며 이후 v3 실행 admission,
+원자적 게시/job API, 시즌 선택/팝업 UI가 남는다. S29 등록 pin과 실행 차단, 설치 v6 96개
+pin, 운영 DB/게임은 바꾸지 않았다. 아래 QTE/FX 절의 ‘v3 조립 남음’은 과거 단계 이력이다.
+상세와 재현 명령은 [보스 파이프라인](features/BOSS_ONBOARDING_PIPELINE.md)을 따른다.
+
 ### 2026-09-12 S29 격리 FX 후보/복구
 
 공유 캐시와 분리된 새 폴더에 v3 프로필의 FX 3종을 생성·봉인하고 후보 내부만 복구하는
