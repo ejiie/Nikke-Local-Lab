@@ -23,8 +23,11 @@ Windows는 기존 kernel 시작 시각을 사용한다. 시작 시각의 허용 
 [native boot-clock 변환](https://github.com/dotnet/runtime/blob/v8.0.14/src/native/libs/System.Native/pal_time.c)이다.
 표시용 UTC는 관측 값으로 보존한다. 새 parser는 합성 괄호/공백·잘못된 PID/boot/tick을
 검사하며, subprocess 실패 로그에는 controlled mode/status/stage만 남긴다.
-로컬 Windows 자체 검사는 통과했다. 실제 Linux PG 및 push→PR→merge 결과는
-수정 SHA의 새 Actions run으로 별도 확인해야 한다.
+수정 `46b2d84`의 [Actions run 34666698710](https://github.com/ejiie/Nikke-Local-Lab/actions/runs/34666698710)은
+Windows 전체 검증, Linux S-08 12개 subprocess 사례, PostgreSQL **114/114**와
+자동 게시를 모두 통과했다. [PR #13](https://github.com/ejiie/Nikke-Local-Lab/pull/13)은
+2026-09-12 11:13 KST에 `7e59e06`으로 squash merge됐다. 앞서 완료한 영속화 소스도
+함께 반영됐다. remote는 private이며 권한·브랜치 보호를 완화하지 않았다.
 
 ## 목적과 실행 경계
 

@@ -37,6 +37,7 @@
 - [계정 fresh capture 경로·절차](operations/PHASE_C_FRESH_CAPTURE_PATHS.md)
 - [향후 용량 정리 후보](operations/STORAGE_CLEANUP_AUDIT.md)
 - [검증·GitHub Actions](operations/GITHUB_AUTOMATION.md)
+- [150 클라이언트 D: 보관 이전](operations/CLIENT_150_ARCHIVE.md)
 
 용량 정리 문서는 후보 목록이며 이번 문서 정리에서 client·DB·runtime 파일을 삭제하지 않았습니다.
 

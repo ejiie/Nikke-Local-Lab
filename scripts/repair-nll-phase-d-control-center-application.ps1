@@ -205,6 +205,23 @@ Assert-Repair `
     ($startText.Contains("'--phase-d-control-center','true'")) `
     'phase_d_application_repair_start_mode_missing'
 
+# Retained repair inputs are independent of the archived 150 client tree.
+# Validate before any installed files or PostgreSQL state are changed.
+$cubeLocaleRoot = 'C:\NLL\RuntimeInputs\CubeLocale-150-v1'
+$cubeLocaleHashes = @{
+    'Locale_Skill.lsc' = 'b004e266bd7f97ca3f5160ea1a5e6360146969e3d05df1f8d37ee36d8ca14992'
+    'Locale_System.lsc' = '77f8309826a26fab6873698ea41cc69484f376af9db395705cc75a2129987f80'
+}
+foreach ($leaf in $cubeLocaleHashes.Keys) {
+    $localePath = Join-Path $cubeLocaleRoot $leaf
+    for ($cursor = $localePath; $cursor; $cursor = Split-Path -Parent $cursor) {
+        Assert-Repair ((Test-Path -LiteralPath $cursor) -and
+            ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) `
+            'phase_d_application_repair_cube_locale_path_invalid'
+    }
+    Assert-Repair ((Get-Sha256Lower $localePath) -ceq $cubeLocaleHashes[$leaf]) `
+        'phase_d_application_repair_cube_locale_drifted'
+}
 $repairUid = [guid]::NewGuid().ToString('D')
 $repairRoot = Join-Path $InstallRoot ('staging\application-repairs\' + $repairUid)
 $beforeRoot = Join-Path $repairRoot 'before'
@@ -284,9 +301,10 @@ try {
     New-Item -ItemType Junction -Path (Join-Path $presentationRoot 'cache\prdenv') `
         -Target (Join-Path $PinnedRuntimeRoot 'cache\prdenv') | Out-Null
     Get-ChildItem -LiteralPath (Join-Path $PinnedRuntimeRoot 'cache\local-locale') -File | Copy-Item -Destination $presentationLocale
-    $cubeLocaleRoot = 'C:\NLL\Clients\NIKKE-150.6.9-Physical\Unity\com_proximabeta_NIKKE\saus\saus\lss'
     foreach ($leaf in @('Locale_Skill.lsc', 'Locale_System.lsc')) {
         Copy-Item -LiteralPath (Join-Path $cubeLocaleRoot $leaf) -Destination $presentationLocale -Force
+        Assert-Repair ((Get-Sha256Lower (Join-Path $presentationLocale $leaf)) -ceq $cubeLocaleHashes[$leaf]) `
+            'phase_d_application_repair_cube_locale_copy_drifted'
     }
     $env:NIKKE_LAB_DB = "Host=127.0.0.1;Port=$DatabasePort;Database=nll_control_center;Username=nll_control_center;Password=$databasePassword;SSL Mode=Disable;Include Error Detail=false"
     $env:NIKKE_LAB_ID_SECRET = $identitySecret
