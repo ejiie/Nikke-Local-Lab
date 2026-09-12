@@ -21,6 +21,13 @@ if ($null -ne $recoveryBundle -and
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDCompletion.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDChildProcess.ps1')
+$executionJob = $null
+$replayOnly = $false
+$jobRequired = $null -ne $recoveryBundle -and $recoveryBundle.specification.contractId -ceq 'nll/phase-d-runner-input/v3'
+if ($jobRequired) {
+    . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerContract.ps1')
+    . (Join-Path $PSScriptRoot 'Nll.PhaseDJob.ps1')
+}
 
 function Assert-Recovery {
     param([bool]$Condition, [string]$Code)
@@ -171,6 +178,12 @@ function Invoke-SoloRaidCapture {
         $null -eq $materialization.soloRaidStateHeadRevisionUid) {
         'none'
     } else { [string]$materialization.soloRaidStateHeadRevisionUid }
+    $scopeArguments=@()
+    if ($null -ne $recoveryBundle -and $recoveryBundle.specification.contractId -cin @('nll/phase-d-runner-input/v2','nll/phase-d-runner-input/v3')) {
+        $weakness=[string]$recoveryBundle.specification.weaknessCode
+        Assert-Recovery ($weakness -cin @('fire','water','wind','electric','iron') -and $weakness -ceq [string]$context.weaknessCode) 'phase_d_raid_state_weakness_binding_invalid'
+        $scopeArguments=@('--weakness-code',$weakness)
+    }
     $captureOutput = @(& $runtimeMaterializerPath `
         --capture-solo-raid-state true `
         --source-db $SourceDatabasePath `
@@ -187,7 +200,7 @@ function Invoke-SoloRaidCapture {
             ([string]$context.clientExecutableSha256) `
         --launch-context-uid $LaunchContextUid `
         --expected-head-revision-uid $expectedHeadRevisionUid `
-        --identity-secret-env $identitySecretEnvironmentVariable 2>&1)
+        --identity-secret-env $identitySecretEnvironmentVariable @scopeArguments 2>&1)
     if ($LASTEXITCODE -ne 0) {
         $captureFailureCode = @(
             $captureOutput |
@@ -225,6 +238,7 @@ function Test-PinnedProcess {
     finally { $process.Dispose() }
 }
 
+try {
 $ExecutionRoot = [IO.Path]::GetFullPath($ExecutionRoot).TrimEnd('\')
 $ConfigurationPath = [IO.Path]::GetFullPath($ConfigurationPath)
 $launchRoot = [IO.Path]::GetFullPath((Join-Path $ExecutionRoot $LaunchContextUid))
@@ -275,9 +289,35 @@ if (Test-Path -LiteralPath $watcherIdentityPath -PathType Leaf) {
 }
 
 # No rollback, replay, process stop or trust restoration may race a late child.
-Assert-PhaseDChildrenExited -LaunchRoot $launchRoot `
-    -RequireEvidence:($state.failureCode -ceq 'phase_d_child_deadline_unproven')
-$residualServerStopped = Stop-PhaseDResidualServer -LaunchRoot $launchRoot
+if ($jobRequired) {
+    $ownerPath = Join-Path $launchRoot 'coordinator.owner.json'
+    if (Test-Path -LiteralPath $ownerPath -PathType Leaf) {
+        $owner = Get-Content -LiteralPath $ownerPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($owner.State -ceq 'starting') { throw 'phase_d_job_coordinator_unresolved' }
+        if ($owner.State -ceq 'running' -and (Test-PinnedProcess -Id $owner.ProcessId -Name 'powershell' -StartedAtUtc ([DateTime]$owner.StartedAtUtc).ToUniversalTime().ToString('o'))) { exit 2 }
+        if ($owner.State -cnotin @('running','exited')) { throw 'phase_d_job_coordinator_unresolved' }
+    }
+}
+if ($jobRequired) {
+    $cleanupCheckpoint=Read-PhaseDPhysicalCleanupCheckpoint $launchRoot $recoveryBundle.sha256
+    $replayOnly=$null -ne $cleanupCheckpoint
+}
+if ($jobRequired -and -not $replayOnly) {
+    $executionJob = Open-PhaseDExecutionJob $launchRoot $recoveryBundle.sha256
+    Assert-PhaseDChildrenExited -LaunchRoot $launchRoot -RuntimeStartJob $executionJob
+    Stop-PhaseDExecutionJob $launchRoot $recoveryBundle.sha256
+    Assert-PhaseDChildrenExited -LaunchRoot $launchRoot -RuntimeStartJob $executionJob
+    Protect-PhaseDJobServerLog $launchRoot $recoveryBundle.sha256
+    Invoke-PhaseDExecutionFxCleanup $launchRoot $recoveryBundle.sha256
+    Invoke-PhaseDWithJobZeroProof $launchRoot $recoveryBundle.sha256 { }
+    $residualServerStopped = $false
+} elseif ($jobRequired) {
+    Assert-PhaseDChildrenExited -LaunchRoot $launchRoot -CheckpointStartIdentitySha256 ([string]$cleanupCheckpoint.startIdentitySha256)
+    $residualServerStopped=$false
+} else {
+    Assert-PhaseDChildrenExited -LaunchRoot $launchRoot -RequireEvidence:($state.failureCode -ceq 'phase_d_child_deadline_unproven')
+    $residualServerStopped = Stop-PhaseDResidualServer -LaunchRoot $launchRoot
+}
 Assert-Recovery `
     (@(Get-Process -Name EpinelPS,nikke,nikke_launcher,
         'NikkeLocalLab.Phase3B2.PhysicalBootstrap' -ErrorAction SilentlyContinue).Count -eq 0) `
@@ -310,9 +350,9 @@ Assert-Recovery `
         [Environment]::GetEnvironmentVariable(
             $identitySecretEnvironmentVariable))) `
     'phase_d_orphan_recovery_environment_missing'
-$pointer = Get-ChildItem -LiteralPath $evidenceRoot -Recurse -File `
+$pointer = if (-not $replayOnly) { Get-ChildItem -LiteralPath $evidenceRoot -Recurse -File `
     -Filter 'active-run.pointer.json' -ErrorAction SilentlyContinue |
-    Select-Object -First 1
+    Select-Object -First 1 } else { $null }
 if ($priorStatusCode -ceq 'failed' -and $null -eq $pointer -and
     -not (Test-Path -LiteralPath $SoloRaidPendingPayloadPath -PathType Leaf) -and
     -not (Test-Path -LiteralPath $soloRaidCaptureReceiptPath -PathType Leaf) -and
@@ -321,7 +361,7 @@ if ($priorStatusCode -ceq 'failed' -and $null -eq $pointer -and
         ConvertTo-Json -Compress
     exit 0
 }
-$runtimeRolledBack = $false
+$runtimeRolledBack = $replayOnly # Historical completed cleanup, not a new absent-Job observation.
 $soloRaidCaptureAttempted = $false
 if ($null -ne $pointer) {
     $active = Get-Content -LiteralPath $pointer.FullName -Raw -Encoding UTF8 |
@@ -364,14 +404,14 @@ if ($null -ne $pointer) {
         -Destination (Join-Path $runRoot $archiveName) -Force
     $runtimeRolledBack = $true
 }
-elseif (Test-DerivedStartRollbackProof `
-        -LaunchRoot $launchRoot -EvidenceRoot $evidenceRoot -RuntimeRoot $runtimeRoot) {
+elseif (-not $replayOnly -and (Test-DerivedStartRollbackProof `
+        -LaunchRoot $launchRoot -EvidenceRoot $evidenceRoot -RuntimeRoot $runtimeRoot)) {
     $runtimeRolledBack = $true
 }
 
 $hostsBackupPath = Join-Path $launchRoot 'control-center-hosts.before.bin'
-$hostsRestored = $false
-if (Test-Path -LiteralPath $hostsBackupPath -PathType Leaf) {
+$hostsRestored = $replayOnly
+if (-not $replayOnly -and (Test-Path -LiteralPath $hostsBackupPath -PathType Leaf)) {
     $hostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
     $hostsSha256 = (Get-FileHash -LiteralPath $hostsPath -Algorithm SHA256).Hash
     $backupSha256 = (Get-FileHash -LiteralPath $hostsBackupPath -Algorithm SHA256).Hash
@@ -383,10 +423,12 @@ if (Test-Path -LiteralPath $hostsBackupPath -PathType Leaf) {
     Assert-Recovery $hostsRestored 'phase_d_orphan_recovery_hosts_restore_failed'
 }
 
+if (-not $replayOnly) {
 $firewallRules = @(Get-NetFirewallRule `
     -Group 'NLL Phase3B2 Epinel Minimal Extension' -ErrorAction SilentlyContinue)
 if ($firewallRules.Count -gt 0) {
     $firewallRules | Remove-NetFirewallRule
+}
 }
 
 $raidStatePersisted = $false
@@ -396,6 +438,7 @@ $hasPersistenceReceipt = Test-Path -LiteralPath $soloRaidPersistenceReceiptPath 
 # A cold, proven runtime needs its management DB even when no raid data changed.
 # Restart is not conditional on the presence of a pending payload.
 if ($runtimeRolledBack -or $hasPendingPayload) {
+    if ($jobRequired -and -not $replayOnly) { Write-PhaseDRollbackCleanupCheckpoint $launchRoot $recoveryBundle.sha256 }
     $controlCenterPgCtl =
         [Environment]::GetEnvironmentVariable('NLL_CONTROL_CENTER_PG_CTL')
     $controlCenterPgData =
@@ -505,3 +548,4 @@ $receipt = [ordered]@{
 }
 Write-AtomicJson (Join-Path $launchRoot 'orphan-recovery.receipt.json') $receipt
 $receipt | ConvertTo-Json -Compress
+} finally { if ($null -ne $executionJob) { $executionJob.Dispose() } }

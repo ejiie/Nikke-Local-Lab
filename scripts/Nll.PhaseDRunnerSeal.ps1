@@ -1,11 +1,13 @@
 # Per-execution code closure. No imports, runtime mutations or fallback on read.
 function Get-PhaseDRunnerCodeMembers {
+    param([ValidateSet(1,2)][int]$Version = 1)
     @('invoke-nll-phase-d-runner.ps1', 'Nll.PhaseDRunnerSeal.ps1',
       'Nll.PhaseDRunnerContract.ps1', 'Nll.PhaseDRunnerOperations.ps1',
       'Nll.PhaseDRunnerStart.ps1', 'Nll.PhaseDRunnerComplete.ps1',
       'watch-nll-phase-d-execution.ps1', 'recover-nll-phase-d-orphaned-execution.ps1',
       'Nll.PhaseDProcessIdentity.ps1', 'Nll.PhaseDProcessHandle.ps1',
       'Nll.PhaseDChildProcess.ps1', 'Nll.PhaseDCompletion.ps1')
+    if ($Version -eq 2) { @('Nll.PhaseDJob.ps1','Nll.PhaseDJob.cs') }
 }
 
 function Get-PhaseDRunnerHash([string]$Path) {
@@ -25,7 +27,8 @@ function New-PhaseDRunnerBundle {
     if (Test-Path -LiteralPath $root) { throw 'phase_d_runner_bundle_exists' }
     $null = New-Item -ItemType Directory -Path $root
     $members = @()
-    foreach ($name in Get-PhaseDRunnerCodeMembers) {
+    $version = if ($Specification.contractId -ceq 'nll/phase-d-runner-input/v3') { 2 } else { 1 }
+    foreach ($name in Get-PhaseDRunnerCodeMembers -Version $version) {
         $source = Join-Path $ScriptsRoot $name
         $hash = Get-PhaseDRunnerHash $source
         Copy-Item -LiteralPath $source -Destination (Join-Path $root $name)
@@ -46,7 +49,7 @@ function New-PhaseDRunnerBundle {
     })
     if ($runtimeCode.Count -eq 0) { throw 'phase_d_runner_runtime_closure_empty' }
     $manifest = [ordered]@{
-        schemaVersion=1; contractId='nll/phase-d-runner-bundle/v1'; engineCode='parameterized/v1'
+        schemaVersion=1; contractId=('nll/phase-d-runner-bundle/v' + $version); engineCode='parameterized/v1'
         launchContextUid=$Specification.launchContextUid; members=$members; runtimeCode=$runtimeCode
     }
     $path = Join-Path $root 'runner.bundle.json'
@@ -75,9 +78,10 @@ function Read-PhaseDRunnerBundle {
             ($ExpectedBundleSha256 -and $ExpectedBundleSha256 -cne $rows[0].sha256) -or
             (Get-PhaseDRunnerHash $manifestPath) -cne $rows[0].sha256) { throw 'invalid' }
         $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($manifest.schemaVersion -ne 1 -or $manifest.contractId -cne 'nll/phase-d-runner-bundle/v1' -or
+        if ($manifest.schemaVersion -ne 1 -or $manifest.contractId -cnotin @('nll/phase-d-runner-bundle/v1','nll/phase-d-runner-bundle/v2') -or
             $manifest.engineCode -cne 'parameterized/v1' -or $manifest.launchContextUid -cne $context.launchContextUid) { throw 'invalid' }
-        $expected = @(Get-PhaseDRunnerCodeMembers) + @('runner.input.json','runner.profile.json')
+        $version = if ($manifest.contractId -ceq 'nll/phase-d-runner-bundle/v2') { 2 } else { 1 }
+        $expected = @(Get-PhaseDRunnerCodeMembers -Version $version) + @('runner.input.json','runner.profile.json')
         if (@($manifest.members).Count -ne $expected.Count -or
             @($manifest.members.name | Select-Object -Unique).Count -ne $expected.Count) { throw 'invalid' }
         foreach ($member in $manifest.members) {
@@ -92,6 +96,7 @@ function Read-PhaseDRunnerBundle {
                 (Get-PhaseDRunnerHash (Join-Path (Join-Path $LaunchRoot 'runtime') $member.name)) -cne $member.sha256) { throw 'invalid' }
         }
         $spec = Get-Content -LiteralPath (Join-Path $root 'runner.input.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        if (($version -eq 2) -ne ($spec.contractId -ceq 'nll/phase-d-runner-input/v3')) { throw 'invalid' }
         if ($spec.launchContextUid -cne $context.launchContextUid -or
             [IO.Path]::GetFullPath($spec.launchRoot) -cne $LaunchRoot -or
             [IO.Path]::GetFullPath($spec.runtimeMaterializer) -cne

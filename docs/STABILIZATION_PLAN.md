@@ -83,9 +83,17 @@ P-01~P-09, S29/신규 보스/실드/150 보관 이동은 이 안정화 완료 �
       합성 카탈로그/청크 203개·Python 63개와 실제 입력 검사가 통과했다. 설치/등록은 불변이다.
     - [ ] 실행별 native 청크/캐시 전달과 검증/rollback. 현재 재결박은 오프라인 후보이며
       원본 client 수신·렌더링 증거가 아니다. CIDX trailer는 여전히 미해소이며 구 HTTP 경로나
-      파일명 suffix 교체로 대체하지 않는다. 그 뒤 전체 실행 process tree 종료/비정상 lease
-      복구 증거와 production 정리를 연결한다.
-      현재 coordinator의 3개 named PID만으로 임의 descendant 종료를 주장하지 않는다.
+      파일명 suffix 교체로 대체하지 않는다. 추가 디스크 정적 조사에서도 실제 local provider
+      경로·수정 카탈로그 서명 수락 경로가 미해소다. 원래 `.nds` 재사용을 검증 성공으로
+      표시하지 않으며, 새 native 패치 없이 전달을 입증하지 못한 상태다.
+    - [x] 전체 트리 종료/정리 **소스 경로**: 새 runner input v3/bundle v2, 생성 시점 Job
+      소속, watcher ready/commit, 같은 살아 있는 Job의 잔류 0 확인과 종료 receipt,
+      completion/rollback gate 및 선택적 FX 정리 명령을 연결한다. 구 v1 봉인은 유지한다.
+      비정상 lease는 독점 접근·실행/manifest/proof pin·실제 Job 조회 후에만 복구한다.
+      신규 회귀 검사는 실제 Windows API와 합성 프로세스/자산만 사용한다.
+      **설치 배포·native 전달/복구 인수는 아니다.** 현재 coordinator의 FX binding은 null이며
+      S29 차단을 유지한다. 모든 소유자 crash로 Job 증거가 소실된 경우에는 자동 복구를
+      성공 처리하지 않는다. Job의 생명주기 관리와 전체 비루프백 통신 차단도 별도 조건이다.
 - [x] PIPE-V3-02 후보 경로: discovery → 원본 행동 트리 closure → QTE 포함 v3 후보 조립 →
   FX 보정 → 5속성 검증을 `-CandidateOnly` 공통 명령으로 연결했다. 후보와 실행 admission을
   분리하고 새 출력 폴더만 허용한다. 합성 12개(실제 PowerShell 실패/재시도 검사 포함),

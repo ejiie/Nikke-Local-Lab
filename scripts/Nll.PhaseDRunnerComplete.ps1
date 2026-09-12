@@ -158,6 +158,8 @@ function Invoke-PhaseDRunnerComplete {
         'phase3b2_epinel_minimal_completion_client_still_running_close_game_first'
     
     $bootstrapForcedStop = $false
+    $serverForcedStop = $false
+    if ($Specification.contractId -cne 'nll/phase-d-runner-input/v3') {
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
         if ($null -eq (Get-PinnedProcess $bootstrapId `
                 'NikkeLocalLab.Phase3B2.PhysicalBootstrap')) { break }
@@ -174,6 +176,7 @@ function Invoke-PhaseDRunnerComplete {
             'NikkeLocalLab.Phase3B2.PhysicalBootstrap') -and
         $null -eq (Get-PinnedProcess $serverId 'EpinelPS')
     ) 'phase3b2_epinel_minimal_completion_runtime_stop_failed'
+    }
     
     Invoke-PhaseDRunnerCapture -Specification $Specification -SourceDatabasePath $dbPath
     

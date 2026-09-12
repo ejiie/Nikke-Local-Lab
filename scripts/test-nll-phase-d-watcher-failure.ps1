@@ -1,5 +1,7 @@
 # The real watcher's outer catch, but with synthetic files and fake services.
 $ErrorActionPreference = 'Stop'
+$jobRequired = $false # Historical branch; new Job failure cases are tested separately.
+$physicalCleanupCommitted = $false
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 $tokens = $null

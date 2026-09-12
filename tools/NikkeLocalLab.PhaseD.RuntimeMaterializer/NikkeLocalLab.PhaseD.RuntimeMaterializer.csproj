@@ -11,6 +11,8 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="..\..\src\NikkeLocalLab.Automation\ExecutionAssetOverlay.cs" Link="ExecutionAssetOverlay.cs" />
+    <Compile Include="..\..\src\NikkeLocalLab.Automation\ExecutionAssetRetirement.cs" Link="ExecutionAssetRetirement.cs" />
     <Compile Include="..\..\src\NikkeLocalLab.Application.ProfileManagement\PhaseDExecutionDocuments.cs"
              Link="PhaseDExecutionDocuments.cs" />
     <Compile Include="..\..\src\NikkeLocalLab.Persistence.PostgreSql\ClassicSoloRaidRuntimeStateStore.cs"

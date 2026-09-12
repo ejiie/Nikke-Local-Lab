@@ -167,6 +167,9 @@ if ($ContractOnly) {
 }
 else {
     Invoke-Checked "pwsh" @("-NoProfile", "-File", (Join-Path $ScriptDirectory "verify-phase3b0.ps1"))
+    if ($env:OS -eq 'Windows_NT') {
+        Invoke-Checked "pwsh" @("-NoProfile", "-File", (Join-Path $ScriptDirectory "test-nll-execution-fx-retirement.ps1"))
+    }
 }
 
 Assert-True (Test-Path -LiteralPath $SchemaPath -PathType Leaf) "phase3b1_schema_missing"

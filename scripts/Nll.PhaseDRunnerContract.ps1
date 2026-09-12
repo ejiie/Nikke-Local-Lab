@@ -11,7 +11,21 @@ function Assert-PhaseDRunnerSpecification {
             'resourcePreflightToolSha256','resourceCatalogReceiptPath','resourceCatalogReceiptSha256','runtimeMaterializer',
             'soloRaidPendingPath','soloRaidCaptureReceiptPath','secretEnvironmentVariable','derivedSourceManifestSha256','runIntentCode')
         if ($null -eq $Specification) { throw 'invalid' }
-        $versionTwo = $Specification.contractId -ceq 'nll/phase-d-runner-input/v2'
+        $versionThree = $Specification.contractId -ceq 'nll/phase-d-runner-input/v3'
+        $versionTwo = $Specification.contractId -cin @('nll/phase-d-runner-input/v2','nll/phase-d-runner-input/v3')
+        if ($versionThree) {
+            $fields += @('jobNonce','executionFx')
+            if ($Specification.jobNonce -isnot [string] -or $Specification.jobNonce -cnotmatch '^[0-9a-f]{32}$') { throw 'invalid' }
+            if ($null -ne $Specification.executionFx) {
+                $fx = $Specification.executionFx
+                $fxNames = if ($fx -is [Collections.IDictionary]) { @($fx.Keys) } else { @($fx.PSObject.Properties.Name) }
+                if ($fxNames.Count -ne 4 -or @($fxNames | Where-Object { $_ -cnotin @('manifestSha256','candidateSealSha256','profileSha256','weaknessCode') }).Count -ne 0) { throw 'invalid' }
+                foreach ($hash in @('manifestSha256','candidateSealSha256','profileSha256')) {
+                    if ($fx.$hash -isnot [string] -or $fx.$hash -cnotmatch '^[0-9a-f]{64}$') { throw 'invalid' }
+                }
+                if ($fx.weaknessCode -cne $Specification.weaknessCode) { throw 'invalid' }
+            }
+        }
         if ($versionTwo) {
             $fields += 'weaknessCode'
             if ($Specification.weaknessCode -cnotin @('iron','water','fire','wind','electric')) { throw 'invalid' }

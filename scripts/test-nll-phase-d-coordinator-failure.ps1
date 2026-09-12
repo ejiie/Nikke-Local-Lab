@@ -1,6 +1,8 @@
 # Execute the actual outer failure block with synthetic files and fake services.
 # The coordinator body, game, hosts, firewall and real DB are NEVER executed.
 $ErrorActionPreference = 'Stop'
+$jobAttempted = $false # Historical branch; new Job failure cases are tested separately.
+$watcherSpawned = $false
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 $tokens = $null

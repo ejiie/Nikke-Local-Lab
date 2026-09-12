@@ -78,12 +78,13 @@ Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-n
 if ($env:OS -eq 'Windows_NT') {
     $WindowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
     foreach ($test in @('test-nll-phase-d-preparation.ps1', 'test-nll-phase-d-launch-tools.ps1',
-        'test-nll-phase-d-runner-contract.ps1', 'test-nll-phase-d-runner-seal.ps1',
+        'test-nll-phase-d-runner-contract.ps1', 'test-nll-phase-d-runner-seal.ps1', 'test-nll-phase-d-job.ps1', 'test-nll-phase-d-job-paths.ps1',
         'test-nll-phase-d-runner-behavior.ps1', 'test-nll-phase-d-runner-differential.ps1',
         'test-nll-phase-d-runner-routing.ps1', 'test-nll-phase-d-runner-dependencies.ps1',
         'test-nll-phase-d-shared-state.ps1', 'test-nll-stabilization-release.ps1')) {
         Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory $test))
     }
+    Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory 'test-nll-phase-d-runner-behavior.ps1'), '-JobContract')
 } else {
     Write-Output 'Phase D Windows preparation/legacy-template behavior tests require the Windows local gate.'
 }

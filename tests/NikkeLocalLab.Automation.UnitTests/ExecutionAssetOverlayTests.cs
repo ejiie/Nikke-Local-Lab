@@ -135,6 +135,112 @@ public sealed class ExecutionAssetOverlayTests : IDisposable
   }
 
   [Fact]
+  public void VerifiedTreeRecoveryAdoptsOnlyAnExclusiveEmptyLeaseAndIsIdempotent()
+  {
+    File.WriteAllBytes(Path.Combine(root, ".lease"), []);
+    var checks = 0;
+    void Verify() => checks++;
+    ExecutionAssetOverlay.RetireAfterProcessTreeExit(root, sha, binding, new string('d', 64), Verify);
+    ExecutionAssetOverlay.RetireAfterProcessTreeExit(root, sha, binding, new string('d', 64), Verify);
+    Assert.Equal(4, checks);
+    Assert.True(File.Exists(Path.Combine(root, ".recovery")));
+    Assert.True(File.Exists(Path.Combine(root, "retired.json")));
+    Assert.False(File.Exists(Path.Combine(root, ".lease")));
+    Assert.False(File.Exists(Path.Combine(root, "overlay.bundle")));
+    Assert.Throws<InvalidDataException>(Open);
+  }
+
+  [Theory]
+  [InlineData(1)]
+  [InlineData(2)]
+  public void UnprovenExitAtEitherCheckPreservesTheStickyLeaseAndAllAssets(int failedCheck)
+  {
+    File.WriteAllBytes(Path.Combine(root, ".lease"), []);
+    var checks = 0;
+    Assert.Throws<InvalidOperationException>(() => ExecutionAssetOverlay.RetireAfterProcessTreeExit(
+        root, sha, binding, new string('d', 64), () =>
+        {
+          if (++checks == failedCheck) throw new InvalidOperationException("synthetic_exit_unproven");
+        }));
+    Assert.True(File.Exists(Path.Combine(root, ".lease")));
+    Assert.False(File.Exists(Path.Combine(root, ".recovery")));
+    Assert.Equal(derived, File.ReadAllBytes(Path.Combine(root, "overlay.bundle")));
+    Assert.Equal(original, File.ReadAllBytes(Path.Combine(root, "original.bundle")));
+    Assert.Throws<InvalidDataException>(Open);
+  }
+
+  [Fact]
+  public void RecoveryCannotAdoptALiveLeaseEvenWithAnIncorrectCallerAssertion()
+  {
+    using var overlay = Open();
+    Assert.ThrowsAny<IOException>(() => ExecutionAssetOverlay.RetireAfterProcessTreeExit(
+        root, sha, binding, new string('d', 64), () => { }));
+    Assert.False(File.Exists(Path.Combine(root, ".recovery")));
+    Assert.Equal(derived, overlay.GetResponse(Route));
+  }
+
+  [Fact]
+  public void RecoveryRejectsNonemptyLeaseWithoutRemovingIt()
+  {
+    File.WriteAllText(Path.Combine(root, ".lease"), "foreign owner");
+    Assert.Throws<InvalidDataException>(() => ExecutionAssetOverlay.RetireAfterProcessTreeExit(
+        root, sha, binding, new string('d', 64), () => { }));
+    Assert.Equal("foreign owner", File.ReadAllText(Path.Combine(root, ".lease")));
+    Assert.False(File.Exists(Path.Combine(root, ".recovery")));
+  }
+
+  [Fact]
+  public void RecoveryRejectsInvalidProofHashBeforeCallingAuthorityOrMutating()
+  {
+    var called = false;
+    Assert.Throws<InvalidDataException>(() => ExecutionAssetOverlay.RetireAfterProcessTreeExit(
+        root, sha, binding, "invalid", () => called = true));
+    Assert.False(called);
+    Assert.False(File.Exists(Path.Combine(root, ".lease")));
+    Assert.False(File.Exists(Path.Combine(root, ".recovery")));
+  }
+
+  [Fact]
+  public void RecoveryIntentBindsTheExitReceiptAndRejectsProofReplacement()
+  {
+    ExecutionAssetOverlay.RetireAfterProcessTreeExit(root, sha, binding, new string('d', 64), () => { });
+    File.WriteAllBytes(Path.Combine(root, ".lease"), []); // Interrupted later cleanup retry.
+    Assert.Throws<InvalidDataException>(() => ExecutionAssetOverlay.RetireAfterProcessTreeExit(
+        root, sha, binding, new string('e', 64), () => { }));
+    Assert.True(File.Exists(Path.Combine(root, ".lease")));
+    ExecutionAssetOverlay.RetireAfterProcessTreeExit(root, sha, binding, new string('d', 64), () => { });
+    Assert.False(File.Exists(Path.Combine(root, ".lease")));
+  }
+
+  [Fact]
+  public void RecoveryPreflightsAllBytesAndResumesAfterInterruptedIntent()
+  {
+    File.WriteAllBytes(Path.Combine(root, ".lease"), []);
+    File.WriteAllText(Path.Combine(root, "overlay.bundle"), "synthetic drift");
+    Assert.Throws<InvalidDataException>(() => ExecutionAssetOverlay.RetireAfterProcessTreeExit(
+        root, sha, binding, new string('d', 64), () => { }));
+    Assert.True(File.Exists(Path.Combine(root, ".recovery")));
+    Assert.False(File.Exists(Path.Combine(root, ".retiring")));
+    Assert.Equal(original, File.ReadAllBytes(Path.Combine(root, "original.bundle")));
+    Assert.Throws<InvalidDataException>(Open);
+    File.WriteAllBytes(Path.Combine(root, "overlay.bundle"), derived);
+    ExecutionAssetOverlay.RetireAfterProcessTreeExit(root, sha, binding, new string('d', 64), () => { });
+    Assert.True(File.Exists(Path.Combine(root, "retired.json")));
+  }
+
+  [Fact]
+  public void RecoveryPreservesForeignInventoryAndDoesNotRemoveAbandonedLease()
+  {
+    File.WriteAllBytes(Path.Combine(root, ".lease"), []);
+    File.WriteAllText(Path.Combine(root, "foreign.txt"), "retain me");
+    Assert.Throws<InvalidDataException>(() => ExecutionAssetOverlay.RetireAfterProcessTreeExit(
+        root, sha, binding, new string('d', 64), () => { }));
+    Assert.True(File.Exists(Path.Combine(root, ".lease")));
+    Assert.False(File.Exists(Path.Combine(root, ".recovery")));
+    Assert.Equal("retain me", File.ReadAllText(Path.Combine(root, "foreign.txt")));
+  }
+
+  [Fact]
   public void RetireIsIdempotentAndNeverRevivesAClosedRoute()
   {
     var overlay = Open();

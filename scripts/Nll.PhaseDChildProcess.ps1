@@ -30,15 +30,37 @@ function Wait-PhaseDChildDeadline {
 }
 
 function Assert-PhaseDChildrenExited {
-    param([string]$LaunchRoot, [switch]$RequireEvidence)
+    param([string]$LaunchRoot, [switch]$RequireEvidence, [object]$RuntimeStartJob = $null,
+        [string]$CheckpointStartIdentitySha256 = '')
     $files = @(Get-ChildItem -LiteralPath $LaunchRoot -Filter 'phase-d-child-*.identity.json' -File)
+    if ($CheckpointStartIdentitySha256) {
+        $startFiles=@($files | Where-Object Name -CEQ 'phase-d-child-start.identity.json')
+        if ($CheckpointStartIdentitySha256 -cnotmatch '^[0-9a-f]{64}$' -or $startFiles.Count -ne 1 -or
+            (Get-FileHash -LiteralPath $startFiles[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $CheckpointStartIdentitySha256) {
+            throw 'phase_d_child_checkpoint_identity_drifted'
+        }
+    }
     if ($RequireEvidence -and $files.Count -eq 0) { throw 'phase_d_child_identity_unresolved' }
     foreach ($file in $files) {
+        # Only replay-only recovery passes this pin from a verified physical
+        # cleanup checkpoint. It cannot excuse any PG/completion/FX child.
+        if ($CheckpointStartIdentitySha256 -and $file.Name -ceq 'phase-d-child-start.identity.json') { continue }
         $identity = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($identity.contractId -cne 'nll/phase-d-child-deadline/v1') { throw 'phase_d_child_identity_unresolved' }
+        # Only the sealed v3 start is atomically assigned at creation. A blank
+        # reservation for that child is safe after observing the SAME live Job
+        # empty. PG/completion/FX reservations NEVER get this exception.
+        if ($file.Name -ceq 'phase-d-child-start.identity.json' -and $null -ne $RuntimeStartJob -and
+            [int]$identity.processId -eq 0 -and $null -eq $identity.processStartedAtUtc -and
+            $identity.executablePath -ieq (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -and
+            $RuntimeStartJob.ActiveProcesses -eq 0) { continue }
         $child = Get-PhaseDVerifiedProcess -Identity $identity
         if ($null -ne $child) {
-            try { if (-not $child.HasExited) { throw 'phase_d_child_still_running' } }
+            try {
+                if ($file.Name -ceq 'phase-d-child-start.identity.json' -and $null -ne $RuntimeStartJob -and
+                    $RuntimeStartJob.Contains([int]$identity.processId)) { continue }
+                if (-not $child.HasExited) { throw 'phase_d_child_still_running' }
+            }
             finally { $child.Dispose() }
         }
     }
@@ -86,7 +108,8 @@ function Invoke-PhaseDChildScript {
         [string]$StandardOutputPath,
         [string]$StandardErrorPath,
         [ValidateRange(1, 1800)][int]$TimeoutSeconds = 300,
-        [string]$OwnershipPath
+        [string]$OwnershipPath,
+        [object]$ExecutionJob = $null
     )
     $commandParts = @('& ' + (ConvertTo-PhaseDPowerShellLiteral $ScriptPath))
     foreach ($key in $Arguments.Keys) {
@@ -110,11 +133,15 @@ function Invoke-PhaseDChildScript {
         'System32\WindowsPowerShell\v1.0\powershell.exe'
     Write-PhaseDChildReservation -OwnershipPath $OwnershipPath -ExecutablePath $powershell
     try {
+        if ($null -ne $ExecutionJob) {
+            $process = $ExecutionJob.Start($powershell, ('-NoLogo -NoProfile -ExecutionPolicy Bypass -EncodedCommand ' + $encodedCommand))
+        } else {
         $process = Start-Process -FilePath $powershell `
             -ArgumentList @(
                 '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
                 '-EncodedCommand', $encodedCommand) `
             -WindowStyle Hidden -PassThru
+        }
     }
     catch { if ($OwnershipPath) { throw 'phase_d_child_deadline_unproven' }; throw }
     try { $exitCode = Wait-PhaseDChildDeadline -Process $process -TimeoutSeconds $TimeoutSeconds -OwnershipPath $OwnershipPath -ExecutablePath $powershell }

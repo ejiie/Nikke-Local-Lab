@@ -3,6 +3,9 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $sealedRunner = $null # Legacy fixture; sealed-route cases are below.
+$executionJob = $null
+$jobRequired = $false
+$physicalCleanupCommitted = $false
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 $tokens = $null; $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile(
@@ -37,6 +40,7 @@ function Invoke-PhaseDChildScript {
             $Arguments.LaunchRoot -ceq $LaunchRoot) 'watcher_changed_runner_binding'
     } else { Assert-Watcher ($Arguments.ServerRoot -ceq $ServerRoot -and $Arguments.EvidenceRoot -ceq $EvidenceRoot) 'watcher_changed_legacy_binding' }
     Assert-Watcher ($case -eq 'early-exit' -or ($script:waited -and $script:disposed)) 'completion_before_client_exit'
+    if ($jobRequired) { Assert-Watcher ($script:jobOrder -ceq 'zero,redact,fx') 'completion_before_job_cleanup'; $script:jobOrder+=',completion' }
     [IO.File]::WriteAllText((Join-Path $EvidenceRoot 'active-run.pointer.archived.json'), 'synthetic-archived')
     [IO.File]::WriteAllText((Join-Path $EvidenceRoot 'completion.receipt.json'), '{"diagnosticObservationStatus":"not_observed"}')
     [IO.File]::WriteAllText($SoloRaidPendingPayloadPath, 'synthetic-pending')
@@ -53,6 +57,7 @@ function Invoke-PhaseDPgCtl {
 function Invoke-SoloRaidPersistence {
     param($LaunchContextUid)
     Assert-Watcher ($script:databaseReady -and (Test-Path -LiteralPath $SoloRaidPendingPayloadPath)) 'persistence_without_ready_database_or_pending'
+    if ($jobRequired) { Assert-Watcher ($script:jobOrder -ceq 'zero,redact,fx,completion') 'persistence_before_job_completion' }
     $current = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
     Assert-Watcher ($current.statusCode -ceq 'started') 'state_released_before_replay'
     if ($case -eq 'persist-failure') { throw 'phase_d_synthetic_persist_failed' }
@@ -60,11 +65,19 @@ function Invoke-SoloRaidPersistence {
     [pscustomobject]@{ resultCode = 'state_unchanged' }
 }
 function Invoke-EmergencyRollback { throw 'unexpected_emergency_rollback' }
+function Stop-PhaseDExecutionJob { $script:jobOrder='zero' }
+function Protect-PhaseDJobServerLog { $script:jobOrder+=',redact' }
+function Invoke-PhaseDExecutionFxCleanup { Assert-Watcher ($script:jobOrder -ceq 'zero,redact') 'fx_before_job_zero'; $script:jobOrder+=',fx' }
+function Write-PhaseDPhysicalCleanupCheckpoint { Assert-Watcher ($script:jobOrder -ceq 'zero,redact,fx,completion') 'checkpoint_before_physical_completion'; $script:checkpointWritten=$true }
+function Assert-PhaseDChildrenExited { }
 try {
-  foreach ($engine in @('legacy','sealed')) {
-    $sealedRunner=if ($engine -eq 'sealed') { @{sha256=('a'*64)} } else { $null }
+  foreach ($engine in @('legacy','sealed','job')) {
+    $sealedRunner=if ($engine -ne 'legacy') { @{sha256=('a'*64)} } else { $null }
+    $jobRequired=$engine -eq 'job'
     $ExpectedRunnerBundleSha256='a'*64
     foreach ($case in @('early-exit', 'normal-exit', 'pg-failure', 'persist-failure')) {
+        $physicalCleanupCommitted=$false
+        $script:checkpointWritten=$false
         $LaunchRoot = Join-Path $taskRoot ($engine+'-'+$case)
         $EvidenceRoot = Join-Path $LaunchRoot 'evidence'
         $null = New-Item -ItemType Directory -Path $EvidenceRoot
