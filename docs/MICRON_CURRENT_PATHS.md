@@ -19,7 +19,9 @@ this role statement alone does not certify that a particular run passed those ga
 | Role | Exact path | Mutation authority |
 |---|---|---|
 | Official current NIKKE installation | `C:\NIKKE` | The official launcher may install and update it. Local Lab/EpinelPS tools must not patch it or use it as a private-server execution target. |
-| Frozen Phase3B2 physical lane | `C:\NLL\Clients\NIKKE-150.6.9-Physical` | Version/hash-bound Local Lab tools only. It contains derived cache/overlay state and is not a byte-for-byte mirror of the official current installation. |
+| Retained 150 client pending cold retirement | `C:\NLL\Clients\NIKKE-150.6.9-Physical` | Full D: archival copy verified on 2026-09-12; source still retained while the operator tests 151. Not the selected runtime. Contains derived cache/overlay state, not an official-current mirror. |
+| Verified 150 archival copy | `D:\NikkeLocalLab\Backups\client-150-archive-20260912-01\NIKKE-150.6.9-Physical` | 39,504 files / 27,264,219,735 bytes, full source-before/source-after/destination manifest equality. Archival only; no direct D: execution. Source retirement remains pending. |
+| Independent cube-localization repair input | `C:\NLL\RuntimeInputs\CubeLocale-150-v1` | Two private, exact hash-pinned locale inputs for the cold Control Center repair. Independent of the old client tree; never committed. |
 | Selected 151 Control Center client (S26 first) | `C:\NLL\Clients\NIKKE-151.8.5-ResourceProbe` | On 2026-09-06 the operator confirmed actual-game validation after the existing-account integration and closed resource-change work. Keep the unchanged Epinel DLL and manifest-backed clone-only certificate overlay. S29 remains separately deferred. See `archive/RESOURCE_COMPATIBILITY_151_PROGRESS.md`. |
 | Active repository | `C:\Users\nlloperator\Documents\Github\Nikke-Local-Lab` | Normal source workspace. |
 | Local runtime/evidence/tool root | `C:\NLL` | Local Lab runtime procedures and sealed rollback contracts only. |
@@ -62,13 +64,20 @@ The historical `C:\Recovered_OldSSD\NLL_PreWipe_20260822` source on Samsung was
 removed by the operator after the verified migration. This does not authorize
 cleanup of unrelated Samsung applications or `E:\NIKKE`.
 
-## Approved future 150 archive (2026-09-05; not executed)
+## 150 archive (approved 2026-09-05; copy verified 2026-09-12)
 
-The operator approved moving the old 150 client copy into D: backup storage after
-the 151 compatibility goal is fully verified. Until then, the authoritative 150
-path above stays unchanged. A directory move alone is unsafe: the native bootstrap,
-Phase D execution and Control Center cube-localization repair currently refer to
-the C: 150 lane. Retire those active dependencies first. Archive with a full
-source/copy hash manifest, preserve the original rollback evidence, and restore
-to the original C: path if 150 rollback is needed. This is archival, not authority
-to run 150 directly on D:, alter old sealed receipts or move the official install.
+The operator renewed the archive request while testing persistence in 151.
+The selected v6 bootstrap/client use 151 and have no 150 client reference or runtime
+reparse dependency. The two cube-localization repair inputs were independently
+preserved and pinned; the repair script no longer reads the old client directory.
+Historical 150 bootstrap/fallback code and sealed receipts remain historical, not
+permission to silently change the current 151 selection.
+
+Full source-before/source-after/destination manifests match SHA-256
+`7afd6f48e14301b1cfb7ffe9bc50c339cfe5b49b440130196cccdcd64b448d7d`.
+The copy receipt is `copy_verified_source_retained`. C: removal is pending game,
+Control Center, server, watcher and PG coldness, followed by re-verification.
+Preserve the original rollback evidence and restore the original C: path if 150
+rollback is requested. This does not authorize D: execution, old-receipt edits,
+official-install movement, or removal of shared historical runtime/seed folders.
+See [CLIENT_150_ARCHIVE](operations/CLIENT_150_ARCHIVE.md).
