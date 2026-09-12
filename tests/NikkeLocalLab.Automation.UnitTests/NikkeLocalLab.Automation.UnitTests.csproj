@@ -12,6 +12,7 @@
     <ProjectReference Include="..\..\src\NikkeLocalLab.Automation\NikkeLocalLab.Automation.csproj" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <Compile Include="..\..\tools\PhaseD\AssetDelivery\ExecutionAssetOverlayHttp.cs" Link="ExecutionAssetOverlayHttp.cs" />
+    <Compile Include="..\..\tools\PhaseD\AssetDelivery\ExecutionAssetOverlayStartup.cs" Link="ExecutionAssetOverlayStartup.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\fixtures\automation\season26-v8.pipeline.json" Link="Fixtures\season26-v8.pipeline.json" CopyToOutputDirectory="PreserveNewest" />

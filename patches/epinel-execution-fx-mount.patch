@@ -1,0 +1,47 @@
+diff --git a/EpinelPS/Program.cs b/EpinelPS/Program.cs
+index 4889620..048bd7b 100644
+--- a/EpinelPS/Program.cs
++++ b/EpinelPS/Program.cs
+@@ -16,6 +16,7 @@ using System.Net;
+ using System.Reflection;
+ using System.Security.Cryptography.X509Certificates;
+ using System.Text;
++using NikkeLocalLab.AssetDelivery;
+ 
+ namespace EpinelPS;
+ 
+@@ -28,6 +29,9 @@ internal class Program
+             var resourceProbe = ResourceProbeExecution.Prepare(args);
+             var executionMode = Phase3B2ExecutionMode.Parse(args);
+             AssetDownloadUtil.ConfigureOfficialOutbound(executionMode.AllowOfficialOutbound);
++            using var executionFx = ExecutionAssetOverlayStartup.OpenFromEnvironment(
++                AppContext.BaseDirectory, executionMode.IsLocalOnly, executionMode.IsHeadless,
++                executionMode.AllowOfficialOutbound);
+ 
+             XmlConfigurator.Configure(new FileInfo("log4net.config"));
+             Console.WriteLine($"EpinelPS v{Assembly.GetExecutingAssembly().GetName().Version} - https://github.com/EpinelPS/EpinelPS/");
+@@ -152,7 +156,8 @@ internal class Program
+             });
+ 
+ 
+-            WebApplication app = builder.Build();
++            await using WebApplication app = builder.Build();
++            executionFx?.Mount(app);
+             CreateDbIfNotExists(app);
+             app.UseDefaultFiles();
+             app.UseStaticFiles();
+
+diff --git a/EpinelPS/EpinelPS.csproj b/EpinelPS/EpinelPS.csproj
+index 720491a..db80960 100644
+--- a/EpinelPS/EpinelPS.csproj
++++ b/EpinelPS/EpinelPS.csproj
+@@ -83,6 +83,9 @@
+ 	</ItemGroup>
+ 	<ItemGroup>
+ 	  <Compile Include="..\..\..\tools\Phase3B2\EpinelResourceProbe\ResourceProbeExecution.cs" Link="Execution\ResourceProbeExecution.cs" />
++	  <Compile Include="..\..\..\src\NikkeLocalLab.Automation\ExecutionAssetOverlay.cs" Link="Execution\ExecutionAssetOverlay.cs" />
++	  <Compile Include="..\..\..\tools\PhaseD\AssetDelivery\ExecutionAssetOverlayHttp.cs" Link="Execution\ExecutionAssetOverlayHttp.cs" />
++	  <Compile Include="..\..\..\tools\PhaseD\AssetDelivery\ExecutionAssetOverlayStartup.cs" Link="Execution\ExecutionAssetOverlayStartup.cs" />
+ 	</ItemGroup>
+ 
+ 	<ItemGroup>

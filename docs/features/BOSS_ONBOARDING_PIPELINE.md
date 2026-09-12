@@ -2,7 +2,64 @@
 
 > 상태 참고 (2026-09-06): 아래 S29 결과는 당시 admission 기록입니다. 현재 S29의 profile v3/등록 v2 불일치는 별도 보류이며, 151 실게임 완료는 S26 기준입니다. [안정화 계획](../STABILIZATION_PLAN.md)을 함께 확인합니다.
 
-## Current execution-local FX transport component — 2026-09-12
+## External Epinel FX mount and native-catalog finding — 2026-09-12
+
+The transport is now source-linked into a **separate, uninstalled Epinel candidate**.
+`patches/epinel-execution-fx-mount.patch` applies to the existing modified 151
+source snapshot without overwriting it. The local copy is `.external/EpinelPS-fx-candidate`;
+the build is `artifacts/epinel-fx-integration/server`. Neither the installed v6
+server nor the older source-manifest-pinned checkout was modified.
+
+`ExecutionAssetOverlayStartup` requires all six `EPINELPS_EXECUTION_FX_*` inputs:
+ROOT, MANIFEST_SHA256, EXECUTION_CODE, CANDIDATE_SHA256, PROFILE_SHA256 and WEAKNESS_CODE.
+No inputs means inert; partial/blank configuration, non-headless/non-local execution,
+official outbound, binding/hash drift or a root other than the independent runtime's
+fixed `execution-fx` child fail before serving. Errors contain no private route/path.
+Mounting precedes static-file/encryption/legacy routes. Invalid/closed FX requests
+never fall through to original bytes. Host disposal precedes overlay disposal;
+**server exit alone never retires the private copies**.
+
+Twelve new startup/middleware cases passed (74 automation cases total). The external
+candidate built successfully. The explicit local `EpinelFxProbe` loads that built
+DLL, mounts its actual startup middleware and encryption/asset handler, and checks
+whole/range/HEAD/invalid/POST/closed responses plus the unchanged static-pack handler.
+It does **not** invoke Epinel Main, game/DB startup, native bootstrap or installed
+ports. All three real corrected FX inputs passed, with 96 installed pins and the
+registry/profile preserved. The source-only CI builds/formats this probe on SDK 8;
+actual external inspection requires runtime 10 and pinned local inputs.
+Final local receipt: `artifacts/epinel-fx-checks/e1e2d66538cc423c8264b5503786129f/receipt.json`.
+The preserved source/candidate comparison covered 745 source/project files; only
+`Program.cs` and `EpinelPS.csproj` differ, plus the explicitly source-linked Lab code.
+
+Read-only inspection found a **native binding gap**, not a CRC fix:
+
+- Both the 151 embedded and core patch addressable catalogs contain 26,491 bundle
+  entries. Their measured `entry_data` schema is `type_rowid, is_local`, not the
+  historical 150 hash/CRC/bundle-size layout. Do not reuse the old catalog editor.
+- For each of the three FX routes, exact bundle-leaf matches are **zero in both
+  catalogs**. Removing the conventional hash suffix finds one name-stem hint each,
+  but this is not an exact asset identity or permission to substitute its bytes.
+- Therefore an Epinel HTTP response cannot yet establish native request/acceptance.
+  Native provider selection, the corresponding 151 bundle bytes and payload/cache
+  validation remain unresolved. No catalog, cache, client or hash suffix was patched.
+
+Reproduction: build the independent patched Epinel source; build
+`tools/PhaseD/EpinelFxProbe` and run `scripts/test-nll-epinel-fx-local.ps1` with the
+candidate server/DLL pin, unretired S29 candidate/seal, approved bundle/pack,
+reviewed Python, built probe/SHA and the two exact local `CatalogPaths`.
+The script creates fresh runtime copies, pins inputs before/after, and retires only
+its probe-owned delivery copies after the synchronous no-child probe exits. A
+catalog inspection exit code of zero means the inspection ran, **not admission**.
+Private catalog scratch copies and route manifests are not CI/Git inputs.
+
+**Remaining FX-RUNTIME-02 work:** resolve exact 151 catalog → provider → bundle
+closure and a separate native-cache delivery strategy; then bind production
+retirement to the coordinator's entire process-tree exit evidence, including crash
+leases. Existing three named process identities do not by themselves prove arbitrary
+descendant exit. No active coordinator was changed or v3 launch enabled in this step.
+S29 remains blocked; v3 admission, atomic publication/jobs and UI remain downstream.
+
+## Previous execution-local FX transport component — 2026-09-12
 
 **Completed: isolated staging, a source-linked HTTP component and private-copy
 retirement. Not completed: mounting that component in the installed Epinel server,
@@ -74,7 +131,8 @@ pwsh -NoProfile -File scripts/test-nll-execution-fx-local.ps1 `
   -StaticDataPackPath <bundle-pinned-pack> -PythonPath <reviewed-python>
 ```
 
-Next integration gate: source-link the transport into a **new external Epinel
+The following was the next integration gate at this earlier checkpoint; the mount
+and catalog findings above supersede that part: source-link into a **new external Epinel
 candidate**, bind startup to the selected execution and dispose after request
 draining; connect retirement only after the coordinator's exact process-tree exit
 gate. Keep the old installed server/source manifests untouched. Inspect the native

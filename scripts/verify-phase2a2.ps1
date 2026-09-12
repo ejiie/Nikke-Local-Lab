@@ -64,6 +64,11 @@ Invoke-Checked dotnet @('restore', $AssetDeliveryProbe, '--locked-mode')
 Invoke-Checked dotnet @('build', $AssetDeliveryProbe, '-c', 'Release', '--no-restore')
 Invoke-Checked dotnet @('format', $AssetDeliveryProbe, '--verify-no-changes', '--no-restore')
 Write-Output 'FX HTTP synthetic checks and local probe source build passed; installed Epinel/native client delivery NOT executed.'
+$EpinelFxProbe = Join-Path $RepositoryRoot 'tools/PhaseD/EpinelFxProbe/EpinelFxProbe.csproj'
+Invoke-Checked dotnet @('restore', $EpinelFxProbe, '--locked-mode')
+Invoke-Checked dotnet @('build', $EpinelFxProbe, '-c', 'Release', '--no-restore')
+Invoke-Checked dotnet @('format', $EpinelFxProbe, '--verify-no-changes', '--no-restore')
+Write-Output 'External FX probe source build passed; no external DLL/catalog/game input executed in CI.'
 $ReadBenchmarks = Join-Path $RepositoryRoot 'tests/NikkeLocalLab.ReadBenchmarks/NikkeLocalLab.ReadBenchmarks.csproj'
 Invoke-Checked dotnet @('restore', $ReadBenchmarks, '--locked-mode')
 Invoke-Checked dotnet @('build', $ReadBenchmarks, '-c', 'Release', '--no-restore')
