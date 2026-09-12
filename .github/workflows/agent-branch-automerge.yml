@@ -50,7 +50,7 @@ jobs:
               throw "Cannot resolve origin/main."
           }
           "sha=$BaseSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          git merge --no-commit --no-ff $BaseRef
+          git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com merge --no-commit --no-ff $BaseRef
           if ($LASTEXITCODE -ne 0) {
               throw "Feature branch does not produce a clean merge result with origin/main."
           }
@@ -58,6 +58,16 @@ jobs:
       - name: Verify repository boundary
         shell: pwsh
         run: pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode tracked -AllowRemote
+
+      - name: Verify source-only onboarding and merge behavior
+        shell: pwsh
+        run: |
+          python -B scripts/test-nll-boss-profile-qte.py
+          if ($LASTEXITCODE -ne 0) { throw 'QTE profile checks failed.' }
+          python -B scripts/test-nll-shield-fx-candidate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated FX checks failed.' }
+          python -B scripts/test-nll-actions-merge.py
+          if ($LASTEXITCODE -ne 0) { throw 'Merge identity checks failed.' }
 
       - name: Verify Phase 0 contracts
         shell: pwsh
@@ -128,7 +138,7 @@ jobs:
               throw "Cannot resolve origin/main."
           }
           "sha=$BaseSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          git merge --no-commit --no-ff $BaseRef
+          git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com merge --no-commit --no-ff $BaseRef
           if ($LASTEXITCODE -ne 0) {
               throw "Feature branch does not produce a clean merge result with origin/main."
           }
@@ -136,6 +146,16 @@ jobs:
       - name: Verify Phase 2B with PostgreSQL
         shell: pwsh
         run: pwsh -NoProfile -File scripts/verify-phase2b.ps1 -Integration
+
+      - name: Verify source-only onboarding and merge behavior
+        shell: pwsh
+        run: |
+          python -B scripts/test-nll-boss-profile-qte.py
+          if ($LASTEXITCODE -ne 0) { throw 'QTE profile checks failed.' }
+          python -B scripts/test-nll-shield-fx-candidate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated FX checks failed.' }
+          python -B scripts/test-nll-actions-merge.py
+          if ($LASTEXITCODE -ne 0) { throw 'Merge identity checks failed.' }
 
   publish:
     name: Open PR and squash merge

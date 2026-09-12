@@ -2,6 +2,118 @@
 
 > 상태 참고 (2026-09-06): 아래 S29 결과는 당시 admission 기록입니다. 현재 S29의 profile v3/등록 v2 불일치는 별도 보류이며, 151 실게임 완료는 S26 기준입니다. [안정화 계획](../STABILIZATION_PLAN.md)을 함께 확인합니다.
 
+## Current QTE stage — 2026-09-12
+
+S29 repair and common onboarding improvements are now in progress. This is a
+**source-only first stage, not S29 activation or a completed automatic pipeline**.
+The materializer consumes the existing v3 QTE contract, validates the source row
+digests/counts and changes only `ElementId` in target-linked QTE records. It checks
+every other serialized field, all foreign rows and the encrypted pack round trip.
+Receipts distinguish pending isolated FX overlay from prefab-reference changes and
+explicitly leave runtime admission `not_assessed`.
+Legacy profiles cannot silently leave elemental QTE unchanged when making a variant,
+and v1/v2 profiles cannot carry v3-only fields outside their table allowlist.
+
+The common Python assembler still produces v2. It now requires an explicit closed
+no-QTE discovery. Missing discovery fails with `boss_profile_qte_discovery_missing`;
+nonempty or inconsistent discovery fails with `boss_profile_qte_v3_pipeline_required`
+**before writing a candidate**, instead of discarding QTE and publishing incomplete
+five-affinity support. Automatic v3 assembly is the next pipeline stage.
+
+Verification completed locally against the pinned 151/v6 dependencies:
+
+- 37 compiled synthetic QTE behavior checks (five elements, legacy handling,
+  source drift, foreign-row changes, immutable fields, count and table boundaries).
+- Four Python unittest methods, including missing/malformed discovery subcases.
+- Ten real local-data round trips: S26 and S29, each with all five weakness codes.
+  S29 changes five QTE records for each non-default weakness; the default iron
+  weakness changes none. S26 QTE remains untouched. Source/bundle hashes remain equal.
+- These local checks are separate from source-only CI and original-client gameplay.
+
+Reproduce with PowerShell 7 and the installed .NET 10 SDK (restore the local
+materializer's locked dependencies first if its `obj` directory is absent):
+
+```powershell
+pwsh -NoProfile -File scripts/test-nll-boss-qte-materializer.ps1 `
+  -BundlePath C:\NLL\Runtime\PhaseD151-v6\bundle.private.json `
+  -ExpectedBundleSha256 148ea9ae3e6a5759fd5075c7e25a2860331affc5644043a20a2869afcff8c9db
+python -B scripts/test-nll-boss-profile-qte.py
+```
+
+`-OfflineVariants` additionally requires explicit `-SourceDatabasePath` and
+`-StaticDataPackPath`; the static pack and config must be pinned in that bundle.
+Outputs go to a new ignored `artifacts/boss-qte-checks/<run>/` directory. The verified
+local run is `a04c06ffc1b24d64ab78f03ae8aafede/receipt.json`. No operating PostgreSQL,
+server or client is started, and no selected bundle/profile registry is updated.
+
+Still pending: automatic v3 candidate assembly; original-client shield-FX delivery and
+installed execution rollback; preparation/coordinator v3 admission; atomic
+publication and job API; the season-selection UI. Never copy derived FX through the
+current runtime cache junction because it shares the parent cache. S29's draft/pin
+mismatch stays blocked until the complete replacement path is verified.
+
+## Current isolated FX candidate stage — 2026-09-12
+
+`materialize-nll-shield-fx-candidate.py` consumes an explicitly hash-pinned v3 profile
+and read-only local cache. This is an **offline candidate stage, not full profile
+admission, a delivery router, an installation updater, or automatic v3 assembly**.
+It resolves electric source and fire/wind/iron target bundles by exact length/hash,
+copies their bytes into a new independent output folder and runs the existing
+Transform materializer on those copies. Derived hashes, lengths and all six evidence
+fields must equal the profile. Non-Transform objects, unmatched Transform bytes and
+every matched Transform field except local position/rotation/scale remain unchanged.
+Ambiguous transform identities, children, branches or leaf names fail closed.
+
+The immutable, source-free `manifest.json` is written last, only after every candidate
+file and original input passes verification. An interrupted creation has no manifest
+and cannot be reused; keep it for diagnosis and use a new output folder on retry.
+No source asset paths or identifiers are written into the manifest. The private copied
+profile/source/backup/overlay files stay in ignored artifacts; never upload the folder.
+
+`verify` and `restore` both require the caller's exact manifest SHA-256 and check its
+profile binding and fixed role/path inventory. Restore preflights all backups, overlays
+and partial files before replacing anything. It **only** restores this candidate's
+three overlay files from its own pinned backups, not any installed/shared/client cache.
+Unknown bytes, path substitution, symlinks/junctions, hard links and concurrent operations
+are rejected. Interrupted replacements may resume from original/derived pinned states
+and a pinned partial file. Foreign partial files are retained and rejected. A lock left
+by a killed process is not automatically removed: establish that the owner stopped
+before diagnosing it; the tool never assumes a stale lock permits concurrent mutation.
+
+The manifest records the initial seal, not mutable readiness. After restore, `verify`
+must fail (`shield_fx_candidate_overlay_drifted`). A consumer must run verification,
+not infer readiness from the manifest's existence or `statusCode`. Every result keeps
+`runtimeAdmissionStatusCode=not_assessed`. No candidate is registered or auto-started.
+
+Source-only checks (no UnityPy/game inputs) run on both CI operating systems:
+
+```powershell
+python -B scripts/test-nll-shield-fx-candidate.py
+python -B scripts/test-nll-actions-merge.py
+```
+
+The FX suite has 29 tests with mutation subcases, including interrupted create/restore,
+idempotent recovery, drift, write isolation and transform boundaries. The separate Git
+test uses a disposable synthetic repository to reproduce a non-fast-forward merge with
+no global identity and verify the command-local bot identity fix without making a commit.
+
+Reproduce all three actual local FX variants, verify, restore twice and reject the
+restored candidate with the reviewed local UnityPy installation (observed version 1.25.3):
+
+```powershell
+pwsh -NoProfile -File scripts/test-nll-shield-fx-local.ps1 `
+  -BundlePath C:\NLL\Runtime\PhaseD151-v6\bundle.private.json `
+  -ExpectedBundleSha256 148ea9ae3e6a5759fd5075c7e25a2860331affc5644043a20a2869afcff8c9db `
+  -PythonPath <local-python-executable> -UnityPyRoot <local-unitypy-directory>
+```
+
+The helper creates `artifacts/shield-fx-checks/<run>/receipt.json` and checks all 96
+installed bundle pins before and after; it does not start DB/server/client or deploy.
+Verified final run: `9ef9c5f5870d4d0f8c16bdd089cfe3e8`, candidate manifest SHA-256
+`bc2fc7c5b88d7d0a87f10e66ccb02c3dd5e8e5a171df5daf158f82c447d11f14`.
+All three derived bundle hashes equal the existing v3 profile. This is not evidence
+that the original client received or displayed them; that delivery gate is still open.
+
 ## Purpose
 
 `scripts/invoke-nll-boss-onboarding.ps1` is the common fail-closed path for adding a
@@ -44,7 +156,7 @@ The pipeline intentionally preserves the original behavior tree. “Behavior ass
 means resolving and proving the complete original tree and its references; it does not
 invent or simulate a boss pattern.
 
-## Season 29 result
+## Historical Season 29 result (v2; not current admission)
 
 Season 29 Mother Whale is enabled as `season-29-mother-whale`.
 

@@ -73,7 +73,15 @@ if ([regex]::Matches($Workflow, '(?m)^\s*dotnet-version:\s*8\.0\.407\s*$').Count
 }
 Assert-Contains $Workflow 'postgres:17\.6-bookworm@sha256:f3bd19c606e442c3d7bdfa8002e03fe260a1023351e0ea4598032022b68dd6e3' "The PostgreSQL service image must remain pinned by digest."
 Assert-Contains $Workflow '(?m)^\s*persist-credentials:\s*false\s*$' "Validation checkout must not persist even a read token."
-Assert-Contains $Workflow 'git\s+merge\s+--no-commit\s+--no-ff\s+\$BaseRef' "Validation must test the feature/main merge result."
+$mergePattern = 'git\s+-c\s+user\.name=github-actions\[bot\]\s+-c\s+user\.email=41898282\+github-actions\[bot\]@users\.noreply\.github\.com\s+merge\s+--no-commit\s+--no-ff\s+\$BaseRef'
+if ([regex]::Matches($Workflow, $mergePattern).Count -ne 2) {
+    throw 'Both validation jobs must test the merge result with command-local Git identity.'
+}
+foreach ($testScript in @('test-nll-boss-profile-qte.py', 'test-nll-shield-fx-candidate.py', 'test-nll-actions-merge.py')) {
+    if ([regex]::Matches($Workflow, [regex]::Escape("python -B scripts/$testScript")).Count -ne 2) {
+        throw 'Both validation jobs must run the source-only Python behavior checks.'
+    }
+}
 
 Assert-NotContains $Workflow '(?m)^\s*pull_request_target:\s*$' "Privileged pull_request_target execution is forbidden."
 Assert-NotContains $Workflow 'secrets\.' "Automation must not depend on a PAT or repository secret."

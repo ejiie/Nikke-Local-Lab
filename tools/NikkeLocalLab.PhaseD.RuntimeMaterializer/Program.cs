@@ -54,6 +54,11 @@ static bool IsSafeFailureCode(string value) =>
 static async Task ExecuteAsync(string[] args)
 {
 var options = ParseArguments(args);
+if (options.ContainsKey("verify-boss-qte"))
+{
+  BossQuickTimeEventChecks.Run();
+  return;
+}
 if (options.ContainsKey("verify-runtime-persistence-integration"))
 {
   await RuntimePersistenceIntegrationChecks.RunAsync(options);

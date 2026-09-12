@@ -32,6 +32,8 @@ $coordinator += Read-RequiredText (Join-Path $repositoryRoot `
     'scripts\Nll.PhaseDRunnerStart.ps1')
 $materializer = Read-RequiredText (Join-Path $repositoryRoot `
     'tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\BossAffinityStaticDataVariant.cs')
+$qteMaterializer = Read-RequiredText (Join-Path $repositoryRoot `
+    'tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\BossQuickTimeEventVariant.cs')
 $variantProfileCode = Read-RequiredText (Join-Path $repositoryRoot `
     'tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\BossRuntimeVariantProfile.cs')
 $variantProfileSchemaPath = Join-Path $repositoryRoot `
@@ -190,6 +192,17 @@ Assert-BossVariant `
      $profileAssembler.Contains('assetBundleSetSha256')) `
     'boss_onboarding_reusable_pipeline_invalid'
 Assert-BossVariant `
+    ($materializer.Contains('BossQuickTimeEventVariant.Apply') -and
+     $materializer.Contains('BossQuickTimeEventVariant.VerifyBoundary') -and
+     $materializer.Contains('modifiedQuickTimeEventRecordCount') -and
+     $materializer.Contains('quickTimeEventAffinityContractVerified') -and
+     $qteMaterializer.Contains('contract_required') -and
+     $qteMaterializer.Contains('immutable_payload_changed') -and
+     $qteMaterializer.Contains('foreign_row_changed') -and
+     $profileAssembler.Contains('require_v2_qte_compatibility(source)') -and
+     $profileAssembler.Contains('boss_profile_qte_v3_pipeline_required')) `
+    'boss_onboarding_qte_boundary_missing'
+Assert-BossVariant `
     ($coordinator.Contains('EPINELPS_CLIENT_STATIC_DATA_VARIANT_PATH') -and
      $coordinator.Contains('EPINELPS_CLIENT_STATIC_DATA_VARIANT_SHA256') -and
      $coordinator.Contains('staticDataVariantReceiptSha256') -and
@@ -240,3 +253,17 @@ if (Test-Path -LiteralPath $externalRoot -PathType Container) {
 }
 
 Write-Output 'Boss weakness variant automation contract passed.'
+
+$fxCandidate = Read-RequiredText (Join-Path $repositoryRoot 'scripts\materialize-nll-shield-fx-candidate.py')
+$fxTransform = Read-RequiredText (Join-Path $repositoryRoot 'scripts\materialize-nll-shield-fx-transform-variant.py')
+Assert-BossVariant `
+    ($fxCandidate.Contains('nll/boss-shield-fx-isolated-candidate/v1') -and
+     $fxCandidate.Contains('shield_fx_candidate_output_overlaps_input') -and
+     $fxCandidate.Contains('shield_fx_candidate_manifest_drifted') -and
+     $fxCandidate.Contains('shield_fx_candidate_restore_partial_drifted') -and
+     $fxCandidate.Contains('runtimeAdmissionStatusCode') -and
+     $fxTransform.Contains('shield_fx_variant_transform_boundary_invalid') -and
+     (Test-Path -LiteralPath (Join-Path $repositoryRoot 'scripts\test-nll-shield-fx-candidate.py')) -and
+     (Test-Path -LiteralPath (Join-Path $repositoryRoot 'scripts\test-nll-shield-fx-local.ps1'))) `
+    'boss_shield_fx_isolated_candidate_boundary_missing'
+Write-Output 'Shield FX isolated candidate source contract passed; client delivery remains unverified.'

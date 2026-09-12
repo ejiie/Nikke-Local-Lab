@@ -206,6 +206,9 @@ internal sealed record BossRuntimeVariantProfile(
     Require(IsElement(SourceAffinity.BossElementCode) &&
             IsElement(SourceAffinity.WeaknessCode),
         "phase_d_boss_variant_profile_invalid");
+    Require(SchemaVersion == 3 ||
+            (QuickTimeEventAffinity is null && ShieldFxTransformNormalization is null),
+        "phase_d_boss_variant_profile_invalid");
     if (SchemaVersion == 1)
     {
       Require(ElementShield.ModeCode == "none" &&

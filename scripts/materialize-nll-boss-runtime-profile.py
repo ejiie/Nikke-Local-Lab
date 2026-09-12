@@ -252,6 +252,25 @@ def resolve_shield(
     }
 
 
+def require_v2_qte_compatibility(source: dict[str, Any]) -> None:
+    # This assembler still emits v2. Never discard newly discovered elemental QTE
+    # metadata and falsely admit the resulting five-affinity candidate.
+    qte = source.get("quickTimeEventAffinity")
+    require(isinstance(qte, dict), "boss_profile_qte_discovery_missing")
+    require(
+        qte.get("modeCode") == "not_applicable"
+        and type(qte.get("recordCount")) is int
+        and qte["recordCount"] == 0
+        and type(qte.get("monsterReferenceCount")) is int
+        and qte["monsterReferenceCount"] == 0
+        and qte.get("sourceElementCodes") == []
+        and qte.get("recordSetSha256") == EMPTY_SHA256
+        and qte.get("immutablePayloadSetSha256") == EMPTY_SHA256
+        and qte.get("sourceElementSetSha256") == EMPTY_SHA256,
+        "boss_profile_qte_v3_pipeline_required",
+    )
+
+
 def run(args: argparse.Namespace) -> None:
     source_path = args.source_discovery.resolve()
     private_path = args.private_discovery.resolve()
@@ -283,6 +302,7 @@ def run(args: argparse.Namespace) -> None:
         and behavior.get("disabledNodeCount") == 0,
         "boss_profile_behavior_closure_invalid",
     )
+    require_v2_qte_compatibility(source)
     shield = resolve_shield(source, private, asset_root)
     dynamic = shield["modeCode"] == "dynamic_affinity_linked"
     profile = {
