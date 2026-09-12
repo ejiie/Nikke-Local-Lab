@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
 import re
 import sys
+import tempfile
 from typing import Any
 
 
@@ -253,8 +255,7 @@ def resolve_shield(
 
 
 def require_v2_qte_compatibility(source: dict[str, Any]) -> None:
-    # This assembler still emits v2. Never discard newly discovered elemental QTE
-    # metadata and falsely admit the resulting five-affinity candidate.
+    # The default/publication lane still emits v2. Never discard elemental QTE.
     qte = source.get("quickTimeEventAffinity")
     require(isinstance(qte, dict), "boss_profile_qte_discovery_missing")
     require(
@@ -269,6 +270,73 @@ def require_v2_qte_compatibility(source: dict[str, Any]) -> None:
         and qte.get("sourceElementSetSha256") == EMPTY_SHA256,
         "boss_profile_qte_v3_pipeline_required",
     )
+
+
+def local_module(name: str, filename: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(filename))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def require_v3_qte(source: dict[str, Any]) -> dict[str, Any]:
+    qte = source.get("quickTimeEventAffinity")
+    require(isinstance(qte, dict), "boss_profile_qte_discovery_missing")
+    require(qte.get("modeCode") == "target_monster_linked_element_only"
+            and all(type(qte.get(key)) is int and qte[key] > 0
+                    for key in ("recordCount", "monsterReferenceCount"))
+            and qte.get("sourceElementCodes") == [source["sourceAffinity"]["bossElementCode"]]
+            and all(isinstance(qte.get(key), str)
+                    and re.fullmatch("[0-9a-f]{64}", qte[key]) is not None
+                    and qte[key] != EMPTY_SHA256 for key in (
+                        "recordSetSha256", "immutablePayloadSetSha256", "sourceElementSetSha256")),
+            "boss_profile_qte_v3_discovery_invalid")
+    return {key: qte[key] for key in (
+        "modeCode", "recordCount", "monsterReferenceCount", "sourceElementCodes",
+        "recordSetSha256", "immutablePayloadSetSha256", "sourceElementSetSha256")}
+
+
+def assemble_normalization(source: dict[str, Any], shield: dict[str, Any], cache: Path,
+                           materialize: Any, unitypy: Any) -> dict[str, Any]:
+    # Only the currently proved source/common family is supported. Do not guess
+    # geometry for other bosses, multi-bundle mappings or another source element.
+    fx = local_module("boss_fx_candidate", "materialize-nll-shield-fx-candidate.py")
+    require(source["sourceAffinity"]["bossElementCode"] == "electric"
+            and shield["modeCode"] == "dynamic_affinity_linked"
+            and [row["bossElementCode"] for row in shield["fxVariants"]] == list(ELEMENTS),
+            "boss_profile_v3_fx_family_unsupported")
+    bundles = {}
+    for row in shield["fxVariants"]:
+        mappings = row["mappings"]
+        expected_kind = "common" if row["bossElementCode"] in fx.ROLES else "boss_specific"
+        require(len(mappings) == 1 and mappings[0]["sourceKindCode"] == expected_kind
+                and len(mappings[0]["assetBundles"]) == 1,
+                "boss_profile_v3_fx_family_unsupported")
+        bundles[row["bossElementCode"]] = mappings[0]["assetBundles"][0]
+    rows = [{"bossElementCode": role,
+             **{prefix + "Sha256": bundles[element]["sha256"]
+                for prefix, element in (("sourceBundle", "electric"), ("targetBundle", role))},
+             **{prefix + "ByteLength": bundles[element]["byteLength"]
+                for prefix, element in (("sourceBundle", "electric"), ("targetBundle", role))}}
+            for role in fx.ROLES]
+    inputs = fx.resolve_inputs(fx.plain_path(cache), rows)
+    before = {key: fx.fingerprint(path) for key, path in inputs.items()}
+    # Probe owned copies, never the input cache. The subsequent FX candidate
+    # stage independently regenerates and verifies these freshly derived pins.
+    with tempfile.TemporaryDirectory(prefix="nll-fx-profile-") as directory:
+        owned = Path(directory)
+        for row in rows:
+            for prefix in ("sourceBundle", "targetBundle"):
+                path = owned / (prefix + ".bundle")
+                path.write_bytes(inputs[row[prefix + "Sha256"]].read_bytes())
+                require(fx.fingerprint(path) == fx.pin(row, prefix), "boss_profile_fx_input_drifted")
+            derived, evidence = materialize(owned / "sourceBundle.bundle", owned / "targetBundle.bundle", unitypy)
+            row.update({"variantBundleSha256": fx.digest(derived), "variantBundleByteLength": len(derived),
+                        **{key: evidence[key] for key in fx.EVIDENCE_FIELDS}})
+    require(before == {key: fx.fingerprint(path) for key, path in inputs.items()},
+            "boss_profile_fx_input_drifted")
+    return {"modeCode": "per_execution_target_bundle_overlay", "sourceBossElementCode": "electric",
+            "targetBossElementCodes": list(fx.ROLES), "variants": rows}
 
 
 def run(args: argparse.Namespace) -> None:
@@ -302,7 +370,13 @@ def run(args: argparse.Namespace) -> None:
         and behavior.get("disabledNodeCount") == 0,
         "boss_profile_behavior_closure_invalid",
     )
-    require_v2_qte_compatibility(source)
+    v3 = (getattr(args, "allow_v3_candidate", False)
+          and (source.get("quickTimeEventAffinity") or {}).get("modeCode")
+          == "target_monster_linked_element_only")
+    if v3:
+        qte = require_v3_qte(source)
+    else:
+        require_v2_qte_compatibility(source)
     shield = resolve_shield(source, private, asset_root)
     dynamic = shield["modeCode"] == "dynamic_affinity_linked"
     profile = {
@@ -345,6 +419,19 @@ def run(args: argparse.Namespace) -> None:
             "rawSourceIdentifiersPersisted": False,
         },
     }
+    if v3:
+        require(args.unitypy_root is not None and args.unitypy_root.is_dir(),
+                "boss_profile_v3_unitypy_missing")
+        sys.path.insert(0, str(args.unitypy_root.resolve()))
+        import UnityPy
+        transform = local_module("boss_fx_transform", "materialize-nll-shield-fx-transform-variant.py")
+        profile.update({"schemaVersion": 3, "contractId": "nll/boss-runtime-variant-profile/v3",
+                        "quickTimeEventAffinity": qte,
+                        "shieldFxTransformNormalization": assemble_normalization(
+                            source, shield, asset_root, transform.materialize, UnityPy)})
+        profile["transformation"].update({
+            "modeCode": "target_monster_element_dynamic_shield_fx_and_qte_element",
+            "allowedTableCodes": ["monster", "function", "quick_time_event"]})
     profile_path = args.profile_output.resolve()
     write_atomic(profile_path, profile)
     receipt = {
@@ -360,6 +447,7 @@ def run(args: argparse.Namespace) -> None:
         "elementShieldModeCode": shield["modeCode"],
         "elementShieldFxVariantCount": len(shield["fxVariants"]),
         "admissionStatusCode": "candidate_pending_five_affinity_variants",
+        "runtimeAdmissionStatusCode": "not_assessed",
         "rawSourceIdentifiersPersisted": False,
         "officialInstallModified": False,
     }
@@ -374,6 +462,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--asset-cache-root", required=True, type=Path)
     result.add_argument("--profile-output", required=True, type=Path)
     result.add_argument("--receipt-output", required=True, type=Path)
+    result.add_argument("--allow-v3-candidate", action="store_true")
+    result.add_argument("--unitypy-root", type=Path)
     return result
 
 
@@ -384,8 +474,14 @@ def main() -> int:
     except PipelineError as exception:
         print(str(exception), file=sys.stderr)
         return 1
-    except Exception:
+    except Exception as exception:
         print("boss_profile_uncontrolled_failure", file=sys.stderr)
+        # Source-free code location only: no exception text, locals or raw IDs.
+        trace = exception.__traceback__
+        while trace is not None:
+            if trace.tb_frame.f_code.co_filename == __file__:
+                print(f"boss_profile_failure_line_{trace.tb_lineno}", file=sys.stderr)
+            trace = trace.tb_next
         return 1
 
 

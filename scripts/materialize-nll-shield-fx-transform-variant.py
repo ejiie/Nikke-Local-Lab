@@ -205,8 +205,10 @@ def transform_boundary(transforms: dict[int, dict[str, Any]], matched: set[int])
 
 
 def materialize(source_path: Path, target_path: Path, unitypy: Any) -> tuple[bytes, dict[str, Any]]:
-    source_environment = unitypy.load(str(source_path))
-    target_environment = unitypy.load(str(target_path))
+    # Byte-backed readers do not retain Windows file handles after this call.
+    # Candidate assembly must be able to remove its owned temporary probe files.
+    source_environment = unitypy.load(source_path.read_bytes())
+    target_environment = unitypy.load(target_path.read_bytes())
     source_transforms = transform_graph(source_environment)
     target_transforms = transform_graph(target_environment)
     source_root = unique_root(source_transforms)

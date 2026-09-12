@@ -202,6 +202,20 @@ Assert-BossVariant `
      $profileAssembler.Contains('require_v2_qte_compatibility(source)') -and
      $profileAssembler.Contains('boss_profile_qte_v3_pipeline_required')) `
     'boss_onboarding_qte_boundary_missing'
+$candidateVerifier = Read-RequiredText (Join-Path $repositoryRoot `
+    'scripts\verify-nll-boss-onboarding-candidate.py')
+Assert-BossVariant `
+    ($onboarding.Contains('[switch]$CandidateOnly') -and
+     $onboarding.Contains('boss_onboarding_v3_runtime_delivery_required') -and
+     $onboarding.Contains('boss_onboarding_input_drifted') -and
+     $profileAssembler.Contains('assemble_normalization(') -and
+     $profileAssembler.Contains('boss_profile_v3_fx_family_unsupported') -and
+     $candidateVerifier.Contains('verified_candidate_pending_runtime_delivery') -and
+     $candidateVerifier.Contains('fx.inspect_or_restore(') -and
+     $candidateVerifier.Contains('modifiedQuickTimeEventRecordCount') -and
+     (Test-Path -LiteralPath (Join-Path $repositoryRoot 'scripts\test-nll-boss-onboarding-candidate.py')) -and
+     (Test-Path -LiteralPath (Join-Path $repositoryRoot 'scripts\test-nll-boss-onboarding-local.ps1'))) `
+    'boss_onboarding_v3_candidate_boundary_missing'
 Assert-BossVariant `
     ($coordinator.Contains('EPINELPS_CLIENT_STATIC_DATA_VARIANT_PATH') -and
      $coordinator.Contains('EPINELPS_CLIENT_STATIC_DATA_VARIANT_SHA256') -and

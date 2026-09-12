@@ -2,6 +2,79 @@
 
 > 상태 참고 (2026-09-06): 아래 S29 결과는 당시 admission 기록입니다. 현재 S29의 profile v3/등록 v2 불일치는 별도 보류이며, 151 실게임 완료는 S26 기준입니다. [안정화 계획](../STABILIZATION_PLAN.md)을 함께 확인합니다.
 
+## Current automatic candidate stage — 2026-09-12
+
+The common command now supports **`-CandidateOnly`**. It discovers the selected
+season afresh, closes its original behavior tree, assembles v2 (closed no-QTE) or
+v3 (elemental QTE), regenerates the isolated FX candidate, checks all five StaticData
+round trips and writes `onboarding-verified-candidate.receipt.json` last. Its contract
+is `nll/boss-onboarding-verified-candidate/v1`; status is
+`verified_candidate_pending_runtime_delivery`, with runtime admission `not_assessed`.
+There is no registry write, admission receipt, operating DB/server/client start or
+installed-cache write in this lane. **Do not use this receipt as a UI import-success
+or launch authorization until the delivery/publication/job contracts are implemented.**
+
+The v3 assembler uses fresh discovery QTE hashes and derives the three FX transform
+plans from actual local asset bytes; it does not copy the checked-in S29 draft.
+Only the currently proved electric-source, boss-specific water/electric and common
+fire/wind/iron, single-bundle family is supported. Other families fail closed rather
+than guessing geometry. The separate FX candidate stage regenerates those derived
+pins and verifies every transform boundary. Byte-backed UnityPy readers avoid leaving
+Windows file handles open when the temporary owned probe directory is removed.
+
+Final checks bind profile/discovery/behavior hashes, season and profile codes,
+source/derived pack hashes, exact QTE and table-change counts, unchanged ElementTable,
+and each selected FX mapping. Changed FX-bearing function counts must be positive
+and within the closed shield set: S29 has three closed shield functions but only two
+FX-bearing rows change. The compiled materializer additionally proves the exact row
+boundary. All original behavior/five-FX asset pins and the isolated overlays are
+rechecked at completion. Source pack/config/read-only seed/materializer/tool/registry
+pins are compared before and after work.
+
+Each candidate requires a new output directory; an existing success or partial failure
+cannot be reused. Reparse ancestors and cache/registry/source-directory overlap are
+rejected. A retry uses a new directory. Private discovery is deleted in `finally` on
+both success and failure. This is single-output isolation, **not yet cross-request job
+deduplication or atomic profile/registry publication**. Without `-CandidateOnly`, the
+legacy v2 publication path is unchanged and still rejects elemental QTE; an additional
+guard prevents v3 from entering that publication path.
+
+Verification:
+
+- 12 source-free Python test methods, including real PowerShell orchestration against
+  synthetic tool outputs: partial five-variant failure, invalid QTE/FX, source drift,
+  retry, duplicate output rejection, registry preservation and private cleanup.
+- S29 and S26 fresh discovery→assembly→five-variant candidate runs, **10 local-data
+  variants and three isolated FX overlays**, passed in
+  `artifacts/boss-onboarding-checks/91e8c23bd7b546d09aeec5877741c756/receipt.json`.
+  S29 candidate profile SHA-256 is
+  `0c754f0c5910f569ff5ba5e61ab75b370d492c3d1b7cb1f8c0f7357406fa6bf7`.
+  All 96 installed v6 pins, read-only seed and tracked registry/profile files remain
+  unchanged. Initial failed attempts were not sealed and did not publish anything.
+- Existing 29 FX synthetic tests and real FX create/verify/restore twice passed again;
+  local receipt `artifacts/shield-fx-checks/16cad47968eb456d940758d3d2e30748/receipt.json`
+  confirms the byte-backed reader reproduces all three prior expected bundle hashes.
+- Windows and Linux CI run the source-free tests only. Local game files are never CI inputs.
+
+Reproduce with a freshly built current-source materializer (same build instructions as
+`test-nll-boss-qte-materializer.ps1`), the reviewed local Python/UnityPy installation,
+and explicit sealed local inputs:
+
+```powershell
+pwsh -NoProfile -File scripts/test-nll-boss-onboarding-local.ps1 `
+  -BundlePath C:\NLL\Runtime\PhaseD151-v6\bundle.private.json `
+  -ExpectedBundleSha256 148ea9ae3e6a5759fd5075c7e25a2860331affc5644043a20a2869afcff8c9db `
+  -MaterializerPath <current-source-offline-materializer> `
+  -StaticDataPackPath <bundle-pinned-pack> -SourceDatabasePath <read-only-local-seed> `
+  -PythonPath <local-python-executable> -UnityPyRoot <local-unitypy-directory>
+python -B scripts/test-nll-boss-onboarding-candidate.py
+```
+
+Next: isolated original-client FX delivery with execution-specific rollback/cleanup,
+then v3 preparation/coordinator admission and atomic publication/job API, followed by
+the requested season-selection and Yes/No/completion UI. **S29 remains blocked**;
+the old registry pin and installed v6 have not been promoted or changed.
+
 ## Current QTE stage — 2026-09-12
 
 S29 repair and common onboarding improvements are now in progress. This is a
@@ -14,11 +87,12 @@ explicitly leave runtime admission `not_assessed`.
 Legacy profiles cannot silently leave elemental QTE unchanged when making a variant,
 and v1/v2 profiles cannot carry v3-only fields outside their table allowlist.
 
-The common Python assembler still produces v2. It now requires an explicit closed
+At the QTE-only checkpoint the common Python assembler produced only v2. It required an explicit closed
 no-QTE discovery. Missing discovery fails with `boss_profile_qte_discovery_missing`;
 nonempty or inconsistent discovery fails with `boss_profile_qte_v3_pipeline_required`
 **before writing a candidate**, instead of discarding QTE and publishing incomplete
-five-affinity support. Automatic v3 assembly is the next pipeline stage.
+five-affinity support. That default v2 guard is preserved; automatic candidate-only v3
+assembly is now completed in the newer stage above.
 
 Verification completed locally against the pinned 151/v6 dependencies:
 
@@ -46,7 +120,7 @@ Outputs go to a new ignored `artifacts/boss-qte-checks/<run>/` directory. The ve
 local run is `a04c06ffc1b24d64ab78f03ae8aafede/receipt.json`. No operating PostgreSQL,
 server or client is started, and no selected bundle/profile registry is updated.
 
-Still pending: automatic v3 candidate assembly; original-client shield-FX delivery and
+Still pending after the newer candidate stage: original-client shield-FX delivery and
 installed execution rollback; preparation/coordinator v3 admission; atomic
 publication and job API; the season-selection UI. Never copy derived FX through the
 current runtime cache junction because it shares the parent cache. S29's draft/pin
@@ -56,7 +130,8 @@ mismatch stays blocked until the complete replacement path is verified.
 
 `materialize-nll-shield-fx-candidate.py` consumes an explicitly hash-pinned v3 profile
 and read-only local cache. This is an **offline candidate stage, not full profile
-admission, a delivery router, an installation updater, or automatic v3 assembly**.
+admission, a delivery router or an installation updater**. Automatic v3 assembly now
+calls this tool in the separate candidate-only stage above.
 It resolves electric source and fire/wind/iron target bundles by exact length/hash,
 copies their bytes into a new independent output folder and runs the existing
 Transform materializer on those copies. Derived hashes, lengths and all six evidence
@@ -127,7 +202,7 @@ Raw manager, monster, skill, function, behavior and prefab identifiers exist onl
 an ephemeral private diagnostic under `%TEMP%`; the `finally` boundary deletes it.
 The official `C:\NIKKE` installation is never an input or mutation target.
 
-## Admission flow
+## Legacy v2 admission flow (not the v3 candidate lane)
 
 1. `--discover-boss-content` resolves the season's unique Classic Challenge
    manager→preset→wave→target monster graph and closes skills, passives and functions.

@@ -40,7 +40,9 @@ param(
 
     [string]$RegistryRoot = (Join-Path $PSScriptRoot '..\config\boss-runtime-variants'),
 
-    [switch]$ReplaceExistingProfile
+    [switch]$ReplaceExistingProfile,
+
+    [switch]$CandidateOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,6 +60,18 @@ function Write-AtomicUtf8([string]$Path, [string]$Text) {
     $temporary = $Path + '.partial-' + [guid]::NewGuid().ToString('N')
     [IO.File]::WriteAllText($temporary, $Text, [Text.UTF8Encoding]::new($false))
     [IO.File]::Move($temporary, $Path, $true)
+}
+
+function Assert-PlainPath([string]$Path) {
+    $cursor = [IO.Path]::GetFullPath($Path)
+    while ($cursor) {
+        if (Test-Path -LiteralPath $cursor) {
+            $item = Get-Item -LiteralPath $cursor -Force
+            Assert-Onboarding (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) `
+                'boss_onboarding_reparse_forbidden'
+        }
+        $cursor = [IO.Path]::GetDirectoryName($cursor)
+    }
 }
 
 foreach ($name in @(
@@ -100,13 +114,44 @@ $behaviorInspector = Join-Path $repositoryRoot `
     'scripts\inspect-nll-boss-behavior-assets.py'
 $profileAssembler = Join-Path $repositoryRoot `
     'scripts\materialize-nll-boss-runtime-profile.py'
+$fxCandidateTool = Join-Path $PSScriptRoot 'materialize-nll-shield-fx-candidate.py'
+$candidateVerifier = Join-Path $PSScriptRoot 'verify-nll-boss-onboarding-candidate.py'
 $registryPath = Join-Path $RegistryRoot 'registry.json'
 foreach ($path in @($behaviorInspector, $profileAssembler, $registryPath)) {
     Assert-Onboarding (Test-Path -LiteralPath $path -PathType Leaf) `
         'boss_onboarding_pipeline_input_missing'
 }
 
-New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
+Assert-Onboarding (-not ($CandidateOnly -and $ReplaceExistingProfile)) `
+    'boss_onboarding_candidate_cannot_replace'
+$inputPins = @{}
+if ($CandidateOnly) {
+    Assert-PlainPath $OutputRoot
+    Assert-Onboarding (-not (Test-Path -LiteralPath $OutputRoot)) 'boss_onboarding_output_exists'
+    foreach ($protected in @($AssetCacheRoot, $RegistryRoot, $UnityPyRoot,
+            (Split-Path -Parent $StaticDataPackPath), (Split-Path -Parent $SourceDatabasePath))) {
+        Assert-PlainPath $protected
+        $left = $OutputRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+        $right = $protected.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+        Assert-Onboarding (-not $left.StartsWith($right, [StringComparison]::OrdinalIgnoreCase) -and
+            -not $right.StartsWith($left, [StringComparison]::OrdinalIgnoreCase)) `
+            'boss_onboarding_output_overlaps_input'
+    }
+    $pinPaths = @($MaterializerPath, $StaticDataPackPath, $GameConfigPath, $SourceDatabasePath,
+        $PythonPath, $PSCommandPath, $behaviorInspector, $profileAssembler, $fxCandidateTool,
+        $candidateVerifier, (Join-Path $PSScriptRoot 'materialize-nll-shield-fx-transform-variant.py'))
+    if ($MaterializerHostPath) { $pinPaths += $MaterializerHostPath }
+    $pinPaths += @(Get-ChildItem -LiteralPath $RegistryRoot -File | ForEach-Object { $_.FullName })
+    foreach ($path in $pinPaths) {
+        Assert-PlainPath $path
+        $inputPins[$path] = Get-Sha256Lower $path
+    }
+    # New-Item without Force exclusively reserves this run; retries use a new root.
+    New-Item -ItemType Directory -Path $OutputRoot | Out-Null
+}
+else {
+    New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
+}
 $discoveryPath = Join-Path $OutputRoot 'content-discovery.receipt.json'
 $behaviorReceiptPath = Join-Path $OutputRoot 'behavior-assembly.receipt.json'
 $candidateProfilePath = Join-Path $OutputRoot 'boss-runtime-variant.profile.json'
@@ -165,7 +210,8 @@ try {
     Move-Item -LiteralPath $resolvedBehaviorReceipts[0] `
         -Destination $behaviorReceiptPath
 
-    & $PythonPath $profileAssembler `
+    $assemblyOptions = if ($CandidateOnly) { @('--allow-v3-candidate', '--unitypy-root', $UnityPyRoot) } else { @() }
+    & $PythonPath -B $profileAssembler @assemblyOptions `
         --source-discovery $discoveryPath `
         --private-discovery $privateDiscoveryPath `
         --behavior-receipt $behaviorReceiptPath `
@@ -183,7 +229,8 @@ try {
         ($validation.contractId -ceq `
             'nll/boss-runtime-variant-profile-validation/v1' -and
          [int]$validation.seasonNumber -eq $SeasonNumber -and
-         [string]$validation.profileCode -ceq $ProfileCode) `
+         [string]$validation.profileCode -ceq $ProfileCode -and
+         [string]$validation.profileSha256 -ceq (Get-Sha256Lower $candidateProfilePath)) `
         'boss_onboarding_profile_validation_failed'
 
     New-Item -ItemType Directory -Path $variantRoot | Out-Null
@@ -193,6 +240,17 @@ try {
     }
     $profile = Get-Content -LiteralPath $candidateProfilePath -Raw -Encoding UTF8 |
         ConvertFrom-Json
+    # A v3 candidate cannot enter the legacy publication path, even if assembly
+    # behavior changes later. Delivery/rollback and execution admission are separate.
+    Assert-Onboarding ($CandidateOnly -or [int]$profile.schemaVersion -eq 2) `
+        'boss_onboarding_v3_runtime_delivery_required'
+    if ($CandidateOnly -and [int]$profile.schemaVersion -eq 3) {
+        & $PythonPath -B $fxCandidateTool create --profile $candidateProfilePath `
+            --profile-sha256 (Get-Sha256Lower $candidateProfilePath) `
+            --asset-cache-root $AssetCacheRoot --unitypy-root $UnityPyRoot `
+            --output-root (Join-Path $OutputRoot 'shield-fx-candidate') | Out-Null
+        Assert-Onboarding ($LASTEXITCODE -eq 0) 'boss_onboarding_fx_candidate_failed'
+    }
     $variantReceipts = [Collections.Generic.List[object]]::new()
     foreach ($weaknessCode in @('fire', 'water', 'wind', 'electric', 'iron')) {
         $variantPath = Join-Path $variantRoot ($weaknessCode + '.pack')
@@ -271,6 +329,23 @@ try {
             modifiedFunctionRecordCount = [int]$receipt.modifiedFunctionRecordCount
             receiptSha256 = Get-Sha256Lower $receiptPath
         })
+    }
+
+    if ($CandidateOnly) {
+        foreach ($path in $inputPins.Keys) {
+            Assert-PlainPath $path
+            Assert-Onboarding ((Get-Sha256Lower $path) -ceq $inputPins[$path]) `
+                'boss_onboarding_input_drifted'
+        }
+        $inputText = (@($inputPins.Values | Sort-Object) -join "`n")
+        $inputSetSha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
+            [Text.Encoding]::UTF8.GetBytes($inputText))).ToLowerInvariant()
+        & $PythonPath -B $candidateVerifier --output-root $OutputRoot `
+            --source-static-pack $StaticDataPackPath --season-number $SeasonNumber `
+            --profile-code $ProfileCode --input-set-sha256 $inputSetSha --asset-cache-root $AssetCacheRoot
+        Assert-Onboarding ($LASTEXITCODE -eq 0) 'boss_onboarding_candidate_verification_failed'
+        Write-Output (Join-Path $OutputRoot 'onboarding-verified-candidate.receipt.json')
+        return
     }
 
     $installedProfilePath = Join-Path $RegistryRoot ($ProfileCode + '.json')
