@@ -9,6 +9,11 @@ var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolic
 string? currentRole = null;
 try
 {
+  if (args is ["export-native-fx", var fxPlan, var fxPlanSha256, var fxDestination])
+  {
+    Console.WriteLine(JsonSerializer.Serialize(NativeFxExport.Export(fxPlan, fxPlanSha256, fxDestination), options));
+    return 0; // Exact offline payload binding is not native execution admission.
+  }
   if (args is ["stage-probe-server-locales", var localeSource, var localeDestination, var localeCatalogHash, var localeSignatureHash])
   {
     Console.WriteLine(JsonSerializer.Serialize(ProbeServerLocales.Stage(localeSource, localeDestination,

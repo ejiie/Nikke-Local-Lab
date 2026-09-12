@@ -77,8 +77,14 @@ P-01~P-09, S29/신규 보스/실드/150 보관 이동은 이 안정화 완료 �
       파일명 exact 일치는 3종 모두 0이다. hash suffix를 제외한 이름은 각각 1개지만
       이를 같은 자산으로 승인하지 않는다. 151의 `type_rowid,is_local` 스키마는 구 150의
       hash/CRC 구조와 다르다. **카탈로그/클라이언트 수정과 native 전달 성공은 아니다.**
-    - [ ] 먼저 정확한 151 catalog→provider→bundle 및 캐시 검증 경로를 재결박한다.
-      이어 전체 실행 process tree 종료/비정상 lease 복구 증거와 production 정리를 연결한다.
+    - [x] 151 오프라인 자산 재결박: 기존 내부 키를 내장/core 카탈로그 양쪽에서 exact 조회하고
+      동일 dependency 관계·설치 청크 hash/offset·로컬 의존 번들·추출 후 내부 키를 확인했다.
+      전기 원본 포함 4개 모두 기존 byte와 다르며 새 151 FX 3종의 Transform 4/6/4개를 보정했다.
+      합성 카탈로그/청크 203개·Python 63개와 실제 입력 검사가 통과했다. 설치/등록은 불변이다.
+    - [ ] 실행별 native 청크/캐시 전달과 검증/rollback. 현재 재결박은 오프라인 후보이며
+      원본 client 수신·렌더링 증거가 아니다. CIDX trailer는 여전히 미해소이며 구 HTTP 경로나
+      파일명 suffix 교체로 대체하지 않는다. 그 뒤 전체 실행 process tree 종료/비정상 lease
+      복구 증거와 production 정리를 연결한다.
       현재 coordinator의 3개 named PID만으로 임의 descendant 종료를 주장하지 않는다.
 - [x] PIPE-V3-02 후보 경로: discovery → 원본 행동 트리 closure → QTE 포함 v3 후보 조립 →
   FX 보정 → 5속성 검증을 `-CandidateOnly` 공통 명령으로 연결했다. 후보와 실행 admission을
