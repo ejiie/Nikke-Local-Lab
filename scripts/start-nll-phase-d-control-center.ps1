@@ -107,9 +107,8 @@ try {
     if ($DesktopHost) {
         Assert-Start (-not [string]::IsNullOrWhiteSpace($DesktopStopSignalPath)) `
             'control_center_desktop_stop_signal_missing'
-        if (Test-Path -LiteralPath $DesktopStopSignalPath) {
-            Remove-Item -LiteralPath $DesktopStopSignalPath -Force
-        }
+        # This path is unique per desktop instance. A stop written during slow
+        # startup must survive until the loop below; it is NOT a stale signal.
     }
     else { Set-Clipboard -Value $code }
     Remove-Item -LiteralPath $bootstrap -Force
@@ -136,10 +135,8 @@ finally {
     if($null -ne $admin -and -not $admin.HasExited){Stop-Process -Id $admin.Id -Force -ErrorAction SilentlyContinue; $admin.WaitForExit(10000)}
     if(Test-Path -LiteralPath $session){Remove-Item -LiteralPath $session -Force}
     if(Test-Path -LiteralPath $bootstrap){Remove-Item -LiteralPath $bootstrap -Force}
-    if($DesktopHost -and -not [string]::IsNullOrWhiteSpace($DesktopStopSignalPath) -and
-       (Test-Path -LiteralPath $DesktopStopSignalPath)){
-        Remove-Item -LiteralPath $DesktopStopSignalPath -Force -ErrorAction SilentlyContinue
-    }
+    # The desktop/test which created the unique stop signal removes it only
+    # after observing this host exit. Never delete a caller-supplied signal path.
     if ((Invoke-ControlCenterPgCtl @('status','-D',$data)) -eq 0) {
         [void](Invoke-ControlCenterPgCtl @('stop','-D',$data,'-m','fast','-w','-t','60'))
     }

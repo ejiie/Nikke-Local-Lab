@@ -1,5 +1,6 @@
 param([string]$ReferenceCoordinatorPath = '', [string]$PinnedStartPath = '', [string]$PinnedCompletionPath = '')
-# Compile strings only. Never execute a generated start/completion script.
+# Historical adapter golden checks only. Never execute a generated script.
+# Current coordinator mapping is verified by test-nll-phase-d-runner-routing.ps1.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.PhaseDLaunchTools.ps1')
@@ -48,12 +49,6 @@ if ($PinnedStartPath -or $PinnedCompletionPath) {
     $completionFixture = [IO.File]::ReadAllText($PinnedCompletionPath)
 }
 $referenceBody = $null
-$coordinator = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'invoke-nll-phase-d-execution.ps1'))
-$mapBegin = $coordinator.IndexOf('    $launchToolInput =', [StringComparison]::Ordinal)
-$mapEnd = $coordinator.IndexOf('    [IO.File]::WriteAllText($derivedStart', [StringComparison]::Ordinal)
-Assert-PhaseD ($mapBegin -gt 0 -and $mapEnd -gt $mapBegin) 'coordinator_input_boundary_missing'
-$mappingBody = [scriptblock]::Create($coordinator.Substring($mapBegin, $mapEnd - $mapBegin) +
-    "`n[pscustomobject]@{ startText = `$startText; completionText = `$completionText }")
 if ($ReferenceCoordinatorPath) {
     $reference = [IO.File]::ReadAllText($ReferenceCoordinatorPath)
     $begin = $reference.IndexOf('    $expectedParentDbPattern =', [StringComparison]::Ordinal)
@@ -96,15 +91,6 @@ foreach ($build in @('150','151')) {
       $spec.runtimeBundle = [pscustomobject]@{ bootstrapRoot = 'C:\synthetic\151'; bootstrap = @{ sha256 = ('e' * 64) }; serverExe = @{ sha256 = ('f' * 64) } }
     }
     $actual = New-PhaseDLaunchToolText $spec
-    # Execute the actual coordinator's pure input mapping against synthetic data.
-    # This catches misspelled/nested bindings, not just the adapter in isolation.
-    $mapped = & {
-      foreach ($key in $spec.Keys) { Set-Variable -Name $key -Value $spec[$key] -Scope Local }
-      $candidate = [pscustomobject]@{ accountUid = $spec.accountUid; baseRevisions = @{ revisionSetSha256 = $spec.accountRevisionSetSha256 } }
-      $materialization = [pscustomobject]@{ raidSnapshotUid = $spec.raidSnapshotUid; raidSnapshotSha256 = $spec.raidSnapshotSha256 }
-      & $mappingBody
-    }
-    Assert-PhaseD ($mapped.startText -ceq $actual.startText -and $mapped.completionText -ceq $actual.completionText) 'coordinator_input_mapping_changed'
     if (-not $PinnedStartPath) {
       Assert-PhaseD ((Get-TextHash $actual.startText) -ceq $goldenStart["$build-$variant"] -and
           (Get-TextHash $actual.completionText) -ceq $goldenCompletion[$build]) 'golden_output_changed'

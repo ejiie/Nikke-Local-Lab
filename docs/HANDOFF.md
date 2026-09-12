@@ -1,20 +1,93 @@
 # 작업 인계
 
-최종 갱신: 2026-09-08. 이 문서는 짧은 현황 요약이며, 상세 기록을 계속 덧붙이는 로그가 아닙니다.
+최종 갱신: 2026-09-12. 이 문서는 짧은 현황 요약이며, 상세 기록을 계속 덧붙이는 로그가 아닙니다.
 작업 전 읽기 순서·불변 규칙은 [AGENTS](../AGENTS.md), 문서 위치는 [색인](README.md)을 따릅니다.
 
 ## 확인된 현재 상태
 
 - 운영자가 관리도구 → **151 / S26 실게임 검증 완료**를 확인했습니다. 리소스 대응은 종료했습니다.
-- 기존 진행도와 150 완주 최고 기록을 이어받는 경로를 유지합니다.
+- 기존 진행도를 유지합니다. 과거 약점 없는 최고 기록은 삭제하지 않고 `unresolved`에 보존하며,
+  새 약점별 기록에 추정 병합하지 않습니다.
 - 검증된 Epinel DLL·실행 조합을 불필요하게 다시 변경하지 않습니다.
 - 활성 OS는 Micron입니다. 저장소·client·bundle·백업의 정확한 위치는 [현재 경로](MICRON_CURRENT_PATHS.md)만 기준으로 합니다.
 - 위 완료는 운영자의 실게임 확인이며, 새 자동 관측 receipt나 모든 보스·음성·약점 조합의 검증을 뜻하지 않습니다.
 
 ## 지금 할 작업
 
+### 2026-09-12 실행 간 영속화
+
+P-01/P-05, P-04, P-02/P-03/P-06~P-09 구현과 자동 검증·운영 DB/앱/v6 배포를 완료했다.
+코드 `debc6e7`, 전체 검사 `b7453b2bb1804f83a656a0bfcf8b554e`: 단위 486개·PG 114개 통과.
+운영자가 재요청한 정상 UAC 승격 후 설치 API smoke도 통과했다(2026-09-12 10:41 KST).
+계정·workspace 각 3개, editor·로컬 bootstrap 조회와 앱/PG 정상 종료를 확인했다.
+agent의 구현·자동 검증·배포 작업은 완료다. 새 실게임 인수는 운영자가 수행하며 아직 완료로 표시하지 않는다.
+범위·호환 정책·검사/배포 절차·실게임 체크는 [영속화 문서](features/RUNTIME_PERSISTENCE.md)에 모았다.
+아래 안정화 인수와 schema 18 배포는 이전 작업의 완료 이력이며 새 영속화 인수가 아니다.
+
+### 2026-09-12 안정화 인수 완료 및 소스 게시
+
+운영자 요청은 직접 하는 실 테스트를 제외한 안정화 후속 완료다. revision readiness의
+256개 bounded cache, desktop pipe/async 예외·정상 종료 확인, 준비/완료/pg_ctl 자식의
+기한·사전 identity reservation·복구 admission, automation reparse 경계를 보강했다.
+운영 DB는 cold-copy에서 감사하며 행 삭제·추정 복원·새 migration을 하지 않는다.
+**제품 소스 `1cf8784`의 전체 검사·설치 반영·설치 API smoke를 완료**했다.
+운영자가 6단계 실 테스트에 대해 "모두 정상 동작을 확인했다"고 보고하여 이번 안정화의
+WebView2 조작·저장·재시작·151/S26 Challenge·종료 후 재실행 인수를 완료했다.
+이는 운영자 확인이며 agent가 새 actual-play receipt를 수집했다는 뜻이 아니다.
+
+- 최종 검증 `7ed9a463711d42b9aff415860bcf3b9b`: 단위 **486개**, 격리 PostgreSQL **112개**,
+  저장소·Phase 0·완료된 Phase 2A1/2A2/2B·역사 Phase 3A·3B0/3B1/3B2·약점·Actions 계약,
+  전체 solution 서식과 desktop build를 통과했다. PG receipt는
+  `e54a18ea708542fb9eee7e4d4b4669eb`이며 stop/restart checkpoint·최종 정리도 통과했다.
+- 배포 `697effd6d6c64f478b4224bf3f53193c`: 앱 31개·desktop 3개·Start 스크립트 1개를
+  before/after hash 검증 후 교체했다. 설치 전용 asset·의존 외부 DLL은 보존했다.
+  manifest SHA-256은 `ff1beb42110f3239375cff76cbdd61a3accc7d1253052b9e9c23f3fcbee42c80`이다.
+  검증한 이전 파일은 아래 cold backup의 `app-release-697effd6d6c64f478b4224bf3f53193c`에 있다.
+  이 백업은 해당 앱 파일 복원용이며 별도 저장소 실행 스크립트까지 자동 복원하는 전체 rollback은 아니다.
+- 설치 API smoke: **계정 2개·workspace 2개·editor·로컬 bootstrap·정상 종료 통과**.
+  목록 3회 wall time은 185.165/5.523/2.380ms였다. Save/import·WebView UI·게임 요청은 하지 않았다.
+  앞선 점검 2회는 로그 공유 읽기 충돌로 조회 전에 실패했고 각각 안전 종료했다. 실패 receipt를
+  보존했으며 점검기의 `FileShare.ReadWrite`·64KiB 한계와 controlled 진단으로 수정한 뒤 재검증했다.
+  공유 상태 65개와 배포/점검기 파일 행동 21개가 통과했다. 후속 변경은 점검기·그 합성 검사·문서뿐이다.
+  원본 게임 DLL/클라이언트·선택 설정·DB migration/행은 변경하지 않았다. 앱 smoke의 정상 PG
+  시작/종료는 내부 WAL/통계 파일을 바꿀 수 있으므로 DB 물리 byte 불변 주장은 배포 단계까지만 적용한다.
+
+- 반복 읽기 전체 8셀·7,200개 관측 통과: `92a2edc3d6da46bba862ada01b481e77`.
+  R50/H10에서 계정 1/10/50/100개의 HTTP 목록 p50은 1.15/1.24/1.55/1.82ms,
+  목록+로비는 2.25/3.42/9.80/18.19ms였다. 합성 데이터·warm 반복 측정이며 앱 첫 실행 시간은 아니다.
+- headless Edge DOM 6회 통과: `75faa8cefe4f42b89ff0a39d853b33b3`.
+  설치 WebView2나 원본 게임을 실행한 증거가 아니다.
+- 1/10계정의 새 프로세스 첫 요청 120회 통과: `203c935721fe45f3b0bf7563f8213bed`.
+  오류·timeout 0개다. 프로세스 시작과 요청 시간을 분리했으며 OS cache를 비우지 않았다.
+  위 warm/DOM/cold 모두 격리 PostgreSQL의 stop/restart checkpoint와 최종 정리를 확인했다.
+- 배포 전 운영 DB cold-copy 감사 `cb9ea3de443649e7ba92fd3153073f7b` 통과:
+  schema 18, migration checksum 일치, Save operation 102개, DB/암호화 pending 0개,
+  검사한 head·lineage·결과 소유권·provenance·암호화 payload hash 불일치 0개다.
+  원본 DB 2,203개 파일 / 90,992,840byte를 전후 hash 대조했고 원본을 시작·수정하지 않았다.
+  복제본은 정상 종료했고 `D:\NikkeLocalLab\Backups\stabilization-audit-cb9ea3de443649e7ba92fd3153073f7b`
+  아래 검증된 private cold backup은 보존했다.
+- 설치 smoke 후 동일 감사 `912d47e8331645abb69eefb14e2cbef1`도 통과했다.
+  schema 18·Save operation 102개·pending 0개·검사 불일치 0개를 재확인했다.
+  인수 직전 DB backup은 `D:\NikkeLocalLab\Backups\stabilization-audit-912d47e8331645abb69eefb14e2cbef1`이다.
+  마지막 대조에서 설치 파일 불일치 0개, runtime selection hash 불변, 관련 프로세스·운영 port 없음이다.
+- ANALYZE 전후 sparse/dense 총 24회 통과:
+  `b4fc342310a245f7b0bf6f7bfc42ac29`, `7ad006a74da14807b16f2fcdc03c8fff`.
+  dense 100계정 cache-miss 목록 평균은 전 1,382.913ms / 후 1,394.918ms다.
+  명확한 개선이 없어 운영 통계·인덱스를 변경하지 않았다. PDH disk byte는 호스트 전체 disk-stack
+  관측이지 해당 DB/요청 단독 I/O나 NAND byte가 아니다.
+- 공개 원격 때문에 게시를 보류했던 상태는 운영자의 "private으로 돌리고 push" 승인으로 해제했다.
+  정확한 저장소 ID를 확인하고 visibility만 비공개로 전환한 뒤 API로 재확인했다.
+  소스 게시·Actions 검증·PR/merge는 [게시 경계](operations/GITHUB_AUTOMATION.md)를 따른다.
+- 운영자가 완료를 확인한 범위는 [6단계 인수 체크리스트](operations/STABILIZATION_ACCEPTANCE.md)다.
+  별도 P-01~P-09, S29/신규 보스/실드/150 보관 이동을 이번 완료 범위로 확대하지 않는다.
+
+### 이전 작업과의 연결
+
 [안정화 계획](STABILIZATION_PLAN.md)의 회귀 검사·실행 생명주기·저장 일관성·성능 측정을 진행합니다.
-1차 구조 점검은 끝났지만 전체 파일 검토, DB 무결성 검사와 최적화 구현은 남아 있습니다.
+2026-09-12 현재 안정화 소스 후속 정비와 운영 DB cold-copy 감사가 진행됐습니다.
+최종 전체 검사·설치 반영 결과는 위 2026-09-12 절을 확인합니다. 과거의 ‘남음’ 목록을
+현재 상태로 재사용하지 않습니다. 운영자가 직접 수행할 항목은
+[안정화 인수 체크리스트](operations/STABILIZATION_ACCEPTANCE.md)로 분리했습니다.
 확인된 현행 흐름은 [아키텍처](ARCHITECTURE.md)에 있습니다.
 
 S-03의 실행 입력 snapshot에 이어 S-07의 Save 순서 조정기와 단계 adapter를 분리했습니다.
@@ -24,7 +97,7 @@ exact replay하고, 실행 중 경합은 즉시 거절하며 pending을 임의�
 신규 pending은 창을 다시 열어도 조회 후 명시적으로 이어 저장하고, 원문 없는 구형 pending은
 자동 삭제·추정 복원하지 않습니다. 완료 receipt 조회와 Save As source/복제본 구분을 유지합니다.
 운영자 승인으로 원문 없는 구형 pending 3행만 정리한 뒤, **준비된 앱 파일 15개와 V0018을 운영에
-적용**했습니다. 현재 스키마는 **18**, 정상 Save 75건·pending 0건이며 관리도구와 DB는 정상 종료했습니다.
+적용**했습니다. 해당 배포 검증 당시 스키마는 **18**, 정상 Save 75건·pending 0건이었으며 관리도구와 DB는 정상 종료했습니다.
 기존 132개 테이블은 migration 이력 외 행/시퀀스가 동일하고, 시험용 Save/복제 계정은 운영 DB에 만들지 않았습니다.
 격리 DB의 실제 HTTP/editor 화면에서 Save 응답 유실 exact 재전송, Save As 원본 보존,
 서버·창 재시작 후 신규 pending 복구를 검증했습니다. 설치 WebView2에서는 Windows 접근성 API로
@@ -93,7 +166,7 @@ rollback/hosts/DB 실패는 최초 원인과 별도 파일에 남깁니다. 적�
 따릅니다. 이후 운영자가 **“문제 없다”로 확인하고 S-04/S-05 착수를 승인**했습니다.
 이를 모든 보스·속성·종료 시점의 인수로 확대하지 않습니다.
 
-현재 S-04/S-05는 1차 전환입니다. 보스·속성·bundle 구성 판정을 UI 준비 명령,
+2026-09-08 S-04/S-05 1차 전환에서는 보스·속성·bundle 구성 판정을 UI 준비 명령,
 Start와 coordinator가 공유하고, 실행문 생성부는 명시적 versioned 입력을 받는 순수 adapter로
 분리했습니다. S26/151 구성은 통과하고 S29 기존 불일치는 차단합니다. 부모 템플릿과의
 출력 동등성은 합성 및 실제 고정 템플릿의 4조합에서 확인했습니다. 상세·남은 검증은
@@ -101,7 +174,8 @@ Start와 coordinator가 공유하고, 실행문 생성부는 명시적 versioned
 **설치 앱 4개 파일을 반영**했고 나머지 347개 파일을 보존했습니다. 백업·hash는 로컬
 `artifacts/stabilization/2026-09-08-preparation-contract/installed.json`을 따릅니다.
 저장소 coordinator도 새 helper를 읽으므로 앱/스크립트 복원 세트를 혼용하지 않습니다.
-공통 parameterized runner로의 완전 전환과 실게임 인수는 아직 남아 있습니다.
+이 1차 변경의 실검증은 이후 운영자가 문제없다고 확인했습니다. 공통 parameterized runner의
+새 실게임 인수는 별개이며 아래 2026-09-09 마감에 기록했습니다.
 운영자 화면에서 계정 선택 후 S26/철갑 준비 완료와 S29 기존 불일치 차단을 확인했습니다.
 계정 미선택 시 ‘확인 중’이 남는 UI 문구는 동작 테스트로 재현·수정했으며 editor JS만 추가
 반영했습니다(`account-prompt-installed.json`). 열린 창의 계정 선택은 유지하며 다음 관리도구
@@ -110,6 +184,66 @@ Start와 coordinator가 공유하고, 실행문 생성부는 명시적 versioned
 현재 준비 상태를 제목으로, 과거 완료/실패 결과를 보조 설명으로 표시하고 live 실행/복구 경고는
 우선합니다. 새 동작 검사 6개를 Phase 2A2 gate에 추가했으며, editor JS 단독 배포 근거는
 `artifacts/stabilization/2026-09-08-raid-status-summary/`에 둡니다. 실게임 로직·DB 변경은 없습니다.
+
+S-05 본격 전환 **1~6을 완료**했습니다. 2026-09-09 새 `parameterized/v1` 실행기의
+조기 종료·S26 1덱 완주/결과창·저장/재실행을 운영자가 인수한 뒤 활성 coordinator의
+부모 템플릿 읽기/치환과 legacy 선택 분기를 제거했습니다. 자동 로그는 `startup_only`이므로
+완주는 운영자 인수로만 기록합니다. 실검증한 봉인 코드 12개는 그대로이며 과거 복구 자료도 보존합니다.
+제거 후 실제 S26/151 기본 경로의 read-only `ValidateOnly`도 통과했습니다.
+현재 `legacy/v1` 옵션은 거절하며 rollback은 cold 상태에서 검증된 소스를 복원한 다음 실행에만
+적용합니다. 운영 DB rollback/자동 fallback은 없습니다. 단계별 증거·복원 조건은
+[S-05](STABILIZATION_PLAN.md#s-05--높음--실행-코드의-문자열을-다른-코드의-인터페이스로-사용함)를 따릅니다.
+
+S-06 장비·큐브 회귀 검사는 실제 컴파일된 materializer 함수에 합성 입력을 주는 로컬 gate로
+보강했습니다. 21개 출력/거절 검사와 오류를 심은 복사본 2개 검출, materializer/151 bootstrap/
+desktop 별도 빌드를 통과했습니다. CI는 외부 참조 없는 검사기 소스 build/format만 수행합니다.
+변경 후 전체 단위 475개·폐기 PostgreSQL 105개, 재시작 checkpoint/cleanup, 실행기·UI·
+계약 검사까지 통과하여 이번 S-06 범위를 마감했습니다.
+제품 코드·운영 DB·설치본·실게임 실행은 변경하지 않았습니다. 상세와 남은 검사 경계는
+[S-06](STABILIZATION_PLAN.md#s-06--높음--회귀-검사의-일부가-동작-대신-구현-문자열에-결박됨)을 따릅니다.
+
+S-08은 캐릭터별 overload 최소 batch 이후, 운영자 승인으로 slot receipt·equipment·overload를
+각각 **exact profile revision 전체의 1회 batch**로 변경했습니다. 같은 connection/transaction,
+immutable membership과 기존 hash·shape 검증을 유지합니다. 새 회귀 3개는 기존 reader에서도
+통과했고 변경 후 폐기 PostgreSQL **110개**가 통과했습니다. 공유 build revision, roster·squad
+변경/빈 roster, 동시 Save의 고정 snapshot, 과거 Create/Save/GetByOperation replay와 타계정
+분리를 검증했습니다. 기존 sparse/exact OL·결손 참조 검사도 유지합니다.
+동일한 pool 상한 32·합성 계정 1/10개(roster 50, history 10)에서 전후 각각 1,800표본을
+비교했습니다. 이번 service 목록 명령은 **161→14 / 1,601→131회**, p50은
+**52.27~52.53→11.61~13.20 / 543.98~548.71→110.77~111.72ms**입니다.
+변경 대상 5경로의 세 묶음 모두 p50/p95가 개선됐고 응답 크기·객체 수·HTTP 요청 수가 같습니다.
+변경 후 50/100계정 및 roster/history **8조건 warm 행렬, 총 7,200표본**도 완료했습니다.
+오류 0, 모든 표본의 예상 명령 수 일치와 DB 재시작/정리를 확인했습니다. 100계정 목록은
+1,301명령·p50 1.17~1.19초이며, 큰 규모의 변경 전 개선율은 추정하지 않습니다. p95 변동과
+fixture 한계, 원시 표본·마감 검사 근거는 안정화 계획 S-08을 따릅니다. 캐시·인덱스·migration은
+추가하지 않았고 **설치본에는 미배포**입니다. 후속 승인으로 service 목록·HTTP 목록·목록+로비의
+**1/10계정 process-cold 60표본**을 별도 새 프로세스에서 측정했습니다. 오류·timeout 0,
+ready 전 DB 명령 0, exact 프로세스/fixture binding과 원시 표본·통계 재계산을 확인했습니다.
+service 목록 첫 조회 p50은 283.75/432.51ms이며, 시작 시간 p50 175.33/174.29ms와 분리합니다.
+이는 합성 측정기 경계이고 설치 앱 startup이나 DOM 표시 시간이 아닙니다. OS/DB cache를
+초기화하지 않았고 운영 DB·게임·Epinel DLL도 변경하지 않았습니다. 당시 다른 규모·경로의 cold,
+물리 I/O·DOM·query plan 분석은 남았으며, 아래 후속 결과와 구분합니다.
+이번 측정기 변경도 단위 475개·폐기 PostgreSQL 110개·계측기 DB-free 프로세스 12개·UI/전체 계약을
+통과했고, cold/warm smoke와 모든 폐기 DB의 재시작 checkpoint·정리를 확인했습니다. 수치·경계·
+재실행 명령과 receipt는 [S-08 process-cold](STABILIZATION_PLAN.md#s-08-process-cold-계측--2026-09-11)에 있습니다.
+
+2026-09-11 “1~2 진행” 후속에서는 S-08 진단 8조건 **144표본·2,997개 EXPLAIN 재실행**과
+실제 편집기 headless Edge DOM **6/6회**, 확장 process-cold **480/480표본**을 완료했습니다.
+오류·timeout 0, 원시 표본 및 p50/p95 192개 재계산과 DB restart/cleanup을 확인했습니다.
+summary query 자체보다 매 계정의
+프로필 전체 복원 비용이 큽니다. plan·구간 CPU/할당량·합성 DB 크기를 기록했으며, 물리 디스크
+I/O와 설치 WebView2 성능으로 일반화하지 않습니다. 확장 cold/마감 검사 상태와 receipt는
+[후속 진단](STABILIZATION_PLAN.md#s-08-후속-진단dom확장-cold--2026-09-11)을 따릅니다.
+S-09의 JSON 교체·pg_ctl exact-child 대기·watcher/recovery 영속화 증빙 검증을 공통화했고,
+대문자 result code 및 잘못된 `no_state` head 수락을 차단하는 **53개 합성 행동 검사**를 통과했습니다.
+과거 PID-only watcher 지적은 현행 미구현 목록에서 제외했습니다. 설치 앱 파일·운영 DB·게임·DLL은
+변경하지 않았지만 **저장소 실행 스크립트는 다음 새 실행에서 소비될 수 있습니다.** 기존 봉인
+bundle의 코드/복구 경로는 유지합니다. 운영 pending/provenance 대조, 단계별 timeout 정책의
+추가 통합, importer/domain 전체 리뷰와 설치/실게임 인수는 여전히 남아 있습니다. P-01~P-09는
+이번 범위에 포함하지 않았습니다.
+변경 후 **단위 475개·PostgreSQL 110개·warm smoke 12표본·UI/전체 계약**을 통과했습니다.
+폐기 DB의 restart checkpoint/cleanup을 확인했고 운영 DB·설치 앱 배포·원격 push는 하지 않았습니다.
+이번 소스 범위는 마감하지만 S-08/S-09 전체 종료 판정은 아닙니다.
 
 ## 별도 보류
 

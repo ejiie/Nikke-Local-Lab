@@ -29,7 +29,7 @@ $coordinator = Read-RequiredText (Join-Path $repositoryRoot `
 $coordinator += Read-RequiredText (Join-Path $repositoryRoot `
     'scripts\Nll.PhaseDPreparation.ps1')
 $coordinator += Read-RequiredText (Join-Path $repositoryRoot `
-    'scripts\Nll.PhaseDLaunchTools.ps1')
+    'scripts\Nll.PhaseDRunnerStart.ps1')
 $materializer = Read-RequiredText (Join-Path $repositoryRoot `
     'tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\BossAffinityStaticDataVariant.cs')
 $variantProfileCode = Read-RequiredText (Join-Path $repositoryRoot `

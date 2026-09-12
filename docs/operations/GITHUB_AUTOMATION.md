@@ -1,6 +1,32 @@
 # GitHub Actions automation
 
-## 목적
+## 비공개 전환과 게시 차단 해제 — 2026-09-12
+
+안정화 직후 원격이 `public`으로 관측되어 push를 보류했으나, 운영자가
+"private으로 돌리고 push"를 명시 승인했다. 지정 저장소 `ejiie/Nikke-Local-Lab`
+(repository ID `1338065668`)의 기존 소유자 인증으로 visibility만 변경했고 GitHub API에서
+`private=true`, `visibility=private`를 재확인했다. 다른 권한·설정은 변경하지 않았다.
+비공개 게시 전제가 회복됐으므로 아래 경계 검사 후 `agent/**` push 경로를 사용한다.
+실제 Actions 결과는 해당 push SHA의 run/PR에서 확인하며, 이 기록만으로 merge 성공을 주장하지 않는다.
+
+## 2026-09-12 Linux S-08 후속 수정
+
+실패 run `34649202768`은 Windows 검증에 통과했으나 Linux의 DB-free cold-child
+검사(`s08_assertion_line_63`)에서 중단되어 PostgreSQL gate와 게시가 완료되지 않았다.
+.NET 8 Linux는 `Process.StartTime`의 부팅 기준 시각을 프로세스별로 계산·cache한다.
+부모/자식의 표시용 UTC 시각을 exact identity로 비교하지 않고, Linux에서는 같은
+boot ID와 `/proc/<owned-child>/stat`의 kernel start tick을 PID와 함께 대조한다.
+Windows는 기존 kernel 시작 시각을 사용한다. 시작 시각의 허용 오차를 넓히거나
+실패 사례·timeout·정리 검사를 생략하지 않는다.
+
+근거 구현은 [.NET 8.0.14 Process.Linux](https://github.com/dotnet/runtime/blob/v8.0.14/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/Process.Linux.cs)와
+[native boot-clock 변환](https://github.com/dotnet/runtime/blob/v8.0.14/src/native/libs/System.Native/pal_time.c)이다.
+표시용 UTC는 관측 값으로 보존한다. 새 parser는 합성 괄호/공백·잘못된 PID/boot/tick을
+검사하며, subprocess 실패 로그에는 controlled mode/status/stage만 남긴다.
+로컬 Windows 자체 검사는 통과했다. 실제 Linux PG 및 push→PR→merge 결과는
+수정 SHA의 새 Actions run으로 별도 확인해야 한다.
+
+## 목적과 실행 경계
 
 소스 코드와 계약만 비공개 GitHub 저장소에 보관하고, 소유자가 `agent/**` 브랜치를 push하면 검증부터 PR 생성과 squash merge까지 GitHub Actions가 처리합니다.
 
@@ -70,6 +96,14 @@ push 이후에는 Actions run이 PR과 merge를 담당합니다. 실패 시 원�
 `main` 직접 push는 최초 private remote bootstrap에만 사용합니다. 이후 변경은 `agent/**` 경로를 사용합니다.
 
 ## 로컬 검사
+
+S-06부터 Phase 2A2는 원본 데이터·외부 DLL 참조가 없는 materializer 행동 검사기의
+locked restore/build/format도 수행합니다. **CI에서는 실제 materializer 출력 검사와
+151 bootstrap/desktop 빌드를 실행하지 않습니다.** 배포 후보는 별도
+`scripts/test-nll-materializer-behavior.ps1`에 검토된 bundle 경로·SHA-256을 명시해 로컬
+검증해야 합니다. 합성 입력 21개, negative control과 별도 빌드의 범위·명령은
+[S-06](../STABILIZATION_PLAN.md#s-06--높음--회귀-검사의-일부가-동작-대신-구현-문자열에-결박됨)을 따릅니다.
+이 gate의 산출물·외부 DLL·receipt는 ignored artifacts에만 두고 Actions에 업로드하지 않습니다.
 
     pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode working -AllowRemote
     pwsh -NoProfile -File scripts/verify-phase0-contract.ps1

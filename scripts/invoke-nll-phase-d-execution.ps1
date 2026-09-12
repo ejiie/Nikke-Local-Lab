@@ -14,7 +14,8 @@ param(
     [string]$WeaknessCode,
     [switch]$ValidateOnly,
     [ValidatePattern('^[0-9a-f]{64}$')] [string]$ExpectedPreparationBindingSha256,
-    [string]$RuntimeSelectionPath = 'C:\NLL\ControlCenter\runtime-selection.private.json'
+    [string]$RuntimeSelectionPath = 'C:\NLL\ControlCenter\runtime-selection.private.json',
+    [ValidateSet('parameterized/v1')][string]$RunnerEngine = 'parameterized/v1'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,7 +24,8 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.PhaseDCompletion.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDChildProcess.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDPreparation.ps1')
-. (Join-Path $PSScriptRoot 'Nll.PhaseDLaunchTools.ps1')
+. (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerContract.ps1')
+. (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1')
 
 function Assert-PhaseD {
     param([bool]$Condition, [string]$Code)
@@ -57,37 +59,8 @@ function Assert-PhaseDCacheArtifactIdentity {
     $matchCount
 }
 
-function Write-AtomicJson {
-    param([string]$Path, [object]$Value, [int]$Depth = 8)
-    $temporary = $Path + '.partial-' + [guid]::NewGuid().ToString('N')
-    [IO.File]::WriteAllText(
-        $temporary,
-        (($Value | ConvertTo-Json -Depth $Depth) + "`n"),
-        [Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $temporary -Destination $Path -Force
-}
 
 
-function Invoke-PhaseDPgCtl {
-    param(
-        [string]$PgCtlPath,
-        [string[]]$Arguments
-    )
-    # Wait for pg_ctl's exact PID. Start-Process -Wait can wait for its postgres
-    # descendant as well and deadlock a start operation until the DB is stopped.
-    $info = [Diagnostics.ProcessStartInfo]::new()
-    $info.FileName = $PgCtlPath
-    $info.Arguments = (($Arguments | ForEach-Object {
-        '"' + $_.Replace('"', '\"') + '"'
-    }) -join ' ')
-    $info.UseShellExecute = $false
-    $info.CreateNoWindow = $true
-    $process = [Diagnostics.Process]::Start($info)
-    $process.WaitForExit()
-    $exitCode = [int]$process.ExitCode
-    $process.Dispose()
-    $exitCode
-}
 
 function Invoke-PhaseDEmergencyRollback {
     param([string]$EvidencePath, [string]$RuntimePath)
@@ -254,8 +227,6 @@ $runtimeRoot = Join-Path $launchRoot 'runtime'
 $evidenceRoot = Join-Path $launchRoot 'evidence'
 $toolsRoot = Join-Path $launchRoot 'tools'
 $parentRoot = 'C:\NLL\Runtime\EpinelPS-SoloRaidRankingPrefix-v9'
-$parentStart = 'C:\NLL\Tools\start-phase3b2-epinel-solo-raid-ranking-prefix-v9-in-micron.ps1'
-$parentCompletion = 'C:\NLL\Tools\complete-phase3b2-epinel-solo-raid-ranking-prefix-v9-in-micron.ps1'
 $rankingPrefixDeploymentReceipt =
     'C:\NLL\E\P3SRRP9D\deployment.receipt.json'
 $rankingPrefixSourceManifest = 'C:\NLL\E\P3SRRP9D\source.manifest.tsv'
@@ -297,12 +268,6 @@ $expectedRankingPrefixSourceManifestByteLength = 2559L
 $expectedRankingPrefixDeploymentReceiptSha256 =
     'd360b29ca19fa36c6c1504d7b29a30d541621bf5855b45810f87e43d9e63a269'
 $expectedRankingPrefixDeploymentReceiptByteLength = 3501L
-$expectedParentStartSha256 =
-    '8462e1d35bb019f77cdba27e9d2fe440edb90d510ef76222eaf53421d2c01c37'
-$expectedParentStartByteLength = 37957L
-$expectedParentCompletionSha256 =
-    '5277d6ea79410acbe79d7581461bc3e1d07fb6baa9d695b97d46237c839466d4'
-$expectedParentCompletionByteLength = 30486L
 $expectedCleanHostsSha256 = '565955a47a890e8090a2987a234ba05e2624c84a587ba86e8648f912678984b9'
 $expectedPostDockerUninstallCleanHostsSha256 =
     'ce44d858ef28f09073edcb5bb805fc1800663e94eb540518a66680cb0d08fdda'
@@ -373,7 +338,7 @@ try {
 
     foreach ($path in @(
             $ConfigurationPath, $RuntimeCandidatePath, $LobbyProjectionPath,
-            $materializer, $watcher, $parentStart, $parentCompletion,
+            $materializer, $watcher,
             $rankingPrefixDeploymentReceipt, $rankingPrefixSourceManifest,
             $weaknessVariantServerDll, $weaknessVariantSourceManifest,
             $bossRuntimeVariantRegistry, $bossRuntimeVariantProfile,
@@ -392,15 +357,6 @@ try {
          (Get-Sha256Lower (Join-Path $parentRoot 'EpinelPS.dll')) -ceq `
             $expectedServerDllSha256) `
         'phase_d_parent_runtime_drifted'
-    Assert-PhaseD `
-        ((Get-Item -LiteralPath $parentStart).Length -eq `
-            $expectedParentStartByteLength -and
-         (Get-Sha256Lower $parentStart) -ceq $expectedParentStartSha256 -and
-         (Get-Item -LiteralPath $parentCompletion).Length -eq `
-            $expectedParentCompletionByteLength -and
-         (Get-Sha256Lower $parentCompletion) -ceq `
-            $expectedParentCompletionSha256) `
-        'phase_d_ranking_prefix_parent_tool_drifted'
     Assert-PhaseD `
         ((Get-Item -LiteralPath $rankingPrefixDeploymentReceipt).Length -eq `
             $expectedRankingPrefixDeploymentReceiptByteLength -and
@@ -831,11 +787,6 @@ try {
         [Text.UTF8Encoding]::new($false))
     $sourceManifestSha256 = Get-Sha256Lower $sourceManifestPath
 
-    $derivedStart = Join-Path $toolsRoot 'Start-PhaseD-Derived.ps1'
-    $derivedCompletion = Join-Path $toolsRoot 'Complete-PhaseD-Derived.ps1'
-    $parentStartText = [IO.File]::ReadAllText($parentStart, [Text.Encoding]::UTF8)
-    $parentCompletionText = [IO.File]::ReadAllText(
-        $parentCompletion, [Text.Encoding]::UTF8)
     $soloRaidStateRoot = 'C:\NLL\ControlCenter\state\phase-d-solo-raid'
     $soloRaidLaunchStateRoot = Join-Path $soloRaidStateRoot $LaunchContextUid
     Assert-PhaseD `
@@ -861,13 +812,9 @@ try {
             'none'
         }
         else { [string]$materialization.soloRaidStateHeadRevisionUid }
-    $launchToolInput = [ordered]@{
-        schemaVersion = 1; contractId = 'nll/phase-d-launch-tools-input/v1'
-        parentStartText = $parentStartText
-        parentCompletionText = $parentCompletionText
-        expectedParentDbSha256 = $expectedParentDbSha256
+    $runnerLaunchInput = [ordered]@{
+        weaknessCode = $WeaknessCode
         runtimeDbSha256 = $runtimeDbSha256
-        expectedServerDllSha256 = $expectedServerDllSha256
         expectedWeaknessVariantServerDllSha256 = $expectedWeaknessVariantServerDllSha256
         runtimeBundle = $runtimeBundle
         resourcePreflightHelper = $resourcePreflightHelper
@@ -895,12 +842,13 @@ try {
         expectedSoloRaidHeadRevisionUid = $expectedSoloRaidHeadRevisionUid
         secretEnvironmentVariable = $secretEnvironmentVariable
     }
-    $launchTools = New-PhaseDLaunchToolText -Specification $launchToolInput
-    $startText = $launchTools.startText
-    $completionText = $launchTools.completionText
-    [IO.File]::WriteAllText($derivedStart, $startText, [Text.UTF8Encoding]::new($false))
-    [IO.File]::WriteAllText(
-        $derivedCompletion, $completionText, [Text.UTF8Encoding]::new($false))
+    $runnerSpec = New-PhaseDRunnerSpecification -LaunchInput $runnerLaunchInput `
+        -PreparationBindingSha256 $preparation.bindingSha256 -ProfileSha256 $bossRuntimeVariantProfileSha256 `
+        -SourceManifestSha256 $sourceManifestSha256 -RunIntentCode $ValidationKind
+    $runnerBundle = New-PhaseDRunnerBundle -Specification $runnerSpec -ScriptsRoot $PSScriptRoot
+    $derivedStart = Join-Path $runnerBundle.root 'invoke-nll-phase-d-runner.ps1'
+    $derivedCompletion = $derivedStart
+    $watcher = Join-Path $runnerBundle.root 'watch-nll-phase-d-execution.ps1'
 
     $toolManifestPath = Join-Path $launchRoot 'tool.manifest.tsv'
     $toolLines = @(
@@ -910,6 +858,7 @@ try {
         "watcher`t$((Get-Item -LiteralPath $watcher).Length)`t$(Get-Sha256Lower $watcher)"
         "source_manifest`t$((Get-Item -LiteralPath $sourceManifestPath).Length)`t$sourceManifestSha256"
     )
+    $toolLines += "runner_bundle`t$((Get-Item -LiteralPath $runnerBundle.manifestPath).Length)`t$($runnerBundle.sha256)"
     [IO.File]::WriteAllText(
         $toolManifestPath,
         (($toolLines -join "`n") + "`n"),
@@ -970,6 +919,7 @@ try {
     $launchContext = [ordered]@{
         schemaVersion = 1
         contractId = 'nll/launch-context/v1'
+        runtimePersistenceContractId = 'nll/runtime-persistence/v2'
         launchContextUid = $LaunchContextUid
         createdAtUtc = $createdAtUtc
         accountUid = [string]$candidate.accountUid
@@ -1007,6 +957,8 @@ try {
         statusCode = 'validated'
     }
     Write-AtomicJson $contextPath $launchContext
+    $null = Read-PhaseDRunnerBundle -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
+    Assert-PhaseDRunnerStartDependencies $runnerSpec
     Set-ExecutionState -StatusCode 'validated'
 
     if ($ValidateOnly) {
@@ -1055,6 +1007,7 @@ try {
          (Test-Path -LiteralPath $controlCenterPgData -PathType Container)) `
         'phase_d_control_center_database_binding_missing'
     $pgStopExitCode = Invoke-PhaseDPgCtl `
+        -OwnershipPath (Join-Path $launchRoot 'phase-d-child-pg.identity.json') `
         -PgCtlPath $controlCenterPgCtl `
         -Arguments @('stop', '-D', $controlCenterPgData, '-m', 'fast', '-w', '-t', '60')
     Assert-PhaseD ($pgStopExitCode -eq 0) `
@@ -1064,23 +1017,14 @@ try {
         (@(Get-Process -Name postgres, pg_ctl -ErrorAction SilentlyContinue).Count -eq 0) `
         'phase_d_postgresql_not_cold'
 
-    # The sealed PhysicalBootstrap-v2 contract accepts only its two versioned
-    # lane names. Per-run isolation is already provided by the assessment UID
-    # generated inside the derived start tool.
-    $bootstrapLane = 'p2-client-start-v2'
-    Assert-PhaseD `
-        ($bootstrapLane -in @('p2-client-start-v1', 'p2-client-start-v2')) `
-        'phase_d_bootstrap_lane_invalid'
+    # The sealed runner owns the bootstrap lane and per-run assessment UID.
     $coordinatorStage = 'derived_start'
+    $null = Read-PhaseDRunnerBundle -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
+    $startArguments = [ordered]@{ Phase='start'; LaunchRoot=$launchRoot; ExpectedBundleSha256=$runnerBundle.sha256 }
     $startToolResult = Invoke-PhaseDChildScript `
+        -TimeoutSeconds 300 -OwnershipPath (Join-Path $launchRoot 'phase-d-child-start.identity.json') `
         -ScriptPath $derivedStart `
-        -Arguments ([ordered]@{
-            ServerRoot = $runtimeRoot
-            EvidenceRoot = $evidenceRoot
-            BootstrapEvidenceLane = $bootstrapLane
-            DerivedSourceManifestSha256 = $sourceManifestSha256
-            RunIntentCode = $ValidationKind
-        }) `
+        -Arguments $startArguments `
         -StandardOutputPath (Join-Path $launchRoot 'derived-start.stdout.log') `
         -StandardErrorPath (Join-Path $launchRoot 'derived-start.stderr.log')
     Assert-PhaseD ($startToolResult.ExitCode -eq 0) 'phase_d_derived_start_failed'
@@ -1139,6 +1083,8 @@ try {
         '-ConnectionStringEnvironmentVariable', $connectionEnvironmentVariable,
         '-IdentitySecretEnvironmentVariable', $secretEnvironmentVariable
     )
+    $null = Read-PhaseDRunnerBundle -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
+    $watcherArguments += @('-ExpectedRunnerBundleSha256', $runnerBundle.sha256)
     $watcherProcess = Start-Process -FilePath $powershell `
         -ArgumentList $watcherArguments -WindowStyle Hidden -PassThru
     # Process creation transfers mutable-runtime ownership immediately. Even if
@@ -1190,6 +1136,10 @@ catch {
         $primaryFailure.Exception.Message
     }
     else { 'phase_d_uncontrolled_failure' }
+    if ($failureCode -ceq 'phase_d_child_deadline_unproven') {
+        Set-ExecutionState -StatusCode 'started' -FailureCode $failureCode
+        throw $failureCode
+    }
     if ($watcherOwnershipTransferred) {
         # A live or reconcilable watcher owns every mutable resource after the
         # identity handoff. Preserve its state/evidence and fail this request only.
@@ -1260,6 +1210,7 @@ catch {
     if ($coordinatorRollbackProven -and $controlCenterDatabaseStopped) {
         try {
             $pgStartExitCode = Invoke-PhaseDPgCtl `
+                -OwnershipPath (Join-Path $launchRoot 'phase-d-child-pg.identity.json') `
                 -PgCtlPath $controlCenterPgCtl `
                 -Arguments @(
                     'start', '-D', $controlCenterPgData,

@@ -53,6 +53,13 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
   private readonly PostgreSqlProfileCatalogAliasResolverFactory? _catalogResolverFactory;
   private readonly TimeProvider _timeProvider;
   private readonly Sha256Digest _transformerBinarySha256;
+  // Only a derived status of a hash-verified immutable revision is cached.
+  // Labels, current heads, lobbies, admission and full runtime exports are NOT.
+  // Instance scope prevents sharing across databases; bounded FIFO limits memory.
+  private readonly object _readinessGate = new();
+  private readonly Dictionary<(EntityUid Account, App.RevisionReference Revision), RuntimeReadiness> _readiness = [];
+  private readonly Queue<(EntityUid Account, App.RevisionReference Revision)> _readinessOrder = [];
+  private const int ReadinessCacheCapacity = 256;
 
   public PostgreSqlProfileManagementService(
       NpgsqlDataSource dataSource,
@@ -4246,10 +4253,31 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
       App.AccountSummaryProjection summary,
       CancellationToken cancellationToken)
   {
+    var key = (summary.AccountUid, summary.ProfileRevision);
+    lock (_readinessGate)
+    {
+      if (_readiness.TryGetValue(key, out var cached))
+        return summary with { ValidationStatusCode = cached.StatusCode, ValidationReasonCodes = cached.ReasonCodes };
+    }
     var current = await _profileStore.GetRevisionAsync(summary.AccountUid, summary.ProfileRevision.RevisionUid, cancellationToken)
         .ConfigureAwait(false) ??
         throw new LocalAccountProfileIntegrityException("profile_current_revision_missing");
-    return WithRuntimeMaterializationReadiness(summary, MapProfile(current).Values);
+    if (current.Revision.ProfileContentSha256 != summary.ProfileRevision.ContentSha256)
+      throw new LocalAccountProfileIntegrityException("profile_current_revision_hash_mismatch");
+    var readiness = ComputeRuntimeMaterializationReadiness(ProfileValues(current.Profile));
+    // Failed/cancelled reads never poison the cache. A concurrent Save creates a
+    // new key, while this request remains bound to the summary it actually read.
+    cancellationToken.ThrowIfCancellationRequested();
+    lock (_readinessGate)
+    {
+      if (!_readiness.ContainsKey(key))
+      {
+        if (_readiness.Count == ReadinessCacheCapacity) _readiness.Remove(_readinessOrder.Dequeue());
+        _readiness.Add(key, readiness);
+        _readinessOrder.Enqueue(key);
+      }
+    }
+    return summary with { ValidationStatusCode = readiness.StatusCode, ValidationReasonCodes = readiness.ReasonCodes };
   }
 
   private static App.AccountSummaryProjection WithRuntimeMaterializationReadiness(
@@ -4288,7 +4316,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         .Distinct(StringComparer.Ordinal)
         .Order(StringComparer.Ordinal)
         .ToArray();
-    return new RuntimeReadiness("unresolved", reasons);
+    return new RuntimeReadiness("unresolved", Array.AsReadOnly(reasons));
   }
 
   private static void RequireOperationUid(EntityUid operationUid)

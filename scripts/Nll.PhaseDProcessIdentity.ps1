@@ -1,5 +1,19 @@
 # Pure identity helpers. Importing this file neither starts nor stops a process.
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessHandle.ps1')
+# State files are replaced on the same volume. A failed replacement must leave
+# the previous complete JSON intact; never delete the destination first.
+function Write-AtomicJson {
+    param([string]$Path, [object]$Value, [int]$Depth = 8)
+    $target = [IO.Path]::GetFullPath($Path)
+    $temporary = $target + '.partial-' + [guid]::NewGuid().ToString('N')
+    try {
+        [IO.File]::WriteAllText($temporary, (($Value | ConvertTo-Json -Depth $Depth) + "`n"), [Text.UTF8Encoding]::new($false))
+        if ([IO.File]::Exists($target)) { [IO.File]::Replace($temporary, $target, [NullString]::Value) }
+        else { [IO.File]::Move($temporary, $target) }
+    }
+    finally { if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) } }
+}
+
 function New-PhaseDProcessIdentity {
     param([int]$Id, [string]$ExecutablePath, [DateTime]$NotBeforeUtc,
         [DateTime]$NotAfterUtc)

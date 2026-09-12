@@ -1,0 +1,865 @@
+diff --git a/EpinelPS/Database/ClassicSoloRaidPersistenceCoordinator.cs b/EpinelPS/Database/ClassicSoloRaidPersistenceCoordinator.cs
+index 23e8cbc..415796b 100644
+--- a/EpinelPS/Database/ClassicSoloRaidPersistenceCoordinator.cs
++++ b/EpinelPS/Database/ClassicSoloRaidPersistenceCoordinator.cs
+@@ -12,8 +12,8 @@ public readonly record struct CoordinatedMutation<T>(T Result, bool Persist)
+ 
+ public sealed class ClassicSoloRaidPersistenceCoordinator
+ {
+-    // This gate covers only mutations routed through this coordinator. Existing
+-    // JsonDb.Save callers remain outside this classic Solo Raid safety boundary.
++    // All DB writers share the replacement gate. Approved preference mutations
++    // also execute here, against the current snapshot rather than a stale User.
+     private static readonly object ProcessWideGate = new();
+ 
+     private readonly Func<CoreInfo> current;
+@@ -50,6 +50,12 @@ public sealed class ClassicSoloRaidPersistenceCoordinator
+         }
+     }
+ 
++    public void SaveCurrent()
++    {
++        lock (ProcessWideGate)
++            AtomicReplace(JsonConvert.SerializeObject(current(), Formatting.Indented));
++    }
++
+     private void AtomicReplace(string snapshot)
+     {
+         var directory = Path.GetDirectoryName(databasePath)
+@@ -62,7 +68,13 @@ public sealed class ClassicSoloRaidPersistenceCoordinator
+ 
+         try
+         {
+-            File.WriteAllText(tempPath, snapshot, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
++            using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write,
++                FileShare.None, 65536, FileOptions.WriteThrough))
++            {
++                var bytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(snapshot);
++                stream.Write(bytes);
++                stream.Flush(flushToDisk: true);
++            }
+             if (File.Exists(databasePath))
+             {
+                 File.Replace(tempPath, databasePath, destinationBackupFileName: null, ignoreMetadataErrors: true);
+diff --git a/EpinelPS/Database/JsonDb.cs b/EpinelPS/Database/JsonDb.cs
+index 3cee58a..003783a 100644
+--- a/EpinelPS/Database/JsonDb.cs
++++ b/EpinelPS/Database/JsonDb.cs
+@@ -167,7 +167,7 @@ internal class JsonDb
+     {
+         if (Instance != null)
+         {
+-            File.WriteAllText(DatabasePath, JsonConvert.SerializeObject(Instance, Formatting.Indented));
++            ClassicSoloRaidCoordinator.SaveCurrent();
+         }
+     }
+     public static int CurrentJukeboxBgm(int position)
+diff --git a/EpinelPS/LobbyServer/Badge/DeleteBadge.cs b/EpinelPS/LobbyServer/Badge/DeleteBadge.cs
+index 2cc0af5..46ded15 100644
+--- a/EpinelPS/LobbyServer/Badge/DeleteBadge.cs
++++ b/EpinelPS/LobbyServer/Badge/DeleteBadge.cs
+@@ -12,12 +12,11 @@ public class DeleteBadge : LobbyMessage
+ 
+         ResDeleteBadge response = new();
+ 
+-        foreach (long badgeId in req.BadgeSeqList)
++        RuntimePreferencesMutation.Update(user.ID, current =>
+         {
+-            user.Badges.RemoveAll(x => x.Seq == badgeId);
+-        }
+-
+-        JsonDb.Save();
++            foreach (long badgeId in req.BadgeSeqList)
++                current.Badges.RemoveAll(x => x.Seq == badgeId);
++        });
+ 
+         await WriteDataAsync(response);
+     }
+diff --git a/EpinelPS/LobbyServer/Character/SetCharacterCostume.cs b/EpinelPS/LobbyServer/Character/SetCharacterCostume.cs
+index e11fd1e..aa0f178 100644
+--- a/EpinelPS/LobbyServer/Character/SetCharacterCostume.cs
++++ b/EpinelPS/LobbyServer/Character/SetCharacterCostume.cs
+@@ -10,15 +10,17 @@ public class SetCharacterCostume : LobbyMessage
+         ReqSetCharacterCostume req = await ReadData<ReqSetCharacterCostume>();
+         User user = GetUser();
+ 
+-        foreach (CharacterModel item in user.Characters)
++        RuntimePreferencesMutation.Update(user.ID, current =>
+         {
+-            if (item.Csn == req.Csn)
++            foreach (CharacterModel item in current.Characters)
+             {
+-                item.CostumeId = req.CostumeId;
+-                break;
++                if (item.Csn == req.Csn)
++                {
++                    item.CostumeId = req.CostumeId;
++                    break;
++                }
+             }
+-        }
+-        JsonDb.Save();
++        });
+ 
+         ResSetCharacterCostume response = new();
+ 
+diff --git a/EpinelPS/LobbyServer/Controllers/ContentsOpenController.cs b/EpinelPS/LobbyServer/Controllers/ContentsOpenController.cs
+index a1bffe7..7439258 100644
+--- a/EpinelPS/LobbyServer/Controllers/ContentsOpenController.cs
++++ b/EpinelPS/LobbyServer/Controllers/ContentsOpenController.cs
+@@ -62,23 +62,19 @@ public class ContentsOpen(IUserService db) : Controller
+ 
+         ResSetContentsOpenUnlockButtonPlay response = new();
+ 
+-        // Unlock button animation completed
+-        foreach (int item in req.ContentsOpenTableIds)
++        // Only acknowledgement flags; this does not grant content access.
++        RuntimePreferencesMutation.Update(user.ID, current =>
+         {
+-            if (user.ContentsOpenUnlocked.TryGetValue(item, out UnlockData? data))
++            foreach (int item in req.ContentsOpenTableIds)
+             {
+-                data.ButtonAnimationPlayed = true;
+-            }
+-            else
+-            {
+-                user.ContentsOpenUnlocked.Add(item, new UnlockData()
++                if (current.ContentsOpenUnlocked.TryGetValue(item, out UnlockData? data))
++                    data.ButtonAnimationPlayed = true;
++                else current.ContentsOpenUnlocked.Add(item, new UnlockData()
+                 {
+                     ButtonAnimationPlayed = true
+                 });
+             }
+-        }
+-
+-        JsonDb.Save();
++        });
+         return response;
+     }
+ 
+@@ -91,22 +87,18 @@ public class ContentsOpen(IUserService db) : Controller
+ 
+         ResSetContentsOpenUnlockPopupPlay response = new();
+ 
+-        foreach (int item in req.ContentsOpenTableIds)
++        RuntimePreferencesMutation.Update(user.ID, current =>
+         {
+-            if (user.ContentsOpenUnlocked.TryGetValue(item, out UnlockData? data))
++            foreach (int item in req.ContentsOpenTableIds)
+             {
+-                data.PopupAnimationPlayed = true;
+-            }
+-            else
+-            {
+-                user.ContentsOpenUnlocked.Add(item, new UnlockData()
++                if (current.ContentsOpenUnlocked.TryGetValue(item, out UnlockData? data))
++                    data.PopupAnimationPlayed = true;
++                else current.ContentsOpenUnlocked.Add(item, new UnlockData()
+                 {
+                     PopupAnimationPlayed = true
+                 });
+             }
+-        }
+-
+-        JsonDb.Save();
++        });
+ 
+         return response;
+     }
+diff --git a/EpinelPS/LobbyServer/Jukebox/SetTableId.cs b/EpinelPS/LobbyServer/Jukebox/SetTableId.cs
+index 6937680..cd7ef94 100644
+--- a/EpinelPS/LobbyServer/Jukebox/SetTableId.cs
++++ b/EpinelPS/LobbyServer/Jukebox/SetTableId.cs
+@@ -12,17 +12,19 @@ public class SetTableId : LobbyMessage
+ 
+         ResSetJukeboxBgmTableId response = new();
+ 
+-        if (req.Location == NetJukeboxLocation.CommanderRoom)
++        RuntimePreferencesMutation.Update(user.ID, current =>
+         {
+-            user.CommanderMusic.TableId = req.JukeboxTableId;
+-            user.CommanderMusic.Type = NetJukeboxBgmType.JukeboxTableId;
+-        }
+-        else if (req.Location == NetJukeboxLocation.Lobby)
+-        {
+-            user.LobbyMusic.TableId = req.JukeboxTableId;
+-            user.LobbyMusic.Type = NetJukeboxBgmType.JukeboxTableId;
+-        }
+-        JsonDb.Save();
++            if (req.Location == NetJukeboxLocation.CommanderRoom)
++            {
++                current.CommanderMusic.TableId = req.JukeboxTableId;
++                current.CommanderMusic.Type = NetJukeboxBgmType.JukeboxTableId;
++            }
++            else if (req.Location == NetJukeboxLocation.Lobby)
++            {
++                current.LobbyMusic.TableId = req.JukeboxTableId;
++                current.LobbyMusic.Type = NetJukeboxBgmType.JukeboxTableId;
++            }
++        });
+ 
+         await WriteDataAsync(response);
+     }
+diff --git a/EpinelPS/LobbyServer/LobbyUser/ProfileCard/SaveDecorationLayout.cs b/EpinelPS/LobbyServer/LobbyUser/ProfileCard/SaveDecorationLayout.cs
+index 873e0a2..c109dd0 100644
+--- a/EpinelPS/LobbyServer/LobbyUser/ProfileCard/SaveDecorationLayout.cs
++++ b/EpinelPS/LobbyServer/LobbyUser/ProfileCard/SaveDecorationLayout.cs
+@@ -9,9 +9,8 @@ public class SaveDecorationLayout : LobbyMessage
+     {
+         var req = await ReadData<ReqSaveProfileCardDecorationLayout>();
+         var user = GetUser();
+-        user.ProfileCardDecoration = req.Layout;
++        RuntimePreferencesMutation.Update(user.ID, current => current.ProfileCardDecoration = req.Layout.Clone());
+         var res = new ResSaveProfileCardDecorationLayout();
+-        JsonDb.Save();
+         await WriteDataAsync(res);
+     }
+ }
+diff --git a/EpinelPS/LobbyServer/LobbyUser/SetProfileData.cs b/EpinelPS/LobbyServer/LobbyUser/SetProfileData.cs
+index d6e54c2..9c81c4c 100644
+--- a/EpinelPS/LobbyServer/LobbyUser/SetProfileData.cs
++++ b/EpinelPS/LobbyServer/LobbyUser/SetProfileData.cs
+@@ -9,11 +9,12 @@ public class SetProfileData : LobbyMessage
+     {
+         ReqSetProfileData req = await ReadData<ReqSetProfileData>();
+         User user = GetUser();
+-        user.ProfileIconId = req.Icon;
+-        user.ProfileIconIsPrism = req.IsPrism;
+-        user.ProfileFrame = req.Frame;
+-
+-        JsonDb.Save();
++        RuntimePreferencesMutation.Update(user.ID, current =>
++        {
++            current.ProfileIconId = req.Icon;
++            current.ProfileIconIsPrism = req.IsPrism;
++            current.ProfileFrame = req.Frame;
++        });
+         ResSetProfileData response = new();
+ 
+         await WriteDataAsync(response);
+diff --git a/EpinelPS/LobbyServer/LobbyUser/SetProfileIcon.cs b/EpinelPS/LobbyServer/LobbyUser/SetProfileIcon.cs
+index 9ba58ff..4c2c479 100644
+--- a/EpinelPS/LobbyServer/LobbyUser/SetProfileIcon.cs
++++ b/EpinelPS/LobbyServer/LobbyUser/SetProfileIcon.cs
+@@ -9,9 +9,11 @@ public class SetProfileIcon : LobbyMessage
+     {
+         ReqSetProfileIcon req = await ReadData<ReqSetProfileIcon>();
+         User user = GetUser();
+-        user.ProfileIconId = req.Icon;
+-        user.ProfileIconIsPrism = req.IsPrism;
+-        JsonDb.Save();
++        RuntimePreferencesMutation.Update(user.ID, current =>
++        {
++            current.ProfileIconId = req.Icon;
++            current.ProfileIconIsPrism = req.IsPrism;
++        });
+         ResSetProfileIcon response = new();
+ 
+         await WriteDataAsync(response);
+diff --git a/EpinelPS/LobbyServer/LobbyUser/SetUserTitle.cs b/EpinelPS/LobbyServer/LobbyUser/SetUserTitle.cs
+index bf846c8..a719f83 100644
+--- a/EpinelPS/LobbyServer/LobbyUser/SetUserTitle.cs
++++ b/EpinelPS/LobbyServer/LobbyUser/SetUserTitle.cs
+@@ -8,8 +8,7 @@ public class SetUserTitleData : LobbyMessage
+     {
+         ReqSetUserTitle req = await ReadData<ReqSetUserTitle>();
+         User user = GetUser();
+-        user.TitleId = req.UserTitleId;
+-        JsonDb.Save();
++        RuntimePreferencesMutation.Update(user.ID, current => current.TitleId = req.UserTitleId);
+         ResSetUserTitle response = new();
+ 
+         await WriteDataAsync(response);
+diff --git a/EpinelPS/LobbyServer/LobbyUser/SetWallpaper.cs b/EpinelPS/LobbyServer/LobbyUser/SetWallpaper.cs
+index e7f706b..b7bda19 100644
+--- a/EpinelPS/LobbyServer/LobbyUser/SetWallpaper.cs
++++ b/EpinelPS/LobbyServer/LobbyUser/SetWallpaper.cs
+@@ -10,13 +10,14 @@ public class SetWallpaper : LobbyMessage
+         ReqSetWallpaper req = await ReadData<ReqSetWallpaper>();
+         ResSetWallpaper response = new();
+         User user = GetUser();
+-        user.WallpaperList = [.. req.WallpaperList];
+-        user.WallpaperBackground = [.. req.WallpaperBackgroundList];
+-        user.WallpaperFavoriteList = [.. req.WallpaperFavoriteList];
+-        user.WallpaperPlaylistList = [.. req.WallpaperPlaylistList];
+-        user.WallpaperJukeboxList = [.. req.WallpaperJukeboxList];
+-
+-        JsonDb.Save();
++        RuntimePreferencesMutation.Update(user.ID, current =>
++        {
++            current.WallpaperList = [.. req.WallpaperList.Select(item => item.Clone())];
++            current.WallpaperBackground = [.. req.WallpaperBackgroundList.Select(item => item.Clone())];
++            current.WallpaperFavoriteList = [.. req.WallpaperFavoriteList.Select(item => item.Clone())];
++            current.WallpaperPlaylistList = [.. req.WallpaperPlaylistList.Select(item => item.Clone())];
++            current.WallpaperJukeboxList = [.. req.WallpaperJukeboxList.Select(item => item.Clone())];
++        });
+ 
+         await WriteDataAsync(response);
+     }
+diff --git a/EpinelPS/LobbyServer/Team/SetTeam.cs b/EpinelPS/LobbyServer/Team/SetTeam.cs
+index ada3f96..b988a12 100644
+--- a/EpinelPS/LobbyServer/Team/SetTeam.cs
++++ b/EpinelPS/LobbyServer/Team/SetTeam.cs
+@@ -11,6 +11,14 @@ public class SetTeam : LobbyMessage
+     {
+         ReqSetTeam req = await ReadData<ReqSetTeam>();
+         User user = GetUser();
++        if (req.Type == (int)TeamType.SoloRaid)
++        {
++            RuntimePreferencesMutation.Update(user.ID, current => RuntimePreferencesMutation.SetSoloRaidTeam(current, req));
++            var saved = new ResSetTeam { Type = req.Type };
++            saved.Teams.AddRange(req.Teams.Select(team => team.Clone()));
++            await WriteDataAsync(saved);
++            return;
++        }
+ 
+         // TODO is this right
+         ResSetTeam response = new()
+diff --git a/EpinelPS/Models/DbModels.cs b/EpinelPS/Models/DbModels.cs
+index 2811f98..d2e2f4a 100644
+--- a/EpinelPS/Models/DbModels.cs
++++ b/EpinelPS/Models/DbModels.cs
+@@ -504,6 +504,8 @@ public class CutSceneData
+ // Solo Raid Data
+ public class SoloRaidInfo
+ {
++    public List<ClassicSoloRaidBattleReceipt> BattleHistory { get; set; } = [];
++    public Dictionary<Guid, string> BattleRunStatus { get; set; } = [];
+     public int RaidId { get; set; }
+     public int RaidOpenCount { get; set; }
+     public int TrialCount { get; set; }
+@@ -512,6 +514,7 @@ public class SoloRaidInfo
+ }
+ public class SoloRaidLevelData
+ {
++    public Guid LocalRunUid { get; set; }
+     public int RaidLevel { get; set; }
+     public int RaidJoinCount { get; set; }
+     public long Hp { get; set; }
+@@ -524,6 +527,7 @@ public class SoloRaidLevelData
+ }
+ public class SoloRaidLogData
+ {
++    public string? AcceptedRequestSha256 { get; set; }
+     public long Damage { get; set; }
+     public bool Kill { get; set; }
+     public List<TeamCharacterData> Team { get; set; } = [];
+diff --git a/EpinelPS/Models/UserModel.cs b/EpinelPS/Models/UserModel.cs
+index 63005dc..5bb435f 100644
+--- a/EpinelPS/Models/UserModel.cs
++++ b/EpinelPS/Models/UserModel.cs
+@@ -11,6 +11,7 @@ public class ClearedTutorialData
+ }
+ public class User
+ {
++    public LocalRuntimePersistenceBinding? LocalPersistenceBinding { get; set; }
+     // User info
+     [Obsolete]
+     public string? Username { get; set; }
+diff --git a/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs b/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs
+index 051963a..33daad7 100644
+--- a/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs
++++ b/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs
+@@ -386,7 +386,6 @@ public class SoloRaidHelper
+ 
+     public static bool CloseSoloRaid(User user, int raidId, int raidLevel, SoloRaidType type = SoloRaidType.Normal)
+     {
+-        Logging.WriteLine($"CloseSoloRaid: raidId: {raidId}, raidLevel: {raidLevel}, type: {type}");
+         if (raidId <= 0) return false;
+ 
+         var raid = GetSoloRaidData(user, raidId, isAdd: false);
+@@ -403,8 +402,10 @@ public class SoloRaidHelper
+         // The Challenge lobby's red Quit button closes the active Trial. It is
+         // an abandon operation, not an early completion signal. A legitimate
+         // Challenge result is already finalized by SetDamage after team five,
+-        // so closing an active Trial must discard every partial team log and
+-        // preserve any previously completed five-team best unchanged.
++        // so closing an active Trial releases run admission while retaining
++        // every accepted deck in independent history and the five-team best.
++        ClassicSoloRaidBattleReceipt.RetainLegacySnapshots(raid);
++        ClassicSoloRaidBattleReceipt.Close(raid, level, "abandoned");
+         raid.SoloRaidLevels.Remove(level);
+         user.SoloRaidData[raidId] = raid;
+         return true;
+@@ -474,7 +475,8 @@ public class SoloRaidHelper
+     public static bool SetDamagePractice(User user, ref ResSetSoloRaidPracticeDamage response, ReqSetSoloRaidPracticeDamage req, int raidId)
+     {
+         (_, _, var levelData) =
+-            SetDamage(user, raidId, req.RaidLevel, req.Damage, req.AntiCheatBattleData.WaveId, req.AntiCheatBattleData.Characters, SoloRaidType.Practice);
++            SetDamage(user, raidId, req.RaidLevel, req.Damage, req.AntiCheatBattleData.WaveId, req.AntiCheatBattleData.Characters, SoloRaidType.Practice,
++                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Google.Protobuf.MessageExtensions.ToByteArray(req))));
+ 
+         if (levelData is null) return false;
+ 
+@@ -499,7 +501,8 @@ public class SoloRaidHelper
+         }
+ 
+         (_, _, var levelData) =
+-            SetDamage(user, raidId, req.RaidLevel, req.Damage, req.AntiCheatBattleData.WaveId, req.AntiCheatBattleData.Characters, SoloRaidType.Trial);
++            SetDamage(user, raidId, req.RaidLevel, req.Damage, req.AntiCheatBattleData.WaveId, req.AntiCheatBattleData.Characters, SoloRaidType.Trial,
++                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Google.Protobuf.MessageExtensions.ToByteArray(req))));
+ 
+         if (levelData is null) return false;
+ 
+@@ -629,6 +632,16 @@ public class SoloRaidHelper
+         if (raidId <= 0) return;
+         var raidData = GetSoloRaidData(user, raidId);
+         if (raidData is null) return;
++        if (raidData.BattleHistory.Count != 0)
++        {
++            foreach (var entry in raidData.BattleHistory.Where(entry => entry.RaidLevel == raidLevel)
++                .OrderByDescending(entry => entry.Sequence))
++            {
++                if (entry.Type == SoloRaidType.Trial) response.Logs.Add(entry.Log.ToNet());
++                else if (entry.Type == SoloRaidType.Practice) response.PracticeLogs.Add(entry.Log.ToNet());
++            }
++            return;
++        }
+         var activeTrialLevel = GetSoloRaidLevelData(
+             raidData,
+             raidLevel,
+@@ -789,7 +802,8 @@ public class SoloRaidHelper
+ 
+     public static (int rewardId, int FirstRewardId, SoloRaidLevelData? levelData)
+         SetDamage(User user, int raidId, int raidLevel, long damage, int waveId,
+-            RepeatedField<NetAntiCheatCharacter> characters, SoloRaidType type = SoloRaidType.Normal)
++            RepeatedField<NetAntiCheatCharacter> characters, SoloRaidType type = SoloRaidType.Normal,
++            string? requestSha256 = null)
+     {
+         int rewardId = 0;
+         int FirstRewardId = 0;
+@@ -798,7 +812,14 @@ public class SoloRaidHelper
+         var levelData = GetSoloRaidLevelData(raidData, raidLevel, type, isOpen: true);
+         var oldLevel = GetSoloRaidLevelData(raidData, raidLevel, type, isOpen: false);
+ 
++        var replayRun = levelData?.LocalRunUid ?? raidData.BattleHistory.LastOrDefault(entry =>
++            entry.RaidLevel == raidLevel && entry.Type == type)?.RunUid;
++        var replay = requestSha256 is null ? null : raidData.BattleHistory.LastOrDefault(entry =>
++            entry.RunUid == replayRun && entry.Log.AcceptedRequestSha256 == requestSha256);
++        if (replay is not null) return (0, 0, replay.ReplayLevel(raidData));
+         if (levelData is null) return (0, 0, null);
++        if (damage < 0 || damage > long.MaxValue - levelData.TotalDamage) return (0, 0, null);
++        ClassicSoloRaidBattleReceipt.RetainLegacySnapshots(raidData);
+         raidData.SoloRaidLevels.Remove(levelData);
+ 
+         levelData.TotalDamage += damage;
+@@ -843,6 +864,7 @@ public class SoloRaidHelper
+ 
+         SoloRaidLogData logData = new()
+         {
++            AcceptedRequestSha256 = requestSha256,
+             Damage = damage,
+             Kill = levelData.Status == SoloRaidStatus.Kill,
+         };
+@@ -862,6 +884,8 @@ public class SoloRaidHelper
+         }
+ 
+         levelData.Logs.Add(logData);
++        if (raidLevel == 8 && type is SoloRaidType.Trial or SoloRaidType.Practice)
++            ClassicSoloRaidBattleReceipt.Append(raidData, levelData, logData);
+ 
+         var retainPreviousTrialBest = type == SoloRaidType.Trial
+             && !levelData.IsOpen
+diff --git a/tests/EpinelPS.SelectedManager.Tests/SoloRaidRetrySemanticsTests.cs b/tests/EpinelPS.SelectedManager.Tests/SoloRaidRetrySemanticsTests.cs
+index af8373e..b944ae4 100644
+--- a/tests/EpinelPS.SelectedManager.Tests/SoloRaidRetrySemanticsTests.cs
++++ b/tests/EpinelPS.SelectedManager.Tests/SoloRaidRetrySemanticsTests.cs
+@@ -239,7 +239,7 @@ public sealed class SoloRaidRetrySemanticsTests
+             ref logs,
+             ClassicRouteTestFixture.TargetManager,
+             RoutePolicyFixture.ChallengeRaidLevel);
+-        Assert.Equal(highDamages.Reverse(), logs.Logs.Select(log => log.Damage));
++        Assert.Equal(lowerDamages.Reverse().Concat(highDamages.Reverse()), logs.Logs.Select(log => log.Damage));
+ 
+         var rankerSquad = new ResGetSoloRaidRankerSquad();
+         SoloRaidHelper.GetSoloRaidRankerSquad(
+diff --git a/EpinelPS/Database/RuntimePreferencesMutation.cs b/EpinelPS/Database/RuntimePreferencesMutation.cs
+new file mode 100644
+--- /dev/null
++++ b/EpinelPS/Database/RuntimePreferencesMutation.cs
+@@ -0,0 +1,32 @@
++using EpinelPS.Models;
++
++namespace EpinelPS.Database;
++
++public static class RuntimePreferencesMutation
++{
++    internal static void Update(ulong accountId, Action<User> mutation) =>
++        JsonDb.ClassicSoloRaidPersistence.Execute(core =>
++        {
++            var user = core.Users.Single(candidate => candidate.ID == accountId);
++            mutation(user);
++            return CoordinatedMutation<bool>.Commit(true);
++        });
++
++    public static void SetSoloRaidTeam(User user, ReqSetTeam request)
++    {
++        var type = (int)EpinelPS.Data.TeamType.SoloRaid;
++        if (request.Type != type) throw new InvalidOperationException("local_solo_raid_team_type_invalid");
++        var selected = request.Teams.Count == 0 ? checked(request.ContentsId + 1) : request.Teams.Max(team => team.TeamNumber);
++        if (selected is < 1 or > 5 || request.Teams.Any(team => team.TeamNumber is < 1 or > 5))
++            throw new InvalidOperationException("local_solo_raid_team_number_invalid");
++        if (!user.UserTeams.TryGetValue(type, out var teams))
++            user.UserTeams[type] = teams = new NetUserTeamData { Type = type };
++        teams.LastContentsTeamNumber = selected;
++        foreach (var incoming in request.Teams)
++        {
++            var index = teams.Teams.ToList().FindIndex(team => team.TeamNumber == incoming.TeamNumber);
++            if (index < 0) teams.Teams.Add(incoming.Clone());
++            else teams.Teams[index] = incoming.Clone();
++        }
++    }
++}
+diff --git a/EpinelPS/Models/ClassicSoloRaidBattleReceipt.cs b/EpinelPS/Models/ClassicSoloRaidBattleReceipt.cs
+new file mode 100644
+--- /dev/null
++++ b/EpinelPS/Models/ClassicSoloRaidBattleReceipt.cs
+@@ -0,0 +1,79 @@
++using Newtonsoft.Json;
++
++namespace EpinelPS.Models;
++
++// Local-only state, never a protocol extension. My Records projects only Log.ToNet().
++public sealed class ClassicSoloRaidBattleReceipt
++{
++    public Guid BattleUid { get; set; }
++    public Guid RunUid { get; set; }
++    public int Ordinal { get; set; }
++    public long Sequence { get; set; }
++    public DateTimeOffset? AcceptedAtUtc { get; set; }
++    public string Origin { get; set; } = "accepted_battle";
++    public SoloRaidType Type { get; set; }
++    public int RaidLevel { get; set; }
++    public long BossHp { get; set; }
++    public long RunDamageAfter { get; set; }
++    public SoloRaidLogData Log { get; set; } = new();
++
++    public static void Append(SoloRaidInfo raid, SoloRaidLevelData level, SoloRaidLogData log)
++    {
++        if (level.LocalRunUid == Guid.Empty) level.LocalRunUid = Guid.NewGuid();
++        var snapshot = JsonConvert.DeserializeObject<SoloRaidLogData>(JsonConvert.SerializeObject(log))
++            ?? throw new InvalidDataException("classic_history_snapshot_invalid");
++        raid.BattleHistory.Add(new ClassicSoloRaidBattleReceipt
++        {
++            BattleUid = Guid.NewGuid(), RunUid = level.LocalRunUid,
++            Ordinal = level.RaidJoinCount,
++            Sequence = checked((raid.BattleHistory.LastOrDefault()?.Sequence ?? 0) + 1),
++            AcceptedAtUtc = DateTimeOffset.UtcNow, Type = level.Type,
++            RaidLevel = level.RaidLevel, BossHp = level.Hp, RunDamageAfter = level.TotalDamage, Log = snapshot,
++        });
++        raid.BattleRunStatus.TryAdd(level.LocalRunUid, "open");
++        if (!level.IsOpen) Close(raid, level, "completed");
++    }
++
++    public static void Close(SoloRaidInfo raid, SoloRaidLevelData level, string status)
++    {
++        if (level.LocalRunUid != Guid.Empty && raid.BattleHistory.Any(entry => entry.RunUid == level.LocalRunUid))
++            raid.BattleRunStatus[level.LocalRunUid] = status;
++    }
++
++    // Only records still present in a legacy snapshot can be retained. Their
++    // original receipt time and inter-run chronology are unknown, never invented.
++    public static void RetainLegacySnapshots(SoloRaidInfo raid)
++    {
++        foreach (var level in raid.SoloRaidLevels.Where(level => level.RaidLevel == 8 &&
++            level.Type is SoloRaidType.Trial or SoloRaidType.Practice).OrderBy(level => level.IsOpen))
++        {
++            if (level.LocalRunUid != Guid.Empty || level.Logs.Count == 0) continue;
++            level.LocalRunUid = Guid.NewGuid();
++            long cumulativeDamage = 0;
++            for (var index = 0; index < level.Logs.Count; index++)
++            {
++                var snapshot = JsonConvert.DeserializeObject<SoloRaidLogData>(JsonConvert.SerializeObject(level.Logs[index]))
++                    ?? throw new InvalidDataException("classic_history_snapshot_invalid");
++                cumulativeDamage = checked(cumulativeDamage + snapshot.Damage);
++                raid.BattleHistory.Add(new ClassicSoloRaidBattleReceipt
++                {
++                    BattleUid = Guid.NewGuid(), RunUid = level.LocalRunUid, Ordinal = index + 1,
++                    Sequence = checked((raid.BattleHistory.LastOrDefault()?.Sequence ?? 0) + 1),
++                    AcceptedAtUtc = null, Origin = "legacy_snapshot", Type = level.Type,
++                    RaidLevel = level.RaidLevel, BossHp = level.Hp, RunDamageAfter = cumulativeDamage, Log = snapshot,
++                });
++            }
++            raid.BattleRunStatus[level.LocalRunUid] = level.IsOpen ? "open" : "completed";
++        }
++    }
++
++    public SoloRaidLevelData ReplayLevel(SoloRaidInfo raid) => new()
++    {
++        LocalRunUid = RunUid, RaidLevel = RaidLevel, Type = Type, Hp = BossHp,
++        RaidJoinCount = Ordinal, TotalDamage = RunDamageAfter, IsOpen = Ordinal < 5,
++        IsClear = Ordinal == 5, Status = Ordinal == 5 ? SoloRaidStatus.Kill : SoloRaidStatus.Alive,
++        Logs = raid.BattleHistory.Where(entry => entry.RunUid == RunUid && entry.Ordinal <= Ordinal)
++            .OrderBy(entry => entry.Ordinal).Select(entry => JsonConvert.DeserializeObject<SoloRaidLogData>(
++                JsonConvert.SerializeObject(entry.Log))!).ToList(),
++    };
++}
+diff --git a/EpinelPS/Models/LocalRuntimePersistenceBinding.cs b/EpinelPS/Models/LocalRuntimePersistenceBinding.cs
+new file mode 100644
+--- /dev/null
++++ b/EpinelPS/Models/LocalRuntimePersistenceBinding.cs
+@@ -0,0 +1,13 @@
++namespace EpinelPS.Models;
++
++// Private runtime DB metadata only; never projected into a game response.
++public sealed class LocalRuntimePersistenceBinding
++{
++    public Guid AccountUid { get; set; }
++    public string ProfileRevisionSha256 { get; set; } = "";
++    public string SelectedWeaknessCode { get; set; } = "";
++    public Guid? PreferencesHeadUid { get; set; }
++    public Dictionary<long, string> CharacterUidByCsn { get; set; } = [];
++    public List<string> BaselineBadgeFingerprints { get; set; } = [];
++    public List<string> DismissedBadgeFingerprints { get; set; } = [];
++}
+diff --git a/tests/EpinelPS.SelectedManager.Tests/ClassicBattleHistoryTests.cs b/tests/EpinelPS.SelectedManager.Tests/ClassicBattleHistoryTests.cs
+new file mode 100644
+--- /dev/null
++++ b/tests/EpinelPS.SelectedManager.Tests/ClassicBattleHistoryTests.cs
+@@ -0,0 +1,145 @@
++using EpinelPS;
++using EpinelPS.Database;
++using EpinelPS.LobbyServer.Soloraid;
++using EpinelPS.Models;
++using Newtonsoft.Json;
++using Xunit;
++
++namespace EpinelPS.SelectedManager.Tests;
++
++public sealed class ClassicBattleHistoryTests
++{
++    [Fact]
++    public void LegacyKnownDecksRemainVisibleAndQuitDoesNotRewriteBattleSnapshots()
++    {
++        var user = ClassicRouteTestFixture.ActiveUser();
++        var raid = user.SoloRaidData[ClassicRouteTestFixture.TargetManager];
++        var legacy = NewRun();
++        legacy.IsOpen = false;
++        legacy.IsClear = true;
++        legacy.Status = SoloRaidStatus.Kill;
++        legacy.RaidJoinCount = 5;
++        legacy.TotalDamage = 150;
++        legacy.Logs = new long[] { 25, 35, 55, 15, 20 }.Select(value => new SoloRaidLogData { Damage = value }).ToList();
++        raid.SoloRaidLevels.Add(legacy);
++        var response = new ResSetSoloRaidTrialDamage();
++        Assert.True(SoloRaidHelper.SetDamageTrial(user, ref response,
++            ClassicRouteTestFixture.DamageRequest(61), ClassicRouteTestFixture.TargetManager));
++        Assert.Equal(6, raid.BattleHistory.Count);
++        Assert.All(raid.BattleHistory.Take(5), entry =>
++        {
++            Assert.Equal("legacy_snapshot", entry.Origin);
++            Assert.Null(entry.AcceptedAtUtc);
++        });
++        Assert.NotNull(raid.BattleHistory.Last().AcceptedAtUtc);
++        var immutable = JsonConvert.SerializeObject(raid.BattleHistory);
++        Assert.True(SoloRaidHelper.CloseSoloRaid(user, ClassicRouteTestFixture.TargetManager, 8, SoloRaidType.Trial));
++        Assert.Equal(immutable, JsonConvert.SerializeObject(raid.BattleHistory));
++        var logs = new ResGetSoloRaidLogs();
++        SoloRaidHelper.GetSoloRaidLog(user, ref logs, ClassicRouteTestFixture.TargetManager, 8);
++        Assert.Equal(new long[] { 61, 20, 15, 55, 35, 25 }, logs.Logs.Select(log => log.Damage));
++    }
++
++    [Fact]
++    public void EveryDeckSurvivesLowerCompletionQuitAndReloadIndependentlyOfBest()
++    {
++        var user = ClassicRouteTestFixture.ActiveUser();
++        long[][] runs = [[20, 30, 50, 10, 15], [25, 35, 55, 15, 20], [15, 25, 45, 5, 10], [61]];
++        foreach (var damages in runs)
++        {
++            var raid = user.SoloRaidData[ClassicRouteTestFixture.TargetManager];
++            if (!raid.SoloRaidLevels.Any(level => level.IsOpen))
++                raid.SoloRaidLevels.Add(NewRun());
++            foreach (var damage in damages)
++            {
++                var response = new ResSetSoloRaidTrialDamage();
++                Assert.True(SoloRaidHelper.SetDamageTrial(user, ref response,
++                    ClassicRouteTestFixture.DamageRequest(damage), ClassicRouteTestFixture.TargetManager));
++            }
++        }
++        Assert.True(SoloRaidHelper.CloseSoloRaid(user, ClassicRouteTestFixture.TargetManager, 8, SoloRaidType.Trial));
++        user = JsonConvert.DeserializeObject<User>(JsonConvert.SerializeObject(user))!;
++        var state = user.SoloRaidData[ClassicRouteTestFixture.TargetManager];
++        Assert.Equal(150, SoloRaidHelper.GetBestCompletedTrialLevel(state, 8)!.TotalDamage);
++        Assert.Equal(16, state.BattleHistory.Count);
++        Assert.Equal(16, state.BattleHistory.Select(entry => entry.BattleUid).Distinct().Count());
++        Assert.Equal(4, state.BattleHistory.Select(entry => entry.RunUid).Distinct().Count());
++        Assert.Equal("abandoned", state.BattleRunStatus[state.BattleHistory.Last().RunUid]);
++        var logs = new ResGetSoloRaidLogs();
++        SoloRaidHelper.GetSoloRaidLog(user, ref logs, ClassicRouteTestFixture.TargetManager, 8);
++        Assert.Equal(runs.SelectMany(run => run).Reverse(), logs.Logs.Select(log => log.Damage));
++    }
++
++    [Fact]
++    public void DuplicateReceiptDoesNotAppendButSameRequestInNewRunDoes()
++    {
++        var user = ClassicRouteTestFixture.ActiveUser();
++        var request = ClassicRouteTestFixture.DamageRequest(61);
++        var response = new ResSetSoloRaidTrialDamage();
++        Assert.True(SoloRaidHelper.SetDamageTrial(user, ref response, request, ClassicRouteTestFixture.TargetManager));
++        var before = JsonConvert.SerializeObject(user);
++        Assert.True(SoloRaidHelper.SetDamageTrial(user, ref response, request, ClassicRouteTestFixture.TargetManager));
++        Assert.Equal(before, JsonConvert.SerializeObject(user));
++        Assert.True(SoloRaidHelper.CloseSoloRaid(user, ClassicRouteTestFixture.TargetManager, 8, SoloRaidType.Trial));
++        user.SoloRaidData[ClassicRouteTestFixture.TargetManager].SoloRaidLevels.Add(NewRun());
++        Assert.True(SoloRaidHelper.SetDamageTrial(user, ref response, request, ClassicRouteTestFixture.TargetManager));
++        Assert.Equal(2, user.SoloRaidData[ClassicRouteTestFixture.TargetManager].BattleHistory.Count);
++    }
++
++    [Fact]
++    public void AcceptedBattleIsDurableBeforeAnyProcessExitOrQuit()
++    {
++        var path = Path.Combine(Path.GetTempPath(), "nll-history-" + Guid.NewGuid().ToString("N"), "db.json");
++        var core = new CoreInfo { Users = [ClassicRouteTestFixture.ActiveUser()] };
++        try
++        {
++            var coordinator = new ClassicSoloRaidPersistenceCoordinator(() => core, next => core = next, path);
++            coordinator.Execute(working =>
++            {
++                var response = new ResSetSoloRaidTrialDamage();
++                Assert.True(SoloRaidHelper.SetDamageTrial(working.Users.Single(), ref response,
++                    ClassicRouteTestFixture.DamageRequest(61), ClassicRouteTestFixture.TargetManager));
++                return CoordinatedMutation<bool>.Commit(true);
++            });
++            var restarted = JsonConvert.DeserializeObject<CoreInfo>(File.ReadAllText(path))!;
++            var entry = Assert.Single(restarted.Users.Single().SoloRaidData[ClassicRouteTestFixture.TargetManager].BattleHistory);
++            Assert.Equal(61, entry.Log.Damage);
++            Assert.Equal("open", restarted.Users.Single().SoloRaidData[ClassicRouteTestFixture.TargetManager].BattleRunStatus[entry.RunUid]);
++        }
++        finally
++        {
++            if (File.Exists(path)) File.Delete(path);
++            if (Directory.Exists(Path.GetDirectoryName(path))) Directory.Delete(Path.GetDirectoryName(path)!);
++        }
++    }
++
++    [Fact]
++    public void FinalAndEarlierReceiptReplayReturnsAcceptedAggregateWithoutDuplicateDecks()
++    {
++        var user = ClassicRouteTestFixture.ActiveUser();
++        ResSetSoloRaidTrialDamage? first = null;
++        ResSetSoloRaidTrialDamage? last = null;
++        foreach (var damage in new long[] {20,30,50,10,15})
++        {
++            var response = new ResSetSoloRaidTrialDamage();
++            Assert.True(SoloRaidHelper.SetDamageTrial(user, ref response,
++                ClassicRouteTestFixture.DamageRequest(damage), ClassicRouteTestFixture.TargetManager));
++            first ??= response;
++            last = response;
++        }
++        var before = JsonConvert.SerializeObject(user);
++        var retry = new ResSetSoloRaidTrialDamage();
++        Assert.True(SoloRaidHelper.SetDamageTrial(user, ref retry,
++            ClassicRouteTestFixture.DamageRequest(15), ClassicRouteTestFixture.TargetManager));
++        Assert.Equal(last, retry);
++        Assert.True(SoloRaidHelper.SetDamageTrial(user, ref retry,
++            ClassicRouteTestFixture.DamageRequest(20), ClassicRouteTestFixture.TargetManager));
++        Assert.Equal(first, retry);
++        Assert.Equal(before, JsonConvert.SerializeObject(user));
++    }
++
++    private static SoloRaidLevelData NewRun() => new()
++    {
++        RaidLevel = 8, Type = SoloRaidType.Trial, IsOpen = true, Status = SoloRaidStatus.Alive,
++    };
++}
+diff --git a/tests/EpinelPS.SelectedManager.Tests/RuntimePreferencesMutationTests.cs b/tests/EpinelPS.SelectedManager.Tests/RuntimePreferencesMutationTests.cs
+new file mode 100644
+--- /dev/null
++++ b/tests/EpinelPS.SelectedManager.Tests/RuntimePreferencesMutationTests.cs
+@@ -0,0 +1,95 @@
++using EpinelPS;
++using EpinelPS.Database;
++using EpinelPS.LobbyServer.Soloraid;
++using EpinelPS.Models;
++using Newtonsoft.Json;
++using Xunit;
++
++namespace EpinelPS.SelectedManager.Tests;
++
++public sealed class RuntimePreferencesMutationTests
++{
++    [Fact]
++    public void UnplayedTeamsEmptySlotsAndLastSelectionDoNotChangeBattleState()
++    {
++        var user = ClassicRouteTestFixture.ActiveUser();
++        var history = JsonConvert.SerializeObject(user.SoloRaidData);
++        var request = new ReqSetTeam { Type = (int)EpinelPS.Data.TeamType.SoloRaid };
++        foreach (var number in Enumerable.Range(1,5))
++        {
++            var team = new NetTeamData { TeamNumber = number };
++            team.Slots.Add(new NetTeamSlot { Slot = 1, Value = 111 });
++            team.Slots.Add(new NetTeamSlot { Slot = 2, Value = 0 });
++            request.Teams.Add(team);
++        }
++        RuntimePreferencesMutation.SetSoloRaidTeam(user, request);
++        request.Teams[0].Slots.Clear();
++        Assert.Equal(2, user.UserTeams[request.Type].Teams[0].Slots.Count);
++        var clear = new ReqSetTeam { Type = request.Type };
++        clear.Teams.Add(new NetTeamData { TeamNumber = 3 });
++        RuntimePreferencesMutation.SetSoloRaidTeam(user, clear);
++        Assert.Empty(user.UserTeams[request.Type].Teams.Single(team => team.TeamNumber == 3).Slots);
++        Assert.Equal(5, user.UserTeams[request.Type].Teams.Count);
++        Assert.Equal(3, user.UserTeams[request.Type].LastContentsTeamNumber);
++        RuntimePreferencesMutation.SetSoloRaidTeam(user, new ReqSetTeam { Type = request.Type, ContentsId = 1 });
++        Assert.Equal(2, user.UserTeams[request.Type].LastContentsTeamNumber);
++        Assert.Equal(history, JsonConvert.SerializeObject(user.SoloRaidData));
++    }
++
++    [Fact]
++    public async Task PreferenceBattleAndOtherWritersCannotReplaceEachOthersCommittedHistory()
++    {
++        var root = Path.Combine(Path.GetTempPath(), "nll-preference-test-" + Guid.NewGuid().ToString("N"));
++        var path = Path.Combine(root, "db.json");
++        var core = new CoreInfo { Users = [ClassicRouteTestFixture.ActiveUser()] };
++        var coordinator = new ClassicSoloRaidPersistenceCoordinator(() => core, next => core = next, path);
++        try
++        {
++            var tasks = Enumerable.Range(1,4).Select(number => Task.Run(() => coordinator.Execute(working =>
++            {
++                var response = new ResSetSoloRaidTrialDamage();
++                Assert.True(SoloRaidHelper.SetDamageTrial(working.Users.Single(), ref response,
++                    ClassicRouteTestFixture.DamageRequest(number), ClassicRouteTestFixture.TargetManager));
++                return CoordinatedMutation<bool>.Commit(true);
++            }))).ToList();
++            tasks.Add(Task.Run(() => coordinator.Execute(working =>
++            {
++                working.Users.Single().TitleId = 77;
++                return CoordinatedMutation<bool>.Commit(true);
++            })));
++            await Task.WhenAll(tasks);
++            coordinator.SaveCurrent();
++            var restarted = JsonConvert.DeserializeObject<CoreInfo>(File.ReadAllText(path))!;
++            Assert.Equal(4, restarted.Users.Single().SoloRaidData[ClassicRouteTestFixture.TargetManager].BattleHistory.Count);
++            Assert.Equal(77, restarted.Users.Single().TitleId);
++            Assert.Equal(JsonConvert.SerializeObject(core), JsonConvert.SerializeObject(restarted));
++        }
++        finally
++        {
++            if (File.Exists(path)) File.Delete(path);
++            if (Directory.Exists(root)) Directory.Delete(root);
++        }
++    }
++
++    [Fact]
++    public void DiskFailureDoesNotPublishAcceptedPreference()
++    {
++        var root = Path.Combine(Path.GetTempPath(), "nll-preference-test-" + Guid.NewGuid().ToString("N"));
++        Directory.CreateDirectory(root);
++        var blocked = Path.Combine(root, "not-a-directory");
++        File.WriteAllText(blocked, "synthetic");
++        var core = new CoreInfo { Users = [ClassicRouteTestFixture.ActiveUser()] };
++        var before = JsonConvert.SerializeObject(core);
++        var coordinator = new ClassicSoloRaidPersistenceCoordinator(() => core, next => core = next, Path.Combine(blocked, "db.json"));
++        try
++        {
++            Assert.ThrowsAny<IOException>(() => coordinator.Execute(working =>
++            {
++                working.Users.Single().TitleId = 77;
++                return CoordinatedMutation<bool>.Commit(true);
++            }));
++            Assert.Equal(before, JsonConvert.SerializeObject(core));
++        }
++        finally { File.Delete(blocked); Directory.Delete(root); }
++    }
++}

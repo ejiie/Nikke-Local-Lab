@@ -8,22 +8,25 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# Dispatch before importing mutable runtime helpers. Historical runs without a
+# bundle keep their existing recovery route; invalid new bundles never use it.
+. (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1')
+$recoveryBundle = Read-PhaseDRunnerBundle -LaunchRoot (Join-Path $ExecutionRoot $LaunchContextUid)
+if ($null -ne $recoveryBundle -and
+    [IO.Path]::GetFullPath($PSScriptRoot) -ine [IO.Path]::GetFullPath($recoveryBundle.root)) {
+    & (Join-Path $recoveryBundle.root 'recover-nll-phase-d-orphaned-execution.ps1') `
+        -ExecutionRoot $ExecutionRoot -LaunchContextUid $LaunchContextUid -ConfigurationPath $ConfigurationPath
+    return
+}
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
+. (Join-Path $PSScriptRoot 'Nll.PhaseDCompletion.ps1')
+. (Join-Path $PSScriptRoot 'Nll.PhaseDChildProcess.ps1')
 
 function Assert-Recovery {
     param([bool]$Condition, [string]$Code)
     if (-not $Condition) { throw $Code }
 }
 
-function Write-AtomicJson {
-    param([string]$Path, [object]$Value, [int]$Depth = 8)
-    $temporary = $Path + '.partial-' + [guid]::NewGuid().ToString('N')
-    [IO.File]::WriteAllText(
-        $temporary,
-        (($Value | ConvertTo-Json -Depth $Depth) + "`n"),
-        [Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $temporary -Destination $Path -Force
-}
 
 function Get-Sha256Lower {
     param([string]$Path)
@@ -90,110 +93,14 @@ function Invoke-RecoveryPgCtl {
         [string]$PgCtlPath,
         [string[]]$Arguments
     )
-    $info = [Diagnostics.ProcessStartInfo]::new()
-    $info.FileName = $PgCtlPath
-    $info.Arguments = (($Arguments | ForEach-Object {
-        '"' + $_.Replace('"', '\"') + '"'
-    }) -join ' ')
-    $info.UseShellExecute = $false
-    $info.CreateNoWindow = $true
-    $process = [Diagnostics.Process]::Start($info)
-    $process.WaitForExit()
-    $exitCode = [int]$process.ExitCode
-    $process.Dispose()
-    $exitCode
+    Invoke-PhaseDPgCtl -PgCtlPath $PgCtlPath -Arguments $Arguments `
+        -OwnershipPath (Join-Path $launchRoot 'phase-d-child-pg-recovery.identity.json')
 }
 
 function Read-SoloRaidPersistenceReceipt {
-    param(
-        [string]$Path,
-        [string]$PendingPayloadPath,
-        [string]$CaptureReceiptPath
-    )
-    Assert-Recovery (Test-Path -LiteralPath $Path -PathType Leaf) `
-        'phase_d_raid_state_persistence_receipt_missing'
-    Assert-Recovery `
-        ((Test-Path -LiteralPath $PendingPayloadPath -PathType Leaf) -and
-         (Test-Path -LiteralPath $CaptureReceiptPath -PathType Leaf)) `
-        'phase_d_raid_state_persistence_proof_missing'
-    $persistence = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 |
-        ConvertFrom-Json
-    $pending = Get-Content -LiteralPath $PendingPayloadPath -Raw -Encoding UTF8 |
-        ConvertFrom-Json
-    $capture = Get-Content -LiteralPath $CaptureReceiptPath -Raw -Encoding UTF8 |
-        ConvertFrom-Json
-    $context = Get-Content -LiteralPath (Join-Path $launchRoot 'launch-context.json') `
-        -Raw -Encoding UTF8 | ConvertFrom-Json
-    $headRevisionUid = [Guid]::Empty
-    $headRevisionPresent = $null -ne $persistence.headRevisionUid -and
-        [Guid]::TryParse([string]$persistence.headRevisionUid, [ref]$headRevisionUid) -and
-        $headRevisionUid -ne [Guid]::Empty
-    $resultCode = [string]$persistence.resultCode
-    $expectedHeadPersistence = if (
-        $null -eq $persistence.expectedHeadRevisionUid) {
-        ''
-    } else { [string]$persistence.expectedHeadRevisionUid }
-    $expectedHeadCapture = if ($null -eq $capture.expectedHeadRevisionUid) {
-        ''
-    } else { [string]$capture.expectedHeadRevisionUid }
-    Assert-Recovery `
-        ($persistence.contractId -ceq `
-            'nll/phase-d-classic-solo-raid-state-persistence/v1' -and
-         $pending.contractId -ceq `
-            'nll/phase-d-classic-solo-raid-state-pending/v1' -and
-         $capture.contractId -ceq `
-            'nll/phase-d-classic-solo-raid-state-capture/v1' -and
-         -not [bool]$persistence.quarantined -and
-         [string]$persistence.launchContextUid -ceq $LaunchContextUid -and
-         [string]$capture.launchContextUid -ceq $LaunchContextUid -and
-         [string]$pending.capture.launchContextUid -ceq $LaunchContextUid -and
-         [string]$persistence.pendingPayloadSha256 -ceq `
-            (Get-Sha256Lower $PendingPayloadPath) -and
-         [string]$persistence.captureReceiptSha256 -ceq `
-            (Get-Sha256Lower $CaptureReceiptPath) -and
-         [string]$persistence.accountUid -ceq [string]$capture.accountUid -and
-         [string]$persistence.accountUid -ceq [string]$context.accountUid -and
-         [string]$persistence.accountRevisionSetSha256 -ceq `
-            [string]$capture.accountRevisionSetSha256 -and
-         [string]$persistence.accountRevisionSetSha256 -ceq `
-            [string]$context.accountRevisionSetSha256 -and
-         [int]$persistence.seasonNumber -eq [int]$capture.seasonNumber -and
-         [int]$persistence.seasonNumber -eq [int]$context.seasonNumber -and
-         [string]$persistence.raidSnapshotUid -ceq `
-            [string]$capture.raidSnapshotUid -and
-         [string]$persistence.raidSnapshotUid -ceq `
-            [string]$context.raidSnapshotUid -and
-         [string]$persistence.raidSnapshotSha256 -ceq `
-            [string]$capture.raidSnapshotSha256 -and
-         [string]$persistence.raidSnapshotSha256 -ceq `
-            [string]$context.raidSnapshotSha256 -and
-         [string]$persistence.clientBuildCode -ceq `
-            [string]$capture.clientBuildCode -and
-         [string]$persistence.clientBuildCode -ceq `
-            [string]$context.clientBuildCode -and
-         [string]$persistence.clientExecutableSha256 -ceq `
-            [string]$capture.clientExecutableSha256 -and
-         [string]$persistence.clientExecutableSha256 -ceq `
-            [string]$context.clientExecutableSha256 -and
-         $expectedHeadPersistence -ceq $expectedHeadCapture -and
-         [string]$persistence.protectedPayloadSha256 -ceq `
-            [string]$capture.protectedPayloadSha256 -and
-         [string]$persistence.requestSha256 -ceq `
-            [string]$capture.requestSha256 -and
-         [string]$persistence.stateContentSha256 -ceq `
-            [string]$capture.stateContentSha256 -and
-         [string]$persistence.resultStateContentSha256 -ceq `
-            [string]$persistence.stateContentSha256 -and
-         $resultCode -in @('no_state','state_unchanged','state_advanced') -and
-         (($resultCode -ceq 'no_state' -and -not $headRevisionPresent) -or
-          ($resultCode -cne 'no_state' -and $headRevisionPresent)) -and
-         [string]$persistence.requestSha256 -cmatch '^[0-9a-f]{64}$' -and
-         [string]$persistence.pendingPayloadSha256 -cmatch '^[0-9a-f]{64}$' -and
-         [string]$persistence.captureReceiptSha256 -cmatch '^[0-9a-f]{64}$' -and
-         [string]$persistence.stateContentSha256 -cmatch '^[0-9a-f]{64}$' -and
-         [string]$persistence.resultStateContentSha256 -cmatch '^[0-9a-f]{64}$') `
-        'phase_d_raid_state_persistence_receipt_invalid'
-    $persistence
+    param([string]$Path, [string]$PendingPayloadPath, [string]$CaptureReceiptPath)
+    Read-PhaseDSoloRaidPersistenceReceipt -Path $Path -LaunchRoot $LaunchRoot -LaunchContextUid $LaunchContextUid `
+        -PendingPayloadPath $PendingPayloadPath -CaptureReceiptPath $CaptureReceiptPath
 }
 
 function Invoke-SoloRaidPendingReplay {
@@ -367,6 +274,9 @@ if (Test-Path -LiteralPath $watcherIdentityPath -PathType Leaf) {
     }
 }
 
+# No rollback, replay, process stop or trust restoration may race a late child.
+Assert-PhaseDChildrenExited -LaunchRoot $launchRoot `
+    -RequireEvidence:($state.failureCode -ceq 'phase_d_child_deadline_unproven')
 $residualServerStopped = Stop-PhaseDResidualServer -LaunchRoot $launchRoot
 Assert-Recovery `
     (@(Get-Process -Name EpinelPS,nikke,nikke_launcher,

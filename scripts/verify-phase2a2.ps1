@@ -45,13 +45,31 @@ Invoke-Checked dotnet @(
     "--no-restore"
 )
 Invoke-Checked node @("--check", $EditorScript)
+Invoke-Checked node @('--check', (Join-Path $ScriptDirectory 'measure-nll-editor-dom.cjs'))
+Invoke-Checked node @((Join-Path $ScriptDirectory 'measure-nll-editor-dom.cjs'), '--self-test')
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/workspace-save-retry.test.cjs"))
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/raid-launch-status.test.cjs"))
 Invoke-Checked node @((Join-Path $ScriptDirectory "test-nll-phase-d-lifecycle-ui.cjs"))
+$MaterializerChecks = Join-Path $RepositoryRoot 'tests/NikkeLocalLab.Materializer.BehaviorChecks/NikkeLocalLab.Materializer.BehaviorChecks.csproj'
+# Source-only CI compiles the checker without Epinel/SDK/client inputs. Actual
+# output tests + separate deployment builds require the explicit pinned local gate.
+Invoke-Checked dotnet @('restore', $MaterializerChecks, '--locked-mode')
+Invoke-Checked dotnet @('build', $MaterializerChecks, '-c', 'Release', '--no-restore')
+Invoke-Checked dotnet @('format', $MaterializerChecks, '--verify-no-changes', '--no-restore')
+Write-Output 'Materializer checker source build passed; pinned output checks/bootstrap151/desktop local gate NOT executed by CI.'
+$ReadBenchmarks = Join-Path $RepositoryRoot 'tests/NikkeLocalLab.ReadBenchmarks/NikkeLocalLab.ReadBenchmarks.csproj'
+Invoke-Checked dotnet @('restore', $ReadBenchmarks, '--locked-mode')
+Invoke-Checked dotnet @('build', $ReadBenchmarks, '-c', 'Release', '--no-restore')
+Invoke-Checked dotnet @('format', $ReadBenchmarks, '--verify-no-changes', '--no-restore')
+Invoke-Checked dotnet @((Join-Path $RepositoryRoot 'tests/NikkeLocalLab.ReadBenchmarks/bin/Release/net8.0/NikkeLocalLab.ReadBenchmarks.dll'), '--self-test')
 Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-ui-reuse-assets.ps1'))
 if ($env:OS -eq 'Windows_NT') {
     $WindowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
-    foreach ($test in @('test-nll-phase-d-preparation.ps1', 'test-nll-phase-d-launch-tools.ps1')) {
+    foreach ($test in @('test-nll-phase-d-preparation.ps1', 'test-nll-phase-d-launch-tools.ps1',
+        'test-nll-phase-d-runner-contract.ps1', 'test-nll-phase-d-runner-seal.ps1',
+        'test-nll-phase-d-runner-behavior.ps1', 'test-nll-phase-d-runner-differential.ps1',
+        'test-nll-phase-d-runner-routing.ps1', 'test-nll-phase-d-runner-dependencies.ps1',
+        'test-nll-phase-d-shared-state.ps1', 'test-nll-stabilization-release.ps1')) {
         Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory $test))
     }
 } else {

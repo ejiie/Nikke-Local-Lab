@@ -2,6 +2,7 @@
 # boundaries. This checks ordering; it is not original-game or database evidence.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$sealedRunner = $null # Legacy fixture; sealed-route cases are below.
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 $tokens = $null; $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile(
@@ -13,6 +14,7 @@ $taskRoot = Join-Path ([IO.Path]::GetTempPath()) ('nll-watcher-completion-' + [g
 $null = New-Item -ItemType Directory -Path $taskRoot
 function Assert-Watcher([bool]$Condition, [string]$Code) { if (-not $Condition) { throw $Code } }
 function Get-Sha256Lower { 'synthetic-hash' }
+function Read-PhaseDRunnerBundle { param($LaunchRoot,$ExpectedBundleSha256) @{sha256=$ExpectedBundleSha256} }
 function Write-AtomicJson($Path, $Value) {
     if ($Path -ceq $statePath -and $Value.statusCode -ceq 'completed') {
         Assert-Watcher $script:persisted 'terminal_state_before_persistence'
@@ -30,6 +32,10 @@ function Get-PhaseDVerifiedProcess {
 function Invoke-PhaseDChildScript {
     param($ScriptPath, $Arguments, $StandardOutputPath, $StandardErrorPath)
     Assert-Watcher ($Arguments.OutcomeCode -ceq 'client_exit' -and $Arguments.ObservedStageCode -ceq 'startup_only') 'automatic_exit_claimed_gameplay'
+    if ($null -ne $sealedRunner) {
+        Assert-Watcher ($Arguments.Phase -ceq 'completion' -and $Arguments.ExpectedBundleSha256 -ceq $ExpectedRunnerBundleSha256 -and
+            $Arguments.LaunchRoot -ceq $LaunchRoot) 'watcher_changed_runner_binding'
+    } else { Assert-Watcher ($Arguments.ServerRoot -ceq $ServerRoot -and $Arguments.EvidenceRoot -ceq $EvidenceRoot) 'watcher_changed_legacy_binding' }
     Assert-Watcher ($case -eq 'early-exit' -or ($script:waited -and $script:disposed)) 'completion_before_client_exit'
     [IO.File]::WriteAllText((Join-Path $EvidenceRoot 'active-run.pointer.archived.json'), 'synthetic-archived')
     [IO.File]::WriteAllText((Join-Path $EvidenceRoot 'completion.receipt.json'), '{"diagnosticObservationStatus":"not_observed"}')
@@ -55,8 +61,11 @@ function Invoke-SoloRaidPersistence {
 }
 function Invoke-EmergencyRollback { throw 'unexpected_emergency_rollback' }
 try {
+  foreach ($engine in @('legacy','sealed')) {
+    $sealedRunner=if ($engine -eq 'sealed') { @{sha256=('a'*64)} } else { $null }
+    $ExpectedRunnerBundleSha256='a'*64
     foreach ($case in @('early-exit', 'normal-exit', 'pg-failure', 'persist-failure')) {
-        $LaunchRoot = Join-Path $taskRoot $case
+        $LaunchRoot = Join-Path $taskRoot ($engine+'-'+$case)
         $EvidenceRoot = Join-Path $LaunchRoot 'evidence'
         $null = New-Item -ItemType Directory -Path $EvidenceRoot
         $ServerRoot = Join-Path $LaunchRoot 'runtime'
@@ -93,6 +102,7 @@ try {
         if ($success) { Assert-Watcher ($null -eq $state.failureCode -and $script:databaseReady -and $script:persisted) 'completed_without_database_or_acknowledgement' }
         else { Assert-Watcher ($null -ne $state.failureCode) 'failure_not_reconcilable' }
     }
+  }
 }
 finally {
     $resolved = [IO.Path]::GetFullPath($taskRoot)

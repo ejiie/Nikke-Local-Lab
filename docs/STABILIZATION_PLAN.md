@@ -1,5 +1,44 @@
 # Backend stabilization — current work plan
 
+## 현재 인수 작업 — 2026-09-12
+
+운영자 요청: 직접 하는 실 테스트를 제외한 안정화 후속 작업을 완료하고 테스트 순서·합격
+기준을 제공한다. **제품 소스 `1cf8784`의 전체 자동 검사·설치 반영·설치 API smoke를 완료**했다.
+단위 486개·격리 PG 112개·계약/서식/build 통과와 실제 계정 2개의 읽기·정상 종료를 확인했다.
+이후 운영자가 "모두 정상 동작을 확인했다"고 보고하여 직접 하는 WebView2/원본 Challenge 인수도 완료했다.
+운영자의 별도 승인으로 GitHub 원격을 비공개로 전환하고 API 재확인해 소스 게시 차단을 해제했다.
+정확한 receipt·실패 점검의 수정·백업 범위는 [HANDOFF](HANDOFF.md)의 최신 절에 기록한다. 아래 날짜별 발견/‘남음’은
+그 시점 이력이며 이 절과 최신 인계보다 우선하지 않는다.
+
+- S-08: bounded revision-readiness cache로 반복 목록 조회의 full-profile 재구성을 제거한다.
+  최초 조회/실행 export는 hash-verified aggregate를 유지한다. 256개 제한, account/revision/hash
+  분리, Save 경합, 새 서비스 및 eviction을 합성 PostgreSQL에서 검증한다.
+- S-08 측정: 50/100계정의 명시적 ANALYZE 전후와 dense(모든 캐릭터 4장비·각 OL 3줄) fixture를
+  비교한다. PDH의 물리 디스크 전체 raw 누적 byte 차이는 **호스트 전체 disk-stack I/O**이며
+  해당 DB/요청에 단독 귀속하거나 SSD NAND write로 표현하지 않는다. PostgreSQL buffer와 구분한다.
+- S-09: 준비 300초 / 완료 180초 / pg_ctl wrapper 90초. pg_ctl 자체 `-w/-t`는 보존한다.
+  사전 identity reservation → PID/start/path 기록 → exact-child wait 순서다. 기한 초과는
+  강제 종료·동시 rollback을 하지 않고 `started`/controlled failure를 유지한다. 재실행 복구는
+  기록된 모든 자식의 종료를 확인하며 누락/변조/PID reuse는 fail closed한다. 사용자가 실제로
+  플레이하는 동안 watcher가 client를 기다리는 것은 이 준비/완료 기한과 구분한다.
+- S-09 desktop: stdout/stderr 동시·bounded drain, 시작/navigation 예외 관측, 시작/페이지/스크립트
+  기한, 실패 exit code, 중복 종료 방지, 늦은 host의 stop signal 보존. stop을 만든 desktop/test가
+  host 종료 확인 후 해당 signal만 지운다. UI/게임은 합성 프로세스 검사와 별도 인수다.
+- S-09 감사: 운영 DB를 켜지 않은 cold backup 복제본에서 스키마/체크섬, head/lineage/Save 결과
+  소유자/provenance/암호화 payload hash를 확인했다. 배포 전 감사 `cb9ea3de443649e7ba92fd3153073f7b`는
+  schema 18, Save operation 102개, DB pending·암호화 pending 0개, 검사 불일치 0개다.
+  복제본 종료와 원본/백업 파일 hash 일치를 검증했다. 실 DB의 행을 정리하거나 추정 복원하지 않았다.
+  설치 smoke 후 감사 `912d47e8331645abb69eefb14e2cbef1`에서도 같은 스키마·operation 수와 pending/불일치 0개를 확인했다.
+- 잔여 코드 검토의 종료 범위는 importer 입력 크기/정규화/controlled error, domain revision·collection
+  불변성, automation inventory/state transition, desktop 시작·종료와 해당 회귀 검사다.
+  automation inventory의 root/ancestor reparse 우회를 닫고 같은 hash의 외부 파일도 거부한다.
+  프로젝트 전체 모든 줄의 형식적 증명/무결함 인증을 주장하지 않는다.
+- S-10: 현재 인수 상태, 날짜별 발견 기록과 Phase 역사 명세를 구분하고 단일
+  [실 테스트 체크리스트](operations/STABILIZATION_ACCEPTANCE.md)로 연결한다.
+
+P-01~P-09, S29/신규 보스/실드/150 보관 이동은 이 안정화 완료 요청에 자동 포함하지 않는다.
+소스 게시와 실제 Actions 결과는 [GitHub 자동화](operations/GITHUB_AUTOMATION.md)의 비공개 경계를 따른다.
+
 ## 상태와 범위 — 2026-09-06
 
 운영자가 **관리도구 → 151 → S26 실게임 검증 완료**를 보고했고 리소스 변화 대응을 종료했다.
@@ -113,6 +152,94 @@
 
 ### S-05 / 높음 — 실행 코드의 문자열을 다른 코드의 인터페이스로 사용함
 
+#### 본격 전환 승인 — 2026-09-08
+
+운영자가 1차 변경 후 계정/약점 준비 표시, S29 차단, 로비 전 종료, S26 1덱 완주,
+종료 후 저장/재실행을 직접 확인하고 문제가 없다고 보고했다. 이는 해당 설치 조합의
+운영자 인수이며 새 자동 actual-play receipt나 S29/모든 전투 조합의 성공이 아니다.
+이후 아래 1~6의 구현을 승인했다. 진행 상태는 실제 gate 완료만 반영한다.
+
+1. 기준선 고정: 부모 v9 원문이 아니라 현재 최종 파생 start/completion을 기준으로 삼는다.
+2. 데이터 전용 실행 입력 계약 및 부작용 없는 부정/행동 검사를 먼저 추가한다.
+3. 고정 Start/Complete 실행기를 구현하고 기존 경로를 기본값으로 유지하며 대조한다.
+4. 실행별 입력/코드 closure를 봉인하고 coordinator/watcher/recovery와 연결한다.
+5. cold 상태에서 검증된 조합을 적용하고 조기 종료/1덱 완주/저장/재실행을 운영자가 인수한다.
+6. 인수 뒤 활성 경로의 부모 템플릿 읽기/치환 의존을 제거한다. 과거 실행 복구와 rollback 자료는 보존한다.
+
+종료 순서는 runtime stop → pending capture → transient restore → management DB start →
+exact persistence → terminal state → pending cleanup이다. 실패 후 legacy 자동 재실행은 없다.
+실행 도중에는 실행기 버전을 바꾸지 않는다. 복원은 정리 완료 후 다음 실행부터 적용하며,
+실행기 rollback을 이유로 운영 DB를 과거 상태로 되돌리지 않는다.
+새 진단 HTTP 계층, client/server DLL 변경, 리소스/음성 정책 변경, P-01~P-09,
+S29 repin, 150 폴더 이동은 제외한다. 기존 seed DB/출처 의존은 코드 템플릿 의존과 구분한다.
+현재: **1~6 전환 구현 및 운영자 실게임 인수 완료.** 2026-09-09 cold 확인 후 새 기본
+`parameterized/v1`로 실행했고 운영자가 조기 종료, S26 1덱 완주/결과창, 저장/재실행에
+문제없음을 확인했다. 이후 활성 coordinator의 부모 start/completion 경로·hash·읽기,
+legacy 선택 분기와 문자열 생성/저장을 제거했다. 과거 실행 복구와 자료는 보존한다.
+`-RunnerEngine legacy/v1`은 이제 거절한다. rollback은 현재 실행 정리가 끝난 cold 상태에서
+검증된 소스 revision/로컬 checkpoint를 명시적으로 복원해 **다음 실행**에만 적용한다.
+자동 fallback과 운영 DB rollback은 없다.
+
+- 기준선은 운영자가 인수한 실행의 최종 `Start-PhaseD-Derived.ps1` / `Complete-PhaseD-Derived.ps1`다.
+  SHA-256은 각각 `0d322821ef27fa2dc9069b004ea4f48cbc3835da072a8d3931ca5ef2d9e2ff74`,
+  `588cd7d0f531eba76761c21c5bd5986f8cf001ee60b9dbe3904da1cf4dff046c`이며 로컬
+  `artifacts/stabilization/2026-09-08-s05-runner/baseline/`에만 보존한다. 계정 입력이 포함된
+  실제 파생 스크립트를 Git에 넣지 않는다. CI에는 시작 receipt/pointer/failure와 완료 후처리의
+  의미 토큰 hash만 고정했다. 이것은 전체 실게임 동등성 증명이 아니다.
+- `Nll.PhaseDRunnerContract`는 37개 명시 필드만 받는다. 스크립트 원문·추가 필드·미지 버전,
+  문자열 boolean, 경로/해시 형식 오류를 거절한다. secret은 환경변수 이름만 참조한다.
+  150 preflight 도구 hash는 EXE 단독 hash가 아니라 기존 **전체 tool-set digest**를 유지한다.
+- `Nll.PhaseDRunnerStart/Complete`는 고정 함수이며 코드 문자열을 생성하지 않는다.
+  사용되지 않던 opt-in HTTP 진단 분기는 새 입력에 노출하지 않고 receipt의 not-requested 값은
+  유지한다. bootstrap 보조 프로세스는 숨겨진 창으로 실행한다. 원본 게임 창은 대상이 아니다.
+- `tools/runner/`에 입력 JSON, 보스 profile 사본, 실행/종료/복구와 공통 helper를 실행별로
+  복사하고 `runner.bundle.json`에 hash를 봉인한다. runtime의 EXE/DLL/deps/runtimeconfig도
+  대조한다. 기존 `launch-context → tool.manifest` 결박에 bundle hash를 추가했다.
+  watcher는 해당 사본을 사용하고 recovery는 실행별 사본으로 먼저 분기한다. 변경·누락된
+  새 bundle을 legacy로 분류하지 않는다. 공개된 `parameterized/v1`의 closure 계약은 나중에
+  임의로 재정의하지 않으며 다음 변경은 과거 실행을 읽을 수 있는 별도 버전으로 다룬다.
+- 검사: 입력/4조합 mapping 61개, 코드 봉인 31개, 전체 Start/Complete 합성 행동 28개,
+  시작 의존성 20개, 실제 coordinator 분기, legacy/봉인 watcher 각각 4종 종료 순서.
+  실제 파생 기준선 의미 토큰 대조와 기존 identity/rollback/recovery 검사를 함께 유지한다.
+- 로컬 S26/151 준비 검사는 작열·전격으로 실행했다. 새 bundle/input을 구성하고 `ValidateOnly`
+  이후 종료했으며 실제 Start/Complete 또는 게임을 실행하지 않았다. 두 경우 모두 속성 파생
+  데이터 사용 조합이다. 계정 연결은 read-only였고 hosts 변경 없음·관리 DB 재종료를 확인했다.
+  근거: `artifacts/stabilization/s05-local-preparation/8c71021b5f6a49be94c51ec6c6cb39fd/receipt.json`.
+- 변경 후 전체 단위 476개, Save UI 12개/실행 상태 UI 6개와 repository/Phase 0/Phase 2B까지의
+  baseline/Phase 3A·3B-0·3B-1/3B-2 contract/약점/Actions 검사를 통과했다.
+  폐기 PostgreSQL 105개도 통과하고 stop/restart checkpoint 및 임시 cluster 제거를 확인했다.
+  근거: `artifacts/stabilization/lifecycle-postgresql/667820ac1bd44d91b03f6a780ac320b4/receipt.json`.
+  후보 소스 사본은 `artifacts/stabilization/2026-09-08-s05-runner/candidate-source/`에 보존한다.
+  위 오프라인 검증 당시에는 기본 실행기 전환과 실게임 시작을 하지 않았다. client/Epinel DLL, 운영 계정 데이터,
+  스키마, 음성 설정은 바꾸지 않았다.
+
+5의 운영자 인수 및 6의 마감 근거:
+
+- 새 실행기 실행 `83738086-22d9-47ce-b9b0-e5532f2b317b`,
+  `fd92ef41-c9a2-4f6d-898d-9a9a2cf98e68`, `e89c8df5-4bee-45bc-8095-0530e535a525`는
+  모두 bundle 검증·terminal `completed`·영속화·pending/active pointer 정리·runtime 종료를 확인했다.
+  자동 receipt의 관측 단계는 `startup_only`, completed-result 관측은 0이다. **완주·결과창·
+  Save·재진입의 인수 근거는 운영자 보고**이며 자동 전투 관측 증거로 바꾸지 않는다.
+- 실검증된 고정 실행기/종료/복구 및 공통 helper **12개 파일은 byte 변경 없이 유지**했다.
+  세 실행의 봉인을 다시 검증하고 현재 소스와 같은 hash임을 확인했다. 과거 legacy 실행도
+  기존 분류로 읽힌다. 실행별 과거 복구 코드를 현재 코드로 덮어쓰지 않는다.
+- `Nll.PhaseDRuntimeBundle.ps1`에는 bundle 읽기/검증만 남긴다. 문자열 변환 함수는
+  기존 `Nll.PhaseDLaunchTools.ps1`의 역사 비교/복원 adapter로 모았으며 활성 경로가 import하지 않는다.
+  CI는 옛 합성 golden을 보존하면서 현행 데이터 mapping 4조합, legacy/미지 엔진 거절,
+  부모 템플릿 의존 부재와 실패 시 무재시도를 별도로 검사한다. seed DB/서버 출처 pin은 유지한다.
+- 제거 후 실제 S26/151 작열·전격의 **기본 경로** `ValidateOnly`도 통과했다.
+  계정 read-only, 게임/hosts 변경 없음, 관리 DB 재종료를 확인했다.
+  근거: `artifacts/stabilization/s05-local-preparation/822035f7b4ab4132aa474c794e778972/receipt.json`.
+- 마감 검사: 단위 476개, Save UI 12개/실행 상태 UI 6개, runner 계약/봉인/행동/4조합 mapping,
+  기존 종료·복구 검사, 전체 repository/Phase/약점/Actions 및 변경 C# 서식 검사가 통과했다.
+  폐기 PostgreSQL 105개와 재시작 checkpoint/최종 제거도 통과했다.
+  근거: `artifacts/stabilization/lifecycle-postgresql/90d7ad95c473432e813deed69f0cd864/receipt.json`.
+  최초 검사 `0faf09b1080444088bb706afad8ad2fd`는 105개 통과 후 30초 종료 제한을 넘어
+  재시작 gate가 실패했지만 finally 정리는 완료됐다. 기존 테스트 옵션 `-ShutdownTimeoutSeconds 60`으로
+  재검증해 통과했으며 운영 코드의 timeout을 변경하지 않았다. 운영 계정 쓰기/스키마 변경은 없다.
+
+아래는 1차 분리 당시의 결함·전환 이력이며 현행 미완료 판정이 아니다.
+
 - 기존 결함: coordinator의 다중 `.Replace()`와 `Nll.PhaseDRuntimeBundle.ps1`은
   과거 start/completion 소스의 특정 문자열,
   hash 및 들여쓰기 anchor를 치환해 새 실행기를 만든다.
@@ -127,9 +254,8 @@
 - 변경 전 coordinator와 150/151 × static-data variant 유무 4조합의 start/completion 출력이
   byte-equivalent임을 합성 fixture 및 실제 hash-pinned 부모 템플릿으로 각각 확인했다.
   합성 출력의 고정 hash와 구문·분기·따옴표 검사를 Windows 기본 회귀 gate에 넣었다.
-- **S-05 전체 완료는 아니다.** 치환은 adapter 내부에 격리했지만 과거 문자열/부모 템플릿 의존은
-  남아 있다. 다음 단계는 동일 입력 계약으로 동작하는 parameterized runner를 별도 대조하고,
-  설치 조합 검증 및 운영자 실게임 인수 후 전환하는 것이다. 기존 템플릿 삭제는 하지 않는다.
+- 당시에는 치환을 adapter 내부에 격리한 1차 분리만 완료했고 부모 템플릿 의존이 남아 있었다.
+  이후 위 1~6을 거쳐 현행 고정 실행기로 전환했다. 기존 템플릿 파일 자체는 삭제하지 않았다.
 
 S-04/S-05 이번 검증 근거: `artifacts/stabilization/2026-09-08-preparation-contract/`.
 최초 소스/오프라인 검증에는 설치 앱 배포·실게임·운영 DB 수정을 포함하지 않았다.
@@ -175,15 +301,73 @@ terminal `launchProjection`이 있으면 준비 완료 문구를 갱신하지 �
 
 ### S-06 / 높음 — 회귀 검사의 일부가 동작 대신 구현 문자열에 결박됨
 
-- 확인: `PhaseDExecutionStateTests.cs:12,38`은 GET/Start 소스의 문구를 검사한다.
-  `PhaseDArtifactSafetyTests.cs:455`의 T10 검사는 `(int)itemDefinition!.ItemRare == 10`
-  과 `? 0`의 존재를 검사하며 실제 장비 출력의 manufacturer를 실행해 검사하지 않는다.
-  실제 동작 테스트도 있으므로 전체 테스트가 문자열 검사라는 뜻은 아니다.
+- 최초 점검: GET/Start와 T10 검사가 구현 문자열에 결박되어 있었다. 이후 실행 상태 검사는
+  가짜 runtime/owner와 실제 임시 파일을 사용하는 행동 검사로 전환했다. 2026-09-11에는
+  T10 기업·큐브 중복 선택의 문자열 검사를 제거하고 아래 실제 변환 출력 검사로 대체했다.
+  남은 정적 검사를 모두 행동 검사로 전환했다는 뜻은 아니다.
 - 확인: materializer/151 bootstrap/desktop은 기본 solution 밖의 별도 빌드 대상이다.
   CI의 기본 solution green이 배포 조합 전체의 실행 가능성을 보장하지 않는다.
 - 방향: 정적 정책 검사는 보조로 유지하고, 순수 변환 fixture와 가짜 process/clock/file
   adapter를 사용하는 행동 테스트, 폐기 DB의 failure-injection 테스트를 주 회귀선으로 둔다.
   원본 데이터 없이 가능한 CI 검사와 pinned 외부 runtime을 요구하는 로컬 검사를 분리한다.
+
+#### S-06 장비·큐브 행동 검사와 별도 빌드 경계 (2026-09-11)
+
+제품 코드를 변경하지 않고 `tests/NikkeLocalLab.Materializer.BehaviorChecks`를 추가했다.
+검사기는 .NET 8 소스만으로 빌드되며, 로컬에서만 SDK 10으로 새로 빌드한 materializer와
+기존 151 bundle이 봉인한 참조 DLL 10개를 사용한다. reflection은 private 컴파일 함수·타입에
+연결하기 위한 좁은 adapter다. 변환 알고리즘을 테스트에 복제하지 않는다.
+`GameData`의 파일 읽기 생성자·parser와 CLI 진입점은 호출하지 않으며, 메모리에 직접 만든
+합성 catalog/user/candidate를 실제 `Materialize`에 전달한다. 실제 Newtonsoft serializer의
+왕복 후에도 장비 기업 값·공유 큐브 참조가 유지되는지 확인한다.
+
+| 분류 | 이번 처리 / 검증 |
+|---|---|
+| T9/T10 기능 | 4부위 × true/false/not-applicable, stale 기업 값, 기존 instance 유지, 미장착 정리 |
+| OL 기능 | sparse 1/3번 줄·정확한 state-effect 값, 결손 mapping 거절 |
+| 큐브 기능 | 신규 기본 15, 기존 최고 레벨, 계정 레벨 권위, 공유 참조·중복 통합·재실행, 해제, 계정 분리 |
+| 결손 입력 | 장비/큐브 mapping, unresolved 기업, 불완전 보유 목록, 범위 초과·레벨 row 결손 거절 |
+| 정책 정적 검사 | 공식 경로·외부 통신·원본 자료 노출 금지 등의 보조 검사는 유지 |
+| 남은 기능 정적 검사 | 진행도/기록 캡처와 복구 순서의 일부 source guard는 기존 PG/runner 행동 검사와 함께 유지. 전부 동적 검증됐다고 간주하지 않음 |
+| CI | checker locked restore/build/format를 Phase 2A2에 연결. 외부 DLL 없이 실제 변환을 실행했다고 표시하지 않음 |
+| 로컬 gate | `test-nll-materializer-behavior.ps1`: bundle/ref 사전·사후 hash, 21개 행동 검사, 선택적 mutation control, materializer/151 bootstrap/desktop 별도 빌드 |
+
+로컬 사용은 아래와 같다. expected hash는 검토된 기존 bundle의 봉인값이며 검사 실행 중에
+자동으로 새 pin으로 갱신하지 않는다. 외부 참조가 없거나 pin이 다르면 실패한다.
+
+```powershell
+./scripts/test-nll-materializer-behavior.ps1 `
+    -BundlePath '<검토된 로컬 bundle.private.json>' `
+    -ExpectedBundleSha256 '<봉인된 SHA-256>' -MutationChecks
+```
+
+21개 통과. 생성한 복사본에서만 T10 기업 분기와 미보유 큐브 기본값을 각각 잘못 바꾼
+negative control 2개도 예상 행동 검사에서 실패했다. 운영 source는 전후 hash가 동일하다.
+별도 3개 빌드는 경고/오류 0이며 실행·배포하지 않았다. 151 bootstrap은 자체 global.json이
+없어 일반 디렉터리에서 SDK 8을 선택하는 문제가 확인되어, **검사 스크립트**가 기존
+materializer global.json의 SDK 10을 선택하도록 했다. repository SDK나 부트스트랩 코드는 변경하지 않았다.
+소스 변경 이후 도구 배포 전에는 이 로컬 gate를 다시 통과해야 하며 CI green으로 대체하지 않는다.
+
+검증 근거: `artifacts/stabilization/s06/509555d81dbf4e06911609478886522e/receipt.json`.
+검사 대상은 in-memory 변환과 직렬화다. CLI의 전체 candidate admission, 파일 쓰기 원자성,
+원본 client UI/전투, 원본 데이터 전체 catalog closure의 새로운 증거는 아니다. 운영 DB,
+client DLL/리소스, 기존 실행기·설치본과 S29 pin은 변경하지 않았다.
+
+수정 전 전체 기준선에서 `ExactChildExitDoesNotWaitForInheritedOutputHandles`가 자식 준비
+5초 제한에 1회 실패했으며, 동일 검사 단독 재실행은 통과했다. 제품 timeout/종료 코드는
+바꾸지 않았고 이 관측을 변환기 실패와 혼동하지 않는다. 변경 후 전체 실행에서는 해당 검사를
+포함해 .NET 단위 검사 **475개**가 모두 통과했다. 문자열 전용 T10 Fact 1개를 21개 행동
+검사로 대체하여 기존 단위 합계 476에서 475가 되었으며, 기능 검증을 단순 삭제한 것이 아니다.
+
+**이번 S-06 범위 마감:** repository/Phase 0, Phase 3B-1이 호출하는 전체 baseline chain
+(Phase 2A1/2A2/2B 및 역사적 Phase 3A/3B-0), Phase 3B-2 contract-only, boss variant,
+Actions contract, JS 저장 12개·상태 6개와 lifecycle UI, Windows 실행기 회귀를 통과했다.
+checker locked restore/build/format와 `git diff --check`도 통과했다. PostgreSQL **105개** 및
+stop/restart checkpoint·cleanup 확인은 아래 독립 폐기 DB receipt로 확인했다.
+`artifacts/stabilization/lifecycle-postgresql/2c2d98dfad76452da9d6f32bf710c691/receipt.json`
+(`testExitCode=0`, `cleanupVerified=true`, `postgresqlRestartCheckpointVerified=true`).
+운영 DB와 원본 client는 실행하지 않았다. 모든 source guard의 행동 검사 전환이나 새로운
+실게임 검증을 완료했다는 뜻은 아니다. 다음은 아래 S-08의 **측정**이며 최적화 적용은 그 후다.
 
 ### S-07 / 중간 — Save의 복구 가능한 다단계 작업이 거대 service에 집중됨
 
@@ -204,24 +388,562 @@ terminal `launchProjection`이 있으면 준비 완료 문구를 갱신하지 �
 
 ### S-08 / 중간 — 반복 전체 조회와 비대한 조정/매핑 파일
 
-- 확인: `PostgreSqlProfileManagementService.cs:98`은 계정 목록마다 current profile을
-  순차로 다시 읽어 readiness를 계산한다. `:424`의 export도 해당 profile을 재조회한다.
-  frontend `editor.js:593`은 계정별 lobby도 요청한다.
-- 구조 지표: profile store 5,384줄, profile service 4,739줄, materializer entrypoint
-  1,642줄. 줄 수만으로 재작성 필요나 속도 저하를 단정하지 않는다.
+- 현행 재확인(2026-09-11): `PostgreSqlProfileManagementService.ListAccountsAsync`는
+  목록의 각 계정에 `WithRuntimeMaterializationReadinessAsync`를 순차 호출한다.
+  후자는 해당 계정·revision의 `GetRevisionAsync` 결과를 매핑해 readiness를 계산한다.
+  frontend `editor.js`의 `listAccounts()`는 목록을 받은 뒤 계정별 lobby를 `Promise.all`로
+  요청한다. 실제 SQL 수·비용은 아직 미측정이다.
+- export는 현재 `ReadAccountSnapshotAsync(forRuntime: true)`를 사용한다. 과거 `:424`의
+  재조회 지적을 현행 결함으로 단정하지 않고 snapshot 내부 호출부터 다시 계측한다.
+- 최초 구조 지표: profile store 5,384줄, profile service 4,739줄, materializer entrypoint
+  1,642줄. 과거 줄 수이며 재작성 필요나 속도 저하의 증거로 사용하지 않는다.
 - 방향: 계정 수/로스터 수/이력 수별 SQL 횟수·읽기량·p50/p95를 측정한다.
   immutable revision을 key로 하는 읽기 모델/캐시와 필요한 summary batch 조회를 검토한다.
   저장 검증을 생략하거나 임의 TTL 캐시로 stale revision을 허용하지 않는다.
 
+#### S-08 측정 계획 (2026-09-11, 아래에 1차 부분 결과)
+
+당초 준비 범위는 측정 계획 확정까지였다. 이후 1차 측정은 아래에 별도로 기록한다.
+제품 cache/batch/index 변경이나 운영 DB 측정은 하지 않았다.
+첫 실행은 다음 순서로 진행하고, 근거 없이 대형 파일 분리·전체 재작성으로 확대하지 않는다.
+
+1. **재현 fixture와 기준선 고정.** 현행 migration과 직접 만든 합성 account/profile/lobby를
+   폐기 PostgreSQL에 구성한다. 기존 lifecycle 테스트의 분리 port·명시적 reset 승인 token·
+   finally 정리 절차를 재사용하고 운영 접속 문자열은 거절한다. commit + working diff hash,
+   SDK/PG 버전, fixture seed/hash, 장비·전원 조건, 실행 설정을 receipt에 기록한다.
+2. **첫 측정: 계정 목록.** 서비스 `ListAccountsAsync`와 API 목록 응답을 각각 측정한다.
+   UI 전체 비용은 목록 + 계정별 lobby fan-out 완료까지 별도로 측정한다. 서비스 단독 시간을
+   UI 응답 시간으로 표시하지 않는다. HTTP 수, SQL 수, 반환 행 수/응답 byte 수, process
+   allocation과 p50/p95를 기록한다. SQL 계측은 테스트 전용 Npgsql 진단 또는 폐기 DB 통계로
+   연결하고 원문 query parameter·계정 payload는 로그에 남기지 않는다.
+3. **규모 행렬.** 계정 수 1/10/50/100(계정당 roster 50, revision history 10 고정)을 먼저
+   비교한다. 이어 계정 10 고정에서 roster 5/50/200, history 1/10/100을 각각 한 축씩 바꾼다.
+   빈 DB·빈 roster·결손 revision은 성능 표와 분리된 정확성 검사다. 입력 규모에 따른 비용
+   증가와 고정 비용을 구분하며 처음부터 모든 축의 Cartesian product를 실행하지 않는다.
+4. **반복 규칙.** Release 빌드, 다른 회귀/빌드와 동시 실행하지 않는다. 프로세스 재시작 후
+   최초 요청 10회와 동일 프로세스 warm-up 5회 뒤 50회 요청 × 3묶음을 분리한다.
+   여기서 cold는 process-cold이며 OS/DB cache flush를 뜻하지 않는다. timeout/error는 별도
+   개수로 남기고 좋은 샘플만 골라내지 않는다. p95는 정렬된 표본의 nearest-rank로 계산한다.
+   원시 시간 표본도 보존한다. 물리 disk 읽기 byte와 반환 payload byte는 혼용하지 않는다.
+5. **두 번째 측정.** 계정 선택/workspace, runtime candidate export, revision history를 같은
+   fixture에서 측정한다. SQL·JSON 매핑·파일 읽기의 구간별 비용을 구분한다. 실행기 및 게임
+   launch는 제외한다. 결손/오류 응답의 동작은 정상 응답 성능과 별도로 검증한다.
+6. **변경 선택과 검증.** 가장 큰 반복 비용 한 곳만 batch projection 등으로 줄이는 안을
+   먼저 제안한다. cache가 필요하면 account + immutable revision + projection/schema/catalog
+   버전 등 실제 입력 의존성을 키에 포함한다. mutable head pointer 자체는 오래 재사용하지
+   않는다. 계정 전환·revision 변경·동시 save/read·프로세스 재시작·누락 revision에서 이전
+   데이터가 섞이지 않고, 기존 계약과 일치하는 snapshot 또는 명시적 conflict를 반환해야 한다.
+
+측정 종료 조건: fixture/환경이 고정된 원시 표본과 집계표, 호출별 SQL/HTTP 비용,
+정확성 결과, 상위 병목 후보와 근거를 남긴다. 예산/실행 환경 한계로 생략한 셀은 명시한다.
+최적화안은 같은 조건 전후 3묶음 모두의 p50/p95·읽기 비용을 비교하며, 반복 변동보다 작은
+차이는 개선으로 주장하지 않는다. SQL 수 감소만으로 전체 응답 개선을 주장하지 않는다.
+정확성 실패나 timeout 증가가 있으면 채택하지 않는다. 유의미한 병목이 없으면 **변경 없음**도
+정상 결론이다. 상세 출력은 ignored `artifacts/stabilization/s08/`에, 합성·source-free 요약만
+이 문서에 남긴다. 실제 사용자 계정·원본 ID·게임 자료를 fixture나 commit에 포함하지 않는다.
+
+#### S-08 1차 기준선 — 계정 1/10개 (2026-09-11)
+
+**완료 범위:** 계정 1/10개, 각 roster 50명·서로 다른 profile revision 10개.
+각 규모에서 service 목록, HTTP 목록, HTTP 목록+로비, workspace, export, history의 6경로를
+warm-up 5회 후 50회 × 3묶음 측정했다. 총 **1,800개 원시 표본**을 보존했다.
+50/100개 계정, roster/history 축, process-cold, 물리 I/O 및 UI DOM 렌더링은 미측정이다.
+S-08 전체 완료나 성능 개선을 주장하지 않는다. 제품 코드는 변경하지 않았다.
+
+아래 시간은 각 50회 묶음의 p50/p95 **세 값의 최소~최대**(ms)다. 하나의 합쳐진 p95가 아니다.
+명령 수는 Npgsql `CommandExecutionCompleted` 이벤트 수이며 SQL 문장 수, transaction 제어를
+포함한 모든 wire 왕복 수, 실제 disk read 수와 구별한다. `SELECT 1` 하나가 정확히 1회로
+집계되는지 사전 검증했고, 원문 SQL·parameter·계정 payload는 출력하지 않았다.
+
+| 경로 | 계정 1개 p50 / p95 ms | 계정 10개 p50 / p95 ms | 명령 수 1개 → 10개 |
+|---|---|---|---|
+| service 계정 목록 | 75.33~77.94 / 78.98~83.01 | 826.50~829.99 / 836.33~842.77 | 311 → 3,101 |
+| HTTP 계정 목록 | 75.06~76.32 / 76.93~81.23 | 825.18~829.20 / 834.09~837.93 | 311 → 3,101 |
+| HTTP 목록 + 모든 로비 | 75.86~79.48 / 80.39~82.00 | 838.65~840.85 / 847.83~850.03 | 313 → 3,121 |
+| 단일 계정 workspace | 73.98~74.75 / 76.09~78.20 | 80.75~81.83 / 82.79~87.31 | 311 → 311 |
+| 단일 계정 export | 80.82~82.49 / 84.81~85.60 | 86.17~86.44 / 87.97~91.62 | 315 → 315 |
+| 단일 계정 history | 0.767~0.777 / 0.784~0.793 | 1.103~1.137 / 1.144~1.185 | 1 → 1 |
+
+환경: .NET SDK 8.0.407, PostgreSQL 17.11, 12 logical processors,
+최고 성능 전원 정책, loopback의 별도 cluster(shared_buffers 64MB, work_mem 2MB,
+max_connections 40). Release 빌드이며 측정 중 다른 회귀/빌드를 실행하지 않았다.
+초기 기준선은 Npgsql 기본 pool 상한 100에서 동시 로비 요청 최대 10개를 사용했다.
+후속 도구는 큰 규모에서 cluster 상한 40을 넘지 않도록 pool 상한을 32로 제한하고 summary에
+기록한다. 변경 전후 비교 시 같은 상한으로 다시 측정하며 이 설정 차이를 숨기지 않는다.
+반환 객체 수·HTTP body byte·process 전체 allocation도 표본에 있지만 SQL 반환 행 수,
+물리 disk byte 또는 특정 함수만의 allocation으로 해석하지 않는다. HTTP 묶음은 실제
+AdminApiHost의 bootstrap/session을 사용하며 editor의 요청 구조를 재현하지만 DOM/WebView는 아니다.
+초기 부분 중단 실행에는 runtime/OS 상세 요약이 남지 않았다. 후속 정상 종료 도구는 이를
+summary에 기록하며, smoke 실행의 상세 버전을 앞선 기준선에 소급하여 붙이지 않는다.
+fixture는 기존 research profile 생성기를 재사용한다. 첫 캐릭터의 head에 sparse OL이 있고
+나머지 장비는 미장착, 콘솔에는 unresolved 항목이 있어 실제 계정의 ready 상태/모든 장착
+조합을 대표하지 않는다. 명령 수와 호출 구조는 확인했지만 실계정 지연 시간을 단정하지 않는다.
+fixture의 의미 값은 고정하고 UUID는 실행마다 새로 만들었다. 요청 크기와 DB의 실제 profile
+revision 개수를 검증했다. 초기 fixture의 필수 wallet 누락과 동일 내용 revision 재사용 때문에
+멈춘 3회의 setup 실행은 성능 표본에서 제외하고 실패/정리 receipt는 보존했다.
+
+근거 디렉터리:
+`artifacts/stabilization/lifecycle-postgresql/650529e6076a42fc874d4827729a0d86/`.
+`s08-1-50-10.json`, `s08-10-50-10.json`의 각 6경로 × 150개 완료 표본만 유효하다.
+`s08-environment.json`에 당시 HEAD/working diff/fixture source와 실행 DLL hash·전원·SDK를
+기록했다. 당시 실행은 전체 행렬을 시작했으나 위 두 규모를 저장한 뒤 소유한 측정 child만
+중단했다. 따라서 상위 receipt는 **testExitCode=-1**이며 전체 성공으로 재분류하지 않는다.
+`cleanupVerified=true`, `postgresqlRestartCheckpointVerified=true`로 DB 정리는 확인했다.
+50개 계정 fixture 이후 데이터나 미완성 표본을 결과에 섞지 않았다.
+
+**원인 대조:** `PostgreSqlLocalAccountProfileStore.ReadVerifiedProfileAsync`는 receipt와
+profile을 읽고 `VerifyAggregateProjection`을 수행한다. 그 아래 다음 반복이 있다.
+
+- `ReadBuildReceiptsAsync` → 캐릭터별 `ReadEquipmentSlotReceiptsAsync`: R회
+- `ReadBuildWritesAsync` → 캐릭터별 `ReadEquipmentWritesAsync`: R회
+- `ReadEquipmentWritesAsync` → 각 4부위의 `ReadOverloadLinesAsync`: 4R회
+
+관측값은 계정 수 A, roster R에 대해 목록 **1 + A × (10 + 6R)**와 맞는다.
+R=50의 A=1/10에서 실측한 것이며 다른 규모의 실측을 대신하지 않는다.
+로비 추가 비용(계정당 2명령)보다 profile 내부 6R 반복이 먼저 확인된 개선 후보다.
+
+**다음 변경 후보(미적용):** 동일한 account/revision 및 RepeatableRead transaction 안에서
+장비 slot receipt·equipment·overload를 batch로 읽고 정렬/결손 검증을 유지한다.
+`VerifyAggregateProjection`, canonical hash 검증, workspace pending-save 거절과 snapshot
+revision 일치 검증은 제거하지 않는다. 캐시는 먼저 도입하지 않는다. 우선 한 반복 구간만
+바꿔 기존 결과와 동치인지 확인한 뒤 같은 fixture 전후 수치를 비교한다.
+첫 최소 변경 후보는 캐릭터의 4개 equipment state에 대한 overload 조회를 1회로 묶는 것이다.
+다른 읽기가 같다면 R=50/A=1의 명령 수는 산술상 311→161이 예상되지만 아직 측정값이 아니다.
+0/1/3개 OL 줄, 미장착, sparse 줄 순서, 결손 참조, T10 기업 없음 및 다른 계정/revision의
+행이 섞이지 않음을 실제 출력으로 대조해야 한다. 전체 profile batch는 그 다음 후보로 둔다.
+계정 전환·동시 save/read·결손 데이터에 대한 새 변경의 회귀 검사는 적용 단계에서 필수다.
+
+재실행 절차(소스 전용, 기존 정상 runtime/게임 종료 후):
+
+```powershell
+dotnet restore tests/NikkeLocalLab.ReadBenchmarks --locked-mode
+dotnet build tests/NikkeLocalLab.ReadBenchmarks -c Release --no-restore
+./scripts/test-nll-lifecycle-postgresql.ps1 -MeasureAccountReads -ShutdownTimeoutSeconds 60
+```
+
+기본은 계정 1/10의 focused 범위다. `-ReadMeasurementScope full`은 위 8개 warm 규모를
+장시간 실행하며, `smoke`는 1계정/5명/1revision에서 도구 연결만 확인하고 기준선으로 사용하지
+않는다. 실행 중 출력 디렉터리에 `stop-after-cell` 파일을 만들면 다음 완료 규모를 저장한 뒤
+`stopped_after_cell`로 정상 종료한다. cold/DOM/disk 측정을 이 옵션들이 수행하지는 않는다.
+CI는 도구 locked restore/build/format와 percentile/counter 자체 검사만 수행하며 성능 회귀의
+합격/불합격을 시간 임계값으로 정하지 않는다. 운영 DB·설치본·게임 DLL은 입력 대상이 아니다.
+
+도구 검증: percentile/counter 소스 자체 검사와 Release 빌드/format를 통과했다. 최종 pool 상한
+32를 포함한 smoke의 receipt는
+`artifacts/stabilization/lifecycle-postgresql/8b077715861c4823bb4cfe5a71149231/receipt.json`이며
+exit 0·restart checkpoint·cleanup을 확인했다. smoke의 시간 값은 위 기준선에 섞지 않았다.
+측정 옵션이 없는 기존 PostgreSQL 통합 **105개**도 다시 통과했다.
+근거: `artifacts/stabilization/lifecycle-postgresql/5a239dfe2e14493aac0cc6d8aab9a326/receipt.json`.
+소스 측정기는 기존 합성 fixture의 private helper에 reflection으로 연결하지만 production
+조회 알고리즘을 복제하지 않고 실제 service/store/AdminApiHost를 호출한다. 운영 client나
+Epinel runtime을 시작하지 않는다. 새 최적화의 성능/동치 검증은 아직 수행하지 않았다.
+
+#### S-08 최소 overload batch — 2026-09-11
+
+운영자의 구현·테스트 요청으로 캐릭터별 네 장비의 overload 읽기를 한 번으로 묶었다.
+`ReadBuildOverloadLinesAsync`는 이미 고정된 build revision ID와 같은 connection/transaction을
+사용하고, equipment state ID별로 분리한 줄을 기존 equipment projection에 전달한다.
+줄 순서·signed Int64·decimal scale·빈 장비를 보존하며 `VerifyAggregateProjection`과
+기존 hash/shape 검증, pending-save 거절 및 snapshot 경계를 변경하지 않았다.
+제품 변경은 profile store 한 파일이다. 캐시·인덱스·migration·설치본 변경은 없다.
+
+추가한 `PostgreSqlOverloadReadTests`는 저장 receipt의 hash만 비교하지 않고 입력 write와
+재조회한 전체 canonical hash 및 장비/줄의 모든 필드를 직접 비교한다. 여러 캐릭터·부위의
+0/1/3줄과 sparse 1/3, 서로 다른 option UID, signed Int64 극값 근처와 scale 0/9,
+T10 기업 not-applicable, 강화값 unresolved, 미장착/미해결 장비를 포함한다.
+RepeatableRead snapshot을 고정한 뒤 다른 연결에서 OL 변경을 commit하고 기존 snapshot과
+새 current/과거 revision/다른 계정/새 data source의 조회가 각각 맞는지 확인한다.
+없는 option UID의 저장은 거절하고 current/operation receipt가 바뀌지 않음을 확인한다.
+누락·타계정 revision은 null이다. 이 검사는 DB 제약을 우회한 손상 row의 사후 검증을
+새로 구현했다는 뜻이 아니다.
+
+- 변경 전 전체 PostgreSQL 105개: `lifecycle-postgresql/36cb70a20c0940eeb1c8395bea5dd9f8`.
+- 새 동치 검사 2개를 **기존 읽기 코드**에서도 통과: `lifecycle-postgresql/eec005299d9e467cb1c85fbd648e969e`.
+- 변경 후 전체 PostgreSQL 107개 통과: `lifecycle-postgresql/47882ab342d0403a92d723e389b1bf59`.
+- 최종 migration/reset 정적 계약이 새 partial 파일의 분리된 호출을 거절해 기존 reset
+  소유 파일의 공용 초기화 helper로 연결했다. 제품 코드는 그대로이며 영향받는 2개 검사를
+  다시 통과했다: `lifecycle-postgresql/931f20e5c8684bcab3ce4695d7d1aebd`.
+  최초 계약 실패는 `s08-batch/commit-validation-reset-guard-failed.log`에 보존한다.
+
+위 경로는 모두 ignored `artifacts/stabilization/` 아래의 합성 검사 근거다.
+각 실행의 test exit 0, 재시작 checkpoint 및 최종 cleanup을 확인했다.
+처음 샌드박스 실행은 PostgreSQL restricted-token 생성 오류로 시작하지 못했으며
+`lifecycle-postgresql/affd774020c74dba9660fae555414a68`에 실패·정리 receipt를 보존했다.
+같은 검증기를 샌드박스 밖에서 실행해 위 결과를 얻었고 검사 조건을 완화하지 않았다.
+경로 별칭(junction)에서의 repository-root 검사 실패는 동일 저장소의 실제 경로에서 해소했다.
+
+**같은 조건의 전후 측정:** 계정 1/10개, roster 50, history 10, 각 6경로 × 150회로
+전후 각각 1,800개 표본이다. warm-up 5회와 50회 × 3묶음, SDK 8.0.407/PG 17.11,
+최고 성능 전원 정책/12 logical processors, cluster 설정 및 pool 상한 **32**가 같다.
+과거 pool 상한 100인 1차 표를 비교 기준으로 재사용하지 않았다. 측정 중 다른 빌드·회귀
+검사는 실행하지 않았다. 아래는 묶음별 p50/p95 세 값의 최소~최대(ms)이며 합친 p95가 아니다.
+
+| 계정 | 경로 | p50 전 → 후 ms | p95 전 → 후 ms | DB 명령 전 → 후 |
+|---:|---|---|---|---|
+| 1 | service 목록 | 77.54~78.20 → 51.16~51.82 | 80.84~85.37 → 51.92~57.86 | 311 → 161 |
+| 1 | HTTP 목록 | 75.60~77.14 → 51.71~51.90 | 80.08~81.17 → 52.90~55.46 | 311 → 161 |
+| 1 | HTTP 목록+로비 | 77.34~77.75 → 51.45~51.62 | 81.22~82.83 → 52.81~53.40 | 313 → 163 |
+| 1 | workspace | 78.10~78.43 → 55.71~56.28 | 79.46~79.71 → 56.60~56.94 | 311 → 161 |
+| 1 | export | 81.93~83.51 → 60.38~60.90 | 84.79~86.95 → 61.12~62.93 | 315 → 165 |
+| 1 | history | 0.77~0.78 → 0.77~0.77 | 0.79~0.88 → 0.78~0.78 | 1 → 1 |
+| 10 | service 목록 | 822.36~825.31 → 530.01~550.04 | 829.67~837.24 → 552.89~556.83 | 3,101 → 1,601 |
+| 10 | HTTP 목록 | 817.69~824.74 → 550.23~552.47 | 823.71~830.04 → 555.83~556.72 | 3,101 → 1,601 |
+| 10 | HTTP 목록+로비 | 832.74~833.35 → 561.20~562.62 | 843.89~845.89 → 568.38~587.12 | 3,121 → 1,621 |
+| 10 | workspace | 83.95~84.14 → 55.39~55.65 | 84.83~85.52 → 56.18~56.53 | 311 → 161 |
+| 10 | export | 87.96~89.08 → 60.19~60.44 | 90.46~94.43 → 61.34~62.04 | 315 → 165 |
+| 10 | history | 1.08~1.11 → 1.07~1.10 | 1.12~1.17 → 1.11~1.14 | 1 → 1 |
+
+service 목록 p50은 묶음별 약 **33~36%** 감소했다. 변경 대상 5경로의 모든 묶음에서
+p50/p95가 개선됐으며, 가장 느린 변경 후 p95도 가장 빠른 변경 전 p95보다 낮았다.
+history는 조회 변경이 없으며 작은 시간 차이를 최적화 효과로 주장하지 않는다.
+전후 오류/timeout은 0이고 모든 경로의 반환 객체 수·HTTP 요청 수·body byte가 같다.
+Npgsql 완료 이벤트로 센 명령 수는 SQL 문장 수·물리 I/O와 구분한다.
+실측한 두 규모의 목록 명령 수는 `1 + A × (10 + 6R)`에서 `1 + A × (10 + 3R)`로 줄었다.
+
+- 변경 전: `lifecycle-postgresql/a3b6fd195b4947d5a666901b53619089`.
+- 변경 후: `lifecycle-postgresql/98fab86e7dbf4260b956c8c67848f6f8`.
+- 각 `s08-summary.json`, 규모별 원시 JSON, `s08-environment.json`의 fixture/assembly hash와
+  `receipt.json`을 보존했다. 두 실행 모두 `passed_selected_scope`, exit 0, 재시작·정리 확인이다.
+- 단위·UI·runner·Phase/약점/Actions 마감 검사 출력은 `s08-batch/commit-validation.log`,
+  별도 자동화 단위 41개 통과는 `s08-batch/after-automation.log`에 보존한다.
+
+이 최소 batch는 합성 입력의 동치·성능 검증을 통과한 소스 변경이다. 운영 설치에 배포하지
+않았고 운영 DB·client·Epinel DLL은 변경하지 않았다. 기존 fixture의 제한과 50/100계정,
+roster/history 축 확장, process-cold·물리 I/O·DOM 측정은 남아 있어 S-08 전체 완료는 아니다.
+후속 최적화는 전체 profile batch를 별도 변경으로 검토하고 같은 검증 경계를 유지한다.
+
+#### S-08 프로필 revision batch — 2026-09-11
+
+운영자의 후속 착수 승인으로 slot receipt·equipment·overload를 각각 **선택한 profile
+revision 전체에서 한 번** 읽도록 변경했다. 제품 변경은 `PostgreSqlLocalAccountProfileStore.cs`
+한 파일이며 API·writer·migration·인덱스·캐시는 변경하지 않았다.
+
+세 조회 모두 `profile_template_revision_build`의 exact profile revision membership으로
+범위를 제한한다. 여러 profile에서 같은 build revision을 재사용할 수 있으므로 current
+account/build 포인터나 다른 profile의 membership을 대신 읽지 않는다. 슬롯/장비는 build
+revision ID, overload는 equipment state ID로 묶고 기존 build ordinal·slot code·sparse line
+순서를 유지한다. equipment definition의 LEFT JOIN, 같은 connection/transaction과
+cancellation token, 기존 constructor·hash·aggregate 검증은 보존한다. 빈 roster는 추가
+장비 조회 없이 반환한다. receipt 조회를 사용하는 Create/Save 및 과거 operation replay도
+별도의 hydration이나 새 transaction을 만들지 않는다.
+
+`PostgreSqlProfileBatchReadTests`의 새 3개 검사는 기존 overload 부분 검사와 함께 전체
+입력 write의 canonical hash·직렬화된 필드, receipt identity/lineage/readiness/issue와
+네 slot의 UID·순서를 대조한다. 부분 build 변경과 unchanged revision 공유, roster 제거/
+재추가·입력 순서 정규화, squad 제거/순서 변경/복원, 빈 roster 및 복원, 고정 RepeatableRead
+동안 다른 연결의 Save, 과거/현재/타계정/결손 revision과 새 data source를 검사한다.
+최신 Save 이후 과거 Create/Save 및 GetByOperation replay가 당시 receipt를 반환하고
+current membership을 바꾸지 않는지도 확인한다. 기존 aggregate 검증을 개별 hydrated
+장비 payload의 완전 재해시 검증으로 확대 해석하지 않는다.
+
+변경 전 근거(모두 ignored `artifacts/stabilization/` 아래):
+
+- 전체 PostgreSQL **107개**: `lifecycle-postgresql/4594c5d2ce6e4813a90a06eed132eccd`.
+- 새 3개 검사를 **기존 reader에서 통과**: `lifecycle-postgresql/f8fface6ce954189831f9d1f3139e2dd`.
+- 변경 전 1/10계정 측정 **1,800표본**, 오류 0:
+  `lifecycle-postgresql/50c9e41de54644419f391a5ca67b78b6`.
+- 각 실행의 exit 0·재시작 checkpoint·cleanup 확인. 사전 repository/Phase 0/완료된
+  Phase 2B 및 3A·3B-0·3B-1 chain/3B-2·약점·Actions 검사는
+  `s08-profile-batch/before-*.log`에 보존했다.
+
+변경 후 전체 PostgreSQL **110개**가 통과했다:
+`lifecycle-postgresql/8db4e6a6965b40949ea110517d829723`. exit 0·재시작 checkpoint·cleanup을
+확인했고, 별도 자동화 단위 41개도 통과했다(`s08-profile-batch/after-automation.log`).
+독립 read-only diff 검토에서도 schema scope·column ordinal·정렬·reader 수명·replay의
+수정 필요 사항은 발견되지 않았다. 이 검토를 실제 runtime 검증으로 대신하지 않는다.
+
+**동일 조건 전후 비교:** 기존 합성 fixture의 1/10계정·roster 50·history 10에서 각각
+6경로 × 150회, 전후 각 **1,800표본**을 비교했다. warm-up 5회 뒤 50회 × 3묶음이며
+pool 상한 32, SDK 8.0.407, PG 17.11, 12 logical processors, 최고 성능 전원 정책과
+cluster 설정(shared_buffers 64MB, work_mem 2MB, max_connections 40), fixture source hash가
+동일하다. 측정 중 다른 빌드·회귀 검사는 실행하지 않았다. 이전 최소 batch의 수치를 재활용하지
+않고 이 작업의 직전 reader로 다시 측정했다. 아래는 묶음별 p50/p95의 최소~최대(ms)다.
+
+| 계정 | 경로 | p50 전 → 후 ms | p95 전 → 후 ms | DB 명령 전 → 후 |
+|---:|---|---|---|---|
+| 1 | service 목록 | 52.27~52.53 → 11.61~13.20 | 53.41~56.17 → 12.49~14.58 | 161 → 14 |
+| 1 | HTTP 목록 | 52.37~53.17 → 11.82~11.97 | 53.65~53.99 → 12.65~12.98 | 161 → 14 |
+| 1 | HTTP 목록+로비 | 53.42~54.05 → 12.66~13.10 | 54.78~54.96 → 13.38~14.15 | 163 → 16 |
+| 1 | workspace | 50.81~51.11 → 11.06~11.17 | 51.64~52.29 → 11.89~12.10 | 161 → 14 |
+| 1 | export | 55.83~56.13 → 15.52~15.84 | 56.84~57.77 → 16.34~17.33 | 165 → 18 |
+| 1 | history | 0.75~0.77 → 0.75~0.76 | 0.78~0.84 → 0.79~0.82 | 1 → 1 |
+| 10 | service 목록 | 543.98~548.71 → 110.77~111.72 | 551.00~603.60 → 112.16~123.68 | 1,601 → 131 |
+| 10 | HTTP 목록 | 547.44~548.47 → 110.83~112.63 | 552.25~558.77 → 112.75~120.54 | 1,601 → 131 |
+| 10 | HTTP 목록+로비 | 561.73~564.45 → 124.88~138.26 | 566.05~576.32 → 132.01~152.80 | 1,621 → 151 |
+| 10 | workspace | 55.40~56.16 → 13.91~13.98 | 56.43~57.50 → 14.73~14.86 | 161 → 14 |
+| 10 | export | 61.09~61.34 → 18.51~18.66 | 62.27~63.63 → 19.48~20.73 | 165 → 18 |
+| 10 | history | 1.06~1.09 → 0.87~0.93 | 1.11~1.13 → 1.05~1.13 | 1 → 1 |
+
+변경 대상 5경로의 모든 세 묶음에서 p50/p95가 개선됐다. service 목록 p50은 약 75~80% 감소했다.
+history는 조회 변경이 없으므로 시간 차이를 최적화 효과로 주장하지 않는다.
+모든 대응 표본의 반환 객체 수·HTTP body byte·HTTP 요청 수가 같다. 목록 명령 수는
+실측 범위에서 `1 + A × (10 + 3R)`에서 `1 + 13A`로 줄었으며 모든 표본에서 같은 수를
+확인했다. 이는 Npgsql completed-command 이벤트 수이지 SQL 문장·전체 wire 왕복·물리
+disk read 수가 아니다. payload 처리 비용까지 roster 크기와 무관해졌다는 뜻도 아니다.
+
+**변경 후 warm 행렬 완료:** 위 두 셀을 포함한 기존 `full`의 8조건 × 6경로 × 150회,
+총 **7,200표본**을 보존했다. 변경 전 1,800표본을 합한 이번 측정 총계는 9,000개다.
+변경 후 근거는 `lifecycle-postgresql/ab74b126d47e4458966f3ee64ecb3b56`이며
+`s08-summary.json`의 `passed_selected_scope`, 오류 0, receipt의 exit 0·재시작 checkpoint·
+cleanup을 확인했다. 모든 표본의 group/iteration 개수와 순서, 유한한 비음수 시간 및
+명령 수도 검산했다. 아래는 service 목록의 대표 표이며 각 조건의 나머지 다섯 경로,
+HTTP byte/요청 수와 process 전체 allocation은 같은 디렉터리의 원시 JSON에 있다.
+
+| 계정 | roster | history | service 목록 p50 ms | p95 ms | DB 명령 |
+|---:|---:|---:|---|---|---:|
+| 1 | 50 | 10 | 11.61~13.20 | 12.49~14.58 | 14 |
+| 10 | 50 | 10 | 110.77~111.72 | 112.16~123.68 | 131 |
+| 50 | 50 | 10 | 851.64~862.24 | 861.20~1082.31 | 651 |
+| 100 | 50 | 10 | 1174.81~1186.40 | 1196.20~1230.69 | 1,301 |
+| 10 | 5 | 10 | 99.19~99.57 | 100.81~344.85 | 131 |
+| 10 | 200 | 10 | 231.14~233.42 | 245.35~445.08 | 131 |
+| 10 | 50 | 1 | 113.14~114.20 | 114.18~115.73 | 131 |
+| 10 | 50 | 100 | 165.26~167.39 | 168.02~169.32 | 131 |
+
+전체 행렬에서 목록은 `1 + 13A`, 목록+로비는 `1 + 15A`, 단일 workspace/export/history는
+각각 14/18/1명령이었다. roster 5/50/200 및 history 1/10/100에서 profile 내부 반복 조회가
+늘어나지 않음을 확인했지만 응답 시간은 고정되지 않는다. roster 5/200 조건의 첫 묶음에서
+p95 344.85/445.08ms의 변동도 보존했고 원인을 GC·cache 등으로 추측하지 않았다.
+이력 100 조건도 같은 131명령에서 p50이 높아, 후속 원인 분석에는 query plan·구간별 CPU/
+allocation·I/O 근거가 더 필요하다. 이번에 새 인덱스나 캐시를 추가할 근거로 단정하지 않는다.
+
+큰 규모에는 변경 전 대응 표본이 없으므로 그 규모의 개선율을 추정하지 않는다. fixture는
+첫 캐릭터 head의 두 sparse OL과 나머지 미장착 장비를 주로 사용하므로 dense/ready 장비를
+갖춘 실제 계정 전체를 대표하지 않는다. 빈 roster/결손 참조는 정확성 검사이며 성능 셀이
+아니다. process-cold·DOM·물리 I/O·SQL 반환 행 수 측정은 여전히 후속이다. 따라서 이
+profile batch와 warm 행렬은 완료했지만 S-08 전체 완료나 운영 지연 보장을 주장하지 않는다.
+
+단위·UI·runner·Phase/약점/Actions 마감 검사 출력은
+`s08-profile-batch/commit-validation.log`, working-tree 정책 검사는
+`s08-profile-batch/after-repository.log`에 보존한다. 설치본·운영 DB·게임·Epinel DLL 변경,
+실제 게임 실행 및 remote push는 없다.
+
+#### S-08 process-cold 계측 — 2026-09-11
+
+운영자 승인 범위는 **측정기 보강과 1/10계정 최초 요청 검증**이다. 제품 조회·Save·schema·
+cache·index는 변경하지 않는다. 기존 warm fixture 생성·검증은 부모 프로세스에만 두고,
+서비스 목록, HTTP 목록, HTTP 목록+로비 세 경로를 각기 새 자식 프로세스에서 한 번 실행한다.
+각 경로·규모마다 10회이며 총 60개 프로세스다. roster 50/history 10과 pool 상한 32를 유지한다.
+50/100계정, 다른 roster/history 축과 workspace/export/history의 cold는 이 범위에 포함하지 않는다.
+
+측정 경계:
+
+- **시작 시간**: 부모의 process start 호출 직전부터 신원·fixture binding을 검증한 ready 수신까지.
+  .NET 시작, 서비스/계측기 구성, IPC를 포함한다. HTTP 경로는 loopback AdminApiHost 시작과
+  process-local 인증 bootstrap도 포함한다. 운영 설치 앱 전체의 startup 시간이 아니다.
+- **첫 조회 시간**: 자식의 단일 서비스 호출 또는 HTTP 조회 graph 실행 직전부터 응답 소비와
+  count/account/revision 검증까지. HTTP+로비는 첫 목록 응답 후 로비 fan-out을 포함한 한 graph이며,
+  각 로비를 별개의 cold 요청으로 부르지 않는다. 브라우저·DOM·WebView 렌더링은 포함하지 않는다.
+- 자식은 data source를 만들되 사전 SELECT/probe/preload/fixture 조회를 하지 않는다.
+  ready에 DB completed-command 0회와 측정 operation 0회를 기록한다. 첫 DB 연결은 측정 구간에서
+  열고 `default_transaction_read_only=on`을 적용한다. 부모의 fixture reset 권한과 분리한다.
+- PostgreSQL은 규모당 fixture를 부모에서 생성·검산한 상태다. trial마다 OS/DB cache를 flush하거나
+  PostgreSQL을 재시작하지 않는다. 이 수치는 process-cold이지 disk-cold가 아니다.
+- UUID trial, PID+UTC 시작 시각, exact fixture hash와 account→profile revision 집합을 표본에 결박한다.
+  결과는 Npgsql completed-command 수, process 전체 allocation, 반환 객체·HTTP byte/요청 수를 보존한다.
+  명령 수는 SQL statement/반환 행 수/물리 I/O가 아니며 HTTP allocation은 서버와 측정 client를 합친 값이다.
+- 시작/조회 60초, child exit 15초, HTTP client 30초의 자원 제한을 둔다. 오류·timeout·신원 불일치·
+  중복 결과·비정상 exit를 성공으로 치환하지 않는다. 매 시도 뒤 원시 표본을 저장하고 직접 시작한
+  Process만 종료·확인한다. 정리 불명 상태에서는 다음 fixture reset을 중단한다.
+- 통계는 성공 표본만 사용하되 시도/성공/오류/timeout 개수를 함께 표시하고 실패 표본도 보존한다.
+  nearest-rank p95는 표본 10개에서 최댓값이다. 시간 임계값을 CI 성능 합격선으로 사용하지 않는다.
+
+실행 명령(기존 runtime/게임 종료 후, 소스 전용):
+
+```powershell
+dotnet build tests/NikkeLocalLab.ReadBenchmarks -c Release --no-restore
+dotnet tests/NikkeLocalLab.ReadBenchmarks/bin/Release/net8.0/NikkeLocalLab.ReadBenchmarks.dll --self-test
+./scripts/test-nll-lifecycle-postgresql.ps1 -MeasureAccountReads -ReadMeasurementScope cold-smoke -ShutdownTimeoutSeconds 60
+./scripts/test-nll-lifecycle-postgresql.ps1 -MeasureAccountReads -ReadMeasurementScope cold -ShutdownTimeoutSeconds 60
+```
+
+`cold-smoke`는 1계정/roster 5/history 1에서 경로당 한 번인 연결 검사이며 기준선과 섞지 않는다.
+기존 `focused/full/smoke`는 계속 warm 옵션이다. `stop-after-cell`은 cold에서도 완료 규모 뒤 멈추며
+`stopped_after_cell`을 남긴다. 측정 환경 receipt에는 새 C# 파일을 포함한 source hash와 실행 DLL hash를
+기록한다. CI의 기존 `--self-test`는 DB 없는 순수 판정 검사와 12개 자식 프로세스 성공/실패/timeout
+검사만 실행하고 실제 PostgreSQL 성능 측정은 하지 않는다.
+
+**실측 결과:** `lifecycle-postgresql/e2dfb5cfe69042d88d385a83d4f9987c`의 본 측정은
+`passed_selected_scope`, 60/60 성공·오류 0·timeout 0이다. 전체 표본의 서로 다른 PID+시작 시각과
+trial UID, 6경로·규모 조합 × 순서가 고정된 10표본, 개별 파일과 summary 동등성, fixture SHA-256,
+ready의 사전 명령/operation 0, 유한한 비음수 지표와 nearest-rank 통계를 독립 재계산했다.
+`artifacts/stabilization/s08-process-cold/raw-verification.log`에 검산 결과를 남겼다.
+
+| 계정 | 경로 | 시작 p50/p95 ms | 첫 조회 p50/p95 ms | DB 명령 |
+|---:|---|---:|---:|---:|
+| 1 | service 목록 | 175.33 / 206.00 | 283.75 / 304.54 | 14 |
+| 1 | HTTP 목록 | 474.52 / 494.40 | 297.70 / 302.86 | 14 |
+| 1 | HTTP 목록+로비 | 473.58 / 495.51 | 313.57 / 320.32 | 16 |
+| 10 | service 목록 | 174.29 / 175.44 | 432.51 / 439.88 | 131 |
+| 10 | HTTP 목록 | 472.20 / 474.51 | 446.35 / 557.70 | 131 |
+| 10 | HTTP 목록+로비 | 473.94 / 476.45 | 620.86 / 646.02 | 151 |
+
+모든 표본에서 명령 수는 warm 때의 목록 `1 + 13A`, 목록+로비 `1 + 15A`와 같다.
+첫 조회 지연은 따뜻해진 프로세스와 다르지만 JIT·첫 DB 연결·SQL·매핑 각각의 기여율을 측정한 것은
+아니다. HTTP client까지 같은 새 프로세스에 있으므로 실제 외부 브라우저의 cold 지연으로 일반화하거나
+warm 대비 제품 성능 저하율로 표현하지 않는다. 10계정 HTTP 목록의 최대 557.70ms도 제외하지 않았다.
+50/100계정 및 다른 read 경로의 cold, query plan·구간별 CPU/할당·반환 행 수·물리 I/O·DOM 측정은 남았다.
+따라서 이번 focused process-cold 계측은 완료하되 S-08 전체 종료나 운영 지연 보장을 주장하지 않는다.
+
+연결 검사 receipt는 cold smoke `599700e748714955b05f80dc0acc23a3`(3표본), 기존 warm smoke
+`926e3f76072548b291440514638b0280`(12표본)이며 본 측정과 통계를 섞지 않는다. 두 smoke와 본 측정의
+exit 0·DB 재시작 checkpoint·cleanup을 확인했다. 변경 전 PostgreSQL 110개 통과 근거는
+`37658ac2bbd84ec09f4064c9bb40b5d2`다. 초기 기준선 restore의 NuGet 접근 제한 `NU1900`과 그 상태를
+읽은 첫 PG 검사 실패도 `s08-process-cold/before-*.log`에 보존했다. 감사/경고 옵션을 끄지 않고
+정상 권한의 locked restore 후 재실행했으며, 실패한 첫 폐기 DB도 checkpoint/cleanup을 확인했다.
+마감 검사는 단위 **475개**, cold 계측기의 DB-free 자식 프로세스 **12개** 및 순수 negative 검사,
+UI/실행기·Phase 0~2B·Phase 3A/3B0/3B1·3B2 scaffold·약점·Actions 계약과 build/format를 통과했다.
+변경 후 PostgreSQL **110/110** 및 restart checkpoint/cleanup 근거는
+`lifecycle-postgresql/ef959c43eec7485fb1af55236f48526e`다. 검사 로그는
+`s08-process-cold/after-gates.log`, `after-postgresql.log`와 `commit-validation.log`에 보존한다.
+제품 소스·운영 DB·설치본·게임·Epinel DLL 변경과 remote push는 없다.
+
+### S-08 후속 진단·DOM·확장 cold — 2026-09-11
+
+운영자의 **“1~2 진행”** 범위는 S-08 후속 계측과 안정화 잔여 점검이다. P-01~P-09,
+운영 DB 보정, 설치 앱 배포, 실게임 재실행은 이번 범위가 아니다. 이 절은 위 focused cold
+60표본의 후속이며 과거 수치와 통계 모집단을 합치지 않는다.
+
+재실행은 `test-nll-lifecycle-postgresql.ps1 -MeasureAccountReads`의 `-ReadMeasurementScope`
+`diagnostic`, `dom`, `cold-full`을 사용한다. 사전에 ReadBenchmarks Release 빌드가 필요하며,
+측정 중 build/test를 병행하지 않는다. 모든 DB는 loopback 55432의 새 합성 폐기 cluster다.
+기존 pending, 공식 계정·클라이언트·게임 서버를 입력으로 쓰지 않는다.
+
+#### 실제 쿼리 진단 및 합성 DB 성장
+
+`lifecycle-postgresql/f0634e4819d04e49a38d21065823886f`에서 8조건 × 6구간 × 3회,
+**144개 진단 표본과 2,997개 실제 명령의 EXPLAIN 재실행**을 완료했다. 구간은 summary rows,
+단일 current profile 복원, service 목록/workspace/export/history다. 각 구간은 서로 중첩하므로
+시간을 더하거나 차감해 순수 매핑 비용이라고 부르지 않는다.
+
+- 관측: 실제 읽기 명령의 typed parameter를 Npgsql tracing callback에서 메모리에만 복사한다.
+  parameter logging은 켜지 않고 SQL·매개변수·Activity tag·plan Filter/Index Cond는 저장하지 않는다.
+  Npgsql 10.0.3의 [공식 tracing callback 구현](https://raw.githubusercontent.com/npgsql/npgsql/v10.0.3/src/Npgsql/NpgsqlCommand.cs)을 확인했다.
+- 서비스 계측과 EXPLAIN은 분리한다. 첫 진단 표본의 SELECT를 **계측 후** read-only session에서
+  재실행하며, 반환 행/버퍼 수는 그 재실행의 관측이다. 원래 요청의 SQL 반환 행으로 둔갑시키지 않는다.
+- CPU·할당량은 ReadBenchmarks 프로세스 전체이고 tracing 비용을 포함한다(PG/Edge CPU는 미포함).
+  Windows CPU 시계의 해상도 때문에
+  짧은 구간의 0ms는 CPU 사용이 없다는 뜻이 아니다. 세 표본은 latency baseline이나 p95 보장에 불충분하다.
+- 모든 replay의 최상위 shared read blocks 합은 0이었다. OS cache/physical disk bytes는 계측하지
+  않았으므로 **물리 I/O는 unresolved**다. cache flush나 운영 DB 설정 변경은 하지 않았다.
+
+| 계정/로스터/이력 | 목록 진단 평균 ms | 평균 할당 MiB | SELECT replay 실행 합 ms | 합성 lab 관계 총 MiB |
+| --- | ---: | ---: | ---: | ---: |
+| 1/50/10 | 14.43 | 1.12 | 1.88 | 7.57 |
+| 10/50/10 | 131.76 | 11.05 | 30.81 | 10.04 |
+| 50/50/10 | 1,130.77 | 55.20 | 661.32 | 20.48 |
+| 100/50/10 | 1,247.91 | 110.40 | 282.29 | 33.07 |
+| 10/5/10 | 102.84 | 2.57 | 13.41 | 7.88 |
+| 10/200/10 | 206.18 | 39.50 | 77.05 | 17.50 |
+| 10/50/1 | 124.80 | 11.05 | 28.41 | 8.93 |
+| 10/50/100 | 178.55 | 11.05 | 82.52 | 21.08 |
+
+기존 sparse/mostly-unequipped 합성 fixture를 유지했다. 장비·overload가 밀집한 실계정의 분포나
+동시 운영 부하를 대표한다고 주장하지 않는다.
+
+100계정 summary rows만 읽는 구간은 평균 1.77ms·1명령인데 전체 service 목록은 1,301명령이다.
+따라서 추가 최적화 후보는 목록에서 매 계정의 프로필 전체를 복원하는 경로다. 50계정 조건에서
+`build_equipment_state` 11,800행 Seq Scan/Hash Join을 포함한 plan도 관측했다. 100계정보다 작은
+조건이 더 느린 구간을 단순 선형 크기 효과로 설명하지 않는다. planner/statistics·scan 선택의
+기여는 추가 통제 실험이 필요하며, 이번에는 인덱스·캐시·migration을 임의 추가하지 않는다.
+
+각 조건에서 profile revision 수 `accounts × history`, current head 계정 일치, previous revision의
+계정/연속 번호를 확인했고 오류는 0이었다. 관계별 heap/index/total byte도 보존했다. V0016의
+`ck_classic_solo_raid_runtime_state_revision_completed_best_shape`는 과거 immutable 행 보존 때문에
+의도된 `NOT VALID`다. 처음 작성한 진단이 이를 손상으로 처리한 실패는
+`lifecycle-postgresql/dc813882564e4a1a9eed2fb57449ac00`에 남기고, 역사 제약을 별도 관측값으로
+구분해 재검증했다. 두 실행 모두 DB restart checkpoint와 cleanup을 확인했다.
+이는 **합성 fixture 검사**이며 운영 pending의 장기 잔존, encrypted pending과 committed revision의
+실제 대조 또는 전체 provenance 감사를 수행한 것은 아니다.
+
+#### 실제 편집기 DOM 경계
+
+`lifecycle-postgresql/deddb713f36140c1a038fd8b245026e2`에서 1/10계정 각각 3회, **6/6 통과**했다.
+새 headless Edge 프로필과 실제 checked-in editor의 `refresh-accounts` handler를 사용한다.
+HTTP 200, 실제 계정 UID 집합·로비 레벨·표시 가능한 DOM, 명령 16/151회를 검증했다.
+Edge 버전 `152.0.4191.66`과 실행 파일 hash, editor asset hash는 receipt에 기록한다.
+
+| 계정 | HTTP 완료 ms (3회 원시값) | HTTP→DOM 갱신 ms | 두 rAF 도달 ms (요청 시작 기준) |
+| --- | --- | --- | --- |
+| 1 | 153.20 / 26.90 / 45.90 | 1.60 / 1.40 / 1.90 | 160.90 / 49.10 / 66.20 |
+| 10 | 310.90 / 399.10 / 168.50 | 1.50 / 2.40 / 2.90 | 324.70 / 410.40 / 181.30 |
+
+ResourceTiming responseEnd, MutationObserver와 두 번의 requestAnimationFrame callback을 구분했다.
+브라우저·호스트 startup, 전체 login/presentation catalog 흐름은 제외했다. 같은 cell의 server/service
+pool은 재사용되므로 process-cold 표본과 합치지 않는다. **compositor paint·설치 WebView2·원본 게임
+UI의 지연을 측정한 것은 아니다.** 외부 page 요청은 차단하고 새 프로필은 정리했으며 운영 설치본은
+열지 않았다. 3회 표본의 편차를 숨기거나 DOM overhead가 항상 3ms 이하라고 보장하지 않는다.
+
+#### 확장 process-cold 및 마감 검사
+
+`cold-full`은 기존 8조건 모두에서 목록/HTTP 목록/목록+로비/workspace/export/history를 각 10개의
+새 프로세스로 읽는다. `lifecycle-postgresql/de79bdf575af424980c98e65d1298b81`의 **480/480**이
+통과했고 오류·timeout은 0이다. raw 파일/summary 일치, 서로 다른 480개 PID+시작 시각,
+ready 이전 DB 명령/operation 0, fixture/source hash와 경로별 예상 명령을 독립적으로 대조했다.
+startup/request p50/p95 **192개**도 원시 표본에서 재계산했다. 8조건 모두 workspace 14,
+export 18, history 1명령이며 목록 `1+13A`, 목록+로비 `1+15A`다. 첫 요청과 시작 시간은
+분리하고 OS/DB cache는 초기화하지 않았다. DB restart checkpoint와 cleanup도 통과했다.
+독립 대조 메모는 `s08-s09-followup/receipt-audit.txt`에 보존한다.
+
+아래 완료된 1/10/50/100계정 조건은 roster 50·history 10이다. 각 행 10표본의 nearest-rank
+p95는 최댓값이며 이상치를 제외하지 않았다. startup은 첫 요청 시간에 합산하지 않았다.
+
+| 계정 | service 목록 첫 요청 p50/p95 ms | HTTP 목록+로비 첫 요청 p50/p95 ms |
+| --- | --- | --- |
+| 1 | 281.19 / 296.55 | 313.51 / 317.76 |
+| 10 | 431.87 / 437.85 | 624.71 / 756.18 |
+| 50 | 1,533.52 / 1,548.05 | 1,792.17 / 2,083.78 |
+| 100 | 1,806.29 / 1,934.28 | 2,145.82 / 2,203.31 |
+
+마감 검사:
+
+- 변경 전 repository/Phase 0~2B/3A/3B0/3B1/3B2 scaffold/약점/Actions 계약 통과. 변경 전
+  PostgreSQL **110/110** receipt는 `ecbb7a6ed95a4f94b84c4e49c7a25f51`이다.
+- 변경 후 단위 **475개**, 저장/실행 UI·runner 봉인/복구 행동·위 전체 계약 및 build/format 통과.
+  계측기 DB-free 자식 **12회**, DOM helper의 loopback guard, 공통 상태/증빙 **53개**도 통과했다.
+- 기존 warm smoke **12표본** receipt는 `44180ef220c044b1822afe1606f58c61`, 변경 후 PostgreSQL
+  **110/110**은 `ff7829f2e59446ebbb27f9b93e17dc15`다. 두 실행 모두 restart checkpoint/cleanup을
+  확인했다. 모든 receipt UID의 상위 경로는 `artifacts/stabilization/lifecycle-postgresql/`이다.
+- 상세 로그는 `artifacts/stabilization/s08-s09-followup/`의 `before-gates.log`,
+  `before-postgresql.log`, `diagnostic-retry.log`, `dom.log`, `cold-full.log`, `after-gates.log`,
+  `after-postgresql.log`에 보존한다. 공통화 후 함수 위치에 묶인 예전 검사 실패와 테스트의 script
+  import 정책 실패는 `focused-checks.log`/`admin-retry.log`에 보존했으며, 실제 공통 writer/소비자
+  경로를 검사하도록 수정했다. 시스템 실행 정책이나 NuGet audit 옵션은 변경하지 않았다.
+
+이로써 이번 소스 범위의 계측·공통화·회귀 검증을 마감한다. **S-08/S-09 전체 종료 판정은 아니다.**
+물리 I/O, planner/statistics 통제 실험, 목록 read model의 추가 최적화, 설치 WebView2/실게임 인수와
+아래 운영 DB·전수 리뷰 경계는 남아 있다. 이 결과를 P-01~P-09 착수나 운영 변경 승인으로 확대하지 않는다.
+
 ### S-09 / 중간 — 프로세스 identity와 복구 공통 코드가 부분적으로 다름
 
-- 확인: coordinator/watcher/recovery에 JSON 쓰기, PG 제어, receipt 검증, 복구 코드가
-  반복된다. watcher `:246`의 `Stop-PinnedProcess`는 PID와 이름을 확인하지만 시작 시각은
-  확인하지 않는다. 반면 orphan recovery는 watcher를 PID+시작 시각으로 식별한다.
-- 위험: PID 재사용 등에서 같은 이름의 다른 프로세스와 혼동할 여지가 있다. 잘못된
-  프로세스를 실제 종료했다는 주장은 아니다.
-- 방향: process identity, exact-child wait, atomic state 쓰기와 복구 proof를 공통화한다.
-  active process에 대해 검증을 약화시키거나 이름 기반 일괄 종료를 추가하지 않는다.
+- 초기 점검의 PID/name-only `Stop-PinnedProcess` 지적은 **과거 상태**다. 현행은 PID·시작 시각·
+  경로를 확인한 동일 native handle로 wait/stop하고, 잔류 서버도 배타적 ownership proof를 요구한다.
+  2026-09-07 보강을 다시 미구현으로 취급하지 않는다.
+- 2026-09-11: coordinator/watcher/recovery의 JSON 저장을 기존 봉인 member인
+  `Nll.PhaseDProcessIdentity.ps1`로, pg_ctl exact-child wait를 `Nll.PhaseDChildProcess.ps1`로 공통화했다.
+  JSON은 같은 디렉터리의 임시 파일을 만든 뒤 기존 파일에는 `File.Replace`, 최초 생성에는
+  `File.Move`를 쓴다. 교체 실패 시 이전 JSON을 유지하고 자신의 partial만 정리한다. filesystem
+  atomic replacement이지 전원 장애에 대한 fsync/durability 보장이라고 부르지 않는다.
+- watcher/recovery의 Solo Raid persistence proof는 기존 `Nll.PhaseDCompletion.ps1`의 공통 함수로
+  옮겼다. launch root/context를 명시적으로 받고 기존 account/revision/snapshot/build/hash 결박을
+  보존한다. 대문자 result code와 malformed/empty-Guid `no_state` head가 허용되던 분기를 닫았다.
+- 새 합성 행동 검사 **53개**는 실제 파일·hash·context 변조, 실패한 JSON 교체의 이전 값 보존,
+  exact pg_ctl 자식의 인자/exit code와 두 소비자 wrapper를 검사한다. 예전 두 permissive predicate를
+  되돌린 negative control이 잘못된 fixture를 허용하는 것도 확인했다. 소스 문자열 검사 일부는
+  helper import/binding 확인만 남기고 의미 검증은 이 행동 검사와 기존 종료/복구 검사로 옮겼다.
+- runner member 목록/contract version은 바꾸지 않는다. 이미 생성된 bundle은 자신의 옛 helper를
+  계속 쓰며, 새 실행만 새 hash closure를 생성한다. 설치 앱 파일을 배포하지 않았지만 **설치된
+  실행 경로가 저장소 스크립트를 직접 읽으므로 다음 새 실행은 이 소스를 소비할 수 있다.**
+  변경 전 복원 기준은 `0d362ad`의 동일 스크립트 집합이다. 이미 봉인된 bundle과 임의 혼용하지 않는다.
+- 남음: 실행/복구 단계별 timeout 및 실패 후 ownership 정책의 추가 통합. pg_ctl의 기존 `-w/-t`와
+  exact-child wait를 유지했고, timeout만으로 PostgreSQL descendant를 강제 종료하지 않는다.
+  운영 DB pending/provenance 대조와 실제 게임 종료 인수도 별도다.
+
+이번 잔여 코드 점검은 프로세스·완료/복구 helper, workspace Save/CAS/provenance와 raid state의
+기존 rollback/replay/경합 통합 검사, automation inventory/state-machine, desktop entry/stop 흐름을
+대상으로 했다. importer/domain 전체 파일을 전수 검토했다고 표시하지 않는다. desktop의 async
+시작 실패·stderr backpressure/실제 WebView2 구간은 별도 재현 검사가 더 필요하다. 이번에 desktop
+설치본을 열거나 자동화된 전체 UI 인수를 수행한 것은 아니다.
 
 ### S-10 / 높음 — 현재 운영 명세와 과거 단계 기록, 빌드 기준선의 분리 부족
 
@@ -248,11 +970,13 @@ terminal `launchProjection`이 있으면 준비 완료 문구를 갱신하지 �
   분리한다. 메인 화면 Quit은 덱 수와 무관하게 최고 기록을 갱신하지 않지만,
   이미 끝난 덱의 전투 이력과 저장된 편성까지 삭제해서는 안 된다.
 
-## 영속화 추가 정비 — 2026-09-06 / 미구현
+## 영속화 추가 정비 — 2026-09-06 요구 / 2026-09-12 구현·검증
 
 운영자의 화면·예시로 확정한 요구와 현 소스에서 확인한 필드를 구분한다.
-이번에는 문서만 갱신했다. SQL migration, 운영 DB, 서버·클라이언트 코드는 변경하지 않았으며,
-아래 항목은 모두 수정·검증 대기다. 운영 DB의 실제 행·용량을 조회한 결과도 아니다.
+아래 내용은 2026-09-06 확정 요구다. 2026-09-12 P-01/P-05 → P-04 → 나머지 설정 구현을
+진행했으며 새 SQL V0019~V0021, 외부 서버 source-only patch, 회수·저장·복원 검사를 추가했다.
+현행 완료 범위·배포 상태·운영자 실게임 확인은 [실행 간 영속화](features/RUNTIME_PERSISTENCE.md)를
+따른다. 아래의 당시 미구현 설명을 현행 코드 판정으로 사용하지 않는다.
 
 ### P-01 — 원본 My Records를 최고점과 독립된 덱별 전투 이력으로 보존
 

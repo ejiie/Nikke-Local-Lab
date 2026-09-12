@@ -3,6 +3,13 @@
 기준: 2026-09-06, 운영자가 실게임 검증한 151 / S26 경로.
 정확한 설치 경로·선택 bundle은 [MICRON_CURRENT_PATHS.md](MICRON_CURRENT_PATHS.md)를 따릅니다.
 
+2026-09-12 안정화 소스: 계정 목록은 최신 summary를 항상 조회하고, 같은 서비스 인스턴스에서
+검증한 `(account, revision UID/hash/number)`의 준비 상태만 최대 256개 재사용한다. 실제 실행용
+export/aggregate hash 검증은 생략하지 않는다. 실행 자식의 기한 초과는 강제 종료/자동 원복이
+아니라 ownership 증거를 보존하는 비종료 상태다. 복구는 해당 자식의 종료를 먼저 확인한다.
+최신 설치·자동 검사 상태는 [HANDOFF](HANDOFF.md), 화면/게임 인수는
+[운영자 체크리스트](operations/STABILIZATION_ACCEPTANCE.md)를 따른다.
+
 ## 실제 실행 흐름
 
 ```text
@@ -26,6 +33,7 @@
 |---|---|
 | 실행 API·상태 조회·복구 요청 | [PhaseDExecution.cs](../src/NikkeLocalLab.Admin.Api/PhaseDExecution.cs) |
 | 준비·기동 조정 | [invoke-nll-phase-d-execution.ps1](../scripts/invoke-nll-phase-d-execution.ps1) |
+| 실행별 고정 실행기(S26 운영자 인수 완료) | [Runner 입력](../scripts/Nll.PhaseDRunnerContract.ps1), [코드 봉인](../scripts/Nll.PhaseDRunnerSeal.ps1), [고정 entry](../scripts/invoke-nll-phase-d-runner.ps1) |
 | bundle 선택·검증 | [Nll.PhaseDRuntimeBundle.ps1](../scripts/Nll.PhaseDRuntimeBundle.ps1) |
 | 계정·전투 데이터 변환 | [RuntimeMaterializer/Program.cs](../tools/NikkeLocalLab.PhaseD.RuntimeMaterializer/Program.cs) |
 | 종료 감시·복구 | [watcher](../scripts/watch-nll-phase-d-execution.ps1), [orphan recovery](../scripts/recover-nll-phase-d-orphaned-execution.ps1) |
@@ -34,6 +42,13 @@
 | Save claim·checkpoint·계정별 DB 잠금 | [PostgreSqlAccountWorkspaceSaveStore.cs](../src/NikkeLocalLab.Persistence.PostgreSql/PostgreSqlAccountWorkspaceSaveStore.cs) |
 | Save 원문 보존·읽기 전용 복구 조회(미배포 소스) | [요청 codec](../src/NikkeLocalLab.Application.ProfileManagement/WorkspaceSaveRecovery.cs), [recovery store](../src/NikkeLocalLab.Persistence.PostgreSql/PostgreSqlAccountWorkspaceSaveStore.Recovery.cs) |
 | 레이드 기록 영속화 | [ClassicSoloRaidRuntimeStateStore.cs](../src/NikkeLocalLab.Persistence.PostgreSql/ClassicSoloRaidRuntimeStateStore.cs) |
+
+S-05는 2026-09-09 운영자 실게임 인수 후 데이터 JSON과 고정 Start/Complete를 사용하는
+`parameterized/v1` 단일 활성 경로로 전환했습니다. 부모 스크립트 읽기/문자열 생성은 없으며
+watcher/recovery도 실행별 사본에 결박해 저장소의 다음 버전과 혼용하지 않습니다.
+역사 adapter와 실행 자료는 비교/복원에만 보존하고 현행 실행에서 import하지 않습니다.
+legacy 옵션은 거절합니다. 소스 rollback은 현재 실행 정리 후 다음 실행부터 적용하고 DB는 되돌리지 않습니다.
+자동 전투 관측과 운영자 인수의 구분 및 증거는 안정화 계획에 있습니다.
 
 ## 관리도구 UI 재사용
 
@@ -81,7 +96,8 @@ manifest는 이름·이미지 경로·검산 hash만 포함하고 계정·로스
 신규 claim과 원래 요청은 V0018에서 함께 보존합니다. editor는 같은 창에서 원래 요청을 재전송하고,
 새 창에서는 조회 후 사용자가 명시적으로 복구합니다. 재시도 preview·최신 revision 재지정은 하지 않습니다.
 원문 없는 구형 pending은 그대로 보존하며 자동 수선하지 않습니다.
-위 소스 정비는 설치본에 아직 배포하지 않았습니다.
+V0018과 Save 복구 UI는 운영 적용 이력이 있다. 이후 변경까지 모두 설치됐다고 일반화하지 않고,
+변경별 최신 배포 receipt와 [HANDOFF](HANDOFF.md)를 확인한다.
 근거·미확인 위험·정비 순서는 [STABILIZATION_PLAN.md](STABILIZATION_PLAN.md)에만 관리합니다.
 이 문서의 흐름도는 현행 설명이지 정비 구현 완료 선언이 아닙니다.
 

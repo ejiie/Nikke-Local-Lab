@@ -2,6 +2,9 @@
 param(
     [string]$PostgreSqlRoot = 'C:\NLL\Runtime\PostgreSQL-17-native',
     [string]$Filter = '',
+    [string]$RuntimeMaterializerPath = '',
+    [switch]$MeasureAccountReads,
+    [ValidateSet('focused', 'full', 'smoke', 'cold', 'cold-smoke', 'cold-full', 'diagnostic', 'dom', 'planner', 'dense-planner')][string]$ReadMeasurementScope = 'focused',
     [ValidateRange(1, 60)][int]$ShutdownTimeoutSeconds = 30
 )
 
@@ -18,6 +21,12 @@ $initDb = Join-Path $PostgreSqlRoot 'bin\initdb.exe'
 $createDb = Join-Path $PostgreSqlRoot 'bin\createdb.exe'
 $psql = Join-Path $PostgreSqlRoot 'bin\psql.exe'
 $dotnet = (Get-Command dotnet -ErrorAction Stop).Source
+if ($RuntimeMaterializerPath -and ($MeasureAccountReads -or
+    -not (Test-Path -LiteralPath $RuntimeMaterializerPath -PathType Leaf) -or
+    -not [IO.Path]::IsPathRooted($RuntimeMaterializerPath))) { throw 'lifecycle_test_materializer_input_invalid' }
+if ($MeasureAccountReads -and -not [string]::IsNullOrWhiteSpace($Filter)) { throw 'lifecycle_test_measurement_filter_conflict' }
+$measurementDll = Join-Path $repositoryRoot 'tests\NikkeLocalLab.ReadBenchmarks\bin\Release\net8.0\NikkeLocalLab.ReadBenchmarks.dll'
+if ($MeasureAccountReads -and -not (Test-Path -LiteralPath $measurementDll -PathType Leaf)) { throw 'lifecycle_test_measurement_build_required' }
 
 function Test-LifecycleListener {
     $client = [Net.Sockets.TcpClient]::new()
@@ -48,7 +57,9 @@ $resultRoot = Join-Path $repositoryRoot ('artifacts\stabilization\lifecycle-post
 $null = New-Item -ItemType Directory -Path $workRoot
 $null = New-Item -ItemType Directory -Path $resultRoot -Force
 $environmentNames = @('PGPASSWORD', 'NIKKE_LAB_TEST_DB', 'NIKKE_LAB_TEST_EXPECTED_DATABASE',
-    'NIKKE_LAB_TEST_RESET_TOKEN', 'DOTNET_CLI_HOME', 'NUGET_PACKAGES', 'DOTNET_CLI_TELEMETRY_OPTOUT')
+    'NIKKE_LAB_TEST_RESET_TOKEN', 'DOTNET_CLI_HOME', 'NUGET_PACKAGES', 'DOTNET_CLI_TELEMETRY_OPTOUT', 'NLL_S08_OUTPUT',
+    'NLL_S08_DOM_SCRIPT', 'NLL_S08_NODE', 'NLL_TEST_RUNTIME_MATERIALIZER',
+    'NLL_TEST_RUNTIME_MATERIALIZER_SHA256', 'NLL_TEST_RUNTIME_PERSISTENCE_RECEIPT')
 $previousEnvironment = @{}
 foreach ($name in $environmentNames) { $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 $bytes = [byte[]]::new(32)
@@ -87,13 +98,65 @@ try {
     $env:DOTNET_CLI_HOME = Join-Path $repositoryRoot '.dotnet-cli-home'
     $env:NUGET_PACKAGES = Join-Path $repositoryRoot '.nuget-packages'
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+    $env:NLL_TEST_RUNTIME_MATERIALIZER = $RuntimeMaterializerPath
+    if ($RuntimeMaterializerPath) {
+        $env:NLL_TEST_RUNTIME_MATERIALIZER_SHA256 = (Get-FileHash -LiteralPath $RuntimeMaterializerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $env:NLL_TEST_RUNTIME_PERSISTENCE_RECEIPT = Join-Path $resultRoot 'runtime-persistence.receipt.json'
+    }
     $stage = 'test'
     $testArguments = @('test', (Join-Path $repositoryRoot 'tests\NikkeLocalLab.PostgreSql.IntegrationTests'),
         '--configuration', 'Release', '--no-restore', '--logger', 'trx;LogFileName=integration.trx',
         '--results-directory', $resultRoot, '--verbosity', 'minimal')
     if (-not [string]::IsNullOrWhiteSpace($Filter)) { $testArguments += @('--filter', $Filter) }
-    & $dotnet @testArguments
+    if ($MeasureAccountReads) {
+        $env:NLL_S08_OUTPUT = $resultRoot
+        $env:NLL_S08_DOM_SCRIPT = Join-Path $PSScriptRoot 'measure-nll-editor-dom.cjs'
+        $env:NLL_S08_NODE = (Get-Command node -ErrorAction Stop).Source
+        $measurementDiff = (& git -C $repositoryRoot diff HEAD --no-ext-diff) -join "`n"
+        $measurementDiffBytes = [Text.Encoding]::UTF8.GetBytes($measurementDiff)
+        $measurementHasher = [Security.Cryptography.SHA256]::Create()
+        try { $measurementDiffHash = ([BitConverter]::ToString($measurementHasher.ComputeHash($measurementDiffBytes))).Replace('-', '').ToLowerInvariant() }
+        finally { $measurementHasher.Dispose() }
+        $measurementEvidence = [ordered]@{
+            head = (& git -C $repositoryRoot rev-parse HEAD).Trim()
+            workingDiffSha256 = $measurementDiffHash
+            fixtureSourceSha256 = (Get-FileHash -LiteralPath (Join-Path $repositoryRoot 'tests\NikkeLocalLab.ReadBenchmarks\Program.cs') -Algorithm SHA256).Hash.ToLowerInvariant()
+            measurementScope = $ReadMeasurementScope
+            measurementSources = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests\NikkeLocalLab.ReadBenchmarks') -Filter '*.cs' -File | Sort-Object Name | ForEach-Object {
+                @{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+            })
+            sdk = (& $dotnet --version).Trim(); postgresqlVersion = '17.11'
+            powerScheme = (& powercfg /GETACTIVESCHEME) -join ' '
+            processorCount = [Environment]::ProcessorCount
+            domScriptSha256 = (Get-FileHash -LiteralPath $env:NLL_S08_DOM_SCRIPT -Algorithm SHA256).Hash.ToLowerInvariant()
+            editorAssets = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src/NikkeLocalLab.Admin.Api/wwwroot/editor') -File | Sort-Object Name | ForEach-Object {
+                @{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+            })
+            isolated = $true; sharedBuffers = '64MB'; workMem = '2MB'; maxConnections = 40
+            assemblies = @(Get-ChildItem -LiteralPath (Split-Path $measurementDll) -Filter '*.dll' -File | Sort-Object Name | ForEach-Object {
+                @{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+            })
+        }
+        $measurementEvidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $resultRoot 's08-environment.json') -Encoding UTF8
+        $measurementArguments = @($measurementDll)
+        if ($ReadMeasurementScope -eq 'full') { $measurementArguments += '--full' }
+        if ($ReadMeasurementScope -eq 'smoke') { $measurementArguments += '--smoke' }
+        if ($ReadMeasurementScope -eq 'cold') { $measurementArguments += '--cold' }
+        if ($ReadMeasurementScope -eq 'cold-smoke') { $measurementArguments += '--cold-smoke' }
+        if ($ReadMeasurementScope -eq 'cold-full') { $measurementArguments += '--cold-full' }
+        if ($ReadMeasurementScope -eq 'diagnostic') { $measurementArguments += '--diagnostic' }
+        if ($ReadMeasurementScope -eq 'dom') { $measurementArguments += '--dom' }
+        if ($ReadMeasurementScope -in @('planner', 'dense-planner')) { $measurementArguments += ('--' + $ReadMeasurementScope) }
+        & $dotnet @measurementArguments
+    } else {
+        & $dotnet @testArguments
+    }
     $testExitCode = $LASTEXITCODE
+    if ($testExitCode -eq 0 -and $RuntimeMaterializerPath) {
+        if (-not (Test-Path -LiteralPath $env:NLL_TEST_RUNTIME_PERSISTENCE_RECEIPT)) { throw 'lifecycle_test_materializer_not_executed' }
+        $runtimeCheck = Get-Content -LiteralPath $env:NLL_TEST_RUNTIME_PERSISTENCE_RECEIPT -Raw | ConvertFrom-Json
+        if ($runtimeCheck.status -cne 'passed' -or $runtimeCheck.actualCapturePersistRestore -ne $true) { throw 'lifecycle_test_materializer_failed' }
+    }
     $stage = 'restart'
     & $pgCtl stop -D $dataRoot -m fast -w -t $ShutdownTimeoutSeconds
     if ($LASTEXITCODE -ne 0 -or (Test-LifecycleListener)) { throw 'lifecycle_test_stop_failed' }
@@ -123,10 +186,12 @@ finally {
     }
     $receipt = [ordered]@{
         schemaVersion = 1; kind = 'synthetic_postgresql_lifecycle_test/v1'
+        mode = $(if ($MeasureAccountReads) { 's08_read_measurement' } else { 'integration_tests' })
         testExitCode = $testExitCode; failureCode = $failureCode
         cleanupVerified = $cleanupVerified; port = $port
         shutdownTimeoutSeconds = $ShutdownTimeoutSeconds
         postgresqlRestartCheckpointVerified = $restartVerified
+        runtimePersistenceAdapterRequested = [bool]$RuntimeMaterializerPath
         operatingDatabaseTouched = $false; originalClientExecuted = $false
         completedAtUtc = [DateTime]::UtcNow.ToString('o')
     }

@@ -49,23 +49,3 @@ function Read-PdRuntimeBundle([string]$PointerPath, [switch]$BeforeActivation, [
     $bundle | Add-Member -NotePropertyName manifestPath -NotePropertyValue $pointer.manifest.path
     return $bundle
 }
-function Replace-PdBundleLiteral([string]$Text, [string]$Before, [string]$After) {
-    Assert-PdBundle (([regex]::Matches($Text, [regex]::Escape($Before))).Count -eq 1) 'start_template_changed'
-    return $Text.Replace($Before, $After)
-}
-function Convert-PdBundleStart([string]$Text, [object]$Bundle) {
-    $Text = Replace-PdBundleLiteral $Text 'C:\NLL\Runtime\PhysicalBootstrap-v2' $Bundle.bootstrapRoot
-    $Text = Replace-PdBundleLiteral $Text 'ff7371b3e20119030c0f3a8e2f6ba9482094c4118f06dbcc4e0e7f137f8e404f' $Bundle.bootstrap.sha256
-    $Text = Replace-PdBundleLiteral $Text 'a28c7ff227a74d260a29389b82caeed3fe196f91eef3d28cabe9977b5ed9d07b' $Bundle.serverExe.sha256
-    # The existing completion/orphan recovery removes the entire owned extension
-    # group. Add server isolation there so the same lifecycle also restores it.
-    $anchor = '    $firewallApplied = $true'
-    $serverRule = @'
-    New-NetFirewallRule -Name 'NLL.PhaseD.RuntimeServerBlock' -DisplayName 'NLL Phase D local runtime server' -Group $extensionFirewallGroup -Direction Outbound -Action Block -Enabled True -Profile Any -Program $serverPath | Out-Null
-'@
-    $Text = Replace-PdBundleLiteral $Text $anchor ($anchor + "`r`n" + $serverRule)
-    $Text = Replace-PdBundleLiteral $Text '$extensionRules.Count -eq 1 -and' '$extensionRules.Count -eq 2 -and'
-    $Text = Replace-PdBundleLiteral $Text '$extensionPrograms.Count -eq 1 -and' '$extensionPrograms.Count -eq 2 -and'
-    $Text = Replace-PdBundleLiteral $Text '$extensionPrograms[0].Program -ceq $bootstrapPath' '(@($extensionPrograms.Program) -ccontains $bootstrapPath -and @($extensionPrograms.Program) -ccontains $serverPath)'
-    return $Text
-}

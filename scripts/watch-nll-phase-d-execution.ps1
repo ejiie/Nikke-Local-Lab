@@ -19,12 +19,28 @@ param(
     [Parameter(Mandatory)] [ValidatePattern('^[A-Z][A-Z0-9_]{2,63}$')]
     [string]$ConnectionStringEnvironmentVariable,
     [Parameter(Mandatory)] [ValidatePattern('^[A-Z][A-Z0-9_]{2,63}$')]
-    [string]$IdentitySecretEnvironmentVariable
+    [string]$IdentitySecretEnvironmentVariable,
+    [string]$ExpectedRunnerBundleSha256 = ''
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$sealedRunner = $null
+if ($ExpectedRunnerBundleSha256) {
+    # Verify the verifier before importing it; the parent supplied the pin.
+    $manifestPath = Join-Path $PSScriptRoot 'runner.bundle.json'
+    if ((Get-FileHash -LiteralPath $manifestPath).Hash.ToLowerInvariant() -cne $ExpectedRunnerBundleSha256) { throw 'phase_d_runner_bundle_invalid' }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $seal = @($manifest.members | Where-Object { $_.name -ceq 'Nll.PhaseDRunnerSeal.ps1' })
+    $sealPath = Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1'
+    if ($seal.Count -ne 1 -or (Get-FileHash -LiteralPath $sealPath).Hash.ToLowerInvariant() -cne $seal[0].sha256) { throw 'phase_d_runner_bundle_invalid' }
+    . $sealPath
+    $sealedRunner = Read-PhaseDRunnerBundle -LaunchRoot $LaunchRoot -ExpectedBundleSha256 $ExpectedRunnerBundleSha256
+    if ([IO.Path]::GetFullPath($sealedRunner.root) -ine [IO.Path]::GetFullPath($PSScriptRoot) -or
+        [IO.Path]::GetFullPath($CompletionScriptPath) -ine (Join-Path $PSScriptRoot 'invoke-nll-phase-d-runner.ps1')) { throw 'phase_d_runner_bundle_invalid' }
+} elseif (Test-Path -LiteralPath (Join-Path $LaunchRoot 'tools/runner')) { throw 'phase_d_runner_binding_missing' }
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
+. (Join-Path $PSScriptRoot 'Nll.PhaseDCompletion.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDChildProcess.ps1')
 
 function Get-Sha256Lower {
@@ -32,37 +48,8 @@ function Get-Sha256Lower {
     (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
-function Write-AtomicJson {
-    param([string]$Path, [object]$Value, [int]$Depth = 8)
-    $temporary = $Path + '.partial-' + [guid]::NewGuid().ToString('N')
-    [IO.File]::WriteAllText(
-        $temporary,
-        (($Value | ConvertTo-Json -Depth $Depth) + "`n"),
-        [Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $temporary -Destination $Path -Force
-}
 
 
-function Invoke-PhaseDPgCtl {
-    param(
-        [string]$PgCtlPath,
-        [string[]]$Arguments
-    )
-    # Wait for pg_ctl's exact PID. Start-Process -Wait can wait for its postgres
-    # descendant as well and deadlock a start operation until the DB is stopped.
-    $info = [Diagnostics.ProcessStartInfo]::new()
-    $info.FileName = $PgCtlPath
-    $info.Arguments = (($Arguments | ForEach-Object {
-        '"' + $_.Replace('"', '\"') + '"'
-    }) -join ' ')
-    $info.UseShellExecute = $false
-    $info.CreateNoWindow = $true
-    $process = [Diagnostics.Process]::Start($info)
-    $process.WaitForExit()
-    $exitCode = [int]$process.ExitCode
-    $process.Dispose()
-    $exitCode
-}
 
 function Restore-ControlCenterHosts {
     Assert-Watcher `
@@ -86,94 +73,9 @@ function Assert-Watcher {
 }
 
 function Read-SoloRaidPersistenceReceipt {
-    param(
-        [string]$Path,
-        [string]$LaunchContextUid,
-        [string]$PendingPayloadPath,
-        [string]$CaptureReceiptPath
-    )
-    Assert-Watcher (Test-Path -LiteralPath $Path -PathType Leaf) `
-        'phase_d_raid_state_persistence_receipt_missing'
-    Assert-Watcher `
-        ((Test-Path -LiteralPath $PendingPayloadPath -PathType Leaf) -and
-         (Test-Path -LiteralPath $CaptureReceiptPath -PathType Leaf)) `
-        'phase_d_raid_state_persistence_proof_missing'
-    $receipt = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 |
-        ConvertFrom-Json
-    $pending = Get-Content -LiteralPath $PendingPayloadPath -Raw -Encoding UTF8 |
-        ConvertFrom-Json
-    $capture = Get-Content -LiteralPath $CaptureReceiptPath -Raw -Encoding UTF8 |
-        ConvertFrom-Json
-    $context = Get-Content -LiteralPath (Join-Path $LaunchRoot 'launch-context.json') `
-        -Raw -Encoding UTF8 | ConvertFrom-Json
-    $headRevisionUid = [Guid]::Empty
-    $headRevisionPresent = $null -ne $receipt.headRevisionUid -and
-        [Guid]::TryParse([string]$receipt.headRevisionUid, [ref]$headRevisionUid) -and
-        $headRevisionUid -ne [Guid]::Empty
-    $resultCode = [string]$receipt.resultCode
-    $expectedHeadReceipt = if ($null -eq $receipt.expectedHeadRevisionUid) {
-        ''
-    } else { [string]$receipt.expectedHeadRevisionUid }
-    $expectedHeadCapture = if ($null -eq $capture.expectedHeadRevisionUid) {
-        ''
-    } else { [string]$capture.expectedHeadRevisionUid }
-    Assert-Watcher `
-        ($receipt.contractId -ceq `
-            'nll/phase-d-classic-solo-raid-state-persistence/v1' -and
-         $pending.contractId -ceq `
-            'nll/phase-d-classic-solo-raid-state-pending/v1' -and
-         $capture.contractId -ceq `
-            'nll/phase-d-classic-solo-raid-state-capture/v1' -and
-         -not [bool]$receipt.quarantined -and
-         [string]$receipt.launchContextUid -ceq $LaunchContextUid -and
-         [string]$capture.launchContextUid -ceq $LaunchContextUid -and
-         [string]$pending.capture.launchContextUid -ceq $LaunchContextUid -and
-         [string]$receipt.pendingPayloadSha256 -ceq `
-            (Get-Sha256Lower $PendingPayloadPath) -and
-         [string]$receipt.captureReceiptSha256 -ceq `
-            (Get-Sha256Lower $CaptureReceiptPath) -and
-         [string]$receipt.accountUid -ceq [string]$capture.accountUid -and
-         [string]$receipt.accountUid -ceq [string]$context.accountUid -and
-         [string]$receipt.accountRevisionSetSha256 -ceq `
-            [string]$capture.accountRevisionSetSha256 -and
-         [string]$receipt.accountRevisionSetSha256 -ceq `
-            [string]$context.accountRevisionSetSha256 -and
-         [int]$receipt.seasonNumber -eq [int]$capture.seasonNumber -and
-         [int]$receipt.seasonNumber -eq [int]$context.seasonNumber -and
-         [string]$receipt.raidSnapshotUid -ceq `
-            [string]$capture.raidSnapshotUid -and
-         [string]$receipt.raidSnapshotUid -ceq `
-            [string]$context.raidSnapshotUid -and
-         [string]$receipt.raidSnapshotSha256 -ceq `
-            [string]$capture.raidSnapshotSha256 -and
-         [string]$receipt.raidSnapshotSha256 -ceq `
-            [string]$context.raidSnapshotSha256 -and
-         [string]$receipt.clientBuildCode -ceq `
-            [string]$capture.clientBuildCode -and
-         [string]$receipt.clientBuildCode -ceq `
-            [string]$context.clientBuildCode -and
-         [string]$receipt.clientExecutableSha256 -ceq `
-            [string]$capture.clientExecutableSha256 -and
-         [string]$receipt.clientExecutableSha256 -ceq `
-            [string]$context.clientExecutableSha256 -and
-         $expectedHeadReceipt -ceq $expectedHeadCapture -and
-         [string]$receipt.protectedPayloadSha256 -ceq `
-            [string]$capture.protectedPayloadSha256 -and
-         [string]$receipt.requestSha256 -ceq [string]$capture.requestSha256 -and
-         [string]$receipt.stateContentSha256 -ceq `
-            [string]$capture.stateContentSha256 -and
-         [string]$receipt.resultStateContentSha256 -ceq `
-            [string]$receipt.stateContentSha256 -and
-         $resultCode -in @('no_state','state_unchanged','state_advanced') -and
-         (($resultCode -ceq 'no_state' -and -not $headRevisionPresent) -or
-          ($resultCode -cne 'no_state' -and $headRevisionPresent)) -and
-         [string]$receipt.requestSha256 -cmatch '^[0-9a-f]{64}$' -and
-         [string]$receipt.pendingPayloadSha256 -cmatch '^[0-9a-f]{64}$' -and
-         [string]$receipt.captureReceiptSha256 -cmatch '^[0-9a-f]{64}$' -and
-         [string]$receipt.stateContentSha256 -cmatch '^[0-9a-f]{64}$' -and
-         [string]$receipt.resultStateContentSha256 -cmatch '^[0-9a-f]{64}$') `
-        'phase_d_raid_state_persistence_receipt_invalid'
-    $receipt
+    param([string]$Path, [string]$LaunchContextUid, [string]$PendingPayloadPath, [string]$CaptureReceiptPath)
+    Read-PhaseDSoloRaidPersistenceReceipt -Path $Path -LaunchRoot $LaunchRoot -LaunchContextUid $LaunchContextUid `
+        -PendingPayloadPath $PendingPayloadPath -CaptureReceiptPath $CaptureReceiptPath
 }
 
 function Invoke-SoloRaidPersistence {
@@ -324,14 +226,19 @@ try {
         try { $client.WaitForExit() } finally { $client.Dispose() }
     }
 
+    $completionArguments = [ordered]@{
+        ObservedStageCode = 'startup_only'; OutcomeCode = 'client_exit'
+        ServerRoot = $ServerRoot; EvidenceRoot = $EvidenceRoot
+    }
+    if ($null -ne $sealedRunner) {
+        $null = Read-PhaseDRunnerBundle -LaunchRoot $LaunchRoot -ExpectedBundleSha256 $ExpectedRunnerBundleSha256
+        $completionArguments = [ordered]@{ Phase='completion'; LaunchRoot=$LaunchRoot
+            ExpectedBundleSha256=$ExpectedRunnerBundleSha256; ObservedStageCode='startup_only'; OutcomeCode='client_exit' }
+    }
     $completionResult = Invoke-PhaseDChildScript `
+        -TimeoutSeconds 180 -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-completion.identity.json') `
         -ScriptPath $CompletionScriptPath `
-        -Arguments ([ordered]@{
-            ObservedStageCode = 'startup_only'
-            OutcomeCode = 'client_exit'
-            ServerRoot = $ServerRoot
-            EvidenceRoot = $EvidenceRoot
-        }) `
+        -Arguments $completionArguments `
         -StandardOutputPath (Join-Path $LaunchRoot 'derived-completion.stdout.log') `
         -StandardErrorPath (Join-Path $LaunchRoot 'derived-completion.stderr.log')
     if ($completionResult.ExitCode -ne 0) { throw 'phase_d_completion_failed' }
@@ -360,6 +267,7 @@ try {
             restorationOwnerCode = 'phase_d_completion_watcher'
         })
     $pgStartExitCode = Invoke-PhaseDPgCtl `
+        -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-pg.identity.json') `
         -PgCtlPath $ControlCenterPgCtlPath `
         -Arguments @(
             'start', '-D', $ControlCenterPgDataPath,
@@ -416,6 +324,15 @@ catch {
         $primaryFailure.Exception.Message
     }
     else { 'phase_d_completion_uncontrolled_failure' }
+    if ($failureCode -ceq 'phase_d_child_deadline_unproven') {
+        Invoke-PhaseDStateLock -LaunchRoot $LaunchRoot -Action {
+            $state = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $state.statusCode = 'started'
+            $state.failureCode = $failureCode
+            Write-AtomicJson $statePath $state
+        }
+        throw $failureCode
+    }
     $rolledBack = $false
     if (-not $completionApplied) {
         try {
@@ -456,6 +373,7 @@ catch {
     if (($completionApplied -or $rolledBack) -and $controlCenterHostsRestored -and -not $databaseRestarted) {
         try {
             $pgStartExitCode = Invoke-PhaseDPgCtl `
+                -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-pg.identity.json') `
                 -PgCtlPath $ControlCenterPgCtlPath `
                 -Arguments @(
                     'start', '-D', $ControlCenterPgDataPath,

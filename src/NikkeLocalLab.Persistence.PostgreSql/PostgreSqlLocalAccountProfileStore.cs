@@ -3899,14 +3899,21 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
       }
     }
 
+    if (rows.Count == 0)
+    {
+      return [];
+    }
+
+    // A build revision may belong to several profiles. Batch only this profile's
+    // immutable membership, including when a write operation replays an old result.
+    var slotsByBuild = await ReadProfileEquipmentSlotReceiptsAsync(
+        connection,
+        transaction,
+        profileRevisionId,
+        cancellationToken).ConfigureAwait(false);
     var results = new List<LocalCharacterBuildReceipt>(rows.Count);
     foreach (var row in rows)
     {
-      var slots = await ReadEquipmentSlotReceiptsAsync(
-          connection,
-          transaction,
-          row.RevisionId,
-          cancellationToken).ConfigureAwait(false);
       results.Add(new LocalCharacterBuildReceipt(
           row.CharacterUid,
           row.BuildUid,
@@ -3917,38 +3924,47 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
           row.HasCombatSemantics,
           row.IsGameLegalReady,
           CompactIssues(row.SelectionIssue, row.SemanticsIssue, row.GameLegalIssue),
-          slots));
+          slotsByBuild.TryGetValue(row.RevisionId, out var slots) ? slots : []));
     }
 
     return results;
   }
 
-  private static async Task<IReadOnlyList<LocalEquipmentSlotReceipt>>
-      ReadEquipmentSlotReceiptsAsync(
+  private static async Task<IReadOnlyDictionary<long, List<LocalEquipmentSlotReceipt>>>
+      ReadProfileEquipmentSlotReceiptsAsync(
           NpgsqlConnection connection,
           NpgsqlTransaction transaction,
-          long buildRevisionId,
+          long profileRevisionId,
           CancellationToken cancellationToken)
   {
     await using var command = new NpgsqlCommand(
         """
-        SELECT slot.slot_code, slot.equipment_slot_uid
-        FROM lab_profile.build_equipment_state AS equipment
+        SELECT equipment.build_revision_id, slot.slot_code, slot.equipment_slot_uid
+        FROM lab_profile.profile_template_revision_build AS member
+        JOIN lab_profile.build_equipment_state AS equipment
+          ON equipment.build_revision_id = member.build_revision_id
         JOIN lab_profile.equipment_slot_entity AS slot
           ON slot.equipment_slot_id = equipment.equipment_slot_id
-        WHERE equipment.build_revision_id = @revision_id
-        ORDER BY slot.slot_code;
+        WHERE member.profile_template_revision_id = @profile_revision_id
+        ORDER BY equipment.build_revision_id, slot.slot_code;
         """,
         connection,
         transaction);
-    Add(command, "revision_id", NpgsqlDbType.Bigint, buildRevisionId);
-    var result = new List<LocalEquipmentSlotReceipt>(4);
+    Add(command, "profile_revision_id", NpgsqlDbType.Bigint, profileRevisionId);
+    var result = new Dictionary<long, List<LocalEquipmentSlotReceipt>>();
     await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
     while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
     {
-      result.Add(new LocalEquipmentSlotReceipt(
-          ParseEquipmentSlot(reader.GetString(0)),
-          new EntityUid(reader.GetGuid(1))));
+      var buildRevisionId = reader.GetInt64(0);
+      if (!result.TryGetValue(buildRevisionId, out var slots))
+      {
+        slots = new List<LocalEquipmentSlotReceipt>(4);
+        result.Add(buildRevisionId, slots);
+      }
+
+      slots.Add(new LocalEquipmentSlotReceipt(
+          ParseEquipmentSlot(reader.GetString(1)),
+          new EntityUid(reader.GetGuid(2))));
     }
 
     return result;
@@ -4308,14 +4324,19 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
       }
     }
 
+    if (rows.Count == 0)
+    {
+      return [];
+    }
+
+    var equipmentByBuild = await ReadProfileEquipmentWritesAsync(
+        connection,
+        transaction,
+        profileRevisionId,
+        cancellationToken).ConfigureAwait(false);
     var builds = new List<LocalCharacterBuildWrite>(rows.Count);
     foreach (var row in rows)
     {
-      var equipment = await ReadEquipmentWritesAsync(
-          connection,
-          transaction,
-          row.RevisionId,
-          cancellationToken).ConfigureAwait(false);
       builds.Add(new LocalCharacterBuildWrite(
           row.CharacterUid,
           row.CharacterLevel,
@@ -4325,7 +4346,7 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
           row.Skill1,
           row.Skill2,
           row.Burst,
-          equipment,
+          equipmentByBuild.TryGetValue(row.RevisionId, out var equipment) ? equipment : [],
           new LocalCubeSelectionWrite(
               row.CubeState,
               row.CubeDefinitionUid,
@@ -4344,10 +4365,10 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
     return builds;
   }
 
-  private static async Task<IReadOnlyList<LocalEquipmentWrite>> ReadEquipmentWritesAsync(
+  private static async Task<IReadOnlyDictionary<long, List<LocalEquipmentWrite>>> ReadProfileEquipmentWritesAsync(
       NpgsqlConnection connection,
       NpgsqlTransaction transaction,
-      long buildRevisionId,
+      long profileRevisionId,
       CancellationToken cancellationToken)
   {
     await using var command = new NpgsqlCommand(
@@ -4363,17 +4384,20 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
             equipment.manufacturer_matched_status,
             equipment.manufacturer_matched,
             equipment.manufacturer_matched_unresolved_reason_code,
-            equipment.equipment_unresolved_reason_code
-        FROM lab_profile.build_equipment_state AS equipment
+            equipment.equipment_unresolved_reason_code,
+            equipment.build_revision_id
+        FROM lab_profile.profile_template_revision_build AS member
+        JOIN lab_profile.build_equipment_state AS equipment
+          ON equipment.build_revision_id = member.build_revision_id
         LEFT JOIN lab_combat_support.definition_entity AS definition
           ON definition.definition_entity_id = equipment.definition_entity_id
-        WHERE equipment.build_revision_id = @revision_id
-        ORDER BY equipment.slot_code;
+        WHERE member.profile_template_revision_id = @profile_revision_id
+        ORDER BY equipment.build_revision_id, equipment.slot_code;
         """,
         connection,
         transaction);
-    Add(command, "revision_id", NpgsqlDbType.Bigint, buildRevisionId);
-    var rows = new List<EquipmentWriteRow>(4);
+    Add(command, "profile_revision_id", NpgsqlDbType.Bigint, profileRevisionId);
+    var rows = new List<EquipmentWriteRow>();
     await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
     {
       while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -4385,63 +4409,82 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
             reader.IsDBNull(3) ? null : new EntityUid(reader.GetGuid(3)),
             ReadOptionalSmallIntFact(reader, 4, 5, 6),
             ReadOptionalBoolFact(reader, 7, 8, 9),
-            ReadReason(reader, 10)));
+            ReadReason(reader, 10),
+            reader.GetInt64(11)));
       }
     }
 
-    var result = new List<LocalEquipmentWrite>(rows.Count);
+    var overloads = await ReadProfileOverloadLinesAsync(
+        connection,
+        transaction,
+        profileRevisionId,
+        cancellationToken).ConfigureAwait(false);
+    var result = new Dictionary<long, List<LocalEquipmentWrite>>();
     foreach (var row in rows)
     {
-      var overloads = await ReadOverloadLinesAsync(
-          connection,
-          transaction,
-          row.EquipmentStateId,
-          cancellationToken).ConfigureAwait(false);
-      result.Add(new LocalEquipmentWrite(
+      if (!result.TryGetValue(row.BuildRevisionId, out var equipment))
+      {
+        equipment = new List<LocalEquipmentWrite>(4);
+        result.Add(row.BuildRevisionId, equipment);
+      }
+
+      equipment.Add(new LocalEquipmentWrite(
           row.Slot,
           row.State,
           row.DefinitionUid,
           row.EnhancementLevel,
           row.ManufacturerMatched,
-          overloads,
+          overloads.TryGetValue(row.EquipmentStateId, out var lines) ? lines : [],
           row.UnresolvedReason));
     }
 
     return result;
   }
 
-  private static async Task<IReadOnlyList<LocalOverloadLineWrite>> ReadOverloadLinesAsync(
+  private static async Task<IReadOnlyDictionary<long, List<LocalOverloadLineWrite>>> ReadProfileOverloadLinesAsync(
       NpgsqlConnection connection,
       NpgsqlTransaction transaction,
-      long equipmentStateId,
+      long profileRevisionId,
       CancellationToken cancellationToken)
   {
     await using var command = new NpgsqlCommand(
         """
         SELECT
+            line.build_equipment_state_id,
             line.line_index,
             definition.definition_uid,
             line.unit_code,
             line.exact_unscaled_value,
             line.exact_decimal_scale
-        FROM lab_profile.build_overload_line AS line
+        FROM lab_profile.profile_template_revision_build AS member
+        JOIN lab_profile.build_equipment_state AS equipment
+          ON equipment.build_revision_id = member.build_revision_id
+        JOIN lab_profile.build_overload_line AS line
+          ON line.build_equipment_state_id = equipment.build_equipment_state_id
         JOIN lab_combat_support.definition_entity AS definition
           ON definition.definition_entity_id = line.definition_entity_id
-        WHERE line.build_equipment_state_id = @equipment_state_id
-        ORDER BY line.line_index;
+        WHERE member.profile_template_revision_id = @profile_revision_id
+        ORDER BY line.build_equipment_state_id, line.line_index;
         """,
         connection,
         transaction);
-    Add(command, "equipment_state_id", NpgsqlDbType.Bigint, equipmentStateId);
-    var result = new List<LocalOverloadLineWrite>(3);
+    Add(command, "profile_revision_id", NpgsqlDbType.Bigint, profileRevisionId);
+    var result = new Dictionary<long, List<LocalOverloadLineWrite>>();
     await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
     while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
     {
-      result.Add(new LocalOverloadLineWrite(
-          reader.GetInt16(0),
-          new EntityUid(reader.GetGuid(1)),
-          ParseValueUnit(reader.GetString(2)),
-          new LocalProfileExactValue(reader.GetInt64(3), reader.GetInt16(4))));
+      var equipmentStateId = reader.GetInt64(0);
+      if (!result.TryGetValue(equipmentStateId, out var lines))
+      {
+        lines = new List<LocalOverloadLineWrite>(3);
+        result.Add(equipmentStateId, lines);
+      }
+
+      lines.Add(new LocalOverloadLineWrite(
+          reader.GetInt16(1),
+          new EntityUid(reader.GetGuid(2)),
+          ParseValueUnit(reader.GetString(3)),
+          new LocalProfileExactValue(reader.GetInt64(4), reader.GetInt16(5))));
     }
 
     return result;
@@ -5423,5 +5466,6 @@ public sealed partial class PostgreSqlLocalAccountProfileStore
       EntityUid? DefinitionUid,
       LocalProfileFact<int>? EnhancementLevel,
       LocalProfileFact<bool>? ManufacturerMatched,
-      LocalProfileReasonCode? UnresolvedReason);
+      LocalProfileReasonCode? UnresolvedReason,
+      long BuildRevisionId);
 }
