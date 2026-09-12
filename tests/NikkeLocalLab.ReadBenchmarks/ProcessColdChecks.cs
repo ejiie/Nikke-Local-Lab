@@ -10,13 +10,28 @@ static partial class Benchmark
     var request = new ColdRequest(Guid.NewGuid(), "service_accounts", fixture);
     ValidateColdRequest(request);
     Require(ColdPercentile([], .95) is null && ColdPercentile(Enumerable.Range(1, 10).Select(x => (double)x), .95) == 10);
-    var ready = new ColdReady(request.TrialUid, request.Route, FixtureHash(fixture), 42, DateTime.UnixEpoch, 0, 0);
-    ValidateReady(ready, request, 42, DateTime.UnixEpoch);
+    const string boot = "33333333-3333-4333-8333-333333333333";
+    var stat = "42 (synthetic ) child) S " + string.Join(' ', Enumerable.Repeat("0", 18)) + " 12345 0";
+    var identity = LinuxStartIdentity(stat, 42, boot);
+    Require(identity == $"linux:{boot}:12345");
+    Reject(() => LinuxStartIdentity(stat, 43, boot));
+    Reject(() => LinuxStartIdentity(stat, 42, "invalid"));
+    Reject(() => LinuxStartIdentity("42 child S 12345", 42, boot));
+    Reject(() => LinuxStartIdentity("42 (child) S 12345", 42, boot));
+    foreach (var ticks in new[] { "0", "-1", "+1", "x", "18446744073709551616" })
+      Reject(() => LinuxStartIdentity(stat.Replace("12345", ticks, StringComparison.Ordinal), 42, boot));
+    var ready = new ColdReady(request.TrialUid, request.Route, FixtureHash(fixture), 42, DateTime.UnixEpoch, identity, 0, 0);
+    ValidateReady(ready, request, 42, identity);
+    // .NET 8 Linux derives the display timestamp using independently sampled boot clocks.
+    // The same kernel identity remains exact even when parent/child wall-clock estimates differ.
+    ValidateReady(ready with { StartTimeUtc = DateTime.UnixEpoch.AddMilliseconds(3) }, request, 42, identity);
     foreach (var invalid in new[] { ready with { TrialUid = Guid.NewGuid() }, ready with { Route = "http_accounts" },
         ready with { FixtureSha256 = new string('0', 64) }, ready with { ProcessId = 43 },
-        ready with { StartTimeUtc = DateTime.UnixEpoch.AddSeconds(1) }, ready with { PriorCommands = 1 },
+        ready with { StartIdentity = $"linux:{boot}:12346" }, ready with { StartIdentity = "" },
+        ready with { StartIdentity = "linux:44444444-4444-4444-8444-444444444444:12345" },
+        ready with { StartTimeUtc = default }, ready with { PriorCommands = 1 },
         ready with { PriorOperations = 1 } })
-      Reject(() => ValidateReady(invalid, request, 42, DateTime.UnixEpoch));
+      Reject(() => ValidateReady(invalid, request, 42, identity));
     var result = new ColdResult(request.TrialUid, "passed", 10, 14, 1024, new(1, 0, 0));
     ValidateResult(result, request);
     foreach (var invalid in new[] { result with { TrialUid = Guid.NewGuid() }, result with { RequestMs = double.NaN },
@@ -59,6 +74,7 @@ static partial class Benchmark
           startupTimeout: mode == "startup_timeout" ? TimeSpan.FromSeconds(2) : null,
           requestTimeout: mode == "request_timeout" ? TimeSpan.FromMilliseconds(100) : null);
       samples.Add(sample);
+      Console.WriteLine($"S08 probe {mode}: {sample.Status}, stage={sample.FailureStage ?? "none"}, cleanup={sample.CleanupVerified}");
       Require(sample.CleanupVerified);
       Require(sample.Status == (mode == "success" ? "passed" :
           mode.EndsWith("timeout", StringComparison.Ordinal) || mode == "timeout_result" ? "timeout" : "failed"));
@@ -92,7 +108,8 @@ static partial class Benchmark
     if (mode == "startup_timeout") await Task.Delay(Timeout.Infinite, deadline.Token);
     using var identity = Process.GetCurrentProcess();
     var ready = new ColdReady(mode == "bad_ready" ? Guid.NewGuid() : request.TrialUid, request.Route,
-        FixtureHash(request.Fixture), identity.Id, identity.StartTime.ToUniversalTime(), mode == "warm_ready" ? 1 : 0, 0);
+        FixtureHash(request.Fixture), identity.Id, identity.StartTime.ToUniversalTime(), StartIdentity(identity),
+        mode == "warm_ready" ? 1 : 0, 0);
     await Console.Out.WriteLineAsync(JsonSerializer.Serialize(ready, ProtocolJson));
     Require(await Console.In.ReadLineAsync(deadline.Token) == "GO");
     if (mode == "request_timeout") await Task.Delay(Timeout.Infinite, deadline.Token);

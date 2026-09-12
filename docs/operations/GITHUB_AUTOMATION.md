@@ -9,7 +9,24 @@
 비공개 게시 전제가 회복됐으므로 아래 경계 검사 후 `agent/**` push 경로를 사용한다.
 실제 Actions 결과는 해당 push SHA의 run/PR에서 확인하며, 이 기록만으로 merge 성공을 주장하지 않는다.
 
-## 목적
+## 2026-09-12 Linux S-08 후속 수정
+
+실패 run `34649202768`은 Windows 검증에 통과했으나 Linux의 DB-free cold-child
+검사(`s08_assertion_line_63`)에서 중단되어 PostgreSQL gate와 게시가 완료되지 않았다.
+.NET 8 Linux는 `Process.StartTime`의 부팅 기준 시각을 프로세스별로 계산·cache한다.
+부모/자식의 표시용 UTC 시각을 exact identity로 비교하지 않고, Linux에서는 같은
+boot ID와 `/proc/<owned-child>/stat`의 kernel start tick을 PID와 함께 대조한다.
+Windows는 기존 kernel 시작 시각을 사용한다. 시작 시각의 허용 오차를 넓히거나
+실패 사례·timeout·정리 검사를 생략하지 않는다.
+
+근거 구현은 [.NET 8.0.14 Process.Linux](https://github.com/dotnet/runtime/blob/v8.0.14/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/Process.Linux.cs)와
+[native boot-clock 변환](https://github.com/dotnet/runtime/blob/v8.0.14/src/native/libs/System.Native/pal_time.c)이다.
+표시용 UTC는 관측 값으로 보존한다. 새 parser는 합성 괄호/공백·잘못된 PID/boot/tick을
+검사하며, subprocess 실패 로그에는 controlled mode/status/stage만 남긴다.
+로컬 Windows 자체 검사는 통과했다. 실제 Linux PG 및 push→PR→merge 결과는
+수정 SHA의 새 Actions run으로 별도 확인해야 한다.
+
+## 목적과 실행 경계
 
 소스 코드와 계약만 비공개 GitHub 저장소에 보관하고, 소유자가 `agent/**` 브랜치를 push하면 검증부터 PR 생성과 squash merge까지 GitHub Actions가 처리합니다.
 

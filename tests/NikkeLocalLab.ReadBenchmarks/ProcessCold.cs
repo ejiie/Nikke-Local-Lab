@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -27,7 +28,8 @@ static partial class Benchmark
   sealed record ColdFixture(int Accounts, int Roster, int History, Dictionary<string, string> Revisions);
   sealed record ColdRequest(Guid TrialUid, string Route, ColdFixture Fixture);
   sealed record ColdReady(Guid TrialUid, string Route, string FixtureSha256, int ProcessId,
-      DateTime StartTimeUtc, [property: JsonRequired] long PriorCommands, [property: JsonRequired] int PriorOperations);
+      DateTime StartTimeUtc, [property: JsonRequired] string StartIdentity,
+      [property: JsonRequired] long PriorCommands, [property: JsonRequired] int PriorOperations);
   sealed record ColdResult(Guid TrialUid, string Status, [property: JsonRequired] double RequestMs,
       [property: JsonRequired] long Commands, [property: JsonRequired] long AllocatedBytes, Observation? Output);
   sealed record ColdSample(int Iteration, ColdRequest Request, string FixtureSha256, int? ProcessId,
@@ -142,7 +144,7 @@ static partial class Benchmark
       using var startupDeadline = new CancellationTokenSource(startupTimeout ?? TimeSpan.FromSeconds(60));
       await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request, ProtocolJson).AsMemory(), startupDeadline.Token);
       ready = await ReadProtocolAsync<ColdReady>(process.StandardOutput, startupDeadline.Token);
-      ValidateReady(ready, request, processId.Value, processStart.Value);
+      ValidateReady(ready, request, processId.Value, StartIdentity(process));
       startupMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
       stage = "first_request";
       using var requestDeadline = new CancellationTokenSource(requestTimeout ?? TimeSpan.FromSeconds(60));
@@ -195,11 +197,40 @@ static partial class Benchmark
     return JsonSerializer.Deserialize<T>(line!, ProtocolJson) ?? throw new InvalidOperationException();
   }
 
-  static void ValidateReady(ColdReady ready, ColdRequest request, int processId, DateTime startTime)
+  static string StartIdentity(Process process)
+  {
+    if (OperatingSystem.IsLinux())
+      return LinuxStartIdentity(File.ReadAllText($"/proc/{process.Id}/stat"), process.Id,
+          File.ReadAllText("/proc/sys/kernel/random/boot_id").Trim());
+    Require(OperatingSystem.IsWindows());
+    return "windows:" + process.StartTime.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture);
+  }
+
+  static string LinuxStartIdentity(string stat, int processId, string bootId)
+  {
+    // /proc stat field 2 is parenthesized and can itself contain spaces or ')'.
+    // Field 22 is the kernel start tick, independent of wall-clock conversion.
+    Require(Guid.TryParseExact(bootId, "D", out var boot) && boot != Guid.Empty);
+    var open = stat.IndexOf('(');
+    var close = stat.LastIndexOf(')');
+    Require(open > 0 && close > open && close + 2 < stat.Length && stat[close + 1] == ' ');
+    Require(int.TryParse(stat.AsSpan(0, open).Trim(), NumberStyles.None, CultureInfo.InvariantCulture,
+        out var pid) && pid == processId && pid > 0);
+    var fields = stat[(close + 2)..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    Require(fields.Length >= 20 && ulong.TryParse(fields[19], NumberStyles.None,
+        CultureInfo.InvariantCulture, out _));
+    var ticks = ulong.Parse(fields[19], CultureInfo.InvariantCulture);
+    Require(ticks > 0);
+    return $"linux:{boot:D}:{ticks.ToString(CultureInfo.InvariantCulture)}";
+  }
+
+  static void ValidateReady(ColdReady ready, ColdRequest request, int processId, string startIdentity)
   {
     Require(ready.TrialUid == request.TrialUid && ready.Route == request.Route &&
         ready.FixtureSha256 == FixtureHash(request.Fixture) && ready.ProcessId == processId &&
-        ready.StartTimeUtc == startTime && ready.PriorCommands == 0 && ready.PriorOperations == 0);
+        !string.IsNullOrEmpty(startIdentity) && ready.StartIdentity == startIdentity &&
+        ready.StartTimeUtc.Kind == DateTimeKind.Utc && ready.StartTimeUtc != default &&
+        ready.PriorCommands == 0 && ready.PriorOperations == 0);
   }
 
   static void ValidateResult(ColdResult result, ColdRequest request)
@@ -277,7 +308,8 @@ static partial class Benchmark
       using var identity = Process.GetCurrentProcess();
       Require(commands.Count == 0);
       await protocol.WriteLineAsync(JsonSerializer.Serialize(new ColdReady(request.TrialUid, request.Route,
-          FixtureHash(request.Fixture), identity.Id, identity.StartTime.ToUniversalTime(), commands.Count, 0), ProtocolJson));
+          FixtureHash(request.Fixture), identity.Id, identity.StartTime.ToUniversalTime(), StartIdentity(identity),
+          commands.Count, 0), ProtocolJson));
       Require(await Console.In.ReadLineAsync(deadline.Token) == "GO");
       var allocation = GC.GetTotalAllocatedBytes(false);
       var start = Stopwatch.GetTimestamp();

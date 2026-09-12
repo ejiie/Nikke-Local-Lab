@@ -21,7 +21,7 @@ catch (Exception exception)
 {
   var failure = exception.GetBaseException();
   var frame = new StackTrace(failure, true).GetFrames().FirstOrDefault(item =>
-      item.GetFileName()?.EndsWith("ReadBenchmarks\\Program.cs", StringComparison.Ordinal) == true);
+      item.GetFileName()?.Replace('\\', '/').Contains("NikkeLocalLab.ReadBenchmarks/", StringComparison.Ordinal) == true);
   Console.Error.WriteLine($"s08_measurement_failed:{failure.GetType().Name}:line_{frame?.GetFileLineNumber()}");
   if (failure is ProfileManagementException controlled) Console.Error.WriteLine(controlled.Code);
   if (System.Text.RegularExpressions.Regex.IsMatch(failure.Message, "^s08_assertion_line_[0-9]+$")) Console.Error.WriteLine(failure.Message);
