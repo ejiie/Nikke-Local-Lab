@@ -2,6 +2,67 @@
 
 > 상태 참고 (2026-09-06): 아래 S29 결과는 당시 admission 기록입니다. 현재 S29의 profile v3/등록 v2 불일치는 별도 보류이며, 151 실게임 완료는 S26 기준입니다. [안정화 계획](../STABILIZATION_PLAN.md)을 함께 확인합니다.
 
+## Exact 151 native FX binding — 2026-09-12
+
+**Completed: offline native payload binding and regenerated 151 FX candidates.
+Not completed: execution-local native cache delivery or client acceptance.**
+This closes the filename-identity question from the previous section, not the
+entire FX-RUNTIME-02 or the user's item 1 native-delivery objective.
+
+`AddressableFxBinding` resolves the exact internal AssetBundle container key
+(including opaque keys) through `keys → key_entries → entries → provider →
+dependency key`. Both approved embedded and core addressable catalogs must agree.
+No stem, case-insensitive, latest-version or alternate-season fallback is used.
+For the three corrected FX, the catalog points to one remote bundle each, plus
+two/three/two local dependencies for fire/wind/iron. The remote internal ID is a
+bundle key, not the old HTTP URL. It exactly matches `files_chunktype.key` in the
+installed core patch catalog. Local dependencies are read from StreamingAssets.
+
+`ResourceCatalogPreflight export-native-fx <private-plan> <plan-sha256> <new-output>`
+reuses the bounded NKDB/SQLite reader and verified chunk-store reader. It checks
+outer→inner catalog pairing, pinned catalog/signature/index bytes, exact file
+membership, contiguous offsets, compressed chunk hashes, bounded decompression,
+and local dependency presence/UnityFS shape. Missing joins, duplicate identities,
+multiple remote owners, provider mismatch and malformed paths fail closed.
+The native index trailer algorithm remains **unresolved**; a pinned index SHA
+and verified individual chunks prove this offline extraction, not publisher
+authenticity, a writable native-cache format or runtime acceptance.
+
+`scripts/stage-nll-native-fx.py` verifies the previous isolated FX candidate,
+reads its internal container keys without dereferencing preload dependencies,
+builds a private export plan, then checks the extracted bundles' internal keys
+and bytes independently. It transforms the new native electric/fire/wind/iron
+inputs using the existing Transform-only round-trip validator. Tool inventory,
+input plan and old candidate are checked again; a final receipt is written last.
+Interrupted directories are preserved and cannot be reused. These outputs are
+not consumable as an admitted execution or as the previous HTTP route manifest.
+
+Real input results: all four native original bundles differ from the previous
+cache candidates. The three target native bundle lengths are 1,215,712 / 1,217,520 /
+1,216,544 bytes; corrected output lengths are 1,215,712 / 1,217,536 / 1,216,544.
+Matched transforms remain 14/13/14, changed transforms 4/6/4. Other serialized
+objects and unmatched transforms are preserved. Two runs reproduced identical
+derived hashes. Final local evidence:
+`artifacts/native-fx-checks/eaca08be4a964de5b6d41125666d029f/candidate/receipt.json`
+and sibling `verification.json` (96 installed v6 pins, selection and boss registry
+preserved). No game, Epinel Main or operating DB was started.
+
+Reproduce with a freshly built `tools/Phase3B2/ResourceCatalogPreflight` (.NET 10)
+and the stage script's pinned input-plan/tool/old-candidate arguments. The base
+plan uses `contractId=nll/native-fx-export-plan/v1`, `embedded`, `inner`, `outer`
+objects with `body`/`signature` `{path,sha256}` pins, `chunkRoot`, `localBundleRoot`
+and `indexSha256`; it must not supply `assets`. All paths/plans/bindings/game bytes
+remain ignored private inputs. Do not send them to Actions. Local synthetic
+catalog/chunk tests passed 203 cases (26 new); Python tests passed 63 (8 new), with
+the new source-only orchestration tests wired into both CI jobs. .NET 10 external
+decoder/chunk tests remain a local gate, not a claim that CI has game inputs.
+
+**Next:** establish an isolated execution's native bundle/cache delivery and
+verification/rollback without modifying shared caches or reusing stale HTTP
+identities. Then finish full-process-tree retirement, v3 admission/new bundle,
+atomic publication/jobs and requested UI. S29 remains blocked and installed v6
+remains selected. Do not mark this offline receipt as import success or actual play.
+
 ## External Epinel FX mount and native-catalog finding — 2026-09-12
 
 The transport is now source-linked into a **separate, uninstalled Epinel candidate**.
