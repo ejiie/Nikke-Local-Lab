@@ -1,7 +1,7 @@
 # 실행 간 영속화 P-01~P-09
 
 상태: 2026-09-12 구현·전체 자동 검사·운영 DB/앱/v6 배포 완료.
-설치 후 API smoke는 정상 UAC 승격 승인 대기이며, 운영자 실게임 인수는 별도 수행한다.
+정상 UAC 승격 후 설치 API smoke까지 완료했으며, 운영자 실게임 인수만 별도 수행한다.
 요구의 권위는 [안정화 계획](../STABILIZATION_PLAN.md)이다.
 
 ## 범위와 순서
@@ -40,7 +40,7 @@
 - [x] 편성 01~05/빈 슬롯/마지막 팀, 현재 Csn 재매핑과 과거 snapshot 불변
 - [x] P-02/P-03/P-06~P-09 승인 필드 왕복, 새 알림/타계정 키 격리
 - [x] 전체 자동 검사, 운영 반영의 before/after hash·backup, 실게임 안내
-- [ ] 설치 후 관리자 호스트 API smoke — UAC 승인 후 receipt 확인
+- [x] 설치 후 관리자 호스트 API smoke — UAC 승인 후 성공 및 정상 종료 receipt 확인
 - [ ] 운영자 원본 게임 인수
 
 CI의 기존 Linux S-08 self-test 실패 수정은 운영자가 보류했으며 이 작업에 섞지 않는다.
@@ -92,9 +92,13 @@ CI의 기존 Linux S-08 self-test 실패 수정은 운영자가 보류했으며 
   v5·원본 client·기존 native/인증서/방화벽은 보존했다.
 - 설치 API smoke 첫 시도는 `control_center_start_boundary_invalid`로 bootstrap 전에 종료했다.
   이 시도는 정상 시작/종료 검증 성공이 아니며 앱/PG/게임 시작 전의 관리자 권한 거절이다.
-  `installed-smoke.non-elevated.receipt.json`에 보존하고, 기존 UAC `RunAs` 경로의 승인을 요청했다.
-  승인 뒤 같은 package의 `installed-smoke.receipt.json`에서 `passed=true`와
-  `safeHostStopVerified=true`를 확인해야 한다. 권한 게이트를 완화하거나 우회하지 않는다.
+  `installed-smoke.non-elevated.receipt.json`에 보존했다. 이후 첫 UAC 요청은 취소됐으며,
+  운영자가 재요청을 승인한 뒤 기존 UAC `RunAs` 경로로 점검을 완료했다.
+- 설치 smoke 완료 시각은 `2026-09-12T01:41:39.5350733Z`(10:41 KST)다.
+  같은 package의 `installed-smoke.receipt.json`에서 `passed=true` 및
+  `safeHostStopVerified=true`를 확인했다. 계정·workspace 각 3개, editor·로컬 bootstrap 조회가
+  통과했고 목록 3회는 232.4065/5.2528/2.5565ms였다. 원본 게임·WebView UI·Save/import는
+  요청하지 않았으며 앱/PG는 정상 종료했다. 관리자 권한 게이트는 완화하거나 우회하지 않았다.
 
 ## 운영 배포 절차
 
