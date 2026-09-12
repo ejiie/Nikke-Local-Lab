@@ -57,6 +57,13 @@ Invoke-Checked dotnet @('restore', $MaterializerChecks, '--locked-mode')
 Invoke-Checked dotnet @('build', $MaterializerChecks, '-c', 'Release', '--no-restore')
 Invoke-Checked dotnet @('format', $MaterializerChecks, '--verify-no-changes', '--no-restore')
 Write-Output 'Materializer checker source build passed; pinned output checks/bootstrap151/desktop local gate NOT executed by CI.'
+# The source-linked HTTP bridge is tested with synthetic bytes on loopback only.
+Invoke-Checked dotnet @('test', (Join-Path $RepositoryRoot 'tests/NikkeLocalLab.Automation.UnitTests'), '-c', 'Release', '--no-build', '--no-restore')
+$AssetDeliveryProbe = Join-Path $RepositoryRoot 'tools/PhaseD/AssetDeliveryProbe/NikkeLocalLab.AssetDeliveryProbe.csproj'
+Invoke-Checked dotnet @('restore', $AssetDeliveryProbe, '--locked-mode')
+Invoke-Checked dotnet @('build', $AssetDeliveryProbe, '-c', 'Release', '--no-restore')
+Invoke-Checked dotnet @('format', $AssetDeliveryProbe, '--verify-no-changes', '--no-restore')
+Write-Output 'FX HTTP synthetic checks and local probe source build passed; installed Epinel/native client delivery NOT executed.'
 $ReadBenchmarks = Join-Path $RepositoryRoot 'tests/NikkeLocalLab.ReadBenchmarks/NikkeLocalLab.ReadBenchmarks.csproj'
 Invoke-Checked dotnet @('restore', $ReadBenchmarks, '--locked-mode')
 Invoke-Checked dotnet @('build', $ReadBenchmarks, '-c', 'Release', '--no-restore')

@@ -87,10 +87,8 @@ def validate_variant(profile, profile_sha, source_sha, weakness, receipt, pack):
         require(receipt["shieldFxAssetBundles"] == [] and receipt["shieldFxMappingSetSha256"] is None)
 
 
-def finalize(root, source_pack, season, profile_code, input_set_sha, cache):
+def build_receipt(root, source_pack, season, profile_code, input_set_sha, cache):
     root = fx.plain_path(root)
-    destination = root / "onboarding-verified-candidate.receipt.json"
-    require(not destination.exists(), "boss_onboarding_candidate_seal_exists")
     profile_path = root / "boss-runtime-variant.profile.json"
     profile = read(profile_path)
     profile_sha = digest(profile_path)
@@ -146,9 +144,25 @@ def finalize(root, source_pack, season, profile_code, input_set_sha, cache):
               "sharedCacheModified": False, "clientStarted": False, "officialInstallModified": False,
               "rawSourceIdentifiersPersisted": False,
               "artifacts": [{"relativePath": name, "sha256": digest(root / name)} for name in artifact_names]}
-    # Exclusive final seal: every stage must pass, including a fresh FX check.
+    return result
+
+
+def finalize(root, source_pack, season, profile_code, input_set_sha, cache):
+    destination = fx.plain_path(root) / "onboarding-verified-candidate.receipt.json"
+    require(not destination.exists(), "boss_onboarding_candidate_seal_exists")
+    result = build_receipt(root, source_pack, season, profile_code, input_set_sha, cache)
     fx.new_file(destination, fx.encoded(result))
     return result
+
+
+def verify(root, expected_sha, source_pack, cache):
+    path = fx.plain_path(root / "onboarding-verified-candidate.receipt.json", file=True)
+    require(digest(path) == expected_sha, "boss_onboarding_candidate_seal_drifted")
+    sealed = read(path)
+    actual = build_receipt(root, source_pack, sealed["seasonNumber"], sealed["profileCode"],
+                           sealed["inputSetSha256"], cache)
+    require(sealed == actual, "boss_onboarding_candidate_changed_since_seal")
+    return actual
 
 
 def main():
