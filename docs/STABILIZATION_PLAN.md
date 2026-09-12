@@ -70,6 +70,16 @@ P-01~P-09, S29/신규 보스/실드/150 보관 이동은 이 안정화 완료 �
   - [ ] FX-RUNTIME-02: 새 외부 Epinel 후보에 source-linked HTTP 모듈을 연결하고 전체 실행
     process tree 종료 후 정리를 coordinator에 결박한다. 원본 client 기존 캐시와 catalog
     검증을 조사하여 격리 전달 방식을 확정한다. 구 설치본/공유 junction을 덮어쓰지 않는다.
+    - [x] 외부 후보 연결: 독립 Epinel 후보 빌드, 시작 환경 6개/실행 binding과 오류 시
+      원본 fallback 차단, host 종료 후 transport 해제를 구현했다. 신규 합성 12개와 실제
+      후보 DLL의 FX 3종 HTTP·기존 static-pack handler·검사 사본 정리를 검증했다.
+    - [x] 151 카탈로그 1차 조사: 내장/core patch 각각 26,491 bundle 항목에서 현재 FX
+      파일명 exact 일치는 3종 모두 0이다. hash suffix를 제외한 이름은 각각 1개지만
+      이를 같은 자산으로 승인하지 않는다. 151의 `type_rowid,is_local` 스키마는 구 150의
+      hash/CRC 구조와 다르다. **카탈로그/클라이언트 수정과 native 전달 성공은 아니다.**
+    - [ ] 먼저 정확한 151 catalog→provider→bundle 및 캐시 검증 경로를 재결박한다.
+      이어 전체 실행 process tree 종료/비정상 lease 복구 증거와 production 정리를 연결한다.
+      현재 coordinator의 3개 named PID만으로 임의 descendant 종료를 주장하지 않는다.
 - [x] PIPE-V3-02 후보 경로: discovery → 원본 행동 트리 closure → QTE 포함 v3 후보 조립 →
   FX 보정 → 5속성 검증을 `-CandidateOnly` 공통 명령으로 연결했다. 후보와 실행 admission을
   분리하고 새 출력 폴더만 허용한다. 합성 12개(실제 PowerShell 실패/재시도 검사 포함),

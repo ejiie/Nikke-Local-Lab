@@ -14,6 +14,25 @@
 
 ## 지금 할 작업
 
+### 2026-09-12 외부 Epinel FX 연결과 151 카탈로그 불일치
+
+설치 v6와 기존 외부 소스를 보존하고 `.external/EpinelPS-fx-candidate`를 따로 빌드했다.
+재적용 패치는 `patches/epinel-execution-fx-mount.patch`다. 시작 환경 6개/실행 binding을
+검증하고 기존 자산 처리보다 먼저 FX를 전달하며, 거절 시 원본 cache로 fallback하지 않는다.
+신규 startup 합성 12개(Automation 74개)와 실제 후보 DLL의 FX 3종 전체/range/HEAD·
+실패 응답·기존 static-pack handler 및 검사 사본 정리를 통과했다. 설치 v6 96개 pin,
+registry/profile·운영 DB·게임은 불변이다. Epinel Main이나 원본 게임은 실행하지 않았다.
+최종 로컬 receipt: `artifacts/epinel-fx-checks/e1e2d66538cc423c8264b5503786129f/receipt.json`.
+
+**후속 핵심:** 151 내장/core patch 카탈로그 양쪽에서 현재 FX 파일명의 exact 일치가
+3종 모두 0이다. hash suffix를 제외한 이름은 각각 1개지만 이것으로 자산을 대체하지 않는다.
+151 카탈로그에는 구 150 hash/CRC 필드 대신 `type_rowid,is_local`이 있다.
+먼저 정확한 151 catalog→provider→bundle/캐시 경로를 재결박하고, 그 다음 전체 실행
+process tree 종료와 비정상 lease 복구에 production 정리를 결박한다. 현재 3개 named
+PID의 종료는 임의 descendant 종료 증거가 아니다. **S29 활성화·v3 admission·자동 게시·UI는
+아직 보류**이며 HTTP 검사 성공을 원본 client 수신/화면 증거로 올리지 않는다.
+상세와 재현 조건은 [보스 파이프라인](features/BOSS_ONBOARDING_PIPELINE.md)을 따른다.
+
 ### 2026-09-12 실행별 FX HTTP 전달 모듈
 
 실행별 독립 FX 사본/봉인 → 정확한 raw 경로 HTTP 전체·range·HEAD 응답 → 사용 중 정리
@@ -24,10 +43,10 @@ discovery/behavior/5속성/FX를 재검증하며, 같은 bundle의 중복 cache 
 검사 중 만든 사본 6개만 지웠으며 후보에서 새 실행 폴더로 다시 생성할 수 있다.
 설치 v6 96개 pin·registry/profile·운영 DB/게임은 불변이고 S29 차단도 유지한다.
 **완료는 전달 모듈/사본 정리이며 설치 Epinel 연결·원본 client 수신/표시 완료가 아니다.**
-다음은 새 외부 Epinel 후보의 source-link/startup 연결, coordinator의 전체 process-tree 종료
+당시 다음은 새 외부 Epinel 후보의 source-link/startup 연결, coordinator의 전체 process-tree 종료
 gate와 정리 결박, 원본 client 캐시/catalog/CRC 조사다. HTTP `no-store`만으로 native cache
 우회를 주장하지 않는다. 비정상 종료 후 남은 `.lease`는 PID만 보고 자동 제거하지 않는다.
-그 후 v3 admission·원자적 게시/job API·시즌 선택 UI를 진행한다. 아래 절의 ‘다음 작업’은
+연결/조사의 후속 결과는 위 절을 따른다. 그 후 v3 admission·원자적 게시/job API·시즌 선택 UI를 진행한다. 아래 절의 ‘다음 작업’은
 당시 이력이며 상세한 현재 경계는 [보스 파이프라인](features/BOSS_ONBOARDING_PIPELINE.md)을 따른다.
 
 ### 2026-09-12 공통 v3 후보 자동 조립
