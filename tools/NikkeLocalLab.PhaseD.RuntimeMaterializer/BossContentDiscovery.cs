@@ -276,7 +276,7 @@ internal static class BossContentDiscovery
           recordCount = targetQuickTimeEvents.Length,
           monsterReferenceCount = quickTimeEventMonsterIds.Length,
           recordSetSha256 = HashRecordSet(targetQuickTimeEvents.Cast<object>()),
-          immutablePayloadSetSha256 = HashQuickTimeEventImmutableSet(
+          immutablePayloadSetSha256 = BossQuickTimeEventVariant.HashImmutable(
               targetQuickTimeEvents),
           sourceElementSetSha256 = HashStrings(targetQuickTimeEvents
               .Select(row => row.ElementId.ToString(CultureInfo.InvariantCulture))
@@ -394,17 +394,6 @@ internal static class BossContentDiscovery
       (row.UseFunctionIdList ?? [])
           .Concat(row.HurtFunctionIdList ?? [])
           .Concat((row.Functions ?? []).Select(value => value.Function));
-
-  private static string HashQuickTimeEventImmutableSet(
-      IEnumerable<QuickTimeEventRecord> rows) =>
-      HashStrings(rows.OrderBy(row => row.Id).Select(row => string.Join('\t',
-          row.Id.ToString(CultureInfo.InvariantCulture),
-          string.Join(',', row.MonsterId ?? []),
-          row.QtePrefab ?? string.Empty,
-          string.Join(',', row.GroupId ?? []),
-          row.RandomPreset ? "true" : "false",
-          row.TimeLimit.ToString(CultureInfo.InvariantCulture),
-          row.FirstColAnimTime.ToString(CultureInfo.InvariantCulture))));
 
   private static object CreateTargetObservation(
       int seasonNumber,

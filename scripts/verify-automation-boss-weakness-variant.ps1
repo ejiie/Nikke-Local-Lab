@@ -32,6 +32,8 @@ $coordinator += Read-RequiredText (Join-Path $repositoryRoot `
     'scripts\Nll.PhaseDRunnerStart.ps1')
 $materializer = Read-RequiredText (Join-Path $repositoryRoot `
     'tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\BossAffinityStaticDataVariant.cs')
+$qteMaterializer = Read-RequiredText (Join-Path $repositoryRoot `
+    'tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\BossQuickTimeEventVariant.cs')
 $variantProfileCode = Read-RequiredText (Join-Path $repositoryRoot `
     'tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\BossRuntimeVariantProfile.cs')
 $variantProfileSchemaPath = Join-Path $repositoryRoot `
@@ -189,6 +191,17 @@ Assert-BossVariant `
      $profileAssembler.Contains('sourceFxPrefabSetSha256') -and
      $profileAssembler.Contains('assetBundleSetSha256')) `
     'boss_onboarding_reusable_pipeline_invalid'
+Assert-BossVariant `
+    ($materializer.Contains('BossQuickTimeEventVariant.Apply') -and
+     $materializer.Contains('BossQuickTimeEventVariant.VerifyBoundary') -and
+     $materializer.Contains('modifiedQuickTimeEventRecordCount') -and
+     $materializer.Contains('quickTimeEventAffinityContractVerified') -and
+     $qteMaterializer.Contains('contract_required') -and
+     $qteMaterializer.Contains('immutable_payload_changed') -and
+     $qteMaterializer.Contains('foreign_row_changed') -and
+     $profileAssembler.Contains('require_v2_qte_compatibility(source)') -and
+     $profileAssembler.Contains('boss_profile_qte_v3_pipeline_required')) `
+    'boss_onboarding_qte_boundary_missing'
 Assert-BossVariant `
     ($coordinator.Contains('EPINELPS_CLIENT_STATIC_DATA_VARIANT_PATH') -and
      $coordinator.Contains('EPINELPS_CLIENT_STATIC_DATA_VARIANT_SHA256') -and

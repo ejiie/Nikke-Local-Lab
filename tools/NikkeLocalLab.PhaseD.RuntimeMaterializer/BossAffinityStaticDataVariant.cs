@@ -73,6 +73,8 @@ internal static class BossAffinityStaticDataVariant
     var partRows = DeserializeEntry<MonsterPartsRecord>(decodedArchive, "MonsterPartsTable.mpk");
     var stateEffectRows = DeserializeEntry<StateEffectRecord>(decodedArchive, "StateEffectTable.mpk");
     var functionRows = DeserializeEntry<FunctionRecord>(decodedArchive, "FunctionTable.mpk");
+    var quickTimeEventRows = DeserializeEntry<QuickTimeEventRecord>(decodedArchive, "QuickTimeEventTable.mpk");
+    var sourceQuickTimeEventRows = DeserializeEntry<QuickTimeEventRecord>(decodedArchive, "QuickTimeEventTable.mpk");
     ValidateElementTableIndex(elementRows);
     Require(monsterRows.Select(row => row.Id).Distinct().Count() == monsterRows.Length,
         "phase_d_staticdata_monster_index_invalid");
@@ -139,9 +141,13 @@ internal static class BossAffinityStaticDataVariant
     var elementVariantRequired =
         !string.Equals(sourceWeaknessCode, weaknessCode, StringComparison.Ordinal);
     var variantRequired = elementVariantRequired || shieldFxVariantRequired;
+    var sourceQteElementId = targetMonster.ElementId[0];
+    BossQuickTimeEventVariant.ValidateSource(quickTimeEventRows, targetMonsterId,
+        profile.QuickTimeEventAffinity, sourceQteElementId, variantRequired);
     string? variantSha256 = null;
     var modifiedMonsterCount = 0;
     var modifiedFunctionCount = 0;
+    var modifiedQuickTimeEventCount = 0;
 
     if (variantRequired)
     {
@@ -153,6 +159,10 @@ internal static class BossAffinityStaticDataVariant
           .ToArray();
       Require(canonicalTargetElements.Length == 1,
           "phase_d_staticdata_requested_element_ambiguous");
+      modifiedQuickTimeEventCount = BossQuickTimeEventVariant.Apply(quickTimeEventRows,
+          targetMonsterId, profile.QuickTimeEventAffinity, sourceQteElementId, canonicalTargetElements[0].Id);
+      BossQuickTimeEventVariant.VerifyBoundary(sourceQuickTimeEventRows, quickTimeEventRows,
+          targetMonsterId, canonicalTargetElements[0].Id, modifiedQuickTimeEventCount);
       var sourceMonsterFingerprints = monsterRows.ToDictionary(row => row.Id, FingerprintRecord);
       var sourceFunctionFingerprints = functionRows.ToDictionary(row => row.Id, FingerprintRecord);
       if (elementVariantRequired)
@@ -208,13 +218,18 @@ internal static class BossAffinityStaticDataVariant
       var replacementFunctionTable = MemoryPackSerializer.Serialize(functionRows);
       var replacementMonsterTableSha256 = HashBytes(replacementMonsterTable);
       var replacementFunctionTableSha256 = HashBytes(replacementFunctionTable);
+      var replacementQuickTimeEventTable = MemoryPackSerializer.Serialize(quickTimeEventRows);
+      var replacementQuickTimeEventTableSha256 = modifiedQuickTimeEventCount == 0
+          ? HashZipEntry(decodedArchive, "QuickTimeEventTable.mpk") : HashBytes(replacementQuickTimeEventTable);
+      var replacements = new Dictionary<string, byte[]>(StringComparer.Ordinal)
+      {
+        ["MonsterTable.mpk"] = replacementMonsterTable,
+        ["FunctionTable.mpk"] = replacementFunctionTable
+      };
+      if (modifiedQuickTimeEventCount > 0) replacements.Add("QuickTimeEventTable.mpk", replacementQuickTimeEventTable);
       var modifiedDecodedArchive = ReplaceZipEntries(
           decodedArchive,
-          new Dictionary<string, byte[]>(StringComparer.Ordinal)
-          {
-            ["MonsterTable.mpk"] = replacementMonsterTable,
-            ["FunctionTable.mpk"] = replacementFunctionTable
-          });
+          replacements);
       var variantBytes = BuildUnsignedVariantPack(
           sourcePackPath,
           modifiedDecodedArchive,
@@ -233,6 +248,9 @@ internal static class BossAffinityStaticDataVariant
             sourceElementTableSha256,
             replacementMonsterTableSha256,
             replacementFunctionTableSha256,
+            replacementQuickTimeEventTableSha256,
+            sourceQuickTimeEventRows,
+            modifiedQuickTimeEventCount,
             profile,
             targetShieldFxVariant,
             expectedShieldFxSetByFunctionId,
@@ -244,6 +262,7 @@ internal static class BossAffinityStaticDataVariant
         CryptographicOperations.ZeroMemory(modifiedDecodedArchive);
         CryptographicOperations.ZeroMemory(replacementMonsterTable);
         CryptographicOperations.ZeroMemory(replacementFunctionTable);
+        CryptographicOperations.ZeroMemory(replacementQuickTimeEventTable);
       }
     }
 
@@ -265,6 +284,11 @@ internal static class BossAffinityStaticDataVariant
       fxVariantRequired = profile.ElementShield.FxVariantRequired,
       fxVariantStatusCode = profile.ElementShield.FxVariantStatusCode,
       shieldFxVariantApplied = shieldFxVariantRequired,
+      // StaticData prefab selection is not an installed/verified client bundle overlay.
+      shieldFxTransformStatusCode = profile.ShieldFxTransformNormalization?.TargetBossElementCodes
+          .Contains(targetBossElementCode, StringComparer.Ordinal) == true
+          ? "pending_isolated_asset_overlay" : "not_required",
+      runtimeAdmissionStatusCode = "not_assessed",
       shieldFxMappingSetSha256 = targetShieldFxVariant?.MappingSetSha256,
       shieldFxAssetBundles = targetShieldFxVariant?.Mappings
           .SelectMany(mapping => mapping.AssetBundles)
@@ -279,13 +303,16 @@ internal static class BossAffinityStaticDataVariant
       variantStaticDataSha256 = variantSha256,
       modifiedMonsterRecordCount = modifiedMonsterCount,
       modifiedFunctionRecordCount = modifiedFunctionCount,
+      modifiedQuickTimeEventRecordCount = modifiedQuickTimeEventCount,
+      quickTimeEventAffinityContractVerified = profile.QuickTimeEventAffinity is not null,
       modifiedElementRecordCount = 0,
       modifiedTableCount = (modifiedMonsterCount == 0 ? 0 : 1) +
-          (modifiedFunctionCount == 0 ? 0 : 1),
+          (modifiedFunctionCount == 0 ? 0 : 1) + (modifiedQuickTimeEventCount == 0 ? 0 : 1),
       modifiedTableCodes = new[]
       {
         modifiedMonsterCount == 0 ? null : "target_monster_element_reference",
-        modifiedFunctionCount == 0 ? null : "target_dynamic_shield_fx_reference"
+        modifiedFunctionCount == 0 ? null : "target_dynamic_shield_fx_reference",
+        modifiedQuickTimeEventCount == 0 ? null : "target_qte_element_reference"
       }.Where(value => value is not null).ToArray(),
       elementTablePreserved = true,
       clientElementIndexInvariantVerified = true,
@@ -695,6 +722,9 @@ internal static class BossAffinityStaticDataVariant
       string expectedElementTableSha256,
       string expectedMonsterTableSha256,
       string expectedFunctionTableSha256,
+      string expectedQuickTimeEventTableSha256,
+      QuickTimeEventRecord[] sourceQuickTimeEventRows,
+      int expectedModifiedQuickTimeEventCount,
       BossRuntimeVariantProfile profile,
       BossRuntimeVariantShieldFxVariant? expectedShieldFxVariant,
       IReadOnlyDictionary<int, string> expectedShieldFxSetByFunctionId,
@@ -733,8 +763,12 @@ internal static class BossAffinityStaticDataVariant
     {
       Require(HashZipEntry(decoded, "ElementTable.mpk") == expectedElementTableSha256 &&
               HashZipEntry(decoded, "MonsterTable.mpk") == expectedMonsterTableSha256 &&
-              HashZipEntry(decoded, "FunctionTable.mpk") == expectedFunctionTableSha256,
+              HashZipEntry(decoded, "FunctionTable.mpk") == expectedFunctionTableSha256 &&
+              HashZipEntry(decoded, "QuickTimeEventTable.mpk") == expectedQuickTimeEventTableSha256,
           "phase_d_staticdata_variant_table_boundary_invalid");
+      BossQuickTimeEventVariant.VerifyBoundary(sourceQuickTimeEventRows,
+          DeserializeEntry<QuickTimeEventRecord>(decoded, "QuickTimeEventTable.mpk"),
+          targetMonsterId, expectedBossElementId, expectedModifiedQuickTimeEventCount);
       var elements = DeserializeEntry<ElementRecord>(decoded, "ElementTable.mpk");
       var monsters = DeserializeEntry<MonsterRecord>(decoded, "MonsterTable.mpk");
       var functions = DeserializeEntry<FunctionRecord>(decoded, "FunctionTable.mpk");
