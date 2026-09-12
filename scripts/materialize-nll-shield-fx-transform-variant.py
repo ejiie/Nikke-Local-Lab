@@ -90,6 +90,8 @@ def transform_graph(environment: Any) -> dict[int, dict[str, Any]]:
     for obj in environment.objects:
         if obj.type.name not in ("Transform", "RectTransform"):
             continue
+        require(obj.type.name == "Transform", "shield_fx_transform_type_unsupported")
+        require(int(obj.path_id) not in result, "shield_fx_transform_identity_ambiguous")
         data = obj.read()
         try:
             name = str(data.m_GameObject.read().m_Name)
@@ -103,6 +105,15 @@ def transform_graph(environment: Any) -> dict[int, dict[str, Any]]:
             "children": [pointer_path_id(item) for item in data.m_Children],
         }
     require(result, "shield_fx_transform_missing")
+    for key, row in result.items():
+        require(len(row["children"]) == len(set(row["children"])), "shield_fx_children_ambiguous")
+        require(all(child in result and result[child]["parent"] == key
+                    for child in row["children"]), "shield_fx_parent_child_mismatch")
+        require(row["parent"] not in result or key in result[row["parent"]]["children"],
+                "shield_fx_parent_child_mismatch")
+    root = unique_root(result)
+    require(result[root]["parent"] == 0 and descendants(root, result) == set(result) - {root},
+            "shield_fx_graph_not_tree")
     return result
 
 
@@ -132,8 +143,10 @@ def branch_roots(anchor: int, transforms: dict[int, dict[str, Any]]) -> dict[str
             continue
         leaf_count = len(transforms[branch]["children"])
         if leaf_count == 3:
+            require("loop" not in result, "shield_fx_branch_ambiguous")
             result["loop"] = (state, branch)
         elif leaf_count >= 4:
+            require("broken" not in result, "shield_fx_branch_ambiguous")
             result["broken"] = (state, branch)
     require(set(result) == {"loop", "broken"}, "shield_fx_branch_shape_invalid")
     return result
@@ -175,6 +188,22 @@ def non_transform_fingerprint(environment: Any) -> str:
     return sha256_bytes(canonical_json(sorted(rows)))
 
 
+def transform_boundary(transforms: dict[int, dict[str, Any]], matched: set[int]) -> str:
+    """Preserve every field except matched local vectors, including unmatched objects."""
+    rows = []
+    for key, row in sorted(transforms.items()):
+        reader = row["reader"]
+        if key not in matched:
+            rows.append((key, sha256_bytes(reader.get_raw_data())))
+            continue
+        tree = dict(reader.read_typetree())
+        for field in ("m_LocalPosition", "m_LocalRotation", "m_LocalScale"):
+            require(field in tree, "shield_fx_transform_payload_invalid")
+            del tree[field]
+        rows.append((key, sha256_bytes(canonical_json(tree))))
+    return sha256_bytes(canonical_json(rows))
+
+
 def materialize(source_path: Path, target_path: Path, unitypy: Any) -> tuple[bytes, dict[str, Any]]:
     source_environment = unitypy.load(str(source_path))
     target_environment = unitypy.load(str(target_path))
@@ -208,10 +237,16 @@ def materialize(source_path: Path, target_path: Path, unitypy: Any) -> tuple[byt
             target_transforms[item]["name"]: target_transforms[item]
             for item in target_transforms[target_branch]["children"]
         }
+        require(len(source_leaves) == len(source_transforms[source_branch]["children"])
+                and len(target_leaves) == len(target_transforms[target_branch]["children"]),
+                "shield_fx_leaf_name_ambiguous")
         for name in sorted(source_leaves.keys() & target_leaves.keys()):
             pairs.append((source_leaves[name], target_leaves[name]))
 
     require(len(pairs) >= 10, "shield_fx_transform_correspondence_incomplete")
+    matched_ids = {int(target["reader"].path_id) for _, target in pairs}
+    require(len(matched_ids) == len(pairs), "shield_fx_transform_correspondence_ambiguous")
+    transform_boundary_before = transform_boundary(target_transforms, matched_ids)
     source_value_hash = sha256_bytes(
         canonical_json([transform_values(source) for source, _ in pairs])
     )
@@ -226,6 +261,9 @@ def materialize(source_path: Path, target_path: Path, unitypy: Any) -> tuple[byt
 
     round_trip = unitypy.load(derived)
     round_trip_transforms = transform_graph(round_trip)
+    require(set(round_trip_transforms) == set(target_transforms)
+            and transform_boundary(round_trip_transforms, matched_ids) == transform_boundary_before,
+            "shield_fx_variant_transform_boundary_invalid")
     round_trip_root = unique_root(round_trip_transforms)
     round_trip_anchor = scale_anchor(round_trip_root, round_trip_transforms)
     round_trip_branches = branch_roots(round_trip_anchor, round_trip_transforms)

@@ -253,3 +253,17 @@ if (Test-Path -LiteralPath $externalRoot -PathType Container) {
 }
 
 Write-Output 'Boss weakness variant automation contract passed.'
+
+$fxCandidate = Read-RequiredText (Join-Path $repositoryRoot 'scripts\materialize-nll-shield-fx-candidate.py')
+$fxTransform = Read-RequiredText (Join-Path $repositoryRoot 'scripts\materialize-nll-shield-fx-transform-variant.py')
+Assert-BossVariant `
+    ($fxCandidate.Contains('nll/boss-shield-fx-isolated-candidate/v1') -and
+     $fxCandidate.Contains('shield_fx_candidate_output_overlaps_input') -and
+     $fxCandidate.Contains('shield_fx_candidate_manifest_drifted') -and
+     $fxCandidate.Contains('shield_fx_candidate_restore_partial_drifted') -and
+     $fxCandidate.Contains('runtimeAdmissionStatusCode') -and
+     $fxTransform.Contains('shield_fx_variant_transform_boundary_invalid') -and
+     (Test-Path -LiteralPath (Join-Path $repositoryRoot 'scripts\test-nll-shield-fx-candidate.py')) -and
+     (Test-Path -LiteralPath (Join-Path $repositoryRoot 'scripts\test-nll-shield-fx-local.ps1'))) `
+    'boss_shield_fx_isolated_candidate_boundary_missing'
+Write-Output 'Shield FX isolated candidate source contract passed; client delivery remains unverified.'

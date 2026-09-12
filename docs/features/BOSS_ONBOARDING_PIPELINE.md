@@ -46,11 +46,73 @@ Outputs go to a new ignored `artifacts/boss-qte-checks/<run>/` directory. The ve
 local run is `a04c06ffc1b24d64ab78f03ae8aafede/receipt.json`. No operating PostgreSQL,
 server or client is started, and no selected bundle/profile registry is updated.
 
-Still pending: automatic v3 candidate assembly; isolated shield-FX transform overlay
-and original-client delivery/rollback; preparation/coordinator v3 admission; atomic
+Still pending: automatic v3 candidate assembly; original-client shield-FX delivery and
+installed execution rollback; preparation/coordinator v3 admission; atomic
 publication and job API; the season-selection UI. Never copy derived FX through the
 current runtime cache junction because it shares the parent cache. S29's draft/pin
 mismatch stays blocked until the complete replacement path is verified.
+
+## Current isolated FX candidate stage — 2026-09-12
+
+`materialize-nll-shield-fx-candidate.py` consumes an explicitly hash-pinned v3 profile
+and read-only local cache. This is an **offline candidate stage, not full profile
+admission, a delivery router, an installation updater, or automatic v3 assembly**.
+It resolves electric source and fire/wind/iron target bundles by exact length/hash,
+copies their bytes into a new independent output folder and runs the existing
+Transform materializer on those copies. Derived hashes, lengths and all six evidence
+fields must equal the profile. Non-Transform objects, unmatched Transform bytes and
+every matched Transform field except local position/rotation/scale remain unchanged.
+Ambiguous transform identities, children, branches or leaf names fail closed.
+
+The immutable, source-free `manifest.json` is written last, only after every candidate
+file and original input passes verification. An interrupted creation has no manifest
+and cannot be reused; keep it for diagnosis and use a new output folder on retry.
+No source asset paths or identifiers are written into the manifest. The private copied
+profile/source/backup/overlay files stay in ignored artifacts; never upload the folder.
+
+`verify` and `restore` both require the caller's exact manifest SHA-256 and check its
+profile binding and fixed role/path inventory. Restore preflights all backups, overlays
+and partial files before replacing anything. It **only** restores this candidate's
+three overlay files from its own pinned backups, not any installed/shared/client cache.
+Unknown bytes, path substitution, symlinks/junctions, hard links and concurrent operations
+are rejected. Interrupted replacements may resume from original/derived pinned states
+and a pinned partial file. Foreign partial files are retained and rejected. A lock left
+by a killed process is not automatically removed: establish that the owner stopped
+before diagnosing it; the tool never assumes a stale lock permits concurrent mutation.
+
+The manifest records the initial seal, not mutable readiness. After restore, `verify`
+must fail (`shield_fx_candidate_overlay_drifted`). A consumer must run verification,
+not infer readiness from the manifest's existence or `statusCode`. Every result keeps
+`runtimeAdmissionStatusCode=not_assessed`. No candidate is registered or auto-started.
+
+Source-only checks (no UnityPy/game inputs) run on both CI operating systems:
+
+```powershell
+python -B scripts/test-nll-shield-fx-candidate.py
+python -B scripts/test-nll-actions-merge.py
+```
+
+The FX suite has 29 tests with mutation subcases, including interrupted create/restore,
+idempotent recovery, drift, write isolation and transform boundaries. The separate Git
+test uses a disposable synthetic repository to reproduce a non-fast-forward merge with
+no global identity and verify the command-local bot identity fix without making a commit.
+
+Reproduce all three actual local FX variants, verify, restore twice and reject the
+restored candidate with the reviewed local UnityPy installation (observed version 1.25.3):
+
+```powershell
+pwsh -NoProfile -File scripts/test-nll-shield-fx-local.ps1 `
+  -BundlePath C:\NLL\Runtime\PhaseD151-v6\bundle.private.json `
+  -ExpectedBundleSha256 148ea9ae3e6a5759fd5075c7e25a2860331affc5644043a20a2869afcff8c9db `
+  -PythonPath <local-python-executable> -UnityPyRoot <local-unitypy-directory>
+```
+
+The helper creates `artifacts/shield-fx-checks/<run>/receipt.json` and checks all 96
+installed bundle pins before and after; it does not start DB/server/client or deploy.
+Verified final run: `9ef9c5f5870d4d0f8c16bdd089cfe3e8`, candidate manifest SHA-256
+`bc2fc7c5b88d7d0a87f10e66ccb02c3dd5e8e5a171df5daf158f82c447d11f14`.
+All three derived bundle hashes equal the existing v3 profile. This is not evidence
+that the original client received or displayed them; that delivery gate is still open.
 
 ## Purpose
 

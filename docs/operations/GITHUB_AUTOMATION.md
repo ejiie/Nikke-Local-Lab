@@ -96,6 +96,12 @@ UI 이미지 내보내기 검사는 합성 PNG와 임시 폴더만 사용하며 
 
 push 이후에는 Actions run이 PR과 merge를 담당합니다. 실패 시 원격 branch와 로그를 남기므로 원인을 고친 새 commit을 같은 branch에 push합니다.
 
+2026-09-12 `8427082` 실행은 두 OS 모두 테스트 전에 임시 non-fast-forward merge의 Git
+identity 결손으로 실패했다. `--no-commit`에도 identity가 필요하므로 두 merge 명령에만
+`git -c user.name=... -c user.email=...`의 bot identity를 지정한다. global/local 설정을
+남기거나 commit/보호 규칙을 우회하지 않는다. source-only Python QTE/격리 FX/Git merge
+합성 검사를 양쪽 validation job에 추가하며 실제 FX/UnityPy/151 원본은 CI에서 읽지 않는다.
+
 `main` 직접 push는 최초 private remote bootstrap에만 사용합니다. 이후 변경은 `agent/**` 경로를 사용합니다.
 
 ## 로컬 검사
