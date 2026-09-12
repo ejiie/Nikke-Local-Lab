@@ -62,6 +62,14 @@ P-01~P-09, S29/신규 보스/실드/150 보관 이동은 이 안정화 완료 �
     보정 파일만 복구한다. 전체 사전 검사, 중단된 복구 재시도, 중복 요청·junction·hardlink·
     변조 차단을 포함한다. 실제 로컬 FX 3종의 예상 해시 재현·복구 2회·복구된 후보 재사용
     거부와 설치 v6 96개 pin 보존을 확인했다. **client 전달/설치 rollback은 아직 아니다.**
+  - [x] FX-HTTP-01: 후보 전체 재검증 후 실행별 독립 사본·private route manifest를 봉인한다.
+    정확한 raw HTTP 경로, 전체/range/HEAD 응답, 실행 binding, 사용 중 정리 차단과 종료 후
+    사본 정리·중단 재시도를 구현했다. 합성 staging 9개·신규 .NET 19개 및 실제 151 FX 3종
+    HTTP/정리 검사가 통과했다. 공유 cache/설치 v6 96개 pin은 불변이다.
+    **아직 설치 Epinel 경로에 연결하지 않았으며 원본 client 수신·캐시/CRC·화면 증거가 아니다.**
+  - [ ] FX-RUNTIME-02: 새 외부 Epinel 후보에 source-linked HTTP 모듈을 연결하고 전체 실행
+    process tree 종료 후 정리를 coordinator에 결박한다. 원본 client 기존 캐시와 catalog
+    검증을 조사하여 격리 전달 방식을 확정한다. 구 설치본/공유 junction을 덮어쓰지 않는다.
 - [x] PIPE-V3-02 후보 경로: discovery → 원본 행동 트리 closure → QTE 포함 v3 후보 조립 →
   FX 보정 → 5속성 검증을 `-CandidateOnly` 공통 명령으로 연결했다. 후보와 실행 admission을
   분리하고 새 출력 폴더만 허용한다. 합성 12개(실제 PowerShell 실패/재시도 검사 포함),

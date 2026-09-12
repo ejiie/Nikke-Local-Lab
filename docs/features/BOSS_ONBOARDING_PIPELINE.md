@@ -2,6 +2,87 @@
 
 > 상태 참고 (2026-09-06): 아래 S29 결과는 당시 admission 기록입니다. 현재 S29의 profile v3/등록 v2 불일치는 별도 보류이며, 151 실게임 완료는 S26 기준입니다. [안정화 계획](../STABILIZATION_PLAN.md)을 함께 확인합니다.
 
+## Current execution-local FX transport component — 2026-09-12
+
+**Completed: isolated staging, a source-linked HTTP component and private-copy
+retirement. Not completed: mounting that component in the installed Epinel server,
+coordinator process-tree cleanup or native-client cache/catalog/rendering proof.**
+S29 remains blocked and installed v6/profile/registry pins are unchanged. This is
+not final UI import success or v3 execution admission.
+
+`stage-nll-execution-fx.py` takes an explicitly pinned verified candidate, source
+pack/cache, execution code and selected weakness. It re-verifies the complete old
+seal against current profile/discovery/behavior, all five packs/receipts and the
+live FX candidate; existence of a historical success receipt is insufficient.
+For a transformed target (fire/wind/iron boss element), it requires exactly one
+original cache request path for the pinned bundle. Duplicate hash-identical aliases
+are rejected rather than picking the first. The output must be new and outside
+the candidate/cache/source directory. Original and derived bytes are independent
+copies; `manifest.private.json` is written last. No-overlay targets explicitly
+return `execution_fx_overlay_not_required`, without creating a directory.
+
+The private manifest (`nll/execution-fx-delivery/v1`) contains the exact request
+path and must remain ignored with all game bytes. The public staging receipt
+contains only codes, counts and hashes. Never publish the private delivery folder.
+
+`ExecutionAssetOverlay.Open` validates the manifest SHA and expected execution,
+candidate-seal, profile and weakness bindings before serving anything. Official
+outbound must be disabled. Reparse ancestors/members, incorrect inventories,
+invalid pins, missing/changed assets, oversized files and retired folders fail
+closed. The component loads bounded, hash-checked bytes once and gives each HTTP
+response its own copy; changing a file after Open cannot change served bytes.
+`ExecutionAssetOverlayHttp` uses the **raw target**, exact case-sensitive paths,
+GET/HEAD and range support. Queries, escapes, traversal and malformed paths return
+a controlled failure, not an original-cache fallback. The bridge sets `no-store`;
+that HTTP directive is **not proof of Unity's native cache behavior**.
+
+Open holds an exclusive `.lease` reservation until Dispose. A second owner or
+Retire is blocked while it exists. Dispose closes the route and clears its buffer.
+Retire validates all remaining fixed private members before creating sticky
+`.retiring` intent, deletes only `original.bundle` and `overlay.bundle`, and retains
+the manifest plus source-free retirement tombstone. It is idempotent and can resume
+known partial cleanup after a managed failure; unknown bytes/members are preserved
+and rejected. Hard process termination leaves a lease and is **not auto-recovered**.
+Never delete it merely because a PID appears stale. No installed file was replaced,
+so this rollback design needs no write through the parent's cache junction. The
+retirement API does not prove the full execution process tree has exited; the
+future coordinator must supply that separate lifecycle gate. Retired execution
+copies can be regenerated from the unchanged candidate in a new directory.
+
+Verification: nine synthetic staging methods and 19 new .NET cases (62 automation
+cases total), including real loopback HTTP whole/range/HEAD delivery, query rejection,
+execution binding, reparse paths, active/unclean leases, partial cleanup and retired
+reopen rejection. CI uses only synthetic bytes, never local game files. The separate
+probe source is built/formatted in the existing Phase 2A2 chain.
+
+The real 151 S29 candidate
+`artifacts/boss-onboarding-checks/ddb6c057109846c0831c3bdc5f7cf993/season-29`
+was rechecked and all three corrected FX bundles passed loopback HTTP byte/range/HEAD
+checks, active retirement rejection, retirement twice and retired reopen rejection.
+Receipt: `artifacts/execution-fx-checks/213e97bb4e134b7abd48eb11a9be9ad6/receipt.json`.
+All 96 installed pins and tracked registry/profile files remained unchanged. Only
+the six newly staged private bundle copies were deleted; candidates/backups remain.
+No Epinel server, operating DB, original client, hosts or firewall was changed.
+
+```powershell
+python -B scripts/test-nll-execution-fx.py
+dotnet test tests/NikkeLocalLab.Automation.UnitTests -c Release
+pwsh -NoProfile -File scripts/test-nll-execution-fx-local.ps1 `
+  -BundlePath <sealed-v6-bundle> -ExpectedBundleSha256 <approved-bundle-sha> `
+  -CandidateRoot <unrestored-verified-S29-candidate> `
+  -CandidateSealSha256 <exact-candidate-seal-sha> `
+  -StaticDataPackPath <bundle-pinned-pack> -PythonPath <reviewed-python>
+```
+
+Next integration gate: source-link the transport into a **new external Epinel
+candidate**, bind startup to the selected execution and dispose after request
+draining; connect retirement only after the coordinator's exact process-tree exit
+gate. Keep the old installed server/source manifests untouched. Inspect the native
+client's existing-cache/catalog hash/CRC behavior before selecting an isolated
+cache strategy; an HTTP GET proof alone cannot show the client requested or accepted
+derived bytes. Only then advance preparation/coordinator v3 admission, atomic
+publication/job API and season-selection UI.
+
 ## Current automatic candidate stage — 2026-09-12
 
 The common command now supports **`-CandidateOnly`**. It discovers the selected

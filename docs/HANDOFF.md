@@ -14,6 +14,22 @@
 
 ## 지금 할 작업
 
+### 2026-09-12 실행별 FX HTTP 전달 모듈
+
+실행별 독립 FX 사본/봉인 → 정확한 raw 경로 HTTP 전체·range·HEAD 응답 → 사용 중 정리
+차단 → 종료 후 private 사본만 정리·재시도를 구현했다. 기존 후보를 소비할 때는 전체
+discovery/behavior/5속성/FX를 재검증하며, 같은 bundle의 중복 cache 경로는 거부한다.
+신규 staging 합성 9개·.NET 19개와 실제 151 S29 보정 FX 3종 HTTP/정리 검사가 통과했다.
+로컬 receipt는 `artifacts/execution-fx-checks/213e97bb4e134b7abd48eb11a9be9ad6/receipt.json`이다.
+검사 중 만든 사본 6개만 지웠으며 후보에서 새 실행 폴더로 다시 생성할 수 있다.
+설치 v6 96개 pin·registry/profile·운영 DB/게임은 불변이고 S29 차단도 유지한다.
+**완료는 전달 모듈/사본 정리이며 설치 Epinel 연결·원본 client 수신/표시 완료가 아니다.**
+다음은 새 외부 Epinel 후보의 source-link/startup 연결, coordinator의 전체 process-tree 종료
+gate와 정리 결박, 원본 client 캐시/catalog/CRC 조사다. HTTP `no-store`만으로 native cache
+우회를 주장하지 않는다. 비정상 종료 후 남은 `.lease`는 PID만 보고 자동 제거하지 않는다.
+그 후 v3 admission·원자적 게시/job API·시즌 선택 UI를 진행한다. 아래 절의 ‘다음 작업’은
+당시 이력이며 상세한 현재 경계는 [보스 파이프라인](features/BOSS_ONBOARDING_PIPELINE.md)을 따른다.
+
 ### 2026-09-12 공통 v3 후보 자동 조립
 
 `invoke-nll-boss-onboarding.ps1 -CandidateOnly`로 새 discovery/원본 행동 트리 → QTE 포함
