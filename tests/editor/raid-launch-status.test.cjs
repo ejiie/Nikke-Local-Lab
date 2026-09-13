@@ -29,6 +29,7 @@ function setup() {
   let timerId = 0;
   const ctx = vm.createContext({ state, byId, AbortController, elementLabels: elements,
     bossSeasonLabels: { 26: "프로비던스" },
+    bossUserValidation: { refresh: async () => {} },
     document: { querySelector: () => ({ disabled: false, querySelector: () => badge }) },
     showJson: (id, value) => output.set(id, value),
     setTimeout: callback => { const id = ++timerId; timers.set(id, callback); return id; },

@@ -37,13 +37,16 @@ public sealed class FilesystemBossOnboardingService : IBossOnboardingService
   private readonly IBossSeasonCatalogService catalog;
   private readonly IBossPipelineRunner runner;
   private readonly TimeProvider time;
+  private readonly UserValidationDelivery? userValidation;
   private readonly SemaphoreSlim requests = new(1, 1);
-  public FilesystemBossOnboardingService(string root, IBossSeasonCatalogService catalog, IBossPipelineRunner runner, TimeProvider? time = null)
+  public FilesystemBossOnboardingService(string root, IBossSeasonCatalogService catalog, IBossPipelineRunner runner, TimeProvider? time = null,
+      UserValidationDelivery? userValidation = null)
   {
     this.root = FilesystemBossSeasonCatalogService.Plain(root);
     if (Path.TrimEndingDirectorySeparator(this.root) == Path.TrimEndingDirectorySeparator(Path.GetPathRoot(this.root)!) ||
         this.root.StartsWith(@"C:\NIKKE", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("boss_job_root_invalid");
     this.catalog = catalog; this.runner = runner; this.time = time ?? TimeProvider.System;
+    this.userValidation = userValidation;
     Directory.CreateDirectory(this.root);
   }
   private string JobRoot(Guid uid) => FilesystemBossSeasonCatalogService.Plain(Path.Combine(root, uid.ToString("D")));
@@ -104,7 +107,7 @@ public sealed class FilesystemBossOnboardingService : IBossOnboardingService
       var selected = snapshot.Seasons.SingleOrDefault(row => row.SeasonNumber == request.SeasonNumber);
       if (snapshot.StatusCode != "ready" || snapshot.CatalogSha256 != request.CatalogSha256 || selected is null ||
           selected.ProcessingStatusCode == "unresolved") throw new ApiRequestException(422, "boss_job_catalog_not_ready");
-      if (selected.ProcessingStatusCode == "processed") throw new ApiRequestException(409, "boss_job_already_processed");
+      if (selected.ProcessingStatusCode is "processed" or "awaiting_game_validation") throw new ApiRequestException(409, "boss_job_already_processed");
       if (jobs.Length >= 1000 || jobs.Count(Active) >= 16) throw new ApiRequestException(409, "boss_job_capacity_reached");
       var now = time.GetUtcNow();
       var job = new BossOnboardingJob(1, "nll/boss-onboarding-job/v1", Guid.NewGuid(), request.OperationUid,
@@ -142,6 +145,22 @@ public sealed class FilesystemBossOnboardingService : IBossOnboardingService
           (job.AdmissionReceiptSha256 is not null && !FilesystemBossSeasonCatalogService.IsHash(job.AdmissionReceiptSha256)) ||
           (job.StatusCode == "completed" && (job.FailureCode is not null || job.CandidateReceiptSha256 is null || job.AdmissionReceiptSha256 is null)))
         throw new JsonException();
+      if (job.StatusCode is "awaiting_runtime_delivery" or "awaiting_game_validation")
+      {
+        // Project the current handoff; never rewrite the historical job receipt.
+        if (userValidation is not null)
+        {
+          try
+          {
+            var delivery = userValidation.ReadBound();
+            if (delivery.View.SeasonNumber == job.SeasonNumber && delivery.CandidateReceiptSha256 == job.CandidateReceiptSha256)
+              return job with { StatusCode = "awaiting_game_validation", FailureCode = "boss_game_validation_required" };
+          }
+          catch (Exception error) when (FilesystemBossSeasonCatalogService.IsReadFailure(error)) { }
+        }
+        if (job.StatusCode == "awaiting_game_validation")
+          return job with { StatusCode = "awaiting_runtime_delivery", FailureCode = "boss_runtime_delivery_required" };
+      }
       return job;
     }
     catch (Exception error) when (FilesystemBossSeasonCatalogService.IsReadFailure(error))

@@ -50,11 +50,17 @@ Invoke-Checked node @((Join-Path $ScriptDirectory 'measure-nll-editor-dom.cjs'),
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/workspace-save-retry.test.cjs"))
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/raid-launch-status.test.cjs"))
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/boss-seasons.test.cjs"))
+Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/user-validation.test.cjs"))
 $BossPipelineChecks = Join-Path $RepositoryRoot 'tools/NikkeLocalLab.BossPipeline.Checks/NikkeLocalLab.BossPipeline.Checks.csproj'
 Invoke-Checked dotnet @('restore', $BossPipelineChecks, '--locked-mode')
 Invoke-Checked dotnet @('build', $BossPipelineChecks, '-c', 'Release', '--no-restore')
 Invoke-Checked dotnet @('format', $BossPipelineChecks, '--verify-no-changes', '--no-restore')
 Write-Output 'Boss pipeline local checker source build passed; real data pipeline requires explicit private configuration and is not run in CI.'
+$ValidationChecker = Join-Path $RepositoryRoot 'tools/Phase3B2/UserValidationOfflineCheck/NikkeLocalLab.UserValidationOfflineCheck.csproj'
+Invoke-Checked dotnet @('restore', $ValidationChecker, '--locked-mode')
+Invoke-Checked dotnet @('build', $ValidationChecker, '-c', 'Release', '--no-restore')
+Invoke-Checked dotnet @('format', $ValidationChecker, '--verify-no-changes', '--no-restore')
+Write-Output 'User validation compiled-plan checker source built; no game, UAC or private inputs used in CI.'
 Invoke-Checked node @((Join-Path $ScriptDirectory "test-nll-phase-d-lifecycle-ui.cjs"))
 $MaterializerChecks = Join-Path $RepositoryRoot 'tests/NikkeLocalLab.Materializer.BehaviorChecks/NikkeLocalLab.Materializer.BehaviorChecks.csproj'
 # Source-only CI compiles the checker without Epinel/SDK/client inputs. Actual

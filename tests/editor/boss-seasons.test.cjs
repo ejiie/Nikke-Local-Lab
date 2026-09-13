@@ -55,6 +55,16 @@ test("No and Escape close the confirmation without creating any job", async () =
   await f.controller.confirmImport();
   assert.equal(f.requests.filter(r => r.options?.method === "POST").length, 0);
 });
+test("verified game-validation handoff selects one card without importing or declaring acceptance", async () => {
+  const f = fixture(); f.catalog.seasons[1].processingStatusCode = "awaiting_game_validation";
+  await f.controller.refreshCatalog(); f.controller.selectSeason(2);
+  assert.equal(f.byId("boss-import-dialog").open, false);
+  assert.equal(f.byId("selected-boss-card").children.length, 1);
+  assert.equal(f.selections[0].processingStatusCode, "awaiting_game_validation");
+  assert.equal(f.requests.filter(r => r.options?.method === "POST").length, 0);
+  f.controller.selectSeason(1);
+  assert.equal(f.selections[1].processingStatusCode, "processed");
+});
 test("Yes closes before network, duplicate clicks coalesce and unknown result reuses operation UID", async () => {
   const f = fixture(); await f.controller.refreshCatalog();
   let reject;

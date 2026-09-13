@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
+    <InternalsVisibleTo Include="NikkeLocalLab.Admin.Api.UnitTests" />
     <Compile Include="..\..\scripts\Nll.PhaseDJob.cs" Link="OfflinePipeline\ExecutionJob.cs" />
     <ProjectReference Include="..\NikkeLocalLab.Application.PrivateServer\NikkeLocalLab.Application.PrivateServer.csproj" />
     <ProjectReference Include="..\NikkeLocalLab.Application.ProfileManagement\NikkeLocalLab.Application.ProfileManagement.csproj" />

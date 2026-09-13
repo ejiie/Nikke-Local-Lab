@@ -48,6 +48,7 @@ const state = {
   combatPowerByCharacter: new Map(),
   selectedNikkeUid: null,
   selectedBossSeason: 26,
+  bossValidationOnly: false,
   selectedWeaknessCode: "iron"
 };
 
@@ -451,6 +452,13 @@ function hasReadyLaunchPreparation() {
 async function refreshLaunchPreparation() {
   const requestNumber = ++state.preparationRequestNumber;
   state.preparationController?.abort();
+  if (state.bossValidationOnly) {
+    state.launchPreparation = { statusCode: "blocked", failureCode: "boss_game_validation_required" };
+    updateRaidActions();
+    await bossUserValidation.refresh();
+    return;
+  }
+  void bossUserValidation.refresh();
   const controller = new AbortController();
   state.preparationController = controller;
   const season = state.selectedBossSeason;
@@ -475,6 +483,12 @@ async function refreshLaunchPreparation() {
 }
 
 function updateRaidActions() {
+  byId("standard-boss-launch").hidden = state.bossValidationOnly;
+  if (state.bossValidationOnly) {
+    byId("selected-boss-launch").disabled = true;
+    byId("launch-game").disabled = true;
+    return;
+  }
   const ready = Boolean(state.currentWorkspace) &&
     state.currentWorkspace.validationStatusCode === "ready" &&
     (state.currentWorkspace.validationReasonCodes || []).length === 0;
@@ -3078,9 +3092,13 @@ for (const button of document.querySelectorAll(".raid-action")) {
     run(button.dataset.kind === "practice" ? "모의전 실행" : "실전 실행", startLaunch);
   });
 }
+const bossUserValidation = NllUserValidation.create({ document, api, getSelection: () => ({
+  seasonNumber: state.selectedBossSeason, weaknessCode: state.selectedWeaknessCode, validationOnly: state.bossValidationOnly
+}) });
 const bossSeasons = NllBossSeasons.create({ document, api,
   onSelected: row => {
     state.selectedBossSeason = row.seasonNumber;
+    state.bossValidationOnly = row.processingStatusCode === "awaiting_game_validation";
     bossSeasonLabels[row.seasonNumber] = row.displayName || "선택 보스";
     const option = document.createElement("option");
     option.value = String(row.seasonNumber);
@@ -3089,6 +3107,8 @@ const bossSeasons = NllBossSeasons.create({ document, api,
     selectWeaknessCode(row.defaultWeaknessCode);
   },
   onUnavailable: () => {
+    state.bossValidationOnly = false;
+    void bossUserValidation.refresh();
     ++state.preparationRequestNumber;
     state.preparationController?.abort();
     state.launchPreparation = { statusCode: "blocked", failureCode: "phase_d_boss_catalog_unavailable" };

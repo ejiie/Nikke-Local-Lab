@@ -21,6 +21,23 @@ public sealed class BossSeasonCatalogTests : IDisposable
     Write(RegistryPath, new { schemaVersion = 1, contractId = "nll/boss-runtime-variant-registry/v1", profiles = Array.Empty<object>() });
   }
   private FilesystemBossSeasonCatalogService Service() => new(CatalogPath, Hash(CatalogPath), RegistryRoot);
+  [Fact]
+  public void VerifiedUserDeliveryPreservesAdmittedSeasonAndRetractsOnDrift()
+  {
+    Register(1);
+    var rows = Enumerable.Range(1, 29).Select(season => new BossSeasonCard(season, "합성 보스",
+        season == 1 ? "water" : "iron", "resolved", null, "resolved", "unresolved", null)).ToArray();
+    Write(CatalogPath, Snapshot with { MaximumKnownSeason = 29, Seasons = rows });
+    var fixture = new DeliveryFixture();
+    var service = new FilesystemBossSeasonCatalogService(CatalogPath, Hash(CatalogPath), RegistryRoot, fixture.Service);
+    var view = service.Get();
+    Assert.Equal("processed", view.Seasons[0].ProcessingStatusCode);
+    Assert.Equal("awaiting_game_validation", view.Seasons[28].ProcessingStatusCode);
+    fixture.Files[fixture.Files.Keys.First()] = "drift"u8.ToArray();
+    view = service.Get();
+    Assert.Equal("processed", view.Seasons[0].ProcessingStatusCode);
+    Assert.Equal("unprocessed", view.Seasons[28].ProcessingStatusCode);
+  }
   private static void Write(string path, object value) => File.WriteAllBytes(path, JsonSerializer.SerializeToUtf8Bytes(value, Json));
   private static string Hash(string path) => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant();
   private void Register(int version = 2, string relative = "synthetic.json", bool correctHash = true)

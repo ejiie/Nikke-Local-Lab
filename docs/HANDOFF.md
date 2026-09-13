@@ -12,7 +12,51 @@
 - 활성 OS는 Micron입니다. 저장소·client·bundle·백업의 정확한 위치는 [현재 경로](MICRON_CURRENT_PATHS.md)만 기준으로 합니다.
 - 위 완료는 운영자의 실게임 확인이며, 새 자동 관측 receipt나 모든 보스·음성·약점 조합의 검증을 뜻하지 않습니다.
 
-## 지금 할 작업
+## 2026-09-13 재계획 1~5 마감 현황
+
+아래 과거 준비 기록의 ‘미구현/미설치/남음’보다 이 절이 우선한다. S26은 이미 운영자가
+인수했으며 다시 요구하지 않는다. 새 S29 실게임은 에이전트가 실행하지 않았다.
+
+- **1~3 구현/오프라인 검증 완료:** 수냉 한 경로에서 5속성으로 확장했고 모두
+  controller Inspect 및 실제 compiled-plan 결박 검사를 통과했다. 동일 trial
+  `6d0c2fbd-edb4-4d07-a6dd-5f32218e9a85`의 기존 client 한 개만 사용한다.
+  추가 전체 client 복제는 없고 공통 작은 파일 원복본은 약 87.7MB다.
+- 상위 실행기는 사용자 `Start/Recover`, 읽기 전용 `Inspect`를 분리한다. 정확한
+  Job/프로세스 소유, 승인된 SCM·ADVT 생명주기, CDB/작은 입력 복원, 새 로그 비삭제
+  격리 보관, 큰 파일의 미승인 변경 중단을 연결했다. 복구가 불명확하면 격리를 유지한다.
+  합성 복구/결박 **148개**가 PS7/WinPS5에서 통과했다. 실제 ACE 조작 성공을 뜻하지 않는다.
+- **4 구현 완료:** `UserValidationDelivery/Execution`으로 봉인된 5개 전달 계획만
+  `awaiting_game_validation`으로 투영한다. UI는 S29 단일 카드/5속성/사용자 시작·원복
+  버튼을 제공한다. 조회/폴링은 실행하지 않고 UAC 취소·중복 operation·HTTP 단절을
+  처리한다. 기존 S26/v6와 미검증 S29 operational registry 차단은 유지한다.
+- 실제 파일 HTTP 검사: 2회 호스트, 5속성 준비, S26 processed/S29 검증 대기/S19 unresolved,
+  39시즌 이미지 78회 hash, 인증/CSRF, 영속 job의 현재 투영과 원본 파일 비변경 확인.
+  오류였던 job 투영 위치를 수정하고 별도 회귀를 추가했다. 데스크톱/모바일 브라우저에서
+  5개 합성 클릭과 UAC 취소·S26 복귀·미처리 취소를 확인했다. 실제 UAC는 호출하지 않았다.
+- **5 자동 검사:** `final-full-gates-2.log`의 Phase 2A1/2A2/2B→3A/3B0/3B1 전체 체인,
+  Phase 0/3B2/Actions/repository 검사 통과. Admin API **404개**, 격리 PostgreSQL
+  **114개**(폐기 cluster 종료/정리 포함), JS **31개** 통과. 앱 package 적용/원복
+  51개·delivery 32개 합성 검사 및 실제 앱 shadow 전체 반복 적용/원복을 통과했다.
+- 배포 대상 API는 `app-publish-4`, SHA
+  `7482e213607026abde7d8f29d7b1180a990a56436b06701e94f696c21acd30d9`.
+  전달 manifest SHA `f260555c11574d13bb74efa9e49f94b5305789655ff909a319e315e9d35b84bd`를
+  새 `pipeline-4`에 연결했다(config SHA
+  `7c1b57a721b24ae621c1aa0e6c4022a2633fa2eec51c6ea03744aa6f18621ba4`).
+  기존 jobsRoot를 유지하며 운영 profile을 publish하지 않는다.
+- 실제 설치 적용/소스 SHA/Actions/merge의 최종 근거는
+  `artifacts/boss-catalog-20260913/release-status.json` 및 해당 원격 run이다.
+  로컬 검사만으로 원격 병합이나 실제 게임 성공을 선언하지 않는다.
+- 사용자 절차는 [S29 실게임 검증](operations/BOSS_NATIVE_USER_VALIDATION.md)의
+  ‘이번 인계의 실행 순서’를 따른다. 수냉 → 작열 → 풍압 → 전격 → 철갑 순서로,
+  매번 원복 완료를 기다린다. 첫 실행용 구성은 약점별 1회용이다. 재검증 시 새 작은
+  assessment를 발급하며 전체 client 복제를 늘리지 않는다. 무제한 자동 재시도와
+  모든 미래 보스의 자동 인수는 이번 완료 범위가 아니다.
+
+주된 접근 변경: privilege/VM/S26 반복 실험을 종료하고 하나의 사용자 실행 경로를
+완성했다. 19GB 읽기는 실제 Inspect/Start 시점에만 수행하고 공통 준비 pin을 재사용한다.
+UI 조회는 작은 봉인 파일만 읽는다. DB 회귀와 앱 cold 배포는 순서를 분리한다.
+
+## 이전 준비·배포 기록 — 현재 실행 지시가 아님
 
 ### 2026-09-13 담당 범위 확정 — 실게임은 운영자
 
@@ -48,6 +92,35 @@ v6/selection을 독립 재검사하고 설치된 동일 DLL의 실제 HTTP 검�
 3 jobs 성공 후 PR #27로 병합됐다(main `8103e1f42cec27e114756625864d42f53422c081`).
 
 ### 사용자 검증 실행 연결 — 진행 중, 아직 실행 안내 단계 아님
+
+최신 재계획은 [안정화 계획의 1~5](STABILIZATION_PLAN.md#2026-09-13-재계획--현재-실행-순서)를 따른다.
+수냉 단일 경로를 먼저 닫고 나머지 약점/파이프라인/UI를 연결한다. 추가 전체 게임 복제는 없다.
+2026-09-13 후속 소스는 아직 미커밋/미게시이며 기존 HEAD `626f01f`도 아직 원격 미게시다.
+
+- 5개 `native-store.private.json` 준비 완료. 실제 client는 읽기만 했다.
+  수냉 projected CDB SHA `13a96acaf56e17861ce7dff36c80b27f32aece2dfbe4dab2af8c167fbbe0eb93`,
+  작열 `cac861d2a73b47bc0720a2136bd7b9d895573e40a3bc474f8f05440da80b1024`,
+  풍압 `308d0875cb491d63a0268fd20f5c79c8f5a9465b253fdc52f009f7b8b4de4173`.
+  전격/철갑은 변경 없음으로 원본 CDB hash를 유지한다. `prepare-user-stores-1.log`가 근거다.
+- 공통 `client-pins.private.json` SHA
+  `5b6843ee4ced90b13fd260ef70a7e4bff3b4b4ad469e60c47d8dea88e14f7ac7`.
+  원본 1,154파일 물리 pin을 확인하고 1MB 이하 1,021파일/87,715,518 bytes만
+  trial의 `client-rollback`에 보관했다. 첫 집계의 PowerShell dictionary 오류는 출력 생성 전
+  실패했으며 PSCustomObject로 수정했다. 성공 근거는 `prepare-user-client-manifest-2.log`다.
+- 상위 `invoke-nll-user-validation.ps1`의 Inspect/Start/Recover 경로와 계획 준비기를 추가했다.
+  Inspect는 파일/OS 상태 읽기만 한다. Start/Recover는 사용자 관리자 실행으로 한정하며
+  실행 간 mutex/이전 미복구 차단, exact Job 소유 기록, SCM/driver cleanup과 원복을 연결한다.
+  작은 기존 파일 복원과 새 파일의 비삭제 격리 보관도 포함한다. unknown 대형 파일 변경은
+  실패로 유지한다. 실제 게임/서비스/드라이버 조작으로 검증한 것은 아니다.
+- 합성 controller binding/부분 registry 원복/각 cleanup 단계 중단 **133개**가 PS7 및
+  WinPS5에서 통과했고 관련 .NET **219개**가 통과했다. 새 controller 검사를 로컬 계약과
+  두 Actions job에 연결했다. 전체 마감 회귀는 아직 남았다.
+- 수냉 assessment `beaf2982-cc40-499e-af47-b802c28aafe9`의 controller/child/부모/bootstrap
+  계획을 배치했다. entry SHA
+  `45d4c981fe1434af233620e62254856b244df01db04694f3a493a04be4a9998e`.
+  `prepare-user-controller-water-1.log` 성공 후 `inspect-user-controller-water-1.log` 검사를
+  진행 중이다. 서버/게임/UAC/ACE 변경은 없으며 아래 과거 “상위 controller 미구현” 설명은
+  소스 구현 전 상태다. 다른 4개 controller 배치와 파이프라인/UI/배포/CI 마감은 남았다.
 
 - 별도 `NativeFxUserValidationBootstrap`을 추가했다. 기존 v6/151 bootstrap은
   교체하지 않는다. 새 경로는 신규 등록 없이 준비된 합성 계정을 사용하고, 독립

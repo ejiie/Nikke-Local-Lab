@@ -11,6 +11,61 @@ namespace NikkeLocalLab.Phase3B2.UserValidation;
 // proves Job/service/related-process zero. A boolean is NOT an OS observation.
 public static class NativeStoreOperations
 {
+  public static void AssertPhysicalFile(string path)
+  {
+    Require(OperatingSystem.IsWindows());
+    UserValidationPinnedFiles.AssertNoReparse(path);
+    using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+    Require(GetFileInformationByHandle(file.SafeFileHandle, out var info) && info.NumberOfLinks == 1 &&
+        (info.FileAttributes & (uint)FileAttributes.ReparsePoint) == 0);
+  }
+
+  // Preparation only reads the client. A placeholder hash is never a launch
+  // permit: replace it with the full-stream projected hash and seal a NEW plan.
+  public static string Prepare(string inputPath, string inputSha256)
+  {
+    Require(OperatingSystem.IsWindows());
+    using var input = UserValidationPinnedFiles.Open(inputPath, new FileInfo(inputPath).Length, inputSha256, 1048576);
+    var bytes = new byte[checked((int)input.Length)]; input.ReadExactly(bytes);
+    var plan = UserValidationStorePlan.Parse(bytes);
+    Require(inputPath == plan.RunRoot + @"\native-store.input.json" && !File.Exists(plan.PlanPath) &&
+        plan.CandidateStoreSha256 == (plan.Patches.Length == 0 ? plan.OriginalStore.Sha256 : new string('0', 64)));
+    var leases = new List<FileStream>();
+    try
+    {
+      var ranges = new List<UserValidationStoreRange>();
+      foreach (var patch in plan.Patches)
+      {
+        byte[] Read(UserValidationFilePin pin)
+        {
+          var lease = UserValidationPinnedFiles.Open(pin.Path, pin.Length, pin.Sha256, 16777216); leases.Add(lease);
+          var data = new byte[checked((int)lease.Length)]; lease.ReadExactly(data); return data;
+        }
+        ranges.Add(new(patch.Offset, Read(patch.Before), Read(patch.After)));
+      }
+      UserValidationPinnedFiles.AssertNoReparse(plan.OriginalStore.Path);
+      using var store = new FileStream(plan.OriginalStore.Path, FileMode.Open, FileAccess.Read, FileShare.None, 1048576);
+      Require(GetFileInformationByHandle(store.SafeFileHandle, out var info) && info.NumberOfLinks == 1 &&
+          (info.FileAttributes & (uint)FileAttributes.ReparsePoint) == 0 && store.Length == plan.OriginalStore.Length);
+      var digest = ranges.Count == 0 ? Hash(store) : UserValidationStoreTransaction.Prepare(store, ranges, plan.OriginalStore.Sha256).CandidateSha256;
+      Require(ranges.Count != 0 || digest == plan.OriginalStore.Sha256);
+      var prepared = plan with { CandidateStoreSha256 = digest };
+      prepared.Validate(); Save(plan.PlanPath, prepared);
+      return JsonSerializer.Serialize(new
+      {
+        contractId = "nll/native-fx-user-validation-store-prepared/v1",
+        plan.TrialUid,
+        plan.AssessmentUid,
+        plan.WeaknessCode,
+        candidateStoreSha256 = digest,
+        clientModified = false,
+        gameStarted = false,
+        actualGameAcceptanceClaimed = false
+      }, Json);
+    }
+    finally { foreach (var lease in leases) lease.Dispose(); }
+  }
+
   public static string Execute(string planPath, string planSha256, string operation, bool scopeZeroVerified)
   {
     Require(OperatingSystem.IsWindows() && operation is "inspect" or "apply" or "restore" &&
