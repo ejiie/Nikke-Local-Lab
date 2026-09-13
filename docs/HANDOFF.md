@@ -16,6 +16,32 @@
 
 ### 2026-09-13 담당 범위 확정 — 실게임은 운영자
 
+현행 요약(아래 중간 단계의 ‘미설치/남음’보다 우선):
+
+- enikk.app 승인 이미지 **39시즌/37개 PNG**와 시즌 선택 → 단일 보스/5약점 화면,
+  미처리 예/아니오·처리 상태 UI를 설치했다. 로컬 snapshot은 1~40이며 S19와
+  최신 공식 시즌 여부는 미해소로 유지한다. 다음 관리도구 실행부터 적용된다.
+- UI/app/startup 배포 소스 `bc8e83c353b3342e36342b5ac6dcc299e7369f83`은 Actions
+  `34744118009` 3 jobs 성공 후 PR #25로 병합됐다(main
+  `2ef3d2d7af013b6246ccaf073da2b7b4321dac96`). 봉인 plan SHA-256은
+  `755bbc39c144a4545a35fbaaf874f1fed91ac9e42be3dae3b8a632bd19fd6b51`, 실제 적용 receipt는
+  `artifacts/boss-catalog-20260913/control-center-delivery-1/apply-2fb9af3c0b4644f297bb8156b8a667a0.receipt.json`이다.
+  앱 전체 352파일·Start/activation·v6/selection 대조를 통과했고 운영 DB/게임은 건드리지 않았다.
+  원복은 이 plan의 `restore`로 앱과 Start/activation을 함께 복원한다. 과거 3파일 복원은 쓰지 않는다.
+- 설치된 activation은 아래 실제 오프라인 S29 검사를 통과한 `pipeline-3`를 가리킨다.
+  앱 파일 적용만 했으며 관리도구/worker나 게임을 시작하지 않았다. S29 상태는 계속
+  **awaiting_runtime_delivery**다. 별도 native 실행 구성·전달/원복 연결과 사용자의
+  실게임 인수는 남아 있다. S26 재검증이나 S29 운영 pin 변경을 하지 않는다.
+- 운영자는 사용자 실행 검증에서 **ACE-ADVT 자동 시작/종료 후 정상 중지**를 추가 승인했다.
+  범위는 [보안 경계](SECURITY_BOUNDARY.md)의 새 승인 절을 따른다. 새 helper는 이
+  opt-in 정책만 처리하고 기존 무변경 driver guard는 유지한다. PowerShell 7/WinPS5
+  각 44개 합성 검사와 기존 서비스 55개를 통과했다. 실제 드라이버 중지·게임 실행은 없다.
+  helper를 사용자 실행 계획/전체 종료 controller에 연결하는 작업은 아직 남아 있다.
+  실제 현재 driver snapshot의 새 정책 읽기 검사도 통과했다(ADVT Stopped, BASE Running).
+  변경 후 Phase 3B-2 전체 baseline/계약 검사도 통과했다
+  (`artifacts/boss-catalog-20260913/baseline-driver-1.log`). 이 후속 소스의 CI 결과는
+  별도 확인하며 PR #25의 UI 배포 성공과 혼용하지 않는다.
+
 운영자가 **실게임 테스트를 직접 맡고 그 외 작업을 전부 진행**하도록 명시했다.
 따라서 에이전트는 새 게임 실행/UAC 접속 실험을 자동 재개하지 않는다. 구현·오프라인
 자산 검사·합성 프로세스/실패 복구 검사·UI/API·폐기 DB 회귀·검증용 배포와 CI/병합을
@@ -823,7 +849,8 @@ bundle의 코드/복구 경로는 유지합니다. 운영 pending/provenance 대
 ## 별도 보류
 
 - 시즌 선택 창(시즌 1~현재, 보스 사진·기본 약점) → 선택 시즌 카드 하나와 5속성 설정 화면:
-  [UI-RAID-01 TODO](STABILIZATION_PLAN.md#ui-raid-01--시즌-목록과-선택-보스-설정-화면-분리)에 요구사항만 등록, 미구현.
+  [UI-RAID-01](STABILIZATION_PLAN.md#ui-raid-01--시즌-목록과-선택-보스-설정-화면-분리)의 화면/이미지는 구현·설치 완료.
+  최신 시즌 확인 및 사용자 화면 인수, native 전달을 포함한 최종 import 완료 조건은 남음.
 - S29 profile v3와 registry v2 불일치, 미완료 속성 실드 확장
 - 신규 보스와 전투 분석 UI 등 기능 추가
 
