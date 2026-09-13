@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <AssemblyName>NikkeLocalLab.NativeFxUserValidationChild</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../EpinelUserValidation/UserValidationServerEnvironment.cs" Link="UserValidationServerEnvironment.cs" />
+    <Compile Include="../EpinelUserValidation/UserValidationProcessInputs.cs" Link="UserValidationProcessInputs.cs" />
+    <Compile Include="../NativeFxUserValidationBootstrap/UserValidationBootstrapPlan.cs" Link="UserValidationBootstrapPlan.cs" />
+    <Compile Include="../NativeFxUserValidationBootstrap/UserValidationLaunchEvidence.cs" Link="UserValidationLaunchEvidence.cs" />
+    <Compile Include="../NativeFxUserValidationBootstrap/UserValidationPinnedFiles.cs" Link="UserValidationPinnedFiles.cs" />
+    <Compile Include="../NativeFxBootstrap/ExecutionTokenObservation.cs" Link="ExecutionTokenObservation.cs" />
+  </ItemGroup>
+</Project>

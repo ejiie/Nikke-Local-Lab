@@ -26,6 +26,7 @@ const state = {
 let nextTimer = 0;
 const timers = new Map();
 const context = vm.createContext({
+  bossUserValidation: { refresh: async () => {} },
   state, byId, AbortController, document: { querySelector: () => ({ disabled: false, querySelector: () => null }) },
   elementLabels: { water: "수냉" }, bossSeasonLabels: { 26: "프로비던스" },
   showJson() {}, setTimeout: callback => { const id = ++nextTimer; timers.set(id, callback); return id; },

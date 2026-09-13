@@ -67,7 +67,7 @@ const NllBossSeasons = (() => {
       if (!selected) byId("selected-boss-card").replaceChildren();
       if (selected) {
         const row = catalog?.seasons.find(item => item.seasonNumber === selected);
-        if (row?.processingStatusCode === "processed") byId("selected-boss-card").replaceChildren(card(row, true));
+        if (["processed", "awaiting_game_validation"].includes(row?.processingStatusCode)) byId("selected-boss-card").replaceChildren(card(row, true));
         else { selected = null; byId("selected-boss-card").replaceChildren(); byId("boss-detail").hidden = true; onUnavailable(); }
       }
     }
@@ -85,7 +85,7 @@ const NllBossSeasons = (() => {
             !/^[0-9a-f]{64}$/.test(payload.catalogSha256 || "") || !Number.isInteger(payload.maximumKnownSeason) ||
             payload.maximumKnownSeason < 1 || payload.maximumKnownSeason > 1000 || !Array.isArray(payload.seasons) ||
             payload.seasons.length !== payload.maximumKnownSeason || payload.seasons.some((row, index) =>
-              row.seasonNumber !== index + 1 || !["processed", "unprocessed", "unresolved", "awaiting_runtime_delivery"].includes(row.processingStatusCode) ||
+              row.seasonNumber !== index + 1 || !["processed", "unprocessed", "unresolved", "awaiting_runtime_delivery", "awaiting_game_validation"].includes(row.processingStatusCode) ||
               (row.processingStatusCode !== "unresolved" && !Object.hasOwn(elements, row.defaultWeaknessCode || "")) ||
               (row.defaultWeaknessCode !== null && !Object.hasOwn(elements, row.defaultWeaknessCode)))) throw new Error("boss_catalog_invalid");
         catalog = payload;
@@ -102,7 +102,7 @@ const NllBossSeasons = (() => {
     function selectSeason(season) {
       const row = catalog?.seasons.find(item => item.seasonNumber === season);
       if (!row || row.processingStatusCode === "unresolved" || inflight.has(season)) return;
-      if (row.processingStatusCode === "processed") {
+      if (["processed", "awaiting_game_validation"].includes(row.processingStatusCode)) {
         selected = season;
         byId("boss-season-picker").hidden = true;
         byId("boss-detail").hidden = false;

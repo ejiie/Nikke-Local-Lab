@@ -107,14 +107,14 @@ function New-NllControlCenterAppPackage([string]$AppRoot, [string]$PublishedRoot
     Assert-NllAppPackage ($before.Count -gt 0 -and $published.Count -gt 0) 'tree_empty'
     foreach ($required in @('NikkeLocalLab.Admin.Api.dll', 'NikkeLocalLab.Admin.Api.deps.json',
         'NikkeLocalLab.Admin.Api.runtimeconfig.json', 'wwwroot/editor/index.html', 'wwwroot/editor/editor.js',
-        'wwwroot/editor/editor.css', 'wwwroot/editor/boss-seasons.js')) {
+        'wwwroot/editor/editor.css', 'wwwroot/editor/boss-seasons.js', 'wwwroot/editor/user-validation.js')) {
         Assert-NllAppPackage (@($published | Where-Object relativePath -CEQ $required).Count -eq 1) 'full_ui_bundle_required'
     }
     # Installed presentation.json and all locally owned assets must survive.
     # Only compiled app outputs and the complete checked-in editor bundle overlay.
     $overlay = @($published | Where-Object {
         $_.relativePath -cmatch '^[A-Za-z0-9._-]+\.(dll|pdb|exe|deps\.json|runtimeconfig\.json)$' -or
-        $_.relativePath -cin @('wwwroot/editor/index.html','wwwroot/editor/editor.js','wwwroot/editor/editor.css','wwwroot/editor/boss-seasons.js')
+        $_.relativePath -cin @('wwwroot/editor/index.html','wwwroot/editor/editor.js','wwwroot/editor/editor.css','wwwroot/editor/boss-seasons.js','wwwroot/editor/user-validation.js')
     })
     $null = [IO.Directory]::CreateDirectory($outputRoot)
     $beforeRoot = Join-Path $outputRoot 'before'

@@ -23,6 +23,7 @@ try {
         TextFile (Join-Path $published $key) ('synthetic-after-' + $key)
     }
     TextFile (Join-Path $published 'wwwroot/editor/boss-seasons.js') 'synthetic-new-js'
+    TextFile (Join-Path $published 'wwwroot/editor/user-validation.js') 'synthetic-validation-js'
     TextFile (Join-Path $install 'Start-NLL-ControlCenter.ps1') 'synthetic-old-start-not-executed'
     $start = Join-Path $root 'synthetic-start.ps1'
     TextFile $start 'synthetic-guarded-start-not-executed'

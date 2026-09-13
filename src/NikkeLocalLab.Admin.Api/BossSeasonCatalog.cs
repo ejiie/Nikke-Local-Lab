@@ -28,7 +28,8 @@ public sealed class UnavailableBossSeasonCatalogService : IBossSeasonCatalogServ
   public byte[]? GetImage(int season, string catalogSha256) => null;
 }
 
-public sealed class FilesystemBossSeasonCatalogService(string catalogPath, string catalogSha256, string registryRoot)
+public sealed class FilesystemBossSeasonCatalogService(string catalogPath, string catalogSha256, string registryRoot,
+    UserValidationDelivery? userValidation = null)
     : IBossSeasonCatalogService
 {
   internal static readonly JsonSerializerOptions JsonOptions = new()
@@ -46,6 +47,20 @@ public sealed class FilesystemBossSeasonCatalogService(string catalogPath, strin
       // Read once per GET so all cards describe one registry version. This starts
       // no process, doesn't publish, and is NOT execution preparation/admission.
       var statuses = ReadRegistry(snapshot);
+      if (userValidation is not null)
+      {
+        try
+        {
+          var delivery = userValidation.ReadBound();
+          var season = snapshot.Seasons.SingleOrDefault(row => row.SeasonNumber == delivery.View.SeasonNumber);
+          // Only the separately prepared validation lane is exposed. Never
+          // overwrite an admitted S26 card or enable the old v6/v3 run path.
+          if (season is not null && season.DiscoveryStatusCode == "resolved" &&
+              season.DefaultWeaknessCode == delivery.DefaultWeaknessCode && statuses[season.SeasonNumber].Status != "processed")
+            statuses[season.SeasonNumber] = ("awaiting_game_validation", null);
+        }
+        catch (Exception error) when (IsReadFailure(error)) { /* Existing conservative registry projection remains authoritative. */ }
+      }
       return new(1, "nll/boss-season-catalog-view/v1", "ready", null, catalogSha256, snapshot.MaximumKnownSeason,
           snapshot.CurrentSeasonStatusCode, snapshot.Seasons.Select(row =>
           {
@@ -173,6 +188,18 @@ public static class BossSeasonEndpoints
   {
     var group = endpoints.MapGroup("/admin-api/v1");
     group.MapGet("/boss-seasons", (IBossSeasonCatalogService service) => service.Get());
+    group.MapGet("/boss-user-validation/{season:int}", (int season, IServiceProvider provider) =>
+        provider.GetService<UserValidationDelivery>()?.Get(season) ??
+        new UserValidationDeliveryView(1, "nll/user-validation-delivery-view/v1", season, "blocked",
+            "boss_validation_delivery_unavailable", null, []));
+    group.MapGet("/boss-user-validation/{season:int}/{weakness}", (int season, string weakness, IServiceProvider provider) =>
+        provider.GetService<UserValidationExecution>()?.Get(season, weakness) ??
+        new UserValidationActionView(1, "nll/user-validation-action/v1", null, season, weakness, "blocked", "boss_validation_delivery_unavailable"));
+    group.MapPost("/boss-user-validation-actions", async (UserValidationActionRequest request, IServiceProvider provider, CancellationToken token) =>
+    {
+      var execution = provider.GetService<UserValidationExecution>() ?? throw new ApiRequestException(503, "boss_validation_delivery_unavailable");
+      return Results.Json(await execution.BeginAsync(request, token).ConfigureAwait(false), statusCode: StatusCodes.Status202Accepted);
+    });
     group.MapGet("/boss-onboarding-jobs", (IBossOnboardingService service) => service.List());
     group.MapGet("/boss-onboarding-jobs/{uid:guid}", (Guid uid, IBossOnboardingService service) =>
         service.Get(uid) is { } job ? Results.Json(job) : Results.NotFound());

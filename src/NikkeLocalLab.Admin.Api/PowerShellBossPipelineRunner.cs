@@ -8,7 +8,7 @@ namespace NikkeLocalLab.Admin.Api;
 public sealed record BossPipelineOptions(string PowerShellPath, string PowerShellSha256, string WorkerPath, string WorkerSha256,
     string ConfigurationPath, string ConfigurationSha256, int TimeoutSeconds = 1800);
 
-public sealed class PowerShellBossPipelineRunner(BossPipelineOptions options) : IBossPipelineRunner
+public sealed class PowerShellBossPipelineRunner(BossPipelineOptions options, UserValidationDelivery? userValidation = null) : IBossPipelineRunner
 {
   private static string JobName(Guid uid) => "Local\\NLL.BossOnboarding." + uid.ToString("N");
   private static string Literal(string value) => "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";
@@ -54,7 +54,7 @@ public sealed class PowerShellBossPipelineRunner(BossPipelineOptions options) : 
       if (owner.ActiveProcesses != 0) throw new InvalidOperationException("boss_pipeline_children_running");
       Pin(options.WorkerPath, options.WorkerSha256, 1048576);
       Pin(options.ConfigurationPath, options.ConfigurationSha256, 1048576);
-      return ReadResult(outputRoot, job);
+      return ReadResult(outputRoot, job, userValidation);
     }
     finally { owner.TerminateAndWait(15000); }
   }
@@ -72,7 +72,7 @@ public sealed class PowerShellBossPipelineRunner(BossPipelineOptions options) : 
     catch (Win32Exception error) when (error.NativeErrorCode == 2) { return Task.FromResult(true); }
     catch (Exception error) when (error is Win32Exception or InvalidOperationException) { return Task.FromResult(false); }
   }
-  public static BossPipelineResult ReadResult(string outputRoot, BossOnboardingJob job)
+  public static BossPipelineResult ReadResult(string outputRoot, BossOnboardingJob job, UserValidationDelivery? userValidation = null)
   {
     using var result = JsonDocument.Parse(FilesystemBossSeasonCatalogService.ReadFile(Path.Combine(outputRoot, "pipeline-result.json"), 16384));
     var row = result.RootElement;
@@ -130,7 +130,17 @@ public sealed class PowerShellBossPipelineRunner(BossPipelineOptions options) : 
           a.GetProperty("operationalStatusCode").GetString() == "enabled" && a.GetProperty("fiveAffinityVariantStatusCode").GetString() == "passed");
     }
     else Require(row.GetProperty("admissionReceiptSha256").ValueKind == JsonValueKind.Null);
-    return new(status!, status == "completed" ? null : "boss_runtime_delivery_required",
+    if (status == "awaiting_runtime_delivery" && userValidation is not null)
+    {
+      try
+      {
+        var delivery = userValidation.ReadBound();
+        if (delivery.View.SeasonNumber == job.SeasonNumber && delivery.CandidateReceiptSha256 == candidateHash &&
+            delivery.ProfileSha256 == c.GetProperty("profileSha256").GetString()) status = "awaiting_game_validation";
+      }
+      catch (Exception error) when (FilesystemBossSeasonCatalogService.IsReadFailure(error)) { /* Unverified handoff never promotes the worker result. */ }
+    }
+    return new(status!, status == "completed" ? null : status == "awaiting_game_validation" ? "boss_game_validation_required" : "boss_runtime_delivery_required",
         candidateHash, admissionHash);
   }
 }

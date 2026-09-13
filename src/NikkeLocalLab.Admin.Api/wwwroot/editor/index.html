@@ -6,6 +6,7 @@
   <title>NLL 지휘관 관리 도구</title>
   <link rel="stylesheet" href="/editor/editor.css">
   <script src="/editor/boss-seasons.js" defer></script>
+  <script src="/editor/user-validation.js" defer></script>
   <script src="/editor/editor.js" defer></script>
 </head>
 <body>
@@ -182,7 +183,14 @@
               <button class="weakness-option" type="button" role="radio" aria-checked="true" data-weakness-code="iron"><img src="/editor/assets/ui/code-iron.png" alt=""><span>철갑</span></button>
             </div>
           </section>
-          <article class="surface launch-state-card"><div><span class="signal"></span><div><strong id="launch-status-title">실행 대기</strong><p id="launch-status-description">계정을 선택하면 실행 가능 여부를 확인합니다.</p></div></div><div class="action-row compact"><button id="refresh-launch" class="ghost" type="button" disabled>상태 확인</button><button id="selected-boss-launch" class="primary" type="button" disabled>선택한 보스로 게임 시작</button></div></article>
+          <article id="standard-boss-launch" class="surface launch-state-card"><div><span class="signal"></span><div><strong id="launch-status-title">실행 대기</strong><p id="launch-status-description">계정을 선택하면 실행 가능 여부를 확인합니다.</p></div></div><div class="action-row compact"><button id="refresh-launch" class="ghost" type="button" disabled>상태 확인</button><button id="selected-boss-launch" class="primary" type="button" disabled>선택한 보스로 게임 시작</button></div></article>
+          <article id="boss-user-validation" class="surface" hidden aria-labelledby="user-validation-status">
+            <h3 id="user-validation-status">사용자 실게임 검증 준비 확인 중</h3>
+            <p>준비된 독립 검증 계정을 사용합니다. 현재 편집 중인 계정과 운영 DB는 변경하지 않습니다. 게임 종료 후 원복이 완료될 때까지 기다려 주세요.</p>
+            <p>자동 검사는 통과했지만 실제 패턴·속성 실드·FX는 직접 확인해야 합니다. 아래 시작 버튼을 누르면 관리자 권한을 요청합니다.</p>
+            <p id="user-validation-failure" role="status" aria-live="polite"></p>
+            <div class="action-row"><button id="user-validation-start" class="primary" type="button" disabled>검증 계정으로 게임 시작</button><button id="user-validation-recover" type="button" disabled>원복 재개</button><button id="user-validation-refresh" class="ghost" type="button">검증 상태 확인</button></div>
+          </article>
           </div>
           <dialog id="boss-import-dialog" class="boss-dialog" aria-labelledby="boss-import-title"><h3 id="boss-import-title">보스 불러오기</h3><p id="boss-import-question" class="boss-dialog-message"></p><div class="action-row"><button id="boss-import-yes" class="primary" type="button">예</button><button id="boss-import-no" type="button" autofocus>아니오</button></div></dialog>
           <dialog id="boss-message-dialog" class="boss-dialog" aria-labelledby="boss-message-title"><h3 id="boss-message-title"></h3><p id="boss-message-text" class="boss-dialog-message"></p><button id="boss-message-close" class="primary" type="button" autofocus>확인</button></dialog>

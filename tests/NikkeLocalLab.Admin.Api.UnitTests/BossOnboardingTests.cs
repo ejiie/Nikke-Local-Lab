@@ -11,6 +11,27 @@ public sealed class BossOnboardingTests : IDisposable
   private BossOnboardingRequest Request(int season = 1) => new(Guid.NewGuid(), season, catalog.Hash);
   private static readonly CancellationToken None = CancellationToken.None;
   [Fact]
+  public async Task ExistingJobReadsProjectVerifiedDeliveryWithoutRewritingHistory()
+  {
+    var job = await Service().StartAsync(Request(), None);
+    var fixture = new DeliveryFixture();
+    var path = Path.Combine(root, job.JobUid.ToString("D"), "job.json");
+    var durable = job with
+    {
+      SeasonNumber = 29,
+      StatusCode = "awaiting_runtime_delivery",
+      CandidateReceiptSha256 = fixture.Manifest["candidateReceiptSha256"]!.GetValue<string>()
+    };
+    File.WriteAllBytes(path, JsonSerializer.SerializeToUtf8Bytes(durable, FilesystemBossSeasonCatalogService.JsonOptions));
+    var before = File.ReadAllBytes(path);
+    var service = new FilesystemBossOnboardingService(root, catalog, runner, userValidation: fixture.Service);
+    Assert.Equal("awaiting_game_validation", service.Get(job.JobUid)!.StatusCode);
+    Assert.Equal("awaiting_game_validation", Assert.Single(service.List()).StatusCode);
+    fixture.Files[fixture.Files.Keys.First()] = "drift"u8.ToArray();
+    Assert.Equal("awaiting_runtime_delivery", service.Get(job.JobUid)!.StatusCode);
+    Assert.Equal(before, File.ReadAllBytes(path)); Assert.Equal(0, runner.Runs);
+  }
+  [Fact]
   public async Task RequestIsDurableAndReplayAfterRestartDoesNotRunAProcess()
   {
     var request = Request();
