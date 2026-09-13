@@ -32,6 +32,7 @@
 
 ## 운영 절차
 
+- [보스 자동 추가·공통 실행 경로 통합 계획](operations/COMMON_BOSS_EXECUTION_PLAN.md)
 - [안정화 변경 후 직접 테스트할 순서](operations/STABILIZATION_ACCEPTANCE.md)
 - [신규 보스·보정 FX 사용자 실게임 검증](operations/BOSS_NATIVE_USER_VALIDATION.md)
 - [Windows PostgreSQL](operations/WINDOWS_NATIVE_POSTGRESQL_RUNTIME.md)
