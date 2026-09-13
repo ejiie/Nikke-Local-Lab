@@ -36,6 +36,12 @@ the app/configuration did not start the app, worker, game or operating database.
   can discover new content without trusting the mismatched draft's metadata or
   silently updating its old admission pin. Only validated v2 profiles may use the
   separate immutable-file/atomic-registry legacy publisher.
+- Existing pinned v1 profiles remain visible as processed, matching the execution
+  preparation reader; the verified S26 is v1. A real installed-DLL HTTP check found
+  that the initial v2-only catalog reader hid S26. The app was restored, this reader
+  was corrected with mixed-v1/v3 regression tests, and a newly sealed app package was
+  installed and rechecked. The publisher's v2-only rule and S29 execution block did
+  not change. See the handoff for the second delivery plan and rollback baseline.
 
 `tools/NikkeLocalLab.BossPipeline.Checks` runs only with an explicit private config,
 config SHA and season; `--inspect-job <job-uid>` checks an existing receipt chain

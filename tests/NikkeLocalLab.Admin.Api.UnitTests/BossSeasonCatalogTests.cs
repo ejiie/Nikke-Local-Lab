@@ -59,6 +59,8 @@ public sealed class BossSeasonCatalogTests : IDisposable
     Assert.Equal(before.Count, Directory.GetFiles(root, "*", SearchOption.AllDirectories).Length);
   }
   [Theory]
+  [InlineData(1, true, "processed")]
+  [InlineData(1, false, "unprocessed")]
   [InlineData(2, true, "processed")]
   [InlineData(2, false, "unprocessed")]
   [InlineData(3, true, "awaiting_runtime_delivery")]
@@ -66,6 +68,36 @@ public sealed class BossSeasonCatalogTests : IDisposable
   {
     Register(version, correctHash: pin);
     Assert.Equal(expected, Service().Get().Seasons[0].ProcessingStatusCode);
+  }
+  [Fact]
+  public void ExistingV1ProfileStaysProcessedBesideADriftedV3Draft()
+  {
+    Register(1);
+    var legacyPath = Path.Combine(RegistryRoot, "synthetic.json");
+    var draftPath = Path.Combine(RegistryRoot, "draft.json");
+    Write(draftPath, new
+    {
+      schemaVersion = 3,
+      contractId = "nll/boss-runtime-variant-profile/v3",
+      seasonNumber = 3,
+      profileCode = "synthetic-draft",
+      sourceAffinity = new { weaknessCode = "fire" }
+    });
+    Write(RegistryPath, new
+    {
+      schemaVersion = 1,
+      contractId = "nll/boss-runtime-variant-registry/v1",
+      profiles = new[] {
+      new { seasonNumber = 1, profileCode = "synthetic-boss", profileRelativePath = "synthetic.json",
+        profileSha256 = Hash(legacyPath), operationalStatusCode = "enabled" },
+      new { seasonNumber = 3, profileCode = "synthetic-draft", profileRelativePath = "draft.json",
+        profileSha256 = new string('0', 64), operationalStatusCode = "enabled" }
+    }
+    });
+    var result = Service().Get();
+    Assert.Equal("processed", result.Seasons[0].ProcessingStatusCode);
+    Assert.Equal("unprocessed", result.Seasons[2].ProcessingStatusCode);
+    Assert.Equal("boss_profile_drifted", result.Seasons[2].FailureCode);
   }
   [Theory]
   [InlineData("../synthetic.json")]

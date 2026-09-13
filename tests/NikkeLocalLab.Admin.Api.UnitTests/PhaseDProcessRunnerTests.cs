@@ -3,6 +3,7 @@ using System.Text.Json;
 
 namespace NikkeLocalLab.Admin.Api.UnitTests;
 
+[Collection(WindowsProcessCollection.Name)]
 public sealed class PhaseDProcessRunnerTests
 {
   [Theory]

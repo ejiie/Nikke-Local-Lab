@@ -4,6 +4,7 @@ using NikkeLocalLab.ControlCenter.Desktop;
 
 namespace NikkeLocalLab.Admin.Api.UnitTests;
 
+[Collection(WindowsProcessCollection.Name)]
 public sealed class DesktopHostSessionTests
 {
   [Fact]
