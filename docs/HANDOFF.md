@@ -71,6 +71,11 @@ UI 배포 및 후속 전체 회귀/CI 병합이다. 작업 중 추가한 코드�
 새 `boss-seasons.js`와 HTML/CSS 전체 묶음 및 추가 파일의 원복 기준도 필요하다.
 후속 로컬 Phase 3B-2 전체 baseline/계약, repository/Phase 0/Actions 계약과
 publication 42/native composition 14/common candidate Python 12 검사를 통과했다.
+후속 폐기 PostgreSQL 114/114·재시작·정리도 통과했다
+(`artifacts/stabilization/lifecycle-postgresql/c84625d7704a4882adaf6cf1f8f0c7dd/receipt.json`).
+첫 소스 커밋 `be5d01d`의 Actions `34740637212`는 테스트 전 main merge 준비에서
+문서/명령 등록부 충돌로 실패했다. 앞선 squash 이력을 main과 정상 merge로 연결해
+후속 재검증한다. 기능 gate를 우회하거나 S29 실행 pin을 바꾸지 않는다.
 `pipeline-2` 설정은 실행 당시 pin의 과거 증거이며, 이후 합성 seed를 표준
 `tests/fixtures/synthetic/boss-variant-discovery-seed.json` 위치로 옮겼으므로 재실행/
 배포 설정으로 재사용하지 않는다. 후속 배포 전에 최종 소스로 새 설정을 생성해야 한다.

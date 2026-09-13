@@ -59,7 +59,11 @@ async function main() {
     assert.equal(await page.locator(".raid-boss-option:visible").count(), 1);
     assert.equal(await page.locator(".boss-season-option:visible").count(), 0);
     const before = await page.locator("#selected-boss-card [data-boss-weakness-label]").textContent();
+    assert.equal(await page.locator('.weakness-option[aria-checked="true"]').count(), 1);
     await page.locator('[data-weakness-code="iron"]').click();
+    assert.equal(await page.locator('.weakness-option[aria-checked="true"]').count(), 1);
+    assert.equal(await page.locator('.weakness-option[aria-checked="true"]').getAttribute("data-weakness-code"), "iron");
+    assert.equal(await page.locator('.weakness-option img:visible').count(), 0, "missing synthetic icons must not render broken images");
     assert.equal(await page.locator("#selected-boss-card [data-boss-weakness-label]").textContent(), before);
     await page.screenshot({ path: path.join(output, "selected-boss.png"), fullPage: false });
     await page.locator("#select-boss-season").click();

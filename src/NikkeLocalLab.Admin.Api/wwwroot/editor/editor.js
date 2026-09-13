@@ -3095,6 +3095,8 @@ const bossSeasons = NllBossSeasons.create({ document, api,
 for (const button of document.querySelectorAll(".weakness-option")) {
   const icon = button.querySelector("img");
   icon?.addEventListener("error", () => { icon.hidden = true; });
+  // Static markup may finish its image request before this deferred script runs.
+  if (icon?.complete && icon.naturalWidth === 0) icon.hidden = true;
   button.addEventListener("click", () => selectWeaknessCode(button.dataset.weaknessCode));
 }
 byId("selected-boss-launch").addEventListener(
