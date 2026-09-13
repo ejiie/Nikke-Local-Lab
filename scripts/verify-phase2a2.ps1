@@ -52,6 +52,7 @@ Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/raid-la
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/boss-seasons.test.cjs"))
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/user-validation.test.cjs"))
 Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-user-validation-diagnostics.ps1'))
+Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-user-validation-preflight.ps1'))
 $BossPipelineChecks = Join-Path $RepositoryRoot 'tools/NikkeLocalLab.BossPipeline.Checks/NikkeLocalLab.BossPipeline.Checks.csproj'
 Invoke-Checked dotnet @('restore', $BossPipelineChecks, '--locked-mode')
 Invoke-Checked dotnet @('build', $BossPipelineChecks, '-c', 'Release', '--no-restore')
@@ -62,6 +63,11 @@ Invoke-Checked dotnet @('restore', $ValidationChecker, '--locked-mode')
 Invoke-Checked dotnet @('build', $ValidationChecker, '-c', 'Release', '--no-restore')
 Invoke-Checked dotnet @('format', $ValidationChecker, '--verify-no-changes', '--no-restore')
 Write-Output 'User validation compiled-plan checker source built; no game, UAC or private inputs used in CI.'
+$GenerationProbe = Join-Path $RepositoryRoot 'tools/Phase3B2/UserValidationGenerationProbe/NikkeLocalLab.UserValidationGenerationProbe.csproj'
+Invoke-Checked dotnet @('restore', $GenerationProbe, '--locked-mode')
+Invoke-Checked dotnet @('build', $GenerationProbe, '-c', 'Release', '--no-restore')
+Invoke-Checked dotnet @('format', $GenerationProbe, '--verify-no-changes', '--no-restore')
+Write-Output 'Generation feasibility probe source built; elevated NTFS experiments are a separate synthetic local gate.'
 Invoke-Checked node @((Join-Path $ScriptDirectory "test-nll-phase-d-lifecycle-ui.cjs"))
 $MaterializerChecks = Join-Path $RepositoryRoot 'tests/NikkeLocalLab.Materializer.BehaviorChecks/NikkeLocalLab.Materializer.BehaviorChecks.csproj'
 # Source-only CI compiles the checker without Epinel/SDK/client inputs. Actual

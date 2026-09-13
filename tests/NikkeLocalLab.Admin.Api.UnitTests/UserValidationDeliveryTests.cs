@@ -7,6 +7,16 @@ namespace NikkeLocalLab.Admin.Api.UnitTests;
 public sealed class UserValidationDeliveryTests
 {
   [Fact]
+  public void NewPreflightRequiresCompleteHelperClosureAndExplicitDeepMode()
+  {
+    var fixture = new DeliveryFixture(preflight: true);
+    Assert.Equal("awaiting_game_validation", fixture.Service.Get(29).StatusCode);
+    var helper = fixture.Files.Keys.First(p => p.EndsWith(@"\Nll.UserValidationPreflight.ps1", StringComparison.Ordinal));
+    fixture.Files[helper] = "changed"u8.ToArray();
+    Assert.Equal("blocked", fixture.Service.Get(29).StatusCode);
+    Assert.Equal("blocked", new DeliveryFixture(preflight: true, preflightMode: "fast").Service.Get(29).StatusCode);
+  }
+  [Fact]
   public void VerifiedFiveEntryHandoffIsOnlyGameValidationPending()
   {
     var fixture = new DeliveryFixture(); var view = fixture.Service.Get(29);
@@ -87,7 +97,7 @@ internal sealed class DeliveryFixture
     var bytes = JsonSerializer.SerializeToUtf8Bytes(value); Files.Add(path, bytes);
     return new() { ["path"] = path, ["length"] = bytes.Length, ["sha256"] = Hash(bytes) };
   }
-  internal DeliveryFixture()
+  internal DeliveryFixture(bool preflight = false, string preflightMode = "deep")
   {
     var profile = Pin("profile", new { schemaVersion = 3, contractId = "nll/boss-runtime-variant-profile/v3", seasonNumber = 29, sourceAffinity = new { weaknessCode = "iron" } });
     var ph = profile["sha256"]!.GetValue<string>();
@@ -130,7 +140,8 @@ internal sealed class DeliveryFixture
       foreach (var name in new[] { "Nll.ResourceNative.ps1", "Nll.NativeFxManagedService.ps1", "Nll.NativeFxManagedDriver.ps1", "Nll.UserValidationController.ps1",
           "Nll.PhaseDJob.cs", "Nll.FxProcessIdentity.cs", "NikkeLocalLab.NativeFxUserValidationStore.dll" })
         tools.Add(Pin(run + @"\controller\" + name, "synthetic inert data"));
-      var entry = Pin(run + @"\entry.private.json", new JsonObject
+      if (preflight) tools.Add(Pin(run + @"\controller\Nll.UserValidationPreflight.ps1", "synthetic inert preflight"));
+      var entryValue = new JsonObject
       {
         ["contractId"] = "nll/user-validation-entry/v1",
         ["parentPlan"] = parent,
@@ -139,7 +150,9 @@ internal sealed class DeliveryFixture
         ["storePlan"] = store,
         ["controller"] = controller,
         ["tools"] = tools
-      });
+      };
+      if (preflight) { entryValue["preflightContractId"] = "nll/user-validation-preflight/v1"; entryValue["preflightMode"] = preflightMode; }
+      var entry = Pin(run + @"\entry.private.json", entryValue);
       var row = new JsonObject { ["weaknessCode"] = weakness, ["assessmentUid"] = uid, ["entrySha256"] = entry["sha256"]!.DeepClone() };
       entries.Add(row);
       var proof = (JsonObject)row.DeepClone(); proof["controllerInspectionPassed"] = true; proof["compiledPlanBindingPassed"] = true; proofRows.Add(proof);

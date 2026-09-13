@@ -20,7 +20,9 @@ function Assert-FxValidationDriverRows($Rows, [bool]$Baseline) {
             $row.sha256 -ceq $hashes[$index] -and
             ($row.byteLength -is [int] -or $row.byteLength -is [long]) -and
             $row.byteLength -gt 0 -and $row.byteLength -le 67108864) 'fx_validation_driver_identity_drift'
-        $states = if ($index -eq 1) { @('Running') } elseif ($Baseline) { @('Stopped') }
+        # BASE is observed and preserved, never started/stopped by this policy.
+        # A reboot can legitimately leave this Manual driver stopped.
+        $states = if ($index -eq 1) { @('Stopped','Running') } elseif ($Baseline) { @('Stopped') }
             else { @('Stopped','Start Pending','Running','Stop Pending') }
         Assert-Rn ($row.state -cin $states) 'fx_validation_driver_state_invalid'
     }

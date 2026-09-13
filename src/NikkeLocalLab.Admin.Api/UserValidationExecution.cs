@@ -11,7 +11,11 @@ public sealed record UserValidationActionRequest(Guid OperationUid, int SeasonNu
     string BindingSha256, string EntrySha256, string Mode);
 public sealed record UserValidationActionView(int SchemaVersion, string ContractId, Guid? OperationUid,
     int SeasonNumber, string WeaknessCode, string StatusCode, string? FailureCode,
-    bool ActualGameAcceptanceClaimed = false);
+    bool ActualGameAcceptanceClaimed = false, UserValidationProgress? Progress = null);
+public sealed record UserValidationProgress(string ContractId, string EntrySha256, string Mode, string Stage,
+    int Sequence, string State, DateTimeOffset StartedAtUtc, DateTimeOffset ObservedAtUtc,
+    double ElapsedMilliseconds, long PlannedReadBytes, long CompletedReadBytes, string ReadAccountingScope,
+    bool ActualGameAcceptanceClaimed);
 internal sealed record UserValidationOwner(string State, string ExecutablePath, int? ProcessId = null, long? CreatedFileTime = null, int? ExitCode = null);
 public interface IUserValidationProcessLauncher
 {
@@ -227,7 +231,37 @@ public sealed class UserValidationExecution(UserValidationDelivery delivery, IUs
       // A later successful explicit recovery supersedes this earlier failure.
       return CleanupVerified(run, request.EntrySha256) ? result with { StatusCode = "finished" } : result;
     }
-    if (processes.IsUnsettled(StorePath(Path.Combine(path, "owner.json")), shell)) return View(request, "running");
+    if (processes.IsUnsettled(StorePath(Path.Combine(path, "owner.json")), shell))
+    {
+      var progressPath = StorePath(Path.Combine(path, "preflight-progress.json"));
+      if (File.Exists(progressPath))
+      {
+        var progress = JsonSerializer.Deserialize<UserValidationProgress>(ReadFile(progressPath, 16384), JsonOptions);
+        Require(progress is not null && progress.ContractId == "nll/user-validation-preflight-progress/v1" &&
+            progress.EntrySha256 == request.EntrySha256 && progress.Mode == request.Mode &&
+            progress.Sequence is > 0 and <= 64 && progress.State is "started" or "running" or "ended" &&
+            progress.StartedAtUtc <= progress.ObservedAtUtc && progress.ObservedAtUtc <= DateTimeOffset.UtcNow.AddSeconds(5) &&
+            double.IsFinite(progress.ElapsedMilliseconds) && progress.ElapsedMilliseconds >= 0 &&
+            progress.PlannedReadBytes >= 0 && progress.CompletedReadBytes >= 0 &&
+            progress.ReadAccountingScope == "instrumented_parent_hashes_and_store" && !progress.ActualGameAcceptanceClaimed);
+        var status = progress.Stage switch
+        {
+          "quick_check" or "shared_state_recheck" => "quick_check",
+          "deep_check" or "native_store_apply" => "deep_check",
+          "bootstrap_check" => "bootstrap_check",
+          "isolation" or "system_apply" => "preparing",
+          "game_start" => "game_start",
+          "running" => "running",
+          "cleanup" => "cleanup",
+          "complete" or "failed" => "status_unknown", // Terminal authority is the durable execution/cleanup receipt.
+          _ => throw new InvalidOperationException("boss_validation_progress_invalid")
+        };
+        return View(request, status) with { Progress = progress };
+      }
+      var owner = JsonSerializer.Deserialize<UserValidationOwner>(ReadFile(StorePath(Path.Combine(path, "owner.json")), 16384), JsonOptions);
+      // A live parent proves no game state; old sealed controllers have no stages.
+      return View(request, owner?.State == "starting" ? "awaiting_user_approval" : "status_unknown");
+    }
     return View(request, CleanupVerified(run, request.EntrySha256) ? "finished" : File.Exists(StorePath(run + @"\execution.started.json")) ? "cleanup_required" : "failed",
         "boss_validation_controller_status_required");
   }

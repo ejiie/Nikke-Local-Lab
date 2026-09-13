@@ -8,17 +8,19 @@ $source = Join-Path $PSScriptRoot '../src/NikkeLocalLab.Admin.Api/UserValidation
 $shell = (Get-Process -Id $PID).Path
 $script:checks = 0
 function Check([bool]$Condition) { if (-not $Condition) { throw ('diagnostic_assertion_' + $script:checks) }; $script:checks++ }
-function Case([string]$Name, [string]$Body, [string]$Mutation = '') {
+function Case([string]$Name, [string]$Body, [string]$Mutation = '', [string]$PreflightContract = '') {
     $dir = Join-Path $root $Name
     $null = [IO.Directory]::CreateDirectory($dir)
     $runner = Join-Path $dir 'diagnostic-runner.ps1'
     Copy-Item -LiteralPath $source -Destination $runner
     $controller = Join-Path $dir 'invoke-nll-user-validation.ps1'
-    [IO.File]::WriteAllText($controller, 'param($EntryPath,$EntrySha256,$Mode)' + [Environment]::NewLine + $Body)
+    [IO.File]::WriteAllText($controller, 'param($EntryPath,$EntrySha256,$Mode,$DiagnosticRoot)' + [Environment]::NewLine + $Body)
     $entry = Join-Path $dir 'entry.private.json'
-    [IO.File]::WriteAllText($entry, (@{ contractId = 'nll/user-validation-entry/v1'; controller = @{
+    $entryValue=@{ contractId = 'nll/user-validation-entry/v1'; controller = @{
         path = $controller; sha256 = (Get-FileHash -LiteralPath $controller).Hash.ToLowerInvariant()
-    } } | ConvertTo-Json))
+    } }
+    if($PreflightContract){$entryValue.preflightContractId=$PreflightContract}
+    [IO.File]::WriteAllText($entry, ($entryValue | ConvertTo-Json))
     $sha = (Get-FileHash -LiteralPath $entry).Hash.ToLowerInvariant()
     if ($Mutation -eq 'controller') { [IO.File]::AppendAllText($controller, '# drift') }
     if ($Mutation -eq 'entry') { $sha = 'a' * 64 }
@@ -55,6 +57,12 @@ try {
     Check ($value.code -eq 1 -and $value.text.Contains('ParseException'))
     $value = Case 'success' '# no-op synthetic controller'
     Check ($value.code -eq 0 -and $null -eq $value.value.terminalError -and $value.value.statusCode -ceq 'controller_returned')
+    $value = Case 'new-preflight' 'if($DiagnosticRoot -cne $PSScriptRoot){throw "uv_diagnostic_root_not_bound"}' '' 'nll/user-validation-preflight/v1'
+    Check ($value.code -eq 0)
+    $value = Case 'old-preflight' 'if($DiagnosticRoot){throw "uv_old_contract_changed"}'
+    Check ($value.code -eq 0)
+    $value = Case 'unknown-preflight' 'throw "uv_must_not_execute"' '' 'unsupported'
+    Check ($value.code -eq 1 -and -not $value.text.Contains('uv_must_not_execute'))
     foreach ($mutation in @('controller','entry')) {
         $value = Case ('drift-' + $mutation) "throw 'uv_must_not_execute'" $mutation
         Check ($value.code -eq 1 -and $value.value.stage -ceq 'controller_binding')

@@ -35,14 +35,17 @@ internal sealed class UserValidationBootstrapSettings : IDisposable
     var plan = UserValidationBootstrapPlan.Parse(bytes);
     Require(plan.AssessmentUid == uid && plan.RuntimeRoot == directory);
     var settings = new UserValidationBootstrapSettings(plan);
+    UserValidationPreflightMeasurement? measurement = null;
+    var verified = false;
     try
     {
       // Refuse normal-token or off-Job launch before lengthy cache hashing.
       if (!inspectOnly) RequireLaunchContext(plan.JobName);
+      measurement = new("bootstrap", plan.ParentPlanSha256, plan.RuntimeFiles.Sum(p => p.Length) + plan.ClientFiles.Sum(p => p.Length));
       foreach (var pin in plan.RuntimeFiles)
-        settings.leases.Add(UserValidationPinnedFiles.Open(pin.Path, pin.Length, pin.Sha256, 512L * 1024 * 1024));
+        settings.leases.Add(UserValidationPinnedFiles.Open(pin.Path, pin.Length, pin.Sha256, 512L * 1024 * 1024, measurement.Observe));
       foreach (var pin in plan.ClientFiles)
-        using (UserValidationPinnedFiles.Open(pin.Path, pin.Length, pin.Sha256, 16L * 1024 * 1024 * 1024)) { }
+        using (UserValidationPinnedFiles.Open(pin.Path, pin.Length, pin.Sha256, 16L * 1024 * 1024 * 1024, measurement.Observe)) { }
       Require(UserValidationPinnedFiles.Inventory(directory, 65).SetEquals(
           plan.RuntimeFiles.Select(pin => pin.Path).Append(planPath)));
       Require(UserValidationPinnedFiles.Inventory(plan.ClientRoot, 10000).SetEquals(plan.ClientFiles.Select(pin => pin.Path)));
@@ -52,9 +55,16 @@ internal sealed class UserValidationBootstrapSettings : IDisposable
       using var parent = JsonDocument.Parse(parentInput);
       UserValidationLaunchEvidence.ValidateParent(plan, parent.RootElement);
       if (!inspectOnly) settings.RequireIsolation(digest);
+      verified = true;
       return settings;
     }
     catch { settings.Dispose(); throw; }
+    finally
+    {
+      if (!inspectOnly && measurement is not null)
+        try { measurement.Save(plan.RunRoot, verified); }
+        catch { settings.Dispose(); throw; }
+    }
   }
 
   private static void RequireLaunchContext(string name)
@@ -80,7 +90,9 @@ internal sealed class UserValidationBootstrapSettings : IDisposable
     using var certificate = X509CertificateLoader.LoadCertificateFromFile(Plan.RuntimeRoot + @"\trust-root.cer");
     var handler = new SocketsHttpHandler
     {
-      UseProxy = false, UseCookies = false, AllowAutoRedirect = false,
+      UseProxy = false,
+      UseCookies = false,
+      AllowAutoRedirect = false,
       AutomaticDecompression = DecompressionMethods.None,
       ConnectCallback = ResourceProbeBootstrapSettings.ConnectLoopbackAsync,
       SslOptions = new SslClientAuthenticationOptions

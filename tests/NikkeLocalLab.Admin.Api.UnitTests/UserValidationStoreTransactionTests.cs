@@ -77,6 +77,41 @@ public sealed class UserValidationStoreTransactionTests
     Assert.Equal(applied, stream.ToArray());
   }
 
+  [Fact]
+  public void DurableMarkerRunsAfterOneFullVerificationAndBeforeAnyWrite()
+  {
+    var original = Source(); var ranges = Ranges(original);
+    using var stream = new MemoryStream(original.ToArray());
+    var seal = UserValidationStoreTransaction.Prepare(stream, ranges, Hash(original));
+    using var measured = new UserValidationReadMeter(stream);
+    var calls = 0;
+    UserValidationStoreTransaction.Apply(measured, ranges, seal, () =>
+    {
+      calls++;
+      Assert.Equal(original.Length, measured.BytesRead);
+      Assert.Equal(original, stream.ToArray());
+    });
+    Assert.Equal(1, calls);
+    Assert.Equal(original.Length * 2, measured.BytesRead);
+    Assert.True(UserValidationStoreTransaction.Restore(measured, ranges, seal));
+    Assert.Equal(original, stream.ToArray());
+  }
+
+  [Fact]
+  public void MarkerFailureAndContentDriftNeverWriteOrAuthorizeMutation()
+  {
+    var original = Source(); var ranges = Ranges(original);
+    using var stream = new MemoryStream(original.ToArray());
+    var seal = UserValidationStoreTransaction.Prepare(stream, ranges, Hash(original));
+    Assert.Throws<IOException>(() => UserValidationStoreTransaction.Apply(stream, ranges, seal,
+        () => throw new IOException("synthetic_marker_failure")));
+    Assert.Equal(original, stream.ToArray());
+    stream.Position = 900; stream.WriteByte(254);
+    var changed = stream.ToArray(); var called = false;
+    Assert.Throws<InvalidOperationException>(() => UserValidationStoreTransaction.Apply(stream, ranges, seal, () => called = true));
+    Assert.False(called); Assert.Equal(changed, stream.ToArray());
+  }
+
   private sealed class TornWriteStream(byte[] bytes, int remaining) : MemoryStream(bytes)
   {
     internal int Remaining { get; set; } = remaining;

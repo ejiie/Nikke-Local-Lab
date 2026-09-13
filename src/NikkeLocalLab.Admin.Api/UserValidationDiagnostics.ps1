@@ -61,7 +61,13 @@ try {
         (Get-FileHash -LiteralPath $ControllerPath).Hash.ToLowerInvariant() -cne $uvdEntry.controller.sha256) { throw 'uvd_controller_drift' }
     $uvdStage = 'controller_invocation'
     $Error.Clear()
-    & $ControllerPath -EntryPath $EntryPath -EntrySha256 $EntrySha256 -Mode $Mode
+    $uvdArguments=@{EntryPath=$EntryPath;EntrySha256=$EntrySha256;Mode=$Mode}
+    # Old sealed entries retain their original invocation contract.
+    if('preflightContractId' -cin @($uvdEntry.PSObject.Properties.Name)){
+        if($uvdEntry.preflightContractId -cne 'nll/user-validation-preflight/v1'){throw 'uvd_preflight_contract_invalid'}
+        $uvdArguments.DiagnosticRoot=$PSScriptRoot
+    }
+    & $ControllerPath @uvdArguments
 } catch {
     $uvdTerminal = $_
     $uvdExit = 1

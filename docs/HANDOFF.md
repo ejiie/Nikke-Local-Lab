@@ -1,6 +1,6 @@
 # 작업 인계
 
-최종 갱신: 2026-09-13. 이 문서는 짧은 현황 요약이며, 상세 기록을 계속 덧붙이는 로그가 아닙니다.
+최종 갱신: 2026-09-14. 이 문서는 짧은 현황 요약이며, 상세 기록을 계속 덧붙이는 로그가 아닙니다.
 작업 전 읽기 순서·불변 규칙은 [AGENTS](../AGENTS.md), 문서 위치는 [색인](README.md)을 따릅니다.
 
 ## 확인된 현재 상태
@@ -12,7 +12,37 @@
 - 활성 OS는 Micron입니다. 저장소·client·bundle·백업의 정확한 위치는 [현재 경로](MICRON_CURRENT_PATHS.md)만 기준으로 합니다.
 - 위 완료는 운영자의 실게임 확인이며, 새 자동 관측 receipt나 모든 보스·음성·약점 조합의 검증을 뜻하지 않습니다.
 
-## 2026-09-13 사용자 실행 초기 오류 기록 보강
+## 2026-09-14 실행 전 검사 정비 진행
+
+[조사·정비 계획](operations/VALIDATION_PREFLIGHT_PLAN.md)의 A/B를 구현했다. 두 음성 설정을
+한 snapshot에서 의미 비교하고 진단하며, 작은 조건 → 전체 해시 → 변경 직전 재확인으로
+순서를 옮겼다. UI는 부모 실행과 실제 게임 실행을 구분하고 bootstrap 검사도 별도 표시한다.
+관리자 읽기 진단에서도 신·구 비교가 모두 일치했다. 과거 실패의 직접 원인은 여전히 미확정이다.
+
+같은 exclusive CDB transaction의 중복 Prepare 한 번을 제거했으며 전체 hash와 원복 검사는
+유지한다. ACE-BASE는 준비 시 관측한 안정 상태(Stopped/Running)를 그대로 결박하고 모든
+단계에서 동일성을 검사한다. 실제 서비스·드라이버 시작/중지는 수행하지 않았다.
+
+새 다섯 assessment는 기존 client 한 개를 재사용해 Inspect와 compiled-plan 검사를 통과했다.
+새 delivery SHA는 `04f947017747db1ab166652f167bb8245cd921556241e0433c6f34a9e3b103e8`이다.
+앱 설치와 설치 파일 353개, 새 다섯 entry의 실제 설치 API 읽기 검사를 완료했다.
+근거는 `artifacts/validation-preflight-20260914/installation.receipt.json`이며 API SHA는
+`b79a8deda1493e8a9f779136c60044d33039133ce35b6b6a6e8f9c9248e09b0d`이다.
+기존 entry/실패 기록은 보존하며 새 S29 실게임 인수는 아직 하지 않았다.
+
+설정 합성 61개, 진단 69개, 드라이버 104개, UserValidation 단위 252개, 격리 PG 114개가
+통과했다. repository/Phase 0/2A1/2A2/2B/3A/3B0/3B1/3B2/Actions 최종 로컬 gate도
+통과했으며 같은 artifact의 `final-verify-*.log`가 권위다. 원격 Actions 결과와 구분한다.
+C는 NTFS 합성 prototype까지 진행했다. 재부팅·journal 공백 무효화와 동일 크기 변조·시간
+복원·교체·하드링크 거절을 검증했지만 프로세스 사이 lease 인계/부분 원복 세대 결박과 전체
+시작 성능은 아직 증명하지 않았다. **빠른 경로 및 계획 전체 완료를 주장하지 않는다.**
+
+## 2026-09-13 사용자 실행 초기 오류 기록 보강 — 당시 기록
+
+후속 사용자 실행에서 `resource_native_uv_preferences_before_drift`와 원래 실패 위치를
+확인했다. 현재 동일 비교는 20/20 통과하며 당시 관리자 관측 값은 없어 직접 원인은 미확정이다.
+테스트 정밀 검사/실사용 빠른 검사 분리와 추가 반복 읽기 병목을 포함한
+[조사·정비 계획](operations/VALIDATION_PREFLIGHT_PLAN.md)을 작성했다. 당시에는 미구현이었다.
 
 운영자의 첫 S29/수냉 실행은 상위 PowerShell이 종료되면서
 `boss_validation_controller_failed`가 됐다. `execution.started.json` 이전에 실패했고,
@@ -29,7 +59,8 @@ HResult/Win32 코드·프로젝트 script/행·최근 오류 이력(최대 256�
 이전 실패는 최종 controller 로그가 없을 수 있어 API가 그 결손과 종료 코드를 별도 기록한다.
 
 검증 명령은 `scripts/test-nll-user-validation-diagnostics.ps1`과 Admin API 단위 검사다.
-실제 게임/UAC는 에이전트가 호출하지 않는다. 설치 반영 여부는 새 app-only delivery의
+실제 게임은 에이전트가 호출하지 않는다. 2026-09-14 운영자 지시로 UAC 제한은 제거했다.
+설치 반영 여부는 새 app-only delivery의
 receipt로 확인하며, 이전 배포 receipt를 새 수정의 설치 증거로 사용하지 않는다.
 사용자가 다시 실행한 뒤 새 로그로 원인을 식별한다. 이번 변경 자체가 원인 수정이나
 S29 실게임 인수 완료를 뜻하지 않는다.

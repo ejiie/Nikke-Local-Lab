@@ -6,6 +6,39 @@ namespace NikkeLocalLab.Admin.Api.UnitTests;
 public sealed class UserValidationExecutionTests
 {
   [Theory]
+  [InlineData("quick_check", "quick_check")]
+  [InlineData("deep_check", "deep_check")]
+  [InlineData("bootstrap_check", "bootstrap_check")]
+  [InlineData("native_store_apply", "deep_check")]
+  [InlineData("shared_state_recheck", "quick_check")]
+  [InlineData("game_start", "game_start")]
+  [InlineData("running", "running")]
+  [InlineData("cleanup", "cleanup")]
+  [InlineData("complete", "status_unknown")]
+  public async Task ProgressDoesNotPromoteParentLivenessOrTerminalMarkersToAcceptance(string stage, string status)
+  {
+    using var fixture = new ExecutionFixture(); var request = fixture.Request();
+    await fixture.Service.BeginAsync(request, default);
+    await fixture.Launcher.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    var root = fixture.Run + @"\ui-actions\" + request.OperationUid;
+    fixture.Save(root + @"\owner.json", new { state = "running", executablePath = fixture.Launcher.Info!.FileName });
+    Assert.Equal("status_unknown", fixture.Service.Get(29, "water").StatusCode);
+    var progress = new UserValidationProgress("nll/user-validation-preflight-progress/v1", request.EntrySha256, "Start", stage,
+        1, "started", DateTimeOffset.UtcNow.AddSeconds(-1), DateTimeOffset.UtcNow, 1000, 2048, 1024,
+        "instrumented_parent_hashes_and_store", false);
+    fixture.Save(root + @"\preflight-progress.json", progress);
+    var view = fixture.Service.Get(29, "water");
+    Assert.Equal(status, view.StatusCode); Assert.False(view.ActualGameAcceptanceClaimed);
+    Assert.Equal(1024, view.Progress!.CompletedReadBytes);
+    fixture.Save(root + @"\preflight-progress.json", progress with { EntrySha256 = new string('0', 64) });
+    Assert.ThrowsAny<Exception>(() => fixture.Service.Get(29, "water"));
+    fixture.Save(root + @"\preflight-progress.json", progress with { ActualGameAcceptanceClaimed = true });
+    Assert.ThrowsAny<Exception>(() => fixture.Service.Get(29, "water"));
+    fixture.Save(root + @"\preflight-progress.json", progress);
+    await fixture.Finish();
+  }
+
+  [Theory]
   [InlineData("Start", "invalid")]
   [InlineData("unknown", "water")]
   public async Task InvalidActionsNeverLaunchAProcess(string mode, string weakness)
@@ -138,7 +171,8 @@ public sealed class UserValidationExecutionTests
     }
     internal void Save(string path, object value)
     {
-      path = Map(path); Directory.CreateDirectory(Path.GetDirectoryName(path)!); File.WriteAllBytes(path, JsonSerializer.SerializeToUtf8Bytes(value));
+      path = Map(path); Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+      File.WriteAllBytes(path, JsonSerializer.SerializeToUtf8Bytes(value, FilesystemBossSeasonCatalogService.JsonOptions));
     }
     internal async Task Finish()
     {
@@ -147,7 +181,17 @@ public sealed class UserValidationExecutionTests
       while (deadline.Elapsed < TimeSpan.FromSeconds(5))
       {
         if (Service.Get(29, "water").StatusCode is not ("running" or "awaiting_user_approval") &&
-            Directory.GetFiles(root, "result.json", SearchOption.AllDirectories).Length == Launcher.Starts) return;
+            Directory.GetFiles(root, "result.json", SearchOption.AllDirectories).Length == Launcher.Starts)
+        {
+          // The result is durable before the worker finally releases its lease.
+          // Observe that release before fixture disposal or a follow-up request.
+          try
+          {
+            using var settled = new FileStream(Path.Combine(root, ".ui-action.lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            return;
+          }
+          catch (IOException) { }
+        }
         await Task.Delay(20);
       }
       throw new TimeoutException("synthetic_action_did_not_settle");

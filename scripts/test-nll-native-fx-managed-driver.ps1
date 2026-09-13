@@ -38,6 +38,11 @@ function New-FxValidationDriverController { return $script:controller }
 function Wait-FxValidationDriverPoll { Start-Sleep -Milliseconds 1 }
 
 $policy = New-FxValidationDriverPolicy (Get-FxValidationDriverSnapshot)
+$drivers[1].state='Stopped'
+$stoppedBasePolicy=New-FxValidationDriverPolicy (Get-FxValidationDriverSnapshot)
+foreach($phase in @('before','runtime','cleanup','restored')){Assert-FxValidationDrivers $stoppedBasePolicy (Get-FxValidationDriverSnapshot) $phase;Check ($stops -eq 0)}
+$drivers[1].state='Running'
+foreach($phase in @('before','runtime','cleanup','restored')){Reject {Assert-FxValidationDrivers $stoppedBasePolicy (Get-FxValidationDriverSnapshot) $phase} 'driver_baseline_drift'}
 Assert-FxValidationDrivers $policy (Get-FxValidationDriverSnapshot) before
 Check ($stops -eq 0)
 $drivers[0].state = 'Running'
@@ -65,7 +70,7 @@ foreach ($index in 0..1) {
     $drivers[$index].byteLength--
 }
 $drivers[1].state = 'Stopped'
-Reject { Restore-FxValidationDriver $policy $true $true $true } 'driver_state_invalid'
+Reject { Restore-FxValidationDriver $policy $true $true $true } 'driver_baseline_drift'
 $drivers[1].state = 'Running'
 $drivers[0].state = 'Paused'
 Reject { Restore-FxValidationDriver $policy $true $true $true } 'driver_state_invalid'
