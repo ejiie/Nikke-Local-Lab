@@ -22,6 +22,24 @@ internal sealed record BossAffinityStaticDataVariantResult(
 
 internal static class BossAffinityStaticDataVariant
 {
+  internal static int ResolveUniqueUserValidationManager(GameData gameData, BossRuntimeVariantProfile profile)
+  {
+    var validator = CreateTargetObservationValidator(gameData, profile);
+    var matches = gameData.SoloRaidManagerTable.Keys
+        .Where(id => validator.Validate(id).IsTrustedTarget).Take(2).ToArray();
+    Require(matches.Length == 1, "phase_d_boss_variant_manager_observation_not_unique");
+    // Reuse the exact Challenge preset/wave/spawned target closure, not a season label lookup.
+    _ = ResolveChallengeTargetMonsterId(gameData, new User { SelectedClassicSoloRaidManagerId = matches[0] }, profile);
+    return matches[0];
+  }
+
+  internal static void ValidateUserValidationSelection(GameData gameData, BossRuntimeVariantProfile profile, User user)
+  {
+    var resolution = SoloRaidManagerSelectionResolver.Resolve(user, CreateTargetObservationValidator(gameData, profile));
+    Require(resolution.IsValid && resolution.Code == ClassicSoloRaidSelectionCode.SelectedWithoutActiveRun,
+        "phase_d_user_validation_account_active_run_or_selection_invalid");
+  }
+
   public static object InspectTargetObservation(
       GameData gameData,
       BossRuntimeVariantProfile profile)

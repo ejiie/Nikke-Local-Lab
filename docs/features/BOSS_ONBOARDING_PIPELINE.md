@@ -67,6 +67,26 @@ scope checks, shared setting/input restoration, exact driver restoration, and on
 isolation release. Failure stops subsequent steps. The preparing/controller/delivery
 composition is still pending; no ready-for-gameplay state is published by this work.
 
+Prepared-account support now uses `--prepare-user-validation-account` with the exact
+hash of a prior LOCAL materialization receipt and its still-matching runtime DB.
+The source stays read-locked. The exclusive upstream pack reader consumes a new
+private pack copy. Only credentials, local token keys, selected manager and operating
+persistence binding change; every other JSON value (including unknown fields and
+existing completed history) is retained. The exact profile target must be unique and
+the new selection must have no active run. Outputs are new private files, never an
+operating DB overwrite or a new tutorial registration. Actual five-affinity copies
+retain 193 characters, 40 tutorial groups and 611 completed scenarios.
+
+The installed v6 server's real profile loader was separately observed to reject v3.
+`build-nll-user-validation-server.ps1` applies the reviewed profile-version patch to
+a private source copy and builds an independent candidate; the original source,
+installed v6 DLL and registry stay unchanged. Only matching v1/v2/v3 schema-contract
+pairs are supported. The full v3 profile is not downgraded, and this parser change
+does not relax native delivery, asset, or actual-game admission. The candidate's
+actual loader accepts S26/v1 and S29/v3; 142 selected-manager tests and 34 new local
+account/version tests passed without starting a server, database or game. Server
+staging and bounded user-only controller/native delivery composition remain pending.
+
 > 상태 참고 (2026-09-06): 아래 S29 결과는 당시 admission 기록입니다. 현재 S29의 profile v3/등록 v2 불일치는 별도 보류이며, 151 실게임 완료는 S26 기준입니다. [안정화 계획](../STABILIZATION_PLAN.md)을 함께 확인합니다.
 
 > 2026-09-13 현재: 운영자가 관리자 실행과 ACE 서비스 별도 관리를 승인했다. 새 실험은

@@ -1,0 +1,15 @@
+diff --git a/EpinelPS/SoloRaidSelection/ClassicSoloRaidTargetObservation.cs b/EpinelPS/SoloRaidSelection/ClassicSoloRaidTargetObservation.cs
+--- a/EpinelPS/SoloRaidSelection/ClassicSoloRaidTargetObservation.cs
++++ b/EpinelPS/SoloRaidSelection/ClassicSoloRaidTargetObservation.cs
+@@ -346,9 +346,8 @@ internal static class ClassicSoloRaidTargetBinding
+         var root = document.RootElement;
+         var schemaVersion = root.GetProperty("schemaVersion").GetInt32();
+         var contractId = root.GetProperty("contractId").GetString();
+-        if (schemaVersion is not (1 or 2)
+-            || contractId is not ("nll/boss-runtime-variant-profile/v1"
+-                or "nll/boss-runtime-variant-profile/v2"))
++        if (!NikkeLocalLab.Phase3B2.UserValidation.UserValidationProfileVersion.IsSupported(
++                schemaVersion, contractId))
+             throw new InvalidOperationException("classic_solo_raid_target_profile_invalid");
+         var observation = root.GetProperty("selectedManagerObservation");
+         var roleLineCounts = observation.TryGetProperty("roleLineCounts", out var counts)

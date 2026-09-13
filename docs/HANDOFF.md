@@ -81,14 +81,39 @@ v6/selection을 독립 재검사하고 설치된 동일 DLL의 실제 HTTP 검�
 - 후속 계획은 `runs/<assessment>/validation.private.json`으로 실행별 봉인한다.
   같은 독립 client trial에서 서로 다른 약점·baseline/candidate/restored를 검사하되
   이전 계획을 덮어쓰지 않는다. 부모 계획에 assessment/case도 결박했다. focused **58개**와
-  부트스트랩 빌드가 통과했다. 이 후속 변경은 별도 CI/병합 상태를 확인한다.
+  부트스트랩 빌드가 통과했다. `5cb74fa`의 Windows/PG 검증은 성공했고 PR #29는
+  main `1eda735a3e90a631e21d22cf45a912979ec870ae`로 병합됐다(동일 tree 확인).
+  최초 게시 응답은 GitHub 502였고 실패 게시 재시도는 이미 이동한 main을 감지해 중단됐다.
+  따라서 run 전체 표시는 failure지만 소스 병합은 확인됐다. 보호 규칙/수동 merge 우회는 없다.
+- 준비된 계정은 마지막 정상 S26 실행 `347cd379-4c8d-48cd-9296-2c21e0a39fe3`의
+  materialization receipt와 현재 `runtime/db.json` hash가 일치하는 사본에서 만들었다.
+  `--prepare-user-validation-account`는 원본을 읽기 잠금으로 유지하고 5약점별 새 private
+  계정/로그인/토큰 키를 생성한다. S29 exact manager/Challenge target 및 이전 active run 부재를
+  검사하고 운영 persistence binding을 제거한다. 로그인·토큰·선택·binding 외 모든 JSON 값은
+  그대로 보존한다. source/receipt/progression 결손, 중복 키, 이미 있는 출력은 거절한다.
+  원본 pack의 독점 읽기 파서와 lease가 충돌한 첫 시도는 실패로 보존하고 private pack 사본으로
+  해결했다. 최종 `prepared-user-accounts-3/matrix.receipt.json` SHA-256은
+  `0aa835184f6586dc49c793c6374fd33e360bc5f189b12745cf4b6ec5df79771c`다.
+  각 사본의 니케 193명·튜토리얼 40그룹·시나리오 611개가 보존됐으며 DB/서버/게임은 열지 않았다.
+- v6의 실제 `LoadConfiguredContract`는 S26/v1을 수락하고 S29/v3를
+  `classic_solo_raid_target_profile_invalid`로 거절하는 것을 오프라인으로 재현했다.
+  v3를 v2로 바꾸거나 운영 registry pin을 완화하지 않는다. 새
+  `build-nll-user-validation-server.ps1`은 원본/v6를 보존하고 private 소스 사본에만
+  `epinel-user-validation-profile-version.patch`를 적용한다. 버전과 계약의 정확한
+  v1/v2/v3 쌍만 수락하는 helper를 별도 서버 빌드에 연결한다.
+  재현 빌드 `artifacts/user-validation-server-builds/profile-v3-20260913-1`의 DLL SHA-256은
+  `9aaca41cd63ec6f13293038ec03e4402c1ef13f9b1ee7fe74317bcd012ee437e`다.
+  이 후보의 실제 S26/v1·S29/v3 파서와 selected-manager **142개**, 새 source-free
+  계정/버전 회귀 **34개**가 통과했다. 빌드에는 기존 upstream warning 22개가 있고 오류는 없다.
+  설치 v6/선택 hash와 원본 source manifest를 보존했다. 아직 새 서버를 기동·설치하지 않았다.
 - 남은 연결은 준비된 계정/독립 서버의 materialization, 선택한 단일 보스 속성의 native
   store 전달/원복, 사용자 실행 controller 및 durable job의 실제 delivery receipt 연결이다.
   S29는 계속 `awaiting_runtime_delivery`; 운영 registry/v6/선택/DB와 공유 cache는 유지한다.
   기존 `ResourceProbeExecution`은 최대 300초, 기존 `db.json`과 모든 `EPINELPS_` 설정을
   거부하므로 준비된 계정/속성 전투에 그대로 재사용하지 않는다. 검증된 normal
   `--headless --local-only` 경로에 별도 bounded controller/고정 SQLite 설정/환경·Job·
-  전체 input pin을 적용하는 구성을 우선 검토한다. 아직 이 서버나 controller를 시작하지 않았다.
+  전체 input pin을 적용한다. 계정 준비와 별도 v3 서버 빌드까지 완료했으며 서버 staging,
+  사용자 controller 및 native delivery/원복의 실제 연결은 남았다. 아직 서버/controller를 시작하지 않았다.
 
 - enikk.app 승인 이미지 **39시즌/37개 PNG**와 시즌 선택 → 단일 보스/5약점 화면,
   미처리 예/아니오·처리 상태 UI를 설치했다. 로컬 snapshot은 1~40이며 S19와
