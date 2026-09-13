@@ -191,14 +191,39 @@ internal static class Program
                 PipeOptions.Asynchronous))
             {
                 var pipeTask = ServePipeOnceAsync(pipe, pipePayload);
+#if NATIVE_FX_PROBE
+                ExecutionTokenObservation.WriteNew(Path.Combine(runRoot, "client-start-before.private.json"),
+                    new Dictionary<string, object?>
+                    {
+                        ["assessmentUid"] = assessmentUid,
+                        ["observedAtUtc"] = UtcNowText(),
+                        ["callingContext"] = ExecutionTokenObservation.Current(),
+                        ["useShellExecute"] = false,
+                        ["tokenMutationPerformed"] = false,
+                    });
+#endif
                 client = Process.Start(new ProcessStartInfo
                 {
                     FileName = clientPath,
                     WorkingDirectory = Path.GetDirectoryName(clientPath)!,
                     UseShellExecute = false,
+#if NATIVE_FX_PROBE
+                    Arguments = "-logFile \"" + Path.Combine(runRoot, "client.private.log") + "\"",
+#endif
                 }) ?? throw new ControlledFailure("client_process_start_failed");
 #if RESOURCE_PROBE_BOOTSTRAP
                 ownedClient = client;
+#endif
+#if NATIVE_FX_PROBE
+                ExecutionTokenObservation.WriteNew(Path.Combine(runRoot, "client-start-after.private.json"),
+                    new Dictionary<string, object?>
+                    {
+                        ["assessmentUid"] = assessmentUid,
+                        ["observedAtUtc"] = UtcNowText(),
+                        ["callingContext"] = ExecutionTokenObservation.Current(),
+                        ["returnedChild"] = ExecutionTokenObservation.Child(client),
+                        ["tokenMutationPerformed"] = false,
+                    });
 #endif
 
                 var first = await Task.WhenAny(

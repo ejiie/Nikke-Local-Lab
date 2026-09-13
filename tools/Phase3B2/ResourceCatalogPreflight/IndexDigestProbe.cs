@@ -13,6 +13,8 @@ internal static class IndexDigestProbe
     var index = File.ReadAllBytes(path);
     var trailer = index.AsSpan(index.Length - 16).ToArray();
     var matches = new List<string>();
+    if (ChunkIndexDigest.Compute(index.AsSpan(0, index.Length - 16)).AsSpan().SequenceEqual(trailer))
+      matches.Add("spooky_header12_records28_seeded");
     var spooky = SpookyHashV2Factory.Instance.Create(new SpookyHashConfig { HashSizeInBits = 128 });
     foreach (var skip in new[] { 0, 4, 8, 12 })
     {

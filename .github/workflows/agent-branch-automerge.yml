@@ -72,6 +72,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Execution FX staging checks failed.' }
           python -B scripts/test-nll-native-fx.py
           if ($LASTEXITCODE -ne 0) { throw 'Native FX binding checks failed.' }
+          python -B scripts/test-nll-native-fx-layout.py
+          if ($LASTEXITCODE -ne 0) { throw 'Native FX fixed-layout checks failed.' }
+          python -B scripts/test-nll-native-fx-store.py
+          if ($LASTEXITCODE -ne 0) { throw 'Native FX offline store checks failed.' }
           python -B scripts/test-nll-actions-merge.py
           if ($LASTEXITCODE -ne 0) { throw 'Merge identity checks failed.' }
 
@@ -166,6 +170,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Execution FX staging checks failed.' }
           python -B scripts/test-nll-native-fx.py
           if ($LASTEXITCODE -ne 0) { throw 'Native FX binding checks failed.' }
+          python -B scripts/test-nll-native-fx-layout.py
+          if ($LASTEXITCODE -ne 0) { throw 'Native FX fixed-layout checks failed.' }
+          python -B scripts/test-nll-native-fx-store.py
+          if ($LASTEXITCODE -ne 0) { throw 'Native FX offline store checks failed.' }
           python -B scripts/test-nll-actions-merge.py
           if ($LASTEXITCODE -ne 0) { throw 'Merge identity checks failed.' }
 

@@ -119,7 +119,7 @@ internal static class NativeFxExport
         outerCatalogSha256 = outer.BodySha256,
         indexSha256 = store.IndexSha256,
         bindings,
-        indexTrailerStatusCode = store.IndexTrailerVerified ? "spooky_prefix_verified" : "unresolved",
+        indexTrailerStatusCode = store.IndexTrailerVerified ? ChunkIndexDigest.VerifiedStatusCode : "unresolved",
         statusCode = "offline_payload_bound",
         nativeClientExecuted = false,
         runtimeAdmissionStatusCode = "not_assessed"
@@ -141,7 +141,7 @@ internal static class NativeFxExport
     finally { foreach (var payload in payloads) CryptographicOperations.ZeroMemory(payload.Bytes); }
   }
 
-  private static string Plain(string path)
+  internal static string Plain(string path)
   {
     AddressableFxBinding.Require(Path.IsPathFullyQualified(path) && !path.StartsWith(@"\\", StringComparison.Ordinal), "path_invalid");
     path = Path.GetFullPath(path);
@@ -152,13 +152,13 @@ internal static class NativeFxExport
     return path;
   }
 
-  private static string HashFile(string path)
+  internal static string HashFile(string path)
   {
     using var stream = new FileStream(Plain(path), FileMode.Open, FileAccess.Read, FileShare.Read);
     return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
   }
 
-  private static void WriteNew(string path, byte[] bytes)
+  internal static void WriteNew(string path, byte[] bytes)
   {
     using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
     stream.Write(bytes);

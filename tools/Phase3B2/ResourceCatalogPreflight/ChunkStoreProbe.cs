@@ -3,7 +3,8 @@ namespace ResourceCatalogPreflight;
 internal static class ChunkStoreProbe
 {
     // CID X v1 observed in the official-current installation. This read-only
-    // probe does NOT certify the still-unresolved index trailer checksum.
+    // probe reports the index checksum independently; neither checksum nor
+    // compressed payload verification certifies publisher trust/native delivery.
     public static object Inspect(CatalogDatabase catalog, string directory, bool verifyAll = false)
     {
         if (CatalogInspection.Read(catalog).LayoutCode != "chunk_catalog_v1")
@@ -41,7 +42,7 @@ internal static class ChunkStoreProbe
             chunkDigestAlgorithmCode = "compressed_spooky_hash_v2_128",
             chunkFileKinds = InspectFileKinds(catalog),
             groups = InspectGroups(catalog, installed.Keys.ToHashSet(StringComparer.Ordinal)),
-            indexIntegrityStatusCode = store.IndexTrailerVerified ? "spooky_prefix_verified" : "trailer_unresolved", payloadClosureResolved = false
+            indexIntegrityStatusCode = store.IndexTrailerVerified ? ChunkIndexDigest.VerifiedStatusCode : "trailer_unresolved", payloadClosureResolved = false
         };
     }
 
