@@ -94,6 +94,9 @@ if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/t
 if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-control-center-maintenance.ps1')).Count -ne 2) {
     throw 'Both validation jobs must run startup/deployment lease and activation checks.'
 }
+if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-control-center-delivery.ps1')).Count -ne 2) {
+    throw 'Both validation jobs must run app/startup/activation transaction and interrupted recovery checks.'
+}
 
 Assert-NotContains $Workflow '(?m)^\s*pull_request_target:\s*$' "Privileged pull_request_target execution is forbidden."
 Assert-NotContains $Workflow 'secrets\.' "Automation must not depend on a PAT or repository secret."

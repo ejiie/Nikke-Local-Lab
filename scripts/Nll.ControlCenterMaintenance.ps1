@@ -23,7 +23,8 @@ function Enter-NllControlCenterMaintenance([string]$Root, [ValidateSet('start','
     catch [IO.IOException] { throw 'control_center_maintenance_busy' }
     try {
         $pending = Get-NllMaintenancePath (Join-Path $root 'app-update.pending.json')
-        Assert-NllMaintenance ($Mode -cne 'start' -or -not [IO.File]::Exists($pending)) 'app_update_recovery_required'
+        Assert-NllMaintenance ($Mode -cne 'start' -or (-not [IO.File]::Exists($pending) -and
+            -not [IO.Directory]::Exists($pending))) 'app_update_recovery_required'
         return $lease
     } catch { $lease.Dispose(); throw }
 }
