@@ -834,6 +834,8 @@ try {
         else { [string]$materialization.soloRaidStateHeadRevisionUid }
     $runnerLaunchInput = [ordered]@{
         weaknessCode = $WeaknessCode
+        jobNonce = [guid]::NewGuid().ToString('N')
+        executionFx = $null # Native delivery admission remains a separate requirement.
         runtimeDbSha256 = $runtimeDbSha256
         expectedWeaknessVariantServerDllSha256 = $expectedWeaknessVariantServerDllSha256
         runtimeBundle = $runtimeBundle
@@ -865,9 +867,6 @@ try {
     $runnerSpec = New-PhaseDRunnerSpecification -LaunchInput $runnerLaunchInput `
         -PreparationBindingSha256 $preparation.bindingSha256 -ProfileSha256 $bossRuntimeVariantProfileSha256 `
         -SourceManifestSha256 $sourceManifestSha256 -RunIntentCode $ValidationKind
-    $runnerSpec.contractId = 'nll/phase-d-runner-input/v3'
-    $runnerSpec.jobNonce = [guid]::NewGuid().ToString('N')
-    $runnerSpec.executionFx = $null # Native 151 delivery is not admitted by this lifecycle change.
     $runnerBundle = New-PhaseDRunnerBundle -Specification $runnerSpec -ScriptsRoot $PSScriptRoot
     $derivedStart = Join-Path $runnerBundle.root 'invoke-nll-phase-d-runner.ps1'
     $derivedCompletion = $derivedStart

@@ -23,7 +23,8 @@ function Assert-PhaseDRunnerSpecification {
                 foreach ($hash in @('manifestSha256','candidateSealSha256','profileSha256')) {
                     if ($fx.$hash -isnot [string] -or $fx.$hash -cnotmatch '^[0-9a-f]{64}$') { throw 'invalid' }
                 }
-                if ($fx.weaknessCode -cne $Specification.weaknessCode) { throw 'invalid' }
+                if ($fx.weaknessCode -cne $Specification.weaknessCode -or
+                    $fx.profileSha256 -cne $Specification.bossRuntimeVariantProfileSha256) { throw 'invalid' }
             }
         }
         if ($versionTwo) {
@@ -116,6 +117,16 @@ function New-PhaseDRunnerSpecification {
     if ($LaunchInput.Contains('weaknessCode')) {
         $spec.contractId = 'nll/phase-d-runner-input/v2'
         $spec.weaknessCode = $LaunchInput.weaknessCode
+    }
+    # Runner wire versions describe supplied execution fields, not boss/profile versions.
+    # Never silently discard an incomplete lifecycle/FX binding or patch a validated
+    # v1/v2 result into v3 at the caller after construction.
+    if ($LaunchInput.Contains('jobNonce') -or $LaunchInput.Contains('executionFx')) {
+        if (-not ($LaunchInput.Contains('jobNonce') -and $LaunchInput.Contains('executionFx') -and
+            $LaunchInput.Contains('weaknessCode'))) { throw 'phase_d_runner_input_invalid' }
+        $spec.contractId = 'nll/phase-d-runner-input/v3'
+        $spec.jobNonce = $LaunchInput.jobNonce
+        $spec.executionFx = $LaunchInput.executionFx
     }
     Assert-PhaseDRunnerSpecification $spec
     return $spec

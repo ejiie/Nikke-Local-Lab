@@ -52,6 +52,23 @@ public sealed class BossPipelineResultTests : IDisposable
     Assert.Null(read.AdmissionReceiptSha256);
   }
   [Theory]
+  [InlineData(26)]
+  [InlineData(29)]
+  [InlineData(34)]
+  public void SeasonAloneCannotPromoteOfflineEvidenceToGameReadiness(int season)
+  {
+    candidate["seasonNumber"] = season;
+    result["seasonNumber"] = season;
+    var selected = job with { SeasonNumber = season };
+    Save();
+    var read = PowerShellBossPipelineRunner.ReadResult(root, selected);
+    Assert.Equal("awaiting_runtime_delivery", read.StatusCode);
+    Assert.Null(read.AdmissionReceiptSha256);
+    result["statusCode"] = "awaiting_game_validation";
+    Save();
+    Assert.ThrowsAny<Exception>(() => PowerShellBossPipelineRunner.ReadResult(root, selected));
+  }
+  [Theory]
   [InlineData("candidate-season")]
   [InlineData("candidate-count")]
   [InlineData("candidate-runtime")]
