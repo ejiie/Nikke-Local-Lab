@@ -83,6 +83,57 @@ class StoreTests(unittest.TestCase):
             self.create()
         self.assertFalse(self.output.exists())
 
+    def test_each_selected_role_changes_only_its_own_chunks_and_restores_twice(self):
+        for role in store.fx.ROLES:
+            with self.subTest(role=role):
+                output = self.root / ("selected-" + role)
+                created = store.create(self.package, self.pin, output, role)
+                self.assertEqual(created["roleCode"], role)
+                self.assertFalse(created["allRolesApplied"])
+                manifest = json.loads((output / "manifest.private.json").read_bytes())
+                self.assertEqual(manifest["contractId"], store.SELECTED_CONTRACT)
+                current = (output / "store.cdb").read_bytes()
+                expected = bytearray(self.original)
+                for row in self.manifest["entries"]:
+                    if row["roleCode"] == role:
+                        expected[row["offset"]:row["offset"] + row["byteLength"]] = (self.package / row["afterFile"]).read_bytes()
+                self.assertEqual(current, bytes(expected))
+                self.assertEqual(self.source.read_bytes(), self.original)
+                store.inspect(output, created["manifestSha256"])
+                for _ in range(2):
+                    store.inspect(output, created["manifestSha256"], True)
+                self.assertEqual((output / "store.cdb").read_bytes(), self.original)
+
+    def test_invalid_selected_role_fails_before_creating_a_copy(self):
+        for role in ("", "water", "electric", "all", True, [], "../fire"):
+            with self.subTest(role=role), self.assertRaisesRegex(store.fx.CandidateError, "selected_role_invalid"):
+                store.create(self.package, self.pin, self.output, role)
+            self.assertFalse(self.output.exists())
+
+    def test_selected_manifest_cannot_change_roles_at_restore(self):
+        created = store.create(self.package, self.pin, self.output, "fire")
+        manifest_path = self.output / "manifest.private.json"
+        manifest = json.loads(manifest_path.read_bytes())
+        manifest["roleCode"] = "wind"
+        raw = store.fx.encoded(manifest)
+        manifest_path.write_bytes(raw)
+        for restore in (False, True):
+            with self.assertRaisesRegex(store.fx.CandidateError, "selected_role_binding_mismatch"):
+                store.inspect(self.output, store.fx.digest(raw), restore)
+        self.assertFalse((self.output / 'store.cdb.restore-partial').exists())
+        self.assertEqual(store.fingerprint(self.output / "store.cdb"), created["candidate"])
+        self.assertEqual(self.source.read_bytes(), self.original)
+
+    def test_legacy_manifest_rejects_silent_selected_role_extension(self):
+        self.create()
+        manifest_path = self.output / "manifest.private.json"
+        manifest = json.loads(manifest_path.read_bytes())
+        manifest["roleCode"] = "fire"
+        raw = store.fx.encoded(manifest)
+        manifest_path.write_bytes(raw)
+        with self.assertRaisesRegex(store.fx.CandidateError, "legacy_role_forbidden"):
+            store.inspect(self.output, store.fx.digest(raw), True)
+
     def test_create_refuses_existing_or_overlapping_output(self):
         for target in (self.package, self.package / "nested", self.source.parent / "nested", self.root):
             self.output = target

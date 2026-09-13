@@ -66,6 +66,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Atomic boss publication checks failed.' }
           pwsh -NoProfile -File scripts/test-nll-boss-native-composition.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Boss native composition checks failed.' }
+          pwsh -NoProfile -File scripts/test-nll-control-center-app-package.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Full app package recovery checks failed.' }
+          pwsh -NoProfile -File scripts/test-nll-control-center-maintenance.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Startup maintenance checks failed.' }
+          python -B scripts/test-nll-boss-catalog-images.py
+          if ($LASTEXITCODE -ne 0) { throw 'Boss presentation checks failed.' }
           python -B scripts/test-nll-boss-profile-qte.py
           if ($LASTEXITCODE -ne 0) { throw 'QTE profile checks failed.' }
           python -B scripts/test-nll-boss-onboarding-candidate.py
@@ -168,6 +174,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Atomic boss publication checks failed.' }
           pwsh -NoProfile -File scripts/test-nll-boss-native-composition.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Boss native composition checks failed.' }
+          pwsh -NoProfile -File scripts/test-nll-control-center-app-package.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Full app package recovery checks failed.' }
+          pwsh -NoProfile -File scripts/test-nll-control-center-maintenance.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Startup maintenance checks failed.' }
+          python -B scripts/test-nll-boss-catalog-images.py
+          if ($LASTEXITCODE -ne 0) { throw 'Boss presentation checks failed.' }
           python -B scripts/test-nll-boss-profile-qte.py
           if ($LASTEXITCODE -ne 0) { throw 'QTE profile checks failed.' }
           python -B scripts/test-nll-boss-onboarding-candidate.py

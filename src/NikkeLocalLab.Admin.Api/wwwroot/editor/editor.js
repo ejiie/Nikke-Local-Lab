@@ -597,7 +597,10 @@ function selectWeaknessCode(weaknessCode) {
   const label = elementLabels[weaknessCode];
   const iconPath = `${uiAssetRoot}/code-${elementAssetNames[weaknessCode]}.png`;
   byId("selected-weakness-label").textContent = label;
-  byId("selected-weakness-icon").src = iconPath;
+  const selectedIcon = byId("selected-weakness-icon");
+  selectedIcon.hidden = true;
+  selectedIcon.src = iconPath;
+  if (selectedIcon.complete && selectedIcon.naturalWidth > 0) selectedIcon.hidden = false;
   renderBossWeaknessSummary();
   for (const button of document.querySelectorAll(".weakness-option")) {
     button.setAttribute("aria-checked", String(button.dataset.weaknessCode === weaknessCode));
@@ -3092,11 +3095,13 @@ const bossSeasons = NllBossSeasons.create({ document, api,
     updateRaidActions();
   }
 });
-for (const button of document.querySelectorAll(".weakness-option")) {
-  const icon = button.querySelector("img");
-  icon?.addEventListener("error", () => { icon.hidden = true; });
+for (const icon of document.querySelectorAll(".weakness-option img, #selected-weakness-icon")) {
+  icon.addEventListener("error", () => { icon.hidden = true; });
+  icon.addEventListener("load", () => { icon.hidden = false; });
   // Static markup may finish its image request before this deferred script runs.
-  if (icon?.complete && icon.naturalWidth === 0) icon.hidden = true;
+  if (icon.complete && icon.naturalWidth === 0) icon.hidden = true;
+}
+for (const button of document.querySelectorAll(".weakness-option")) {
   button.addEventListener("click", () => selectWeaknessCode(button.dataset.weaknessCode));
 }
 byId("selected-boss-launch").addEventListener(

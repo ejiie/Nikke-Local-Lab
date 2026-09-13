@@ -51,6 +51,17 @@ $pgCtl='C:\NLL\Runtime\PostgreSQL-17-native\bin\pg_ctl.exe'; $data=Join-Path $ro
 $bootstrap=Join-Path $root 'session\bootstrap.secret'; $session=Join-Path $root 'session\session.json'; $port=55433
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent(); $principal=[Security.Principal.WindowsPrincipal]::new($identity)
 Assert-Start ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) -and $env:USERNAME -ceq 'nlloperator') 'control_center_start_boundary_invalid'
+. (Join-Path $repositoryRoot 'scripts\Nll.ControlCenterMaintenance.ps1')
+$maintenanceLease = Enter-NllControlCenterMaintenance $root start
+try {
+$bossActivation = Get-NllBossPipelineActivation $root $repositoryRoot
+foreach ($name in @('NLL_BOSS_PIPELINE_CONFIG_PATH','NLL_BOSS_PIPELINE_CONFIG_SHA256')) {
+    [Environment]::SetEnvironmentVariable($name,$null,'Process')
+}
+if ($null -ne $bossActivation) {
+    $env:NLL_BOSS_PIPELINE_CONFIG_PATH = $bossActivation.path
+    $env:NLL_BOSS_PIPELINE_CONFIG_SHA256 = $bossActivation.sha256
+}
 if(Test-Path -LiteralPath $session -PathType Leaf){
     $prior=$null
     try{$prior=Get-Content -LiteralPath $session -Raw -Encoding UTF8|ConvertFrom-Json}catch{}
@@ -142,4 +153,10 @@ finally {
     }
     foreach($name in @('NIKKE_LAB_DB','NIKKE_LAB_ID_SECRET','NIKKE_LAB_HOME','NLL_CONTROL_CENTER_BOOTSTRAP_PATH','NLL_CONTROL_CENTER_PG_CTL','NLL_CONTROL_CENTER_PG_DATA','NLL_CONTROL_CENTER_PG_LOG','NLL_PHASE_D_CONTROL_CENTER')){[Environment]::SetEnvironmentVariable($name,$null,'Process')}
     $databasePassword=$null; $identitySecret=$null
+}
+} finally {
+    foreach ($name in @('NLL_BOSS_PIPELINE_CONFIG_PATH','NLL_BOSS_PIPELINE_CONFIG_SHA256')) {
+        [Environment]::SetEnvironmentVariable($name,$null,'Process')
+    }
+    $maintenanceLease.Dispose()
 }

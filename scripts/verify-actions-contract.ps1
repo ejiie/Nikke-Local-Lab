@@ -77,7 +77,7 @@ $mergePattern = 'git\s+-c\s+user\.name=github-actions\[bot\]\s+-c\s+user\.email=
 if ([regex]::Matches($Workflow, $mergePattern).Count -ne 2) {
     throw 'Both validation jobs must test the merge result with command-local Git identity.'
 }
-foreach ($testScript in @('test-nll-boss-profile-qte.py', 'test-nll-boss-onboarding-candidate.py', 'test-nll-shield-fx-candidate.py', 'test-nll-execution-fx.py', 'test-nll-native-fx.py', 'test-nll-native-fx-layout.py', 'test-nll-native-fx-store.py', 'test-nll-actions-merge.py')) {
+foreach ($testScript in @('test-nll-boss-profile-qte.py', 'test-nll-boss-onboarding-candidate.py', 'test-nll-shield-fx-candidate.py', 'test-nll-execution-fx.py', 'test-nll-native-fx.py', 'test-nll-native-fx-layout.py', 'test-nll-native-fx-store.py', 'test-nll-actions-merge.py', 'test-nll-boss-catalog-images.py')) {
     if ([regex]::Matches($Workflow, [regex]::Escape("python -B scripts/$testScript")).Count -ne 2) {
         throw 'Both validation jobs must run the source-only Python behavior checks.'
     }
@@ -87,6 +87,12 @@ if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/t
 }
 if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-boss-native-composition.ps1')).Count -ne 2) {
     throw 'Both validation jobs must run the offline native composition failure checks.'
+}
+if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-control-center-app-package.ps1')).Count -ne 2) {
+    throw 'Both validation jobs must run full app/UI package rollback and added-file retirement checks.'
+}
+if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-control-center-maintenance.ps1')).Count -ne 2) {
+    throw 'Both validation jobs must run startup/deployment lease and activation checks.'
 }
 
 Assert-NotContains $Workflow '(?m)^\s*pull_request_target:\s*$' "Privileged pull_request_target execution is forbidden."

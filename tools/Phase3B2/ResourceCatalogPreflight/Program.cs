@@ -9,6 +9,13 @@ var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolic
 string? currentRole = null;
 try
 {
+  if (args is ["inspect-boss-image-references", var imageCatalog, var imageSignature, var imageCatalogHash,
+      var imageSignatureHash, var imageHints, var imageHintsHash])
+  {
+    Console.WriteLine(JsonSerializer.Serialize(BossImageReferences.Inspect(imageCatalog, imageSignature,
+        imageCatalogHash, imageSignatureHash, imageHints, imageHintsHash), options));
+    return 0;
+  }
   if (args is ["stage-boss-catalog-locales", var bossLocaleSource, var bossLocaleDestination, var bossLocaleCatalogHash, var bossLocaleSignatureHash])
   {
     Console.WriteLine(JsonSerializer.Serialize(BossCatalogLocales.Stage(bossLocaleSource, bossLocaleDestination,
