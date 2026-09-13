@@ -29,6 +29,9 @@ try {
     $lease.Dispose()
     Check ($true)
     [IO.File]::Move($pending, (Join-Path $root 'synthetic-retired-pending.json'))
+    $null = [IO.Directory]::CreateDirectory($pending)
+    Fails { Enter-NllControlCenterMaintenance $root start } 'app_update_recovery_required'
+    [IO.Directory]::Move($pending, (Join-Path $root 'synthetic-retired-directory'))
     $configuration = Join-Path $artifacts 'configuration.private.json'
     Json $configuration @{ schemaVersion = 1; contractId = 'nll/boss-pipeline-config/v1'; repositoryRoot = $repository }
     $activation = @{ schemaVersion = 1; contractId = 'nll/boss-pipeline-activation/v1'; configurationPath = $configuration;

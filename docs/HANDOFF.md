@@ -120,6 +120,26 @@ reader는 PowerShell 7/Windows PowerShell 5 각각 11 assertions를 통과했다
 실제 설치된 Start script는 아직 교체하지 않았다. 최종 배포 트랜잭션에서 이 source와
 activation의 사전 파일/부재 상태를 별도로 봉인해 앱 묶음과 함께 적용·원복해야 한다.
 
+선택 FX/전체 UI package/사진/startup source `b9df93955b3634e99e9d07fcf2d7065c5e070080`은
+Actions `34743072581` 3 jobs 모두 성공 후 PR #24로 병합됐다(main
+`e23998d0ba75bfad67d66349d4a98e7a045d609c`). 후속 실제 S29 `pipeline-3`도 성공했다.
+job `0f6387ed-ac2e-449d-ada6-04fe1386c66b`, candidate receipt
+`01ae9df2d36bd33bdc5595c0b6eff0b6843f716b81c5f75384738f079cb7af37`, native chunk receipt
+`6f09dd3cc9a021df654b1a7266f766e61a12bf7b7d36c72aea9fb76538e4417d`이며 재시작 replay/
+owned tools 종료를 확인했다. **awaiting_runtime_delivery**이고 운영 registry/DB/게임/
+배포는 변경하지 않았다. UI 실제 app 351→352 파일의 독립 복사본 적용·반복 원복도
+통과했다(`app-package-1/receipt.json`, SHA-256
+`ff4932d8bc78df82447ed8869187103078203e8a63f9e3f59e08ab73ff025664`). sealed package pin은
+`22a4a38a0751b1fe18e6c0e0ebc7af146348faa35d708e7bf95d2988e573eedf`다.
+
+후속 `Nll.ControlCenterDelivery.ps1`은 app package와 Start script/activation의 byte
+백업·부재 상태를 묶어 적용/원복한다. 공용 lease와 pending marker로 혼합 상태의
+시작을 차단하고 새 파일/완료 marker는 삭제하지 않고 회수한다. 합성 32 assertions와
+WinPS5/PS7 startup 12 assertions(동명 pending 디렉터리 거절 포함)을 통과했다.
+고정 설치 경계 wrapper `invoke-nll-control-center-delivery.ps1`은 prepare/inspect/
+apply/restore만 제공하며 게임/DB/서비스/드라이버/hosts/CA/방화벽을 시작·중지·변경하지
+않는다. 운영 설치 실행과 이 후속 소스의 CI는 아직 별도 완료 근거가 필요하다.
+
 고정 길이 FX 생성과 청크 패키지 생성은 private 조사 스크립트에서 재사용 가능한
 소스로 옮겼다. 실제 151 FX 3종의 전체 객체 대조, 원래 길이/offset 보존, exact
 카탈로그 청크 3개와 압축 길이·압축 해제 결과를 검증했다. CIDX trailer도 일치한다.
