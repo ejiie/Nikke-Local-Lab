@@ -44,6 +44,37 @@ v6/selection을 독립 재검사하고 설치된 동일 DLL의 실제 HTTP 검�
 `TaskCanceledException`이고 UI catalog assertion 실패가 아니다. 해당 PowerShell
 프로세스 fixture를 비병렬 collection으로 분리해 동시 cold-start 경합을 줄인다.
 제품 timeout/취소/실패 판정은 변경하지 않으며 후속 CI 성공 전 병합 완료로 표시하지 않는다.
+후속 `60fdcec8471922993613038c991cf4243e6f28c2`는 Actions `34746913581`의
+3 jobs 성공 후 PR #27로 병합됐다(main `8103e1f42cec27e114756625864d42f53422c081`).
+
+### 사용자 검증 실행 연결 — 진행 중, 아직 실행 안내 단계 아님
+
+- 별도 `NativeFxUserValidationBootstrap`을 추가했다. 기존 v6/151 bootstrap은
+  교체하지 않는다. 새 경로는 신규 등록 없이 준비된 합성 계정을 사용하고, 독립
+  client/cache·부모 계획·S29 profile/candidate·5약점 및 baseline/candidate/restored
+  구분을 pin한다. 원본의 빈 파일·공백/괄호 파일명을 보존하며 alias/reparse/hardlink,
+  임의 경로, 결손·중복 JSON, 오래된 격리 증거는 거부한다.
+- `--inspect-user-validation-inputs`는 파일 검사만 한다. 실행은 별도 `--user-start`
+  분기에서 elevated token, 정확한 Job 소속 및 승인된 service/driver isolation
+  증거를 요구한다. 계획 shape나 helper 결과만으로 OS 격리/실게임 성공을 주장하지 않는다.
+  이 부트스트랩은 준비기·외부 수명주기 controller 연결 전에는 사용자용 실행기가 아니다.
+- 관리 종료 helper를 Job zero → 서비스 정상 중지 → scope zero → 서비스 Manual 원복
+  → 소유 입력 원복 → ACE-ADVT 정상 중지/전체 baseline 확인 → 격리 해제 순서로
+  조립했다. PowerShell 7/WinPS5 각 **96개** 합성 검사를 통과했으며 실제 OS 서비스/
+  드라이버 조작은 없다. 실패 시 뒤 단계, 특히 격리 해제를 수행하지 않는다.
+- 첫 API 전체 220개/새 입력 focused 53개 검사와 새 bootstrap 및 기존 NativeFx/
+  PhysicalBootstrap151 빌드가 통과했다. 실제 전체 client 목록 대조에서 빈 파일과
+  공백/괄호 이름도 필요함을 확인하고 추가 회귀를 넣었다. 변경 후 focused **57개**와
+  새 bootstrap 빌드가 다시 통과했다. 승인된 Sail/CA hash도 계획에서 고정한다.
+  빌드 경로에서 inspect/이전 옵션/빈 인수는 모두 64로 거부됐고 인증·게임은 시작하지 않았다.
+- 새 독립 사본 trial은 `6d0c2fbd-edb4-4d07-a6dd-5f32218e9a85`다. 원본 1,154개/
+  20,430,834,145 bytes의 새 manifest는 `1fef12f5d08ef299a1a8ce36aee8a8ad331d532ba4c66c9b3bd11ece02e06c7c`.
+  과거와의 차이는 없어진 3,504-byte crash 보고서 한 개뿐이며 나머지 파일 hash는
+  전부 일치했다. `user-validation-source-1.private.json`에 읽기 결과를 보존했다.
+  복사/사후 전수 검사가 실행 중이면 `clone.receipt.json` 성공을 확인하기 전 완료로 읽지 않는다.
+- 남은 연결은 준비된 계정/독립 서버의 materialization, 선택한 단일 보스 속성의 native
+  store 전달/원복, 사용자 실행 controller 및 durable job의 실제 delivery receipt 연결이다.
+  S29는 계속 `awaiting_runtime_delivery`; 운영 registry/v6/선택/DB와 공유 cache는 유지한다.
 
 - enikk.app 승인 이미지 **39시즌/37개 PNG**와 시즌 선택 → 단일 보스/5약점 화면,
   미처리 예/아니오·처리 상태 UI를 설치했다. 로컬 snapshot은 1~40이며 S19와

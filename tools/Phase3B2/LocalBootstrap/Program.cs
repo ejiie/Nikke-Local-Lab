@@ -18,11 +18,19 @@ internal static class Program
     private const ulong GameId = 29080;
 
 #if RESOURCE_PROBE_BOOTSTRAP
+#if USER_VALIDATION_BOOTSTRAP
+    private const string BootstrapModeCode = "user_owned_native_fx_validation_bootstrap";
+    private const string StartContractId = "nll/native-fx-user-validation-bootstrap-start/v1";
+    private const string ExitContractId = "nll/native-fx-user-validation-bootstrap-exit/v1";
+    private const string FailureContractId = "nll/native-fx-user-validation-bootstrap-failure/v1";
+    private static UserValidationBootstrapSettings? probeSettings;
+#else
     private const string BootstrapModeCode = "bounded_resource_probe_bootstrap";
     private const string StartContractId = "nll/resource-probe-bootstrap-start/v1";
     private const string ExitContractId = "nll/resource-probe-bootstrap-exit/v1";
     private const string FailureContractId = "nll/resource-probe-bootstrap-failure/v1";
     private static ResourceProbeBootstrapSettings? probeSettings;
+#endif
 #elif PHYSICAL_BOOTSTRAP
     private const string BootstrapModeCode =
         "source_built_sail_abi_physical_clone_bootstrap";
@@ -51,6 +59,18 @@ internal static class Program
     public static async Task<int> Main(string[] args)
     {
 #if RESOURCE_PROBE_BOOTSTRAP
+#if USER_VALIDATION_BOOTSTRAP
+        if (args is not (["--user-start"] or ["--inspect-user-validation-inputs"])) return 64;
+        var inspectOnly = args is ["--inspect-user-validation-inputs"];
+        try { probeSettings = UserValidationBootstrapSettings.Load(inspectOnly); }
+        catch { Console.WriteLine("user_validation_bootstrap_inputs_rejected"); return 64; }
+        using var inputLease = probeSettings;
+        if (inspectOnly)
+        {
+            Console.WriteLine("{\"status\":\"user_validation_inputs_verified_not_started\",\"clientStarted\":false,\"authenticationStarted\":false,\"nativeAdmission\":\"not_evaluated\"}");
+            return 0;
+        }
+#else
         if (args is not ([] or ["--inspect-probe-inputs"])) return 64;
         try { probeSettings = ResourceProbeBootstrapSettings.Load(); }
         catch { Console.WriteLine("resource_probe_bootstrap_inputs_rejected"); return 64; }
@@ -59,6 +79,7 @@ internal static class Program
             Console.WriteLine("{\"status\":\"probe_bootstrap_inputs_verified_not_started\",\"clientStarted\":false,\"authenticationStarted\":false}");
             return 0;
         }
+#endif
         var assessmentUid = probeSettings.AssessmentUid;
         var contextPath = probeSettings.ContextPath;
         var runRoot = probeSettings.RunRoot;
@@ -133,7 +154,7 @@ internal static class Program
 
             stageCode = "local_account_login";
             var passwordHash = Md5Lower(password);
-#if RESOURCE_PROBE_BOOTSTRAP
+#if RESOURCE_PROBE_BOOTSTRAP && !USER_VALIDATION_BOOTSTRAP
             stageCode = "local_synthetic_registration";
             using (var registration = await PostSignedAsync(AccountHost, "/account/register?seq=synthetic-probe",
                 JsonSerializer.Serialize(new { account = username, password = passwordHash }), includeSdk: false))

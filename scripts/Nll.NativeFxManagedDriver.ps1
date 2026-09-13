@@ -134,3 +134,43 @@ function Restore-FxValidationDriver {
     # Caller preserves isolation and the original failure on this exception.
     throw 'resource_native_fx_validation_driver_stop_timeout'
 }
+
+function Complete-FxValidationManagedScope {
+    # Controller-owned callbacks, never executable text deserialized from a plan.
+    # The caller first stops its exact Job and independently proves ActiveProcesses=0.
+    # Throwing preserves the caller's original failure and unreleased isolation.
+    param(
+        [Parameter(Mandatory)]$Policy,
+        [bool]$JobZeroVerified=$false,
+        [Parameter(Mandatory)][scriptblock]$VerifyScopeCold,
+        [Parameter(Mandatory)][scriptblock]$RestoreOwnedInputs,
+        [Parameter(Mandatory)][scriptblock]$ReleaseIsolation
+    )
+    Assert-FxValidationDriverPolicy $Policy
+    Assert-Rn $JobZeroVerified 'fx_validation_cleanup_without_job_zero'
+    $stopped = Stop-FxManagedService -JobZeroVerified $JobZeroVerified
+    Assert-FxManagedServiceSnapshot $stopped cleanup
+    Assert-Rn ($stopped.state -ceq 'Stopped' -and $stopped.processId -eq 0) 'fx_validation_service_not_cold'
+    $cold = @(& $VerifyScopeCold)
+    Assert-Rn ($cold.Count -eq 1 -and $cold[0] -is [bool] -and $cold[0]) 'fx_validation_scope_not_cold'
+    # Restore the shared service setting even if later driver restoration fails.
+    # Driver failure must not silently leave Manual -> Disabled applied.
+    $restored = Restore-FxManagedService -ScopeZeroVerified $true
+    Assert-FxManagedServiceSnapshot $restored restored
+    $cold = @(& $VerifyScopeCold)
+    Assert-Rn ($cold.Count -eq 1 -and $cold[0] -is [bool] -and $cold[0]) 'fx_validation_scope_not_cold'
+    $inputs = @(& $RestoreOwnedInputs)
+    Assert-Rn ($inputs.Count -eq 1 -and $inputs[0] -is [bool] -and $inputs[0]) 'fx_validation_inputs_restore_unproven'
+    $driver = Restore-FxValidationDriver -Policy $Policy -JobZeroVerified $true -ServiceZeroVerified $true -ScopeZeroVerified $true
+    Assert-Rn $driver.driverBaselineRestored 'fx_validation_driver_restore_unproven'
+    Assert-FxValidationServiceCold
+    $cold = @(& $VerifyScopeCold)
+    Assert-Rn ($cold.Count -eq 1 -and $cold[0] -is [bool] -and $cold[0]) 'fx_validation_scope_not_cold'
+    Assert-FxValidationDrivers $Policy (Get-FxValidationDriverSnapshot) restored
+    $released = @(& $ReleaseIsolation)
+    Assert-Rn ($released.Count -eq 1 -and $released[0] -is [bool] -and $released[0]) 'fx_validation_isolation_release_unproven'
+    [pscustomobject]@{ contractId='nll/user-validation-managed-scope-cleanup/v1';
+        jobZeroVerified=$true; serviceZeroVerified=$true; scopeZeroVerified=$true;
+        serviceStartModeRestored=$true; driverBaselineRestored=$true; ownedInputsRestored=$true;
+        isolationReleased=$true; nativeAdmission='not_assessed'; actualGameAcceptanceClaimed=$false }
+}

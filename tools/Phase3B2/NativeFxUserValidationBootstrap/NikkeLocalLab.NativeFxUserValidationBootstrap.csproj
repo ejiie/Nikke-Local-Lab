@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <AssemblyName>NikkeLocalLab.NativeFxUserValidationBootstrap</AssemblyName>
+    <DefineConstants>$(DefineConstants);RESOURCE_PROBE_BOOTSTRAP;NATIVE_FX_PROBE;USER_VALIDATION_BOOTSTRAP</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../LocalBootstrap/Program.cs" Link="Program.cs" />
+    <Compile Include="../ResourceProbeBootstrap/ResourceProbeBootstrapSettings.cs" Link="ResourceProbeBootstrapSettings.cs" />
+    <Compile Include="../NativeFxBootstrap/ExecutionTokenObservation.cs" Link="ExecutionTokenObservation.cs" />
+  </ItemGroup>
+</Project>

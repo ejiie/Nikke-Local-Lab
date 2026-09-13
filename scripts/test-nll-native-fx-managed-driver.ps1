@@ -115,5 +115,56 @@ foreach ($state in @('Start Pending','Stop Pending')) {
 function Get-FxManagedDriverSnapshot { return ,@($script:drivers) }
 try { Assert-FxManagedDriverBaseline $policy.baseline; throw 'historical_guard_weakened' }
 catch { Check ($_.Exception.Message -ceq 'resource_native_fx_managed_driver_state_drift') }
+# Full managed cleanup order: the callbacks are test-owned and all SCM/driver
+# operations remain the fakes above. No real firewall/file/process operations.
+$script:events = [Collections.Generic.List[string]]::new()
+$script:cleanupCase = 'success'; $script:scopeChecks = 0
+function Stop-FxManagedService {
+    param([bool]$JobZeroVerified)
+    Check $JobZeroVerified
+    $script:events.Add('service-stop')
+    if ($script:cleanupCase -ceq 'service-stop') { throw 'resource_native_fx_validation_synthetic_stop_failed' }
+    Get-FxManagedServiceSnapshot
+}
+function Restore-FxManagedService {
+    param([bool]$ScopeZeroVerified)
+    Check $ScopeZeroVerified
+    $script:events.Add('service-manual')
+    Get-FxManagedServiceSnapshot
+}
+$verifyCold = {
+    $script:events.Add('scope'); $script:scopeChecks++
+    if ($script:cleanupCase -ceq 'scope-string') { return 'true' }
+    if ($script:cleanupCase -ceq 'scope' -or ($script:cleanupCase -ceq 'final-scope' -and $script:scopeChecks -eq 3)) { return $false }
+    return $true
+}
+$restoreInputs = {
+    $script:events.Add('inputs')
+    if ($script:cleanupCase -ceq 'inputs') { return $false }
+    if ($script:cleanupCase -ceq 'inputs-throw') { throw 'resource_native_fx_validation_synthetic_inputs_failed' }
+    if ($script:cleanupCase -ceq 'driver-stop') { $script:failStop = $true }
+    return $true
+}
+$release = { $script:events.Add('release'); return ($script:cleanupCase -cne 'release') }
+$drivers[0].state = 'Running'
+Reject { Complete-FxValidationManagedScope $policy $false $verifyCold $restoreInputs $release } 'cleanup_without_job_zero'
+Check ($events.Count -eq 0)
+foreach ($case in @('service-stop','scope','scope-string','inputs','inputs-throw','driver-stop','final-scope','release','success')) {
+    $cleanupCase = $case; $scopeChecks = 0; $events.Clear(); $failStop = $false; $drivers[0].state = 'Running'
+    $result = $null; $errorCode = $null
+    try { $result = Complete-FxValidationManagedScope $policy $true $verifyCold $restoreInputs $release }
+    catch { $errorCode = $_.Exception.Message }
+    if ($case -ceq 'success') {
+        Check ($null -eq $errorCode -and $result.isolationReleased -and $result.driverBaselineRestored -and
+            $result.nativeAdmission -ceq 'not_assessed' -and -not $result.actualGameAcceptanceClaimed)
+        Check (($events -join ',') -ceq 'service-stop,scope,service-manual,scope,inputs,scope,release')
+    } else {
+        Check ($null -eq $result -and $errorCode -cmatch '^resource_native_fx_validation_')
+        Check (($events -contains 'release') -eq ($case -ceq 'release'))
+        if ($case -ceq 'driver-stop') { Check ($events -contains 'service-manual' -and $drivers[0].state -ceq 'Running') }
+        if ($case -cin @('service-stop','scope','scope-string')) { Check (-not ($events -contains 'inputs')) }
+    }
+    Check ($drivers[1].state -ceq 'Running')
+}
 [ordered]@{statusCode='passed'; assertions=$checks; syntheticOnly=$true;
     nativeClientExecuted=$false; realServiceCalls=0; realDriverChanges=0} | ConvertTo-Json
