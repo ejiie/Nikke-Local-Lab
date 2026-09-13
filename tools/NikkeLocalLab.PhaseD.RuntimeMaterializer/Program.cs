@@ -37,6 +37,13 @@ static async Task<int> RunAsync(string[] arguments)
       preparationMethod = exception.TargetSite?.DeclaringType?.FullName,
       innerExceptionType = exception.InnerException?.GetType().FullName
     }));
+    if (arguments.Contains("--export-boss-season-catalog", StringComparer.Ordinal))
+    {
+      var chain = new List<object>();
+      for (Exception? cursor = exception; cursor is not null && chain.Count < 8; cursor = cursor.InnerException)
+        chain.Add(new { type = cursor.GetType().FullName, method = cursor.TargetSite?.DeclaringType?.FullName });
+      Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { catalogExceptionChain = chain }));
+    }
     var failureCode = IsSafeFailureCode(exception.Message)
         ? exception.Message
         : "phase_d_materializer_uncontrolled_failure";
@@ -204,6 +211,22 @@ if (options.ContainsKey("inspect-cube-catalog"))
               })
             })
       })));
+  return;
+}
+if (options.ContainsKey("verify-boss-season-catalog"))
+{
+  Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(BossSeasonCatalogChecks.Verify()));
+  return;
+}
+if (options.ContainsKey("export-boss-season-catalog"))
+{
+  AssetDownloadUtil.ConfigureOfficialOutbound(false);
+  var catalogPackHash = HashFile(Required(options, "static-pack"));
+  var catalogConfigHash = HashFile(Required(options, "game-config"));
+  var catalogData = await LoadStaticDataForInspectionAsync(Required(options, "static-pack"), Required(options, "game-config"));
+  Require(HashFile(Required(options, "game-config")) == catalogConfigHash, "phase_d_boss_catalog_input_drifted");
+  BossSeasonCatalog.Export(catalogData, Required(options, "static-pack"), Required(options, "locale-root"),
+      Required(options, "export-boss-season-catalog"), catalogPackHash);
   return;
 }
 if (options.ContainsKey("discover-boss-content"))

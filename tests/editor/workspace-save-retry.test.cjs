@@ -6,6 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { randomUUID } = require('node:crypto');
 const script = fs.readFileSync(path.join(__dirname, '../../src/NikkeLocalLab.Admin.Api/wwwroot/editor/editor.js'), 'utf8');
+const bossScript = fs.readFileSync(path.join(__dirname, '../../src/NikkeLocalLab.Admin.Api/wwwroot/editor/boss-seasons.js'), 'utf8');
 function editor() {
   const elements = new Map();
   const element = () => ({ value: '', disabled: false, hidden: false, dataset: {}, children: [],
@@ -17,7 +18,7 @@ function editor() {
   const context = vm.createContext({ document: { getElementById: byId, createElement: element,
     querySelectorAll: selector => selector === '.tab-panel' ? tabs : [] },
     window: { prompt: () => 'copy', confirm: () => true }, crypto: { randomUUID }, Headers, setTimeout, clearTimeout, console });
-  vm.runInContext(script, context);
+  vm.runInContext(bossScript + '\n' + script, context);
   vm.runInContext(`
     state.accountUid = 'account-a'; state.profileRevisionUid = 'profile-before';
     state.lobbyRevisionUid = 'lobby-before'; state.walletRevisionUid = 'wallet-before';

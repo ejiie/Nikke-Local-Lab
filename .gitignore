@@ -37,6 +37,8 @@
 /vault/
 /staging/
 /runtime/
+/config/boss-runtime-variants/.publication.lock
+/config/boss-runtime-variants/registry.json.partial-*
 /NikkeLocalLab/
 /TestResults/
 /assets/game/

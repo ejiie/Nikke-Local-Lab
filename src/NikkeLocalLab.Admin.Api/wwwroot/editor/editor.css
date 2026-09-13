@@ -1580,3 +1580,17 @@ input, select, textarea {
 .workspace-save-recovery { margin: 0 24px 16px; padding: 16px; border-left: 4px solid #00aeef; }
 .workspace-save-recovery p { margin: 8px 0; }
 .workspace-save-recovery button { margin: 4px 8px 4px 0; }
+:root { --boss-card-width: 360px; }
+.boss-season-grid { grid-template-columns: repeat(auto-fill, minmax(265px, 1fr)); }
+.boss-season-grid .boss-card { display: grid; padding: 0; text-align: left; position: relative; }
+.boss-season-grid .boss-season { left: 0; top: 0; }
+.selected-boss-card { max-width: var(--boss-card-width); margin: 14px 0; }
+.selected-boss-card .boss-card { width: 100%; }
+.boss-catalog-art { position: relative; display: flex; align-items: center; justify-content: center; height: 192px; padding: 0; background: linear-gradient(150deg, #e8edf2, #c2ccd8); overflow: hidden; }
+.boss-catalog-image { width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.boss-catalog-art .boss-image-placeholder { color: #58677a; font-size: 13px; font-style: normal; font-weight: 600; }
+.boss-dialog { width: min(430px, calc(100vw - 48px)); border: 1px solid #cbd5e1; border-radius: 10px; padding: 26px; color: #162b44; box-shadow: 0 20px 70px #162b4450; }
+.boss-dialog::backdrop { background: #14223675; }
+.boss-dialog-message { white-space: pre-line; line-height: 1.8; overflow-wrap: anywhere; }
+.boss-job-list { font-size: 13px; line-height: 1.7; color: #52667f; }
+[hidden] { display: none !important; }

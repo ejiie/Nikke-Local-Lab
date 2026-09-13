@@ -58,6 +58,12 @@ internal static class AdminApiProgram
             ConfigureServices = services =>
             {
               services.AddSingleton(profileRuntime.Service);
+              var bossCatalogPath = Environment.GetEnvironmentVariable("NLL_BOSS_CATALOG_PATH");
+              var bossCatalogSha256 = Environment.GetEnvironmentVariable("NLL_BOSS_CATALOG_SHA256");
+              if (!string.IsNullOrWhiteSpace(bossCatalogPath) && !string.IsNullOrWhiteSpace(bossCatalogSha256))
+                services.AddSingleton<IBossSeasonCatalogService>(new FilesystemBossSeasonCatalogService(bossCatalogPath,
+                    bossCatalogSha256, Path.Combine(options["repository-root"], "config", "boss-runtime-variants")));
+              BossOnboardingComposition.Configure(services, options["repository-root"]);
               if (privateServerRuntime is not null)
               {
                 services.AddSingleton(privateServerRuntime.Service);

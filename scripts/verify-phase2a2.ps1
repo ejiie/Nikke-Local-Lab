@@ -49,6 +49,12 @@ Invoke-Checked node @('--check', (Join-Path $ScriptDirectory 'measure-nll-editor
 Invoke-Checked node @((Join-Path $ScriptDirectory 'measure-nll-editor-dom.cjs'), '--self-test')
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/workspace-save-retry.test.cjs"))
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/raid-launch-status.test.cjs"))
+Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/boss-seasons.test.cjs"))
+$BossPipelineChecks = Join-Path $RepositoryRoot 'tools/NikkeLocalLab.BossPipeline.Checks/NikkeLocalLab.BossPipeline.Checks.csproj'
+Invoke-Checked dotnet @('restore', $BossPipelineChecks, '--locked-mode')
+Invoke-Checked dotnet @('build', $BossPipelineChecks, '-c', 'Release', '--no-restore')
+Invoke-Checked dotnet @('format', $BossPipelineChecks, '--verify-no-changes', '--no-restore')
+Write-Output 'Boss pipeline local checker source build passed; real data pipeline requires explicit private configuration and is not run in CI.'
 Invoke-Checked node @((Join-Path $ScriptDirectory "test-nll-phase-d-lifecycle-ui.cjs"))
 $MaterializerChecks = Join-Path $RepositoryRoot 'tests/NikkeLocalLab.Materializer.BehaviorChecks/NikkeLocalLab.Materializer.BehaviorChecks.csproj'
 # Source-only CI compiles the checker without Epinel/SDK/client inputs. Actual

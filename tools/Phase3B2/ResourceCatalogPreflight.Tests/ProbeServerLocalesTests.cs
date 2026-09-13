@@ -71,6 +71,49 @@ public sealed class ProbeServerLocalesTests : IDisposable
     command.ExecuteNonQuery();
     return path;
   }
+  [Fact]
+  public void BossPresentationSelectsAdditionalLocalesWithoutChangingTheirBodies()
+  {
+    Add("lss/Locale_System.lsc");
+    Add("lss/Locale_Stage.lsc");
+    Add("lss/Unrelated.lsc");
+    var members = BossCatalogLocales.Inspect(connection, root);
+    Assert.Equal(2, members.Count);
+    Assert.True(members.ContainsKey("Locale_System.lsc"));
+    Assert.True(members.ContainsKey("Locale_Stage.lsc"));
+    Assert.Equal(3, Directory.GetFiles(Path.Combine(root, "raw")).Length);
+  }
+  [Theory]
+  [InlineData("../Locale_System.lsc")]
+  [InlineData("a//Locale_System.lsc")]
+  [InlineData("a/../Locale_System.lsc")]
+  public void BossPresentationRejectsTraversal(string key)
+  {
+    Add(key);
+    Assert.Throws<PreflightException>(() => BossCatalogLocales.Inspect(connection, root));
+  }
+  [Fact]
+  public void BossPresentationRejectsMissingAmbiguousAndDriftedContainers()
+  {
+    Assert.Throws<PreflightException>(() => BossCatalogLocales.Inspect(connection, root));
+    var file = Add("Locale_System.lsc");
+    var before = File.ReadAllBytes(file);
+    var changed = before.ToArray(); changed[^1] ^= 1;
+    File.WriteAllBytes(file, changed);
+    Assert.Throws<PreflightException>(() => BossCatalogLocales.Inspect(connection, root));
+    File.WriteAllBytes(file, before);
+    Add("other/Locale_System.lsc");
+    Assert.Throws<PreflightException>(() => BossCatalogLocales.Inspect(connection, root));
+  }
+  [Theory]
+  [InlineData("Locale_System.lsc", true)]
+  [InlineData("Locale_Stage.lsc", true)]
+  [InlineData("Locale_System.lsc:stream", false)]
+  [InlineData("Locale_System.lsc\n", false)]
+  [InlineData("../Locale_System.lsc", false)]
+  [InlineData("Other.lsc", false)]
+  public void BossLocaleNamesUseStrictBoundedSegments(string name, bool expected) =>
+      Assert.Equal(expected, BossCatalogLocales.IsLocaleName(name));
   public void Dispose()
   {
     connection.Dispose();

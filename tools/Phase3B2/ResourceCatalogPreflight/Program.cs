@@ -9,6 +9,12 @@ var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolic
 string? currentRole = null;
 try
 {
+  if (args is ["stage-boss-catalog-locales", var bossLocaleSource, var bossLocaleDestination, var bossLocaleCatalogHash, var bossLocaleSignatureHash])
+  {
+    Console.WriteLine(JsonSerializer.Serialize(BossCatalogLocales.Stage(bossLocaleSource, bossLocaleDestination,
+        bossLocaleCatalogHash, bossLocaleSignatureHash), options));
+    return 0;
+  }
   if (args is ["stage-native-fx-chunks", var chunkSource, var layoutRoot, var layoutSha256, var chunkDestination])
   {
     Console.WriteLine(JsonSerializer.Serialize(NativeFxChunkCandidate.Stage(chunkSource, layoutRoot, layoutSha256, chunkDestination), options));

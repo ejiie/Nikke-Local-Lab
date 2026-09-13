@@ -82,6 +82,12 @@ foreach ($testScript in @('test-nll-boss-profile-qte.py', 'test-nll-boss-onboard
         throw 'Both validation jobs must run the source-only Python behavior checks.'
     }
 }
+if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-boss-publication.ps1')).Count -ne 2) {
+    throw 'Both validation jobs must run atomic boss publication failure/retry checks.'
+}
+if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-boss-native-composition.ps1')).Count -ne 2) {
+    throw 'Both validation jobs must run the offline native composition failure checks.'
+}
 
 Assert-NotContains $Workflow '(?m)^\s*pull_request_target:\s*$' "Privileged pull_request_target execution is forbidden."
 Assert-NotContains $Workflow 'secrets\.' "Automation must not depend on a PAT or repository secret."
