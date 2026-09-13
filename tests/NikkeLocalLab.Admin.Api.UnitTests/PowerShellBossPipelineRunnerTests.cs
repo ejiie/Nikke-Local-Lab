@@ -3,6 +3,7 @@ using System.Text;
 
 namespace NikkeLocalLab.Admin.Api.UnitTests;
 
+[Collection(WindowsProcessCollection.Name)]
 public sealed class PowerShellBossPipelineRunnerTests : IDisposable
 {
   private readonly string root = Path.Combine(Path.GetTempPath(), "nll-boss-runner-test-'" + Guid.NewGuid().ToString("N"));

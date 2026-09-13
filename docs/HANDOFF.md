@@ -39,6 +39,11 @@ API 단위 167개·브라우저 39이미지/단일 카드 검사를 통과했다
 v6/selection을 독립 재검사하고 설치된 동일 DLL의 실제 HTTP 검사도 다시 통과했다
 (`http-installed-probe/installed-5.log`, 이미지 78회). source CI/병합 상태는 이 UI
 호환성 수정 커밋의 run에서 별도로 확인한다. 원복은 새 plan의 `restore`를 사용한다.
+`158f81b`의 Actions `34745856896`은 PostgreSQL job 성공, Windows 계약 job의
+합성 프로세스 검사 3개가 각각 10/15/40초 deadline으로 실패했다. 예외는 모두
+`TaskCanceledException`이고 UI catalog assertion 실패가 아니다. 해당 PowerShell
+프로세스 fixture를 비병렬 collection으로 분리해 동시 cold-start 경합을 줄인다.
+제품 timeout/취소/실패 판정은 변경하지 않으며 후속 CI 성공 전 병합 완료로 표시하지 않는다.
 
 - enikk.app 승인 이미지 **39시즌/37개 PNG**와 시즌 선택 → 단일 보스/5약점 화면,
   미처리 예/아니오·처리 상태 UI를 설치했다. 로컬 snapshot은 1~40이며 S19와
