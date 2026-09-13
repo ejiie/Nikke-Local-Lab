@@ -384,7 +384,15 @@ public sealed class PhaseDArtifactSafetyTests
         StringComparison.Ordinal);
     Assert.Contains("UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow", documentContract,
         StringComparison.Ordinal);
-    Assert.DoesNotContain("C:\\NIKKE", coordinator + watcher + recovery + installer + start + stop + materializer,
+    // A negative guard is not an official installation input/output. Require the
+    // exact rejection and exempt only that expression, not other path references.
+    const string officialPathRejection = """
+        Require(!path.StartsWith(@"C:\NIKKE", StringComparison.OrdinalIgnoreCase),
+              "phase_d_user_validation_official_path_rejected");
+        """;
+    Assert.Contains(officialPathRejection, materializer, StringComparison.Ordinal);
+    Assert.DoesNotContain("C:\\NIKKE", coordinator + watcher + recovery + installer + start + stop +
+        materializer.Replace(officialPathRejection, string.Empty, StringComparison.Ordinal),
         StringComparison.OrdinalIgnoreCase);
     Assert.DoesNotContain("D:\\", coordinator + watcher + recovery + installer + start + stop + materializer,
         StringComparison.OrdinalIgnoreCase);

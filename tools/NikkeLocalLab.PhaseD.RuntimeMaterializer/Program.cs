@@ -300,6 +300,11 @@ if (options.ContainsKey("create-static-data-variant"))
   Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(result));
   return;
 }
+if (options.ContainsKey("prepare-user-validation-account"))
+{
+  await PrepareUserValidationAccountAsync(options);
+  return;
+}
 if (options.ContainsKey("export-presentation-catalog"))
 {
   var connectionName = RequiredText(options, "connection-string-env");
@@ -1598,6 +1603,108 @@ static void ExportDecodedStaticData(
     CryptographicOperations.ZeroMemory(decoded);
     decodedArchive.Dispose();
   }
+}
+
+static async Task PrepareUserValidationAccountAsync(IReadOnlyDictionary<string, string> options)
+{
+  var output = Required(options, "prepare-user-validation-account");
+  if (!OperatingSystem.IsWindows()) throw new InvalidOperationException("phase_d_user_validation_windows_required");
+  Require(Directory.Exists(output) &&
+      !Directory.EnumerateFileSystemEntries(output).Any(), "phase_d_user_validation_output_not_empty");
+  AssertUserValidationPath(output);
+  var acl = System.IO.FileSystemAclExtensions.GetAccessControl(new DirectoryInfo(output));
+  var allowed = new[] { System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value,
+      "S-1-5-18", "S-1-5-32-544" };
+  Require(acl.AreAccessRulesProtected, "phase_d_user_validation_output_not_private");
+  foreach (System.Security.AccessControl.FileSystemAccessRule rule in acl.GetAccessRules(true, true,
+      typeof(System.Security.Principal.SecurityIdentifier)))
+    Require(rule.AccessControlType != System.Security.AccessControl.AccessControlType.Allow ||
+        allowed.Contains(rule.IdentityReference.Value), "phase_d_user_validation_output_not_private");
+  var leases = new List<FileStream>();
+  var secrets = new List<byte[]>();
+  try
+  {
+    byte[] Read(string name, int limit)
+    {
+      var path = Required(options, name);
+      AssertUserValidationPath(path);
+      var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+      leases.Add(stream);
+      Require(stream.Length > 0 && stream.Length <= limit, "phase_d_user_validation_input_size_invalid");
+      var bytes = new byte[checked((int)stream.Length)];
+      secrets.Add(bytes);
+      stream.ReadExactly(bytes);
+      Require(UserValidationAccount.Hash(bytes) == RequiredText(options, name + "-sha256"),
+          "phase_d_user_validation_input_drifted");
+      return bytes;
+    }
+    var source = Read("source-db", 32 * 1024 * 1024);
+    var receipt = Read("source-receipt", 65536);
+    var sourcePack = Read("source-static-pack", 64 * 1024 * 1024);
+    _ = Read("game-config", 1024 * 1024);
+    _ = Read("boss-variant-profile", 1024 * 1024);
+    Require(Guid.TryParseExact(RequiredText(options, "assessment-uid"), "D", out var assessment) &&
+        assessment != Guid.Empty, "phase_d_user_validation_assessment_invalid");
+    AssetDownloadUtil.ConfigureOfficialOutbound(false);
+    // Upstream GameData uses an exclusive read handle. Parse a new private copy
+    // while retaining the original read lease; never release the source pin.
+    var inspectionPack = Path.Combine(output, "inspection-static.pack");
+    using (var copy = new FileStream(inspectionPack, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+    {
+      copy.Write(sourcePack);
+      copy.Flush(true);
+    }
+    var console = Console.Out;
+    GameData data;
+    using var suppressed = new StringWriter(CultureInfo.InvariantCulture);
+    try
+    {
+      Console.SetOut(suppressed);
+      data = await LoadStaticDataForInspectionAsync(inspectionPack, Required(options, "game-config"));
+    }
+    finally { Console.SetOut(console); }
+    Require(HashFile(inspectionPack) == UserValidationAccount.Hash(sourcePack), "phase_d_user_validation_input_drifted");
+    Require(!suppressed.ToString().Contains("Failed to parse ", StringComparison.Ordinal) &&
+        !suppressed.ToString().Contains(" does not exist in static data", StringComparison.Ordinal),
+        "phase_d_staticdata_table_parse_incomplete");
+    var profile = await BossRuntimeVariantProfile.LoadAsync(Required(options, "boss-variant-profile"));
+    var manager = BossAffinityStaticDataVariant.ResolveUniqueUserValidationManager(data, profile);
+    var entropy = RandomNumberGenerator.GetBytes(15);
+    var launcher = RandomNumberGenerator.GetBytes(32);
+    var encryption = RandomNumberGenerator.GetBytes(32);
+    secrets.AddRange([entropy, launcher, encryption]);
+    var result = UserValidationAccount.Create(source, receipt, assessment, manager, profile.SeasonNumber,
+        RequiredText(options, "weakness-code"), profile.Sha256, entropy, launcher, encryption);
+    secrets.AddRange([result.Database, result.Context]);
+    var prepared = JsonConvert.DeserializeObject<CoreInfo>(Encoding.UTF8.GetString(result.Database)) ??
+        throw new InvalidOperationException("phase_d_user_validation_account_rejected");
+    BossAffinityStaticDataVariant.ValidateUserValidationSelection(data, profile, prepared.Users.Single());
+    // CreateNew only; a partial failure leaves private evidence, never overwrites or publishes success.
+    foreach (var pair in new[] { ("db.json", result.Database), ("synthetic-context.json", result.Context),
+        ("account.receipt.json", result.Receipt) })
+    {
+      AssertUserValidationPath(output);
+      using var file = new FileStream(Path.Combine(output, pair.Item1), FileMode.CreateNew, FileAccess.Write, FileShare.None);
+      file.Write(pair.Item2);
+      file.Flush(true);
+    }
+    Console.WriteLine(Encoding.UTF8.GetString(result.Receipt));
+  }
+  finally
+  {
+    foreach (var lease in leases) lease.Dispose();
+    foreach (var secret in secrets) CryptographicOperations.ZeroMemory(secret);
+  }
+}
+
+static void AssertUserValidationPath(string path)
+{
+  Require(!path.StartsWith(@"C:\NIKKE", StringComparison.OrdinalIgnoreCase),
+      "phase_d_user_validation_official_path_rejected");
+  for (FileSystemInfo? entry = File.Exists(path) ? new FileInfo(path) : new DirectoryInfo(path);
+      entry is not null; entry = entry is FileInfo file ? file.Directory : ((DirectoryInfo)entry).Parent)
+    Require(entry.Exists && (entry.Attributes & FileAttributes.ReparsePoint) == 0,
+        "phase_d_user_validation_reparse_path_rejected");
 }
 
 static async Task<GameData> LoadStaticDataForInspectionAsync(
