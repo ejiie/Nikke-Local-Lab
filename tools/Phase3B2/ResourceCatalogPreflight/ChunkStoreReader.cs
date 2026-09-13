@@ -27,7 +27,7 @@ internal sealed class ChunkStoreReader : IDisposable
     if (12UL + count * 28UL + 16UL != (ulong)index.Length)
       throw new PreflightException("resource_chunk_index_length_invalid");
     IndexSha256 = CatalogDatabase.Hash(index);
-    IndexTrailerVerified = spooky.ComputeHash(index.AsSpan(0, index.Length - 16).ToArray()).Hash
+    IndexTrailerVerified = ChunkIndexDigest.Compute(index.AsSpan(0, index.Length - 16))
         .AsSpan().SequenceEqual(index.AsSpan(index.Length - 16));
     store = new FileStream(storePath, FileMode.Open, FileAccess.Read, FileShare.Read);
     try

@@ -50,6 +50,40 @@ public sealed class ChunkStoreReaderTests : IDisposable
     }
 
     [Fact]
+    public void RecordChainedTrailerIsReportedWithoutNativeAdmission()
+    {
+        var path = Path.Combine(root, "chunk", "store.cdb.idx");
+        var index = File.ReadAllBytes(path);
+        ChunkIndexDigest.Compute(index.AsSpan(0, index.Length - 16)).CopyTo(index, index.Length - 16);
+        File.WriteAllBytes(path, index);
+        using var reader = new ChunkStoreReader(root);
+        Assert.True(reader.IndexTrailerVerified);
+        Assert.Equal(payload, reader.ReadVerified(hash, payload.Length, compressed.Length));
+        using var result = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(IndexDigestProbe.Inspect(root)));
+        Assert.Contains(result.RootElement.GetProperty("matches").EnumerateArray(),
+            item => item.GetString() == "spooky_header12_records28_seeded");
+        Assert.Equal("not_evaluated", result.RootElement.GetProperty("nativeReadiness").GetString());
+        Assert.False(result.RootElement.GetProperty("sourceMutationPerformed").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WholeFileHashOrDamagedTrailerIsNotCertified(bool damaged)
+    {
+        var path = Path.Combine(root, "chunk", "store.cdb.idx");
+        var index = File.ReadAllBytes(path);
+        var digest = damaged ? ChunkIndexDigest.Compute(index.AsSpan(0, index.Length - 16)) :
+            SpookyHashV2Factory.Instance.Create(new SpookyHashConfig { HashSizeInBits = 128 })
+                .ComputeHash(index[..^16]).Hash;
+        if (damaged) digest[0] ^= 1;
+        digest.CopyTo(index, index.Length - 16);
+        File.WriteAllBytes(path, index);
+        using var reader = new ChunkStoreReader(root);
+        Assert.False(reader.IndexTrailerVerified);
+    }
+
+    [Fact]
     public void CatalogSizeMismatchFails()
     {
         using var reader = new ChunkStoreReader(root);

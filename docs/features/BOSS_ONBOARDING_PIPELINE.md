@@ -2,7 +2,111 @@
 
 > 상태 참고 (2026-09-06): 아래 S29 결과는 당시 admission 기록입니다. 현재 S29의 profile v3/등록 v2 불일치는 별도 보류이며, 151 실게임 완료는 S26 기준입니다. [안정화 계획](../STABILIZATION_PLAN.md)을 함께 확인합니다.
 
+> 2026-09-13 현재: 운영자가 관리자 실행과 ACE 서비스 별도 관리를 승인했다. 새 실험은
+> 보정 FX를 적용하기 전에 ACE-ADVT 드라이버 상태 변화로 중단됐다. 후속 명시 승인과
+> 정상 중지로 사전 드라이버 상태를 복원하고 hosts/음성/서비스 원복 및 임시 방화벽
+> 0개·관련 프로세스 0개를 확인했다. 이 cold 원복은 기존 S26 인수 및 native FX/새
+> 자동 수명주기 인수와 구별한다. 최신 복구 상태는 [인계](../HANDOFF.md)를 따른다.
+
+## CIDX trailer rule resolved — 2026-09-12
+
+### Reusable offline delivery tools — 2026-09-13
+
+The operator now owns actual-game execution/visual/combat testing. The agent must
+finish implementation and non-game verification without restarting a native trial.
+Existing S26 acceptance remains complete. These new tools keep native admission
+`not_assessed`; no success receipt authorizes changing an installation or DLL.
+
+- `materialize-nll-native-fx-layout.py`: consumes the hash-pinned native candidate;
+  copies only equal-size changed Transform payloads into their original positions;
+  verifies every object, directory and unchanged byte layout before a final seal.
+  Unknown compression/encryption/content-digest formats fail closed.
+- `ResourceCatalogPreflight stage-native-fx-chunks`: binds that seal to the exact
+  original catalog/store/index and assembles all original chunks with digest checks.
+  Only singly referenced chunks may change (reuse twice even in one file is rejected).
+  Zstd + skippable padding preserves compressed size and round-trips to the corrected
+  bytes. It writes before/after chunks and a private offset manifest into a NEW output,
+  rechecks all inputs, then seals a source-free receipt. It never changes an index,
+  catalog or source store, and explicitly records `oldChunkDigestsMatch=false`.
+- `materialize-nll-native-fx-store.py`: creates an independent OFFLINE store copy,
+  changes only those pinned ranges, and verifies whole-file hashes. Restore rebuilds
+  the original bytes in a separate partial, validates its full hash and atomically
+  replaces only that owned copy. Completed partial replacements can resume; unknown
+  partials/copies and stale locks are retained and rejected. This tool is not a live
+  client installer, a Job retirement proof, or a native runtime acceptance gate.
+
+All original bundles/chunks/private manifests remain ignored local artifacts. Only
+tool source, documentation and directly authored synthetic fixtures belong in Git.
+The previous private feasibility receipts are unchanged; new outputs have new seals.
+
+Source-only checks:
+
+```powershell
+python -B scripts/test-nll-native-fx-layout.py
+python -B scripts/test-nll-native-fx-store.py
+```
+
+An offline fixed-layout alternative now preserves each original fire/wind/iron
+bundle's metadata, object offsets and byte length while reproducing every object
+payload of the previously verified Transform-only overlay. Each changes one
+non-shared catalog chunk. Exact-length Zstd payloads with skippable padding round
+trip to the corrected content; **their original chunk digests do not match**.
+No client/CDB/index write or native acceptance has occurred. A pinned disk-only
+read candidate connects lookup/size checks to ZSTD_decompress, but its full FX
+provider chain and interaction with the separate digest-validation path remain
+unverified. See the [current handoff](../HANDOFF.md) and private source-free
+`fixed-layout-13ab6671de4844539b02715a5847095e.receipt.json`; this does not relax
+native admission or permit reusing an original digest as modified-byte evidence.
+
+Subsequent native format experiment: replacing only the exact installed inner
+catalog with its unchanged decoded SQLite bytes is **not an accepted route**.
+Trial `7b6d16b1-5ab1-4849-9df4-1f28d1f7815c` produced five OS requests (one read)
+for that file and four malformed-database log lines naming its exact path. A
+successful lobby response in the same run must not mask the catalog rejection.
+The automatic cleanup also failed on OS process-identity lookup; a separate UAC
+cold recovery restored the declared catalog and scoped settings without claiming
+a surviving Job or physical FX retirement. See the current [handoff](../HANDOFF.md).
+The source-free summary is
+`artifacts/native-fx-runtime-20260912/format-trial-70ce2b78998641d489294a1a52e29210.receipt.json`.
+No corrected FX, new native patch, catalog signature acceptance or A→B→A runtime
+success is claimed.
+
+The exact 151 CIDX reader accumulates a zero-initialized `Hash128`: append the
+12-byte header once, then each 28-byte record separately, then compare the stored
+16-byte trailer. Each append uses SpookyHash v2 with the preceding result's two
+little-endian 64-bit halves as seeds. A single streaming hash, or uniform 28-byte
+segmentation starting at byte zero, is a different algorithm.
+
+Disk-only instruction-boundary checks bind the header, record loop, shared state,
+trailer comparison and `UnityEngine.Hash128::ComputeFromPtr` call in the pinned
+151 image. The rule matches all five installed indices (core/dp/fd/saus/ko),
+454,494 records in total; all before/after SHA-256 pins agree. Reproduction is
+`artifacts/native-delivery-static-20260912/check-index-trailers.ps1`; its immutable
+source-free receipt is `index-rule-6efbc882c822441ea75e8c6846455440.receipt.json`
+(SHA-256 `325a5333e3fcdd6112950acc60577d78e2b3e7835e8a55704ae680f4229c3b09`).
+No native DLL was loaded, no index/catalog was rewritten, and no game was started
+by this inspection. The earlier blocker receipt remains historical and unchanged.
+
+`ChunkIndexDigest` and the offline reader now report
+`spooky_header12_records28_seeded_verified` only for a matching trailer.
+Mismatching trailers remain explicitly uncertified in the offline extraction
+path; this is not native admission. The 23 new synthetic cases cover explicit
+two-record seed chaining, empty indices, malformed dimensions/version/counts,
+field changes, wrong segmentation and corrupt/whole-file-hash trailers. All 226
+ResourceCatalogPreflight tests pass, including the real local TLS synthetic test
+outside the restricted key-storage sandbox. No system trust certificate is added.
+
+**Still incomplete:** a consistent execution-local catalog/chunk delivery route,
+modified catalog acceptance, corrected FX native loading/rendering and A→B→A
+restoration. Resolving the index checksum does not solve catalog signatures or
+authorize changing the approved DLL. Old candidate receipts are not rewritten;
+a new export can record the stronger index result under a new seal.
+
 ## Native delivery blockers and whole-tree retirement — 2026-09-12
+
+The following is the earlier inspection/lifecycle checkpoint. The CIDX checksum
+item below is superseded by the resolved rule above; the native delivery gates
+are not otherwise promoted.
 
 The follow-up request covers the remainder of native delivery/rollback and the
 entire process-tree cleanup integration. **Do not mark native delivery complete.**

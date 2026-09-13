@@ -593,6 +593,9 @@ else {
     Invoke-Checked "pwsh" @("-NoProfile", "-File", (Join-Path $ScriptDirectory "verify-phase3b1.ps1"))
 }
 
+# The service lifecycle test uses synthetic snapshots and mocks all OS mutations.
+Invoke-Checked "pwsh" @("-NoProfile", "-File", (Join-Path $ScriptDirectory "test-nll-native-fx-managed-service.ps1"))
+
 Assert-True (Test-Path -LiteralPath $PreflightSchemaPath -PathType Leaf) "phase3b2_preflight_schema_missing"
 Assert-True (Test-Path -LiteralPath $ReferenceRunSchemaPath -PathType Leaf) "phase3b2_reference_run_schema_missing"
 Assert-True (Test-Path -LiteralPath $ObservationSetSchemaPath -PathType Leaf) "phase3b2_observation_set_schema_missing"

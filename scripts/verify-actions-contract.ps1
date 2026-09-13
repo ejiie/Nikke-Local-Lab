@@ -77,7 +77,7 @@ $mergePattern = 'git\s+-c\s+user\.name=github-actions\[bot\]\s+-c\s+user\.email=
 if ([regex]::Matches($Workflow, $mergePattern).Count -ne 2) {
     throw 'Both validation jobs must test the merge result with command-local Git identity.'
 }
-foreach ($testScript in @('test-nll-boss-profile-qte.py', 'test-nll-boss-onboarding-candidate.py', 'test-nll-shield-fx-candidate.py', 'test-nll-execution-fx.py', 'test-nll-native-fx.py', 'test-nll-actions-merge.py')) {
+foreach ($testScript in @('test-nll-boss-profile-qte.py', 'test-nll-boss-onboarding-candidate.py', 'test-nll-shield-fx-candidate.py', 'test-nll-execution-fx.py', 'test-nll-native-fx.py', 'test-nll-native-fx-layout.py', 'test-nll-native-fx-store.py', 'test-nll-actions-merge.py')) {
     if ([regex]::Matches($Workflow, [regex]::Escape("python -B scripts/$testScript")).Count -ne 2) {
         throw 'Both validation jobs must run the source-only Python behavior checks.'
     }

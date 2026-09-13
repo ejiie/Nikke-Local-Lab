@@ -41,7 +41,7 @@ internal static class ChunkFileAssembler
         using (var target = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None)) output.CopyTo(target);
         return new { statusCode = "single_member_reconstructed", outputSha256, outputByteLength = output.Length,
             verifiedCompressedChunkCount = verified, catalog.BodySha256, catalog.SignatureSha256,
-            indexSha256 = store.IndexSha256, indexTrailerStatusCode = store.IndexTrailerVerified ? "spooky_prefix_verified" : "unresolved",
+            indexSha256 = store.IndexSha256, indexTrailerStatusCode = store.IndexTrailerVerified ? ChunkIndexDigest.VerifiedStatusCode : "unresolved",
             staticDataIdentityVerified = false, sourceMutationPerformed = false, actualPlayVerified = false };
     }
 

@@ -9,6 +9,11 @@ var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolic
 string? currentRole = null;
 try
 {
+  if (args is ["stage-native-fx-chunks", var chunkSource, var layoutRoot, var layoutSha256, var chunkDestination])
+  {
+    Console.WriteLine(JsonSerializer.Serialize(NativeFxChunkCandidate.Stage(chunkSource, layoutRoot, layoutSha256, chunkDestination), options));
+    return 0; // Offline candidate only. The operator owns native-game acceptance.
+  }
   if (args is ["export-native-fx", var fxPlan, var fxPlanSha256, var fxDestination])
   {
     Console.WriteLine(JsonSerializer.Serialize(NativeFxExport.Export(fxPlan, fxPlanSha256, fxDestination), options));
