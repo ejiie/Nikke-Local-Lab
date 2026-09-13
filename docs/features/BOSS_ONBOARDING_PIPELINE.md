@@ -1,5 +1,45 @@
 # Solo Raid boss onboarding pipeline
 
+## 2026-09-13: season UI and offline worker composition
+
+The operator owns actual-game acceptance. Existing 151/S26 acceptance stays closed.
+The new season picker and durable import API are implemented, but are not installed
+in the operating Control Center yet. Original boss photos and per-execution native
+delivery/rollback remain pending; offline candidate creation is not completion.
+
+- A hash-bound local catalog lists seasons 1 through the largest known static-data
+  season. Exact Challenge manager/preset/target and localized names resolve 39 of
+  the 40 local snapshot slots; S19 stays unresolved. The current live season is
+  not inferred. Each card retains its default weakness independently of the five
+  selectable execution weaknesses.
+- Processed cards open a single-card detail. Unprocessed cards ask Yes/No; No
+  closes without a request, Yes closes before starting the durable job. Polling
+  distinguishes completion from runtime-delivery/validation waits and failures.
+  Authenticated API access and POST CSRF protection remain mandatory.
+- `prepare-nll-boss-pipeline.ps1` creates a NEW private configuration under artifacts,
+  verifies the selected bundle, and seals tool/data inputs. It neither installs nor
+  enables a worker. The synthetic `boss-variant-discovery-seed.json` contains no account
+  data and leaves manager selection unset for exact unique profile resolution.
+- `NLL_BOSS_PIPELINE_CONFIG_PATH` plus `NLL_BOSS_PIPELINE_CONFIG_SHA256` explicitly
+  compose the catalog and worker at app startup. Absent configuration fails closed.
+  The worker uses creation-time Windows Job assignment, kill-on-close, no breakaway,
+  a bounded timeout, persisted request identity and distinct retry output directories.
+- Optional pinned native inputs connect the common candidate to native export,
+  equal-length layout and verified chunk packaging. A real S29 local service/worker
+  invocation passed this chain, restart replay and cold-tool verification. The
+  original store/registry remained unchanged. The result is still
+  `awaiting_runtime_delivery`; original chunk digests do not match modified bytes.
+- The S29 draft/profile-pin mismatch continues to block execution. A fresh import
+  can discover new content without trusting the mismatched draft's metadata or
+  silently updating its old admission pin. Only validated v2 profiles may use the
+  separate immutable-file/atomic-registry legacy publisher.
+
+`tools/NikkeLocalLab.BossPipeline.Checks` runs only with an explicit private config,
+config SHA and season; `--inspect-job <job-uid>` checks an existing receipt chain
+without launching another worker. Source CI builds it but never supplies original
+data. Synthetic publication, queue, UI, process and failure checks are separate
+from user-game acceptance. See [current handoff](../HANDOFF.md) for exact evidence.
+
 > 상태 참고 (2026-09-06): 아래 S29 결과는 당시 admission 기록입니다. 현재 S29의 profile v3/등록 v2 불일치는 별도 보류이며, 151 실게임 완료는 S26 기준입니다. [안정화 계획](../STABILIZATION_PLAN.md)을 함께 확인합니다.
 
 > 2026-09-13 현재: 운영자가 관리자 실행과 ACE 서비스 별도 관리를 승인했다. 새 실험은

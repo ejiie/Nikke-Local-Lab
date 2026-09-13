@@ -56,12 +56,6 @@ function Get-Sha256Lower([string]$Path) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
-function Write-AtomicUtf8([string]$Path, [string]$Text) {
-    $temporary = $Path + '.partial-' + [guid]::NewGuid().ToString('N')
-    [IO.File]::WriteAllText($temporary, $Text, [Text.UTF8Encoding]::new($false))
-    [IO.File]::Move($temporary, $Path, $true)
-}
-
 function Assert-PlainPath([string]$Path) {
     $cursor = [IO.Path]::GetFullPath($Path)
     while ($cursor) {
@@ -117,10 +111,14 @@ $profileAssembler = Join-Path $repositoryRoot `
 $fxCandidateTool = Join-Path $PSScriptRoot 'materialize-nll-shield-fx-candidate.py'
 $candidateVerifier = Join-Path $PSScriptRoot 'verify-nll-boss-onboarding-candidate.py'
 $registryPath = Join-Path $RegistryRoot 'registry.json'
-foreach ($path in @($behaviorInspector, $profileAssembler, $registryPath)) {
+$publisherPath = Join-Path $PSScriptRoot 'Nll.BossPublication.ps1'
+foreach ($path in @($behaviorInspector, $profileAssembler, $registryPath, $publisherPath)) {
     Assert-Onboarding (Test-Path -LiteralPath $path -PathType Leaf) `
         'boss_onboarding_pipeline_input_missing'
 }
+$registryInitialSha256 = Get-Sha256Lower $registryPath
+$publisherSha256 = Get-Sha256Lower $publisherPath
+$sourceStaticSha256 = Get-Sha256Lower $StaticDataPackPath
 
 Assert-Onboarding (-not ($CandidateOnly -and $ReplaceExistingProfile)) `
     'boss_onboarding_candidate_cannot_replace'
@@ -139,7 +137,7 @@ if ($CandidateOnly) {
     }
     $pinPaths = @($MaterializerPath, $StaticDataPackPath, $GameConfigPath, $SourceDatabasePath,
         $PythonPath, $PSCommandPath, $behaviorInspector, $profileAssembler, $fxCandidateTool,
-        $candidateVerifier, (Join-Path $PSScriptRoot 'materialize-nll-shield-fx-transform-variant.py'))
+        $candidateVerifier, $publisherPath, (Join-Path $PSScriptRoot 'materialize-nll-shield-fx-transform-variant.py'))
     if ($MaterializerHostPath) { $pinPaths += $MaterializerHostPath }
     $pinPaths += @(Get-ChildItem -LiteralPath $RegistryRoot -File | ForEach-Object { $_.FullName })
     foreach ($path in $pinPaths) {
@@ -252,6 +250,7 @@ try {
         Assert-Onboarding ($LASTEXITCODE -eq 0) 'boss_onboarding_fx_candidate_failed'
     }
     $variantReceipts = [Collections.Generic.List[object]]::new()
+    $variantArtifactPins = @{ $StaticDataPackPath = $sourceStaticSha256; $publisherPath = $publisherSha256 }
     foreach ($weaknessCode in @('fire', 'water', 'wind', 'electric', 'iron')) {
         $variantPath = Join-Path $variantRoot ($weaknessCode + '.pack')
         $receiptPath = Join-Path $variantRoot ($weaknessCode + '.receipt.json')
@@ -307,6 +306,9 @@ try {
             ($receipt.contractId -ceq `
                 'nll/boss-affinity-static-data-variant/v1' -and
              [int]$receipt.seasonNumber -eq $SeasonNumber -and
+             [string]$receipt.variantProfileCode -ceq $ProfileCode -and
+             [string]$receipt.variantProfileSha256 -ceq [string]$validation.profileSha256 -and
+             [string]$receipt.sourceStaticDataSha256 -ceq $sourceStaticSha256 -and
              [string]$receipt.weaknessCode -ceq $weaknessCode -and
              [string]$receipt.targetBossElementCode -ceq `
                 [string]$targetBossElementByWeakness[$weaknessCode] -and
@@ -321,6 +323,14 @@ try {
              (Test-Path -LiteralPath $variantPath -PathType Leaf) -eq `
                 $expectedVariant) `
             'boss_onboarding_affinity_variant_receipt_invalid'
+        if ($expectedVariant) {
+            $variantHash = Get-Sha256Lower $variantPath
+            Assert-Onboarding ($variantHash -ceq [string]$receipt.variantStaticDataSha256) 'boss_onboarding_variant_pack_drifted'
+            $variantArtifactPins[$variantPath] = $variantHash
+        } else {
+            Assert-Onboarding ($null -eq $receipt.variantStaticDataSha256) 'boss_onboarding_variant_pack_drifted'
+        }
+        $variantArtifactPins[$receiptPath] = Get-Sha256Lower $receiptPath
         $variantReceipts.Add([ordered]@{
             weaknessCode = $weaknessCode
             targetBossElementCode = [string]$receipt.targetBossElementCode
@@ -348,64 +358,13 @@ try {
         return
     }
 
-    $installedProfilePath = Join-Path $RegistryRoot ($ProfileCode + '.json')
-    $existingProfile = Test-Path -LiteralPath $installedProfilePath -PathType Leaf
-    Assert-Onboarding (-not $existingProfile -or $ReplaceExistingProfile) `
-        'boss_onboarding_profile_already_registered'
-    Copy-Item -LiteralPath $candidateProfilePath -Destination $installedProfilePath `
-        -Force:$ReplaceExistingProfile
-    $installedProfileSha256 = Get-Sha256Lower $installedProfilePath
-
-    $registry = Get-Content -LiteralPath $registryPath -Raw -Encoding UTF8 |
-        ConvertFrom-Json
-    Assert-Onboarding `
-        ($registry.contractId -ceq 'nll/boss-runtime-variant-registry/v1' -and
-         [int]$registry.schemaVersion -eq 1) `
-        'boss_onboarding_registry_invalid'
-    $otherProfiles = @($registry.profiles | Where-Object {
-        [int]$_.seasonNumber -ne $SeasonNumber -and
-        [string]$_.profileCode -cne $ProfileCode
-    })
-    Assert-Onboarding `
-        ($otherProfiles.Count -eq @($registry.profiles).Count -or
-         $ReplaceExistingProfile) `
-        'boss_onboarding_registry_entry_exists'
-    $entry = [ordered]@{
-        seasonNumber = $SeasonNumber
-        profileCode = $ProfileCode
-        profileRelativePath = $ProfileCode + '.json'
-        profileSha256 = $installedProfileSha256
-        operationalStatusCode = 'enabled'
-    }
-    $updatedProfiles = @($otherProfiles) + @($entry) |
-        Sort-Object { [int]$_.seasonNumber }, { [string]$_.profileCode }
-    $updatedRegistry = [ordered]@{
-        schemaVersion = 1
-        contractId = 'nll/boss-runtime-variant-registry/v1'
-        profiles = @($updatedProfiles)
-    }
-    Write-AtomicUtf8 $registryPath `
-        (($updatedRegistry | ConvertTo-Json -Depth 12) + "`n")
-
-    $admission = [ordered]@{
-        schemaVersion = 1
-        contractId = 'nll/boss-onboarding-admission/v1'
-        admittedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
-        profileCode = $ProfileCode
-        seasonNumber = $SeasonNumber
-        profileSha256 = $installedProfileSha256
-        registrySha256 = Get-Sha256Lower $registryPath
-        skillClosureStatusCode = 'resolved'
-        behaviorClosureStatusCode = 'resolved'
-        elementShieldModeCode = [string]$profile.elementShield.modeCode
-        fiveAffinityVariantStatusCode = 'passed'
-        affinityVariants = @($variantReceipts)
-        operationalStatusCode = 'enabled'
-        rawSourceIdentifiersPersisted = $false
-        officialInstallModified = $false
-    }
-    Write-AtomicUtf8 $admissionReceiptPath `
-        (($admission | ConvertTo-Json -Depth 12) + "`n")
+    Assert-Onboarding ((Get-Sha256Lower $publisherPath) -ceq $publisherSha256) 'boss_onboarding_publisher_drifted'
+    . $publisherPath
+    Publish-NllBossProfile -ProfilePath $candidateProfilePath -Validation $validation `
+        -ArtifactPins $variantArtifactPins `
+        -VariantReceipts $variantReceipts.ToArray() -RegistryRoot $RegistryRoot `
+        -ExpectedRegistrySha256 $registryInitialSha256 -AdmissionReceiptPath $admissionReceiptPath `
+        -ReplaceExistingProfile:$ReplaceExistingProfile | Out-Null
 }
 finally {
     if (Test-Path -LiteralPath $privateDiscoveryPath -PathType Leaf) {

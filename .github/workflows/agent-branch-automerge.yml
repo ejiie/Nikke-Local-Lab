@@ -62,6 +62,10 @@ jobs:
       - name: Verify source-only onboarding and merge behavior
         shell: pwsh
         run: |
+          pwsh -NoProfile -File scripts/test-nll-boss-publication.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Atomic boss publication checks failed.' }
+          pwsh -NoProfile -File scripts/test-nll-boss-native-composition.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Boss native composition checks failed.' }
           python -B scripts/test-nll-boss-profile-qte.py
           if ($LASTEXITCODE -ne 0) { throw 'QTE profile checks failed.' }
           python -B scripts/test-nll-boss-onboarding-candidate.py
@@ -160,6 +164,10 @@ jobs:
       - name: Verify source-only onboarding and merge behavior
         shell: pwsh
         run: |
+          pwsh -NoProfile -File scripts/test-nll-boss-publication.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Atomic boss publication checks failed.' }
+          pwsh -NoProfile -File scripts/test-nll-boss-native-composition.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Boss native composition checks failed.' }
           python -B scripts/test-nll-boss-profile-qte.py
           if ($LASTEXITCODE -ne 0) { throw 'QTE profile checks failed.' }
           python -B scripts/test-nll-boss-onboarding-candidate.py

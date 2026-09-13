@@ -626,7 +626,7 @@ internal static class BossContentDiscovery
     (int)row.FxTarget03Arena, (int)row.FxSocketPoint03Arena
   ];
 
-  private static byte[] GetDecodedArchive(GameData gameData)
+  internal static byte[] GetDecodedArchive(GameData gameData)
   {
     var field = typeof(GameData).GetField("ZipStream", BindingFlags.Instance | BindingFlags.NonPublic);
     var stream = field?.GetValue(gameData) as MemoryStream;
@@ -634,7 +634,7 @@ internal static class BossContentDiscovery
     return stream!.ToArray();
   }
 
-  private static T[] DeserializeEntry<T>(byte[] archive, string entryName) where T : class
+  internal static T[] DeserializeEntry<T>(byte[] archive, string entryName) where T : class
   {
     using var stream = new MemoryStream(archive, writable: false);
     using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: false);
@@ -680,7 +680,7 @@ internal static class BossContentDiscovery
   private static string HashBytes(byte[] bytes) =>
       Convert.ToHexStringLower(SHA256.HashData(bytes));
 
-  private static string ElementCode(AttackType value) => value switch
+  internal static string ElementCode(AttackType value) => value switch
   {
     AttackType.Fire => "fire",
     AttackType.Water => "water",

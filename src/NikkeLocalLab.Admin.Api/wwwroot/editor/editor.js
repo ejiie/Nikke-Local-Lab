@@ -60,11 +60,7 @@ const consoleGroups = Object.freeze([
   { code: "common-class", label: "공용 · 클래스", coordinates: ["common", "attacker", "defender", "supporter"] },
   { code: "manufacturer", label: "기업", coordinates: ["elysion", "missilis", "tetra", "pilgrim", "abnormal"] }
 ]);
-const bossSeasonLabels = Object.freeze({
-  26: "프로비던스",
-  29: "마더 웨일",
-  34: "알트루이아"
-});
+const bossSeasonLabels = Object.create(null);
 const manufacturerLabels = Object.freeze({
   elysion: "엘리시온", missilis: "미실리스", tetra: "테트라",
   pilgrim: "필그림", abnormal: "어브노멀"
@@ -576,25 +572,19 @@ async function startLaunch() {
 }
 
 function selectRaidBoss(seasonNumber) {
-  state.selectedBossSeason = seasonNumber;
-  byId("launch-season").value = String(seasonNumber);
-  for (const button of document.querySelectorAll(".raid-boss-option")) {
-    button.setAttribute("aria-pressed", String(Number(button.dataset.season) === seasonNumber));
-  }
-  renderBossWeaknessSummary();
-  void refreshLaunchPreparation();
+  bossSeasons.selectSeason(seasonNumber);
 }
 
 function renderBossWeaknessSummary() {
-  const label = elementLabels[state.selectedWeaknessCode];
-  const iconPath = `${uiAssetRoot}/code-${elementAssetNames[state.selectedWeaknessCode]}.png`;
   for (const button of document.querySelectorAll(".raid-boss-option")) {
+    const code = button.dataset.defaultWeaknessCode;
+    const label = elementLabels[code] || "미확인";
     const summary = button.querySelector("[data-boss-weakness-summary]");
     if (!summary) { continue; }
-    summary.hidden = Number(button.dataset.season) !== state.selectedBossSeason;
+    summary.hidden = false;
     const icon = summary.querySelector("[data-boss-weakness-icon]");
     const text = summary.querySelector("[data-boss-weakness-label]");
-    if (icon) { icon.src = iconPath; }
+    if (icon && elementAssetNames[code]) { icon.src = `${uiAssetRoot}/code-${elementAssetNames[code]}.png`; }
     if (text) { text.textContent = label; }
   }
 }
@@ -809,6 +799,7 @@ async function startAdminSession() {
   byId("app-shell").hidden = false;
   showStatus("관리 도구가 준비되었습니다. 계정을 선택하세요.");
   void refreshLaunchPreparation();
+  void bossSeasons.refreshJobs();
 }
 
 async function loadBootstrap() {
@@ -3084,10 +3075,28 @@ for (const button of document.querySelectorAll(".raid-action")) {
     run(button.dataset.kind === "practice" ? "모의전 실행" : "실전 실행", startLaunch);
   });
 }
-for (const button of document.querySelectorAll(".raid-boss-option")) {
-  button.addEventListener("click", () => selectRaidBoss(Number(button.dataset.season)));
-}
+const bossSeasons = NllBossSeasons.create({ document, api,
+  onSelected: row => {
+    state.selectedBossSeason = row.seasonNumber;
+    bossSeasonLabels[row.seasonNumber] = row.displayName || "선택 보스";
+    const option = document.createElement("option");
+    option.value = String(row.seasonNumber);
+    option.textContent = `시즌 ${row.seasonNumber} · ${bossSeasonLabels[row.seasonNumber]}`;
+    byId("launch-season").replaceChildren(option);
+    selectWeaknessCode(row.defaultWeaknessCode);
+  },
+  onUnavailable: () => {
+    ++state.preparationRequestNumber;
+    state.preparationController?.abort();
+    state.launchPreparation = { statusCode: "blocked", failureCode: "phase_d_boss_catalog_unavailable" };
+    updateRaidActions();
+  }
+});
 for (const button of document.querySelectorAll(".weakness-option")) {
+  const icon = button.querySelector("img");
+  icon?.addEventListener("error", () => { icon.hidden = true; });
+  // Static markup may finish its image request before this deferred script runs.
+  if (icon?.complete && icon.naturalWidth === 0) icon.hidden = true;
   button.addEventListener("click", () => selectWeaknessCode(button.dataset.weaknessCode));
 }
 byId("selected-boss-launch").addEventListener(

@@ -11,6 +11,8 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <None Include="$(EpinelReferenceRoot)\e_sqlite3.dll" Link="e_sqlite3.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(EpinelReferenceRoot)\libsodium.dll" Link="libsodium.dll" CopyToOutputDirectory="PreserveNewest" />
     <Compile Include="..\..\src\NikkeLocalLab.Automation\ExecutionAssetOverlay.cs" Link="ExecutionAssetOverlay.cs" />
     <Compile Include="..\..\src\NikkeLocalLab.Automation\ExecutionAssetRetirement.cs" Link="ExecutionAssetRetirement.cs" />
     <Compile Include="..\..\src\NikkeLocalLab.Application.ProfileManagement\PhaseDExecutionDocuments.cs"

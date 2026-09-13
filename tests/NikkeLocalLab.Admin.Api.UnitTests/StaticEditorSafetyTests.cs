@@ -42,6 +42,12 @@ public sealed class StaticEditorSafetyTests
     var html = File.ReadAllText(Path.Combine(editor, "index.html"));
     var script = File.ReadAllText(Path.Combine(editor, "editor.js"));
     var style = File.ReadAllText(Path.Combine(editor, "editor.css"));
+    var bosses = File.ReadAllText(Path.Combine(editor, "boss-seasons.js"));
+    Assert.DoesNotContain("innerHTML", bosses, StringComparison.Ordinal);
+    Assert.DoesNotContain("insertAdjacentHTML", bosses, StringComparison.Ordinal);
+    Assert.DoesNotContain("localStorage", bosses, StringComparison.Ordinal);
+    Assert.DoesNotContain("sessionStorage", bosses, StringComparison.Ordinal);
+    Assert.Contains("src=\"/editor/boss-seasons.js\"", html, StringComparison.Ordinal);
 
     Assert.DoesNotContain("http://", html, StringComparison.OrdinalIgnoreCase);
     Assert.DoesNotContain("https://", html, StringComparison.OrdinalIgnoreCase);
@@ -90,10 +96,14 @@ public sealed class StaticEditorSafetyTests
           StringComparison.Ordinal);
     }
     Assert.Contains("id=\"selected-weakness-icon\"", html, StringComparison.Ordinal);
-    Assert.Equal(2, Count(html, "data-boss-weakness-summary"));
-    Assert.Equal(2, Count(html, "data-boss-weakness-icon"));
+    Assert.Contains("id=\"boss-season-picker\"", html, StringComparison.Ordinal);
+    Assert.Contains("id=\"selected-boss-card\"", html, StringComparison.Ordinal);
+    Assert.Contains("id=\"boss-import-no\"", html, StringComparison.Ordinal);
+    Assert.Contains("id=\"boss-import-yes\"", html, StringComparison.Ordinal);
+    Assert.Contains("기본 약점", bosses, StringComparison.Ordinal);
+    Assert.Contains("button.dataset.defaultWeaknessCode", script, StringComparison.Ordinal);
     Assert.Contains("renderBossWeaknessSummary();", script, StringComparison.Ordinal);
-    Assert.Contains("마더 웨일</strong>", html, StringComparison.Ordinal);
+    Assert.DoesNotContain("data-season=\"29\"", html, StringComparison.Ordinal);
     Assert.DoesNotContain("마더 웨일 변종", html, StringComparison.Ordinal);
     Assert.Contains("id=\"save-everything\"", html, StringComparison.Ordinal);
     Assert.Contains("id=\"save-as-everything\"", html, StringComparison.Ordinal);
@@ -209,7 +219,8 @@ public sealed class StaticEditorSafetyTests
     Assert.Contains("review_override_coordinate_duplicate", script, StringComparison.Ordinal);
     Assert.Contains("id=\"launch-game\"", html, StringComparison.Ordinal);
     Assert.Contains("id=\"launch-season\"", html, StringComparison.Ordinal);
-    Assert.Contains("value=\"26\"", html, StringComparison.Ordinal);
+    Assert.Contains("option.value = String(row.seasonNumber)", script, StringComparison.Ordinal);
+    Assert.DoesNotContain("value=\"26\"", html, StringComparison.Ordinal);
     Assert.Contains("/admin-api/v1/executions", script, StringComparison.Ordinal);
     Assert.Contains("/executions/${encodeURIComponent(state.launchContextUid)}", script, StringComparison.Ordinal);
     Assert.Contains("validationKind: value(\"launch-kind\")", script, StringComparison.Ordinal);

@@ -116,6 +116,8 @@ public static class AdminApiHost
     builder.Services.TryAddSingleton<IPrivateServerService, UnavailablePrivateServerService>();
     builder.Services.TryAddSingleton<IPhaseDExecutionService, UnavailablePhaseDExecutionService>();
     builder.Services.TryAddSingleton<IPhaseDPreparationService, UnavailablePhaseDPreparationService>();
+    builder.Services.TryAddSingleton<IBossSeasonCatalogService, UnavailableBossSeasonCatalogService>();
+    builder.Services.TryAddSingleton<IBossOnboardingService, UnavailableBossOnboardingService>();
     builder.Services.TryAddSingleton<IAccountImportService, UnavailableAccountImportService>();
 
     var app = builder.Build();
@@ -207,6 +209,7 @@ public static class AdminApiHost
     app.MapPrivateServerPolicyAdminEndpoints();
     app.MapPrivateServerExecutionAdminEndpoints();
     app.MapPhaseDExecutionEndpoints();
+    app.MapBossSeasonEndpoints();
     app.MapAccountImportEndpoints();
     return app;
   }

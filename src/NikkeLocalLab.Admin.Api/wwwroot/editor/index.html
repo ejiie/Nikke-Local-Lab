@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NLL 지휘관 관리 도구</title>
   <link rel="stylesheet" href="/editor/editor.css">
+  <script src="/editor/boss-seasons.js" defer></script>
   <script src="/editor/editor.js" defer></script>
 </head>
 <body>
@@ -162,12 +163,15 @@
 
         <section class="tab-panel page" data-tab-panel="raid" hidden>
           <div class="section-heading"><div><p class="eyebrow">보스 선택</p><h2>솔로 레이드</h2><p>보스를 선택하면 원본 게임 안에서 실전과 모의전을 모두 이용할 수 있습니다.</p></div><button id="load-launch-history" class="ghost" type="button" disabled>최근 실행</button></div>
-          <input id="launch-account" class="compatibility-control" readonly aria-readonly="true" value="계정을 먼저 선택하세요"><select id="launch-season" class="compatibility-control"><option value="26">시즌 26 · 프로비던스</option><option value="29">시즌 29 · 마더 웨일</option></select><select id="launch-kind" class="compatibility-control"><option value="challenge">Challenge 메뉴</option></select><button id="launch-game" class="compatibility-control" type="button" disabled>실행</button>
-          <div class="boss-grid">
-            <button class="boss-card providence raid-boss-option" type="button" data-season="26" aria-pressed="true"><span class="boss-season">SEASON 26</span><span class="boss-art boss-thumb-providence" aria-hidden="true"><span>PROVIDENCE</span></span><span class="boss-content"><span class="available-badge">선택 후 구성 확인</span><strong>프로비던스</strong><small>Challenge 메뉴에서 실전·모의전 선택</small><span class="boss-weakness-summary" data-boss-weakness-summary><span>약점 코드</span><span><img data-boss-weakness-icon src="/editor/assets/ui/code-iron.png" alt=""><b data-boss-weakness-label>철갑</b></span></span></span></button>
-            <button class="boss-card whale raid-boss-option" type="button" data-season="29" aria-pressed="false"><span class="boss-season">SEASON 29</span><span class="boss-art boss-thumb-whale" aria-hidden="true"><span>MOTHER WHALE</span></span><span class="boss-content"><span class="available-badge">선택 후 구성 확인</span><strong>마더 웨일</strong><small>Challenge 메뉴에서 실전·모의전 선택</small><span class="boss-weakness-summary" data-boss-weakness-summary hidden><span>약점 코드</span><span><img data-boss-weakness-icon src="/editor/assets/ui/code-iron.png" alt=""><b data-boss-weakness-label>철갑</b></span></span></span></button>
-            <button class="boss-card altruia future raid-boss-option" type="button" data-season="34" aria-pressed="false" disabled><span class="boss-season">SEASON 34</span><span class="boss-art boss-thumb-altruia" aria-hidden="true"><span>ALTRUIA</span></span><span class="boss-content"><span class="future-badge">추가 준비 중</span><strong>알트루이아</strong><small>Classic Solo Raid</small></span></button>
-          </div>
+          <input id="launch-account" class="compatibility-control" readonly aria-readonly="true" value="계정을 먼저 선택하세요"><select id="launch-season" class="compatibility-control" aria-label="선택 시즌"></select><select id="launch-kind" class="compatibility-control"><option value="challenge">Challenge 메뉴</option></select><button id="launch-game" class="compatibility-control" type="button" disabled>실행</button>
+          <div class="action-row"><button id="select-boss-season" class="primary" type="button">시즌 선택</button><button id="boss-jobs-refresh" class="ghost" type="button">불러오기 상태 새로고침</button></div>
+          <p id="boss-job-status" role="status" aria-live="polite">시즌을 선택해 보스 정보를 확인하세요.</p><ul id="boss-jobs" class="boss-job-list"></ul>
+          <section id="boss-season-picker" hidden aria-labelledby="boss-season-picker-title">
+            <div class="section-heading"><div><h3 id="boss-season-picker-title">시즌 선택</h3><p id="boss-catalog-status">로컬 시즌 자료를 확인하고 있습니다.</p></div><button id="boss-season-back" class="ghost" type="button">돌아가기</button></div>
+            <div id="boss-season-grid" class="boss-grid boss-season-grid"></div>
+          </section>
+          <div id="boss-detail" hidden>
+          <div id="selected-boss-card" class="selected-boss-card"></div>
           <section class="surface weakness-selector" aria-labelledby="weakness-selector-title">
             <div class="weakness-selector-heading"><div><span class="eyebrow">보스 설정</span><strong id="weakness-selector-title">약점 코드 선택</strong><p>선택한 보스에 적용할 약점 속성을 실행 전에 선택합니다.</p></div><div class="selected-weakness"><span>현재 선택</span><strong><img id="selected-weakness-icon" src="/editor/assets/ui/code-iron.png" alt=""><span id="selected-weakness-label">철갑</span></strong></div></div>
             <div class="weakness-options" role="radiogroup" aria-label="약점 코드">
@@ -179,6 +183,9 @@
             </div>
           </section>
           <article class="surface launch-state-card"><div><span class="signal"></span><div><strong id="launch-status-title">실행 대기</strong><p id="launch-status-description">계정을 선택하면 실행 가능 여부를 확인합니다.</p></div></div><div class="action-row compact"><button id="refresh-launch" class="ghost" type="button" disabled>상태 확인</button><button id="selected-boss-launch" class="primary" type="button" disabled>선택한 보스로 게임 시작</button></div></article>
+          </div>
+          <dialog id="boss-import-dialog" class="boss-dialog" aria-labelledby="boss-import-title"><h3 id="boss-import-title">보스 불러오기</h3><p id="boss-import-question" class="boss-dialog-message"></p><div class="action-row"><button id="boss-import-yes" class="primary" type="button">예</button><button id="boss-import-no" type="button" autofocus>아니오</button></div></dialog>
+          <dialog id="boss-message-dialog" class="boss-dialog" aria-labelledby="boss-message-title"><h3 id="boss-message-title"></h3><p id="boss-message-text" class="boss-dialog-message"></p><button id="boss-message-close" class="primary" type="button" autofocus>확인</button></dialog>
         </section>
 
         <section class="tab-panel page" data-tab-panel="import" hidden>

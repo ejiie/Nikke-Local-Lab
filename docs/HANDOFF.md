@@ -22,6 +22,64 @@
 진행하며, native 화면·전투·보정 FX 수락은 사용자 확인 전까지 미검증으로 남긴다.
 **S26 기존 인수 완료는 유지**한다. 아래 중단 실험 기록은 현재 실행 지시가 아니다.
 
+오프라인 고정 길이 FX/전체 store 원복 소스는 PR **#22**, Actions
+`34735043785`의 3개 job 성공 후 `80c566b3c6c76fe3fe462753b5120ddb8787a30f`로
+병합됐다. 현재 후속 branch는 `agent/boss-onboarding-publication`이며 아래 후속분은
+아직 작업 중이다. 이 중간 병합을 계획 1~6 전체 완료로 읽지 않는다.
+
+- 기존 legacy v2 publish를 **불변 profile 파일 + 원자적 registry 교체**로 변경했다.
+  registry CAS/프로세스 간 파일 lease/전후 artifact hash 재검사/실패 재시도와 기존
+  활성 파일 보존을 42개 합성 검사로 확인했다. v3는 계속 native delivery 없이
+  publish할 수 없다. 현재 운영 registry는 수정하지 않았다.
+- 새 로컬 시즌 카탈로그 도구가 151 snapshot에서 **1~40 중 39개**의 Challenge
+  boss/한국어 이름/기본 약점을 해소했다. **S19 manager 연결은 unresolved**다.
+  현재 공식 시즌 여부는 자료에 없으므로 `currentSeasonStatusCode=unresolved`이며
+  40을 현재 공식 시즌이라고 단정하지 않는다. 원본 번역 컨테이너 30개는 saus
+  catalog의 raw digest/SHA-256을 대조해 별도 artifacts로 복사했다. 원본/공유 cache
+  변경이나 게임/서버 실행은 없었다. 출력은 `artifacts/boss-catalog-20260913/`이다.
+- `GET /boss-seasons`, image pin 검증, 작업 기록/요청 API 및 영속 queue/중복 요청
+  identity/재시작 복구 상태 코드를 추가했다. hash-pinned PowerShell worker와 Program
+  composition을 연결했다. 설정되지 않은 import는 503으로 닫으며 운영 앱의 worker는
+  아직 켜지 않았다. `prepare-nll-boss-pipeline.ps1`은 새 private 설정만 만들고,
+  `NikkeLocalLab.BossPipeline.Checks`는 게임/웹서버/DB 없이 작업을 실행·재검사한다.
+  계정 DB 대신 `Users:[{}]` 합성 seed에서 exact unique manager를 해소한다.
+- 실제 S29 API 서비스 → 오프라인 실행 Job → 스킬/행동/5속성 → native FX → 고정 길이
+  → 청크 경로가 통과했다. `artifacts/boss-catalog-20260913/pipeline-2/`의 작업 UID는
+  `5ee290db-ffc2-4611-a2ad-a170f5585eda`, 후보 receipt SHA-256은
+  `585f418d9756d4815f5ca3aef9c9a4978bc1430dbd71736b8f8915120b629111`, 청크 receipt는
+  `9fbfa48a60ea86526a663de56abb03c548c86ef868bbc5fa43d2818fb8d527dc`다.
+  972개 입력 pin을 전후 확인했고 재시작 replay/도구 종료/registry 불변을 확인했다.
+  새 결과 reader로 receipt hash chain을 다시 읽어 확인했다. 상태는 여전히
+  **awaiting_runtime_delivery**다. native 실행·운영 DB·배포·실게임 수락은 주장하지 않는다.
+  초기 pipeline-1의 `boss_pipeline_registry_profile_drifted` 실패 기록은 보존했다.
+  S29 기존 v3 draft/pin 불일치는 실행 차단으로 유지하되 NEW candidate 생성을 막지 않게 했다.
+- 시즌 선택 화면 → 단일 보스 상세/5약점, 미처리 보스 예/아니오 팝업과 별도 완료/
+  보류 팝업을 구현했다. 기본 약점은 실행 약점과 분리한다. Node 24개, 새 catalog/
+  job/API/기존 UI 안전성 focused .NET 29개, 새 materializer 합성 16개, locale
+  추출 focused 17개 검사가 통과했다. 실제 Edge의 합성 HTTP UI gate도 통과했다
+  (40 cards, 상세 1 card, No 0 jobs/Yes 1 job, JS error 0). 원본 보스 이미지
+  39개 추출/연결과 운영 UI 설치는 아직 남아 있다. 수정 후 Edge UI gate도 재통과했다.
+  추가 결과 receipt 13개/Windows runner 3개, native composition 합성 14개와 리소스
+  전체 260개 검사가 통과했다. 공유 Job 도구는 C# 5와 .NET 8 모두 호환하도록
+  null native directory를 IntPtr.Zero로 표현했고 WinPS5 Job 44개를 재통과했다.
+  합성 UI 화면을 실제 서버/게임
+  성공으로 승격하지 않는다.
+
+다음은 선택 약점별 store/검증용 native delivery와 원복, 보스 사진, 검증용 격리 실행 구성,
+UI 배포 및 후속 전체 회귀/CI 병합이다. 작업 중 추가한 코드는 아직 새 CI로 봉인하지
+않았다. 기존 lifecycle 3-file-only 패키지를 새 UI 배포에 사용하면 안 된다:
+새 `boss-seasons.js`와 HTML/CSS 전체 묶음 및 추가 파일의 원복 기준도 필요하다.
+후속 로컬 Phase 3B-2 전체 baseline/계약, repository/Phase 0/Actions 계약과
+publication 42/native composition 14/common candidate Python 12 검사를 통과했다.
+후속 폐기 PostgreSQL 114/114·재시작·정리도 통과했다
+(`artifacts/stabilization/lifecycle-postgresql/c84625d7704a4882adaf6cf1f8f0c7dd/receipt.json`).
+첫 소스 커밋 `be5d01d`의 Actions `34740637212`는 테스트 전 main merge 준비에서
+문서/명령 등록부 충돌로 실패했다. 앞선 squash 이력을 main과 정상 merge로 연결해
+후속 재검증한다. 기능 gate를 우회하거나 S29 실행 pin을 바꾸지 않는다.
+`pipeline-2` 설정은 실행 당시 pin의 과거 증거이며, 이후 합성 seed를 표준
+`tests/fixtures/synthetic/boss-variant-discovery-seed.json` 위치로 옮겼으므로 재실행/
+배포 설정으로 재사용하지 않는다. 후속 배포 전에 최종 소스로 새 설정을 생성해야 한다.
+
 고정 길이 FX 생성과 청크 패키지 생성은 private 조사 스크립트에서 재사용 가능한
 소스로 옮겼다. 실제 151 FX 3종의 전체 객체 대조, 원래 길이/offset 보존, exact
 카탈로그 청크 3개와 압축 길이·압축 해제 결과를 검증했다. CIDX trailer도 일치한다.
