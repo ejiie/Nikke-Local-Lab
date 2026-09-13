@@ -114,6 +114,18 @@ public sealed class UserValidationBootstrapPlanTests
   }
 
   [Fact]
+  public void CasesCanShareTheTrialCloneWithoutOverwritingAnotherRunPlan()
+  {
+    var baseline = Example() with { CaseCode = "baseline" };
+    var candidate = baseline with { AssessmentUid = "33333333-3333-4333-8333-333333333333", CaseCode = "candidate", WeaknessCode = "iron" };
+    Assert.Equal(baseline.ClientRoot, candidate.ClientRoot);
+    Assert.NotEqual(baseline.RuntimeRoot, candidate.RuntimeRoot);
+    Assert.NotEqual(baseline.ParentPlanPath, candidate.ParentPlanPath);
+    Assert.Equal(baseline.RunRoot + @"\validation.private.json", baseline.ParentPlanPath);
+    Assert.Equal(candidate.RunRoot + @"\validation.private.json", candidate.ParentPlanPath);
+  }
+
+  [Fact]
   public void PinnedClientInventoryIncludesEmptyFilesAndLiteralSpacesOrParentheses()
   {
     var p = Example();

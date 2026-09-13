@@ -71,10 +71,24 @@ v6/selection을 독립 재검사하고 설치된 동일 DLL의 실제 HTTP 검�
   20,430,834,145 bytes의 새 manifest는 `1fef12f5d08ef299a1a8ce36aee8a8ad331d532ba4c66c9b3bd11ece02e06c7c`.
   과거와의 차이는 없어진 3,504-byte crash 보고서 한 개뿐이며 나머지 파일 hash는
   전부 일치했다. `user-validation-source-1.private.json`에 읽기 결과를 보존했다.
-  복사/사후 전수 검사가 실행 중이면 `clone.receipt.json` 성공을 확인하기 전 완료로 읽지 않는다.
+  복사/사후 전수 검사를 완료했고 원본 불변을 확인했다. 성공 `clone.receipt.json` SHA-256은
+  `5f2640137bbe68eb89e0e7e612f0fa082edf9cd648034fce6bf6c7e4441f58e6`이다. 별도 OS 파일
+  핸들 메타데이터 검사에서 1,154개 모두 hardlink 0/reparse 0을 확인했다. 런타임은 시작하지 않았다.
+  실제 전체 manifest를 새 계획 parser에 넣은 shape 검사도 통과했다(빈 파일 9개 포함).
+- 위 부트스트랩/종료 helper 소스 `bdf89a29c4e9e1b8639f10f4d3b2fc399b3a91e0`은 로컬
+  전체 검사(API **224개**) 및 Actions `34747933884` 3 jobs 성공 후 PR #28로 병합됐다
+  (main `e25bf252fc1340ff9c2641086d34422354db7b14`). 이 병합이 실행기 최종 완성은 아니다.
+- 후속 계획은 `runs/<assessment>/validation.private.json`으로 실행별 봉인한다.
+  같은 독립 client trial에서 서로 다른 약점·baseline/candidate/restored를 검사하되
+  이전 계획을 덮어쓰지 않는다. 부모 계획에 assessment/case도 결박했다. focused **58개**와
+  부트스트랩 빌드가 통과했다. 이 후속 변경은 별도 CI/병합 상태를 확인한다.
 - 남은 연결은 준비된 계정/독립 서버의 materialization, 선택한 단일 보스 속성의 native
   store 전달/원복, 사용자 실행 controller 및 durable job의 실제 delivery receipt 연결이다.
   S29는 계속 `awaiting_runtime_delivery`; 운영 registry/v6/선택/DB와 공유 cache는 유지한다.
+  기존 `ResourceProbeExecution`은 최대 300초, 기존 `db.json`과 모든 `EPINELPS_` 설정을
+  거부하므로 준비된 계정/속성 전투에 그대로 재사용하지 않는다. 검증된 normal
+  `--headless --local-only` 경로에 별도 bounded controller/고정 SQLite 설정/환경·Job·
+  전체 input pin을 적용하는 구성을 우선 검토한다. 아직 이 서버나 controller를 시작하지 않았다.
 
 - enikk.app 승인 이미지 **39시즌/37개 PNG**와 시즌 선택 → 단일 보스/5약점 화면,
   미처리 예/아니오·처리 상태 UI를 설치했다. 로컬 snapshot은 1~40이며 S19와

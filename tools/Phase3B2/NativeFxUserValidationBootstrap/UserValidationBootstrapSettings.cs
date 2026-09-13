@@ -47,7 +47,7 @@ internal sealed class UserValidationBootstrapSettings : IDisposable
           plan.RuntimeFiles.Select(pin => pin.Path).Append(planPath)));
       Require(UserValidationPinnedFiles.Inventory(plan.ClientRoot, 10000).SetEquals(plan.ClientFiles.Select(pin => pin.Path)));
       UserValidationPinnedFiles.AssertNoReparse(plan.RunRoot);
-      var parentPath = @"C:\NLL\Staging\NativeFxUserValidation\" + plan.TrialUid + @"\validation.private.json";
+      var parentPath = plan.ParentPlanPath;
       using var parentInput = UserValidationPinnedFiles.Open(parentPath, new FileInfo(parentPath).Length, plan.ParentPlanSha256, 1048576);
       using var parent = JsonDocument.Parse(parentInput);
       UserValidationLaunchEvidence.ValidateParent(plan, parent.RootElement);
