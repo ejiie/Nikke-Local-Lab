@@ -4,6 +4,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const http = require("node:http");
+const crypto = require("node:crypto");
 const assert = require("node:assert/strict");
 const { chromium } = require("playwright");
 const editorRoot = path.resolve(__dirname, "../../src/NikkeLocalLab.Admin.Api/wwwroot/editor");
@@ -16,6 +17,29 @@ async function main() {
     seasons: Array.from({ length: 40 }, (_, index) => ({ seasonNumber: index + 1, displayName: `합성 보스 ${index + 1}`,
       defaultWeaknessCode: ["fire", "water", "wind", "electric", "iron"][index % 5], imageUrl: null,
       processingStatusCode: index === 25 ? "processed" : "unprocessed", failureCode: null })) };
+  const imagePayloads = new Map();
+  if (process.argv[3]) {
+    const local = path.resolve(process.argv[3]), bytes = fs.readFileSync(local);
+    const pin = crypto.createHash("sha256").update(bytes).digest("hex");
+    assert.equal(pin, process.argv[4], "explicit local catalog pin required");
+    const snapshot = JSON.parse(bytes);
+    assert.equal(snapshot.contractId, "nll/boss-season-catalog/v1");
+    assert.equal(snapshot.maximumKnownSeason, 40);
+    catalog.catalogSha256 = pin;
+    catalog.seasons = snapshot.seasons.map(row => {
+      const imageUrl = row.imageStatusCode === "resolved" ? `/admin-api/v1/boss-seasons/${row.seasonNumber}/image?catalog=${pin}` : null;
+      if (imageUrl) {
+        assert.match(row.imageSha256, /^[a-f0-9]{64}$/);
+        const payload = fs.readFileSync(path.join(path.dirname(local), "images", row.imageSha256 + ".png"));
+        assert.equal(crypto.createHash("sha256").update(payload).digest("hex"), row.imageSha256);
+        imagePayloads.set(imageUrl, payload);
+      }
+      // Job and preparation HTTP remain synthetic: this only inspects the local
+      // presentation snapshot and never asserts that another boss is admitted.
+      return { ...row, imageUrl, processingStatusCode: row.discoveryStatusCode !== "resolved" ? "unresolved" :
+        row.seasonNumber === 26 ? "processed" : "unprocessed" };
+    });
+  }
   let jobs = [], posts = 0;
   const server = http.createServer((request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
@@ -37,6 +61,8 @@ async function main() {
     const errors = []; page.on("pageerror", error => errors.push(error.message));
     await page.route("**/admin-api/**", async route => {
       const request = route.request(), url = new URL(request.url());
+      const payload = imagePayloads.get(url.pathname + url.search);
+      if (payload) { await route.fulfill({ status: 200, body: payload, contentType: "image/png" }); return; }
       let body;
       if (url.pathname.endsWith("boss-seasons")) body = catalog;
       else if (url.pathname.endsWith("boss-onboarding-jobs")) {
@@ -54,6 +80,10 @@ async function main() {
     await page.evaluate(() => { document.getElementById("login-screen").hidden = true; document.getElementById("app-shell").hidden = false; setPage("raid"); });
     await page.locator("#select-boss-season").click();
     await page.waitForFunction(() => document.querySelectorAll(".boss-season-option").length === 40);
+    if (imagePayloads.size) {
+      await page.locator(".boss-season-option .boss-catalog-image").evaluateAll(images => images.forEach(image => { image.loading = "eager"; }));
+      await page.waitForFunction(count => [...document.querySelectorAll(".boss-season-option .boss-catalog-image")].filter(image => image.complete && image.naturalWidth > 0).length === count, imagePayloads.size);
+    }
     await page.screenshot({ path: path.join(output, "season-picker.png"), fullPage: false });
     await page.locator('.boss-season-option[data-season="26"]').click();
     assert.equal(await page.locator(".raid-boss-option:visible").count(), 1);
@@ -64,6 +94,7 @@ async function main() {
     assert.equal(await page.locator('.weakness-option[aria-checked="true"]').count(), 1);
     assert.equal(await page.locator('.weakness-option[aria-checked="true"]').getAttribute("data-weakness-code"), "iron");
     assert.equal(await page.locator('.weakness-option img:visible').count(), 0, "missing synthetic icons must not render broken images");
+    assert.equal(await page.locator('#selected-weakness-icon:visible').count(), 0);
     assert.equal(await page.locator("#selected-boss-card [data-boss-weakness-label]").textContent(), before);
     await page.screenshot({ path: path.join(output, "selected-boss.png"), fullPage: false });
     await page.locator("#select-boss-season").click();
@@ -82,7 +113,8 @@ async function main() {
     await page.setViewportSize({ width: 430, height: 880 });
     await page.screenshot({ path: path.join(output, "mobile-dialog.png"), fullPage: false });
     console.log(JSON.stringify({ status: "passed", syntheticHttpOnly: true, nativeClientExecuted: false,
-      seasonCards: 40, selectedVisibleCards: 1, noButtonJobs: 0, yesButtonJobs: posts, pageErrors: errors.length }));
+      seasonCards: 40, selectedVisibleCards: 1, noButtonJobs: 0, yesButtonJobs: posts, pageErrors: errors.length,
+      presentationSource: process.argv[3] ? "pinned_local_snapshot" : "synthetic", decodedSeasonImages: imagePayloads.size }));
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));

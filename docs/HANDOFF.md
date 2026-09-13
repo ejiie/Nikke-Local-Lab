@@ -66,8 +66,10 @@
   성공으로 승격하지 않는다.
 
 다음은 선택 약점별 store/검증용 native delivery와 원복, 보스 사진, 검증용 격리 실행 구성,
-UI 배포 및 후속 전체 회귀/CI 병합이다. 작업 중 추가한 코드는 아직 새 CI로 봉인하지
-않았다. 기존 lifecycle 3-file-only 패키지를 새 UI 배포에 사용하면 안 된다:
+UI 배포 및 후속 전체 회귀/CI 병합이다. 시즌 onboarding 소스는 `a219f157`의
+Actions `34741015549` 3개 job을 모두 통과해 PR #23으로 병합됐다. main은
+`1596c0674b1a1f3b36bc6d3f80fd91bbf809f5d6`이며 후속 작업은 이 squash를 기준으로
+분기했다. 기존 lifecycle 3-file-only 패키지를 새 UI 배포에 사용하면 안 된다:
 새 `boss-seasons.js`와 HTML/CSS 전체 묶음 및 추가 파일의 원복 기준도 필요하다.
 후속 로컬 Phase 3B-2 전체 baseline/계약, repository/Phase 0/Actions 계약과
 publication 42/native composition 14/common candidate Python 12 검사를 통과했다.
@@ -75,10 +77,48 @@ publication 42/native composition 14/common candidate Python 12 검사를 통과
 (`artifacts/stabilization/lifecycle-postgresql/c84625d7704a4882adaf6cf1f8f0c7dd/receipt.json`).
 첫 소스 커밋 `be5d01d`의 Actions `34740637212`는 테스트 전 main merge 준비에서
 문서/명령 등록부 충돌로 실패했다. 앞선 squash 이력을 main과 정상 merge로 연결해
-후속 재검증한다. 기능 gate를 우회하거나 S29 실행 pin을 바꾸지 않는다.
+재검증을 통과했다. 기능 gate를 우회하거나 S29 실행 pin을 바꾸지 않았다.
 `pipeline-2` 설정은 실행 당시 pin의 과거 증거이며, 이후 합성 seed를 표준
 `tests/fixtures/synthetic/boss-variant-discovery-seed.json` 위치로 옮겼으므로 재실행/
 배포 설정으로 재사용하지 않는다. 후속 배포 전에 최종 소스로 새 설정을 생성해야 한다.
+
+후속 선택-role store는 기본 3종 동시 적용과 별도의
+`nll/native-fx-offline-selected-store/v1` 계약으로 한 보스 자체 속성만 적용한다.
+합성 14개 검사(3역할 각각 교차역할 불변 포함)를 통과했고 실제 S29 청크를 사용한
+fire 단일 role 6,574,364,321 bytes 사본의 전체 hash A→B→A·반복 복원·복원 후보 거절도
+통과했다. `artifacts/boss-catalog-20260913/selected-fire-store/` manifest pin은
+`323a5bb616af8936462f64918ea0481d248685c20d2258900cbedf3d10f9e508`, 후보 hash는
+`13a96acaf56e17861ce7dff36c80b27f32aece2dfbe4dab2af8c167fbbe0eb93`다. 이 사본은
+현재 **원본으로 복원됨**이며 설치용 보정 파일로 재사용할 수 없다. 운영 캐시·게임 실행은 없다.
+
+새 `Nll.ControlCenterAppPackage.ps1`은 전체 app/HTML/CSS/JS와 의존성을 봉인하고
+기존 presentation/이미지는 보존한다. 추가 파일은 복원 시 삭제하지 않고 패키지에
+회수한다. 합성 51 assertions로 반복 적용/복원·중간 파일 상태·drift/동시 실행 거절을
+확인했다. 실제 앱 배포에는 별도 cold/startup interlock과 새 pipeline activation이
+필요하다. `prepare-nll-control-center-app-package.ps1`의 오프라인 리허설만으로
+운영 설치·worker activation을 완료했다고 판단하지 않는다.
+선택 약점 이미지 누락 fallback을 보완한 실제 Edge 합성 gate도 다시 통과했다.
+로컬 inner catalog에서 39개 정확한 `MonsterImage` basename의 직접 key 후보는 0개다.
+`BossImageReferences`의 5개 합성 검사는 통과했으나 atlas/별도 presentation 입력
+직접 연결이 미해소였다. 직접 key 없음이 로컬 이미지 전체 부재를 의미하지는 않는다.
+후속 운영자 승인으로 enikk.app의 exact 이미지 39개 요청을 수행해 **39시즌 모두**
+연결했다(동일 PNG 내용은 SHA-256 기준 37파일로 중복 제거). S19는 원래 manager
+미해소 상태로 남긴다. 결과는 `artifacts/boss-catalog-20260913/snapshot-enikk-1/`,
+catalog SHA-256은 `3448b0e60dcf96e3cd6c85b4ff3aa2a2ccf831144f9c26962f6fdadf6d1f1bdc`다.
+`materialize-nll-boss-catalog-images.py`의 합성 10개 검사를 통과했다. redirect/비 PNG/
+CRC/이름/결박/입력 drift를 검사하고 runtime에서는 로컬 image endpoint만 사용한다.
+실제 Edge에서도 이 카탈로그의 **39시즌 이미지 decode**, 40개 카드/선택 상세 1개,
+No 0건·Yes 1건 및 JS error 0을 확인했다(`ui-preview-enikk-2`). HTTP job/preparation은
+여전히 합성이며 게임 검증이 아니다. 첫 브라우저 probe는 S19를 미처리로 잘못
+투영해 catalog가 fail-closed됐으며, probe를 실제 API와 같은 unresolved 투영으로
+수정해 재통과했다. 원본 시즌 자료나 제품의 결손 처리 규칙을 바꾸지 않았다.
+사진을 포함한 새 private 설정 `pipeline-3/configuration.private.json`의 SHA-256은
+`0e571a789e0129146b7a50f75bb358230f0162071bb4f1d26d13c1db127fa6de`(972 pins)다.
+생성은 worker 활성화나 운영 게시를 하지 않았으며 별도 S29 오프라인 재검사를 진행한다.
+새 startup/deploy 공용 lease와 pending 복구 시 시작 차단, hash-pinned activation
+reader는 PowerShell 7/Windows PowerShell 5 각각 11 assertions를 통과했다.
+실제 설치된 Start script는 아직 교체하지 않았다. 최종 배포 트랜잭션에서 이 source와
+activation의 사전 파일/부재 상태를 별도로 봉인해 앱 묶음과 함께 적용·원복해야 한다.
 
 고정 길이 FX 생성과 청크 패키지 생성은 private 조사 스크립트에서 재사용 가능한
 소스로 옮겼다. 실제 151 FX 3종의 전체 객체 대조, 원래 길이/offset 보존, exact

@@ -15,7 +15,10 @@ if ((Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInva
     throw 'native_fx_store_test_manifest_drift'
 }
 $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-if ($manifest.contractId -cne 'nll/native-fx-offline-store/v1') { throw 'native_fx_store_test_contract_invalid' }
+if ($manifest.contractId -cnotin @('nll/native-fx-offline-store/v1', 'nll/native-fx-offline-selected-store/v1')) {
+    throw 'native_fx_store_test_contract_invalid'
+}
+$selectedRole = if ($manifest.contractId -ceq 'nll/native-fx-offline-selected-store/v1') { $manifest.roleCode } else { $null }
 $toolHash = (Get-FileHash -LiteralPath $tool -Algorithm SHA256).Hash.ToLowerInvariant()
 $observations = [Collections.Generic.List[object]]::new()
 foreach ($operation in @('verify', 'restore', 'restore')) {
@@ -49,6 +52,8 @@ $receipt = [ordered]@{
     wholeFileRoundTripVerified = $true
     repeatedRestoreVerified = $true
     restoredCandidateRejected = $true
+    roleCode = $selectedRole
+    allRolesApplied = $null -eq $selectedRole
     nativeClientExecuted = $false
     installedFilesModified = $false
     runtimeAdmissionStatusCode = 'not_assessed'

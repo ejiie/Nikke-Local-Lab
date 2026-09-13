@@ -18,6 +18,7 @@ spec = importlib.util.spec_from_file_location("store_fx", Path(__file__).with_na
 fx = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fx)
 CONTRACT = "nll/native-fx-offline-store/v1"
+SELECTED_CONTRACT = "nll/native-fx-offline-selected-store/v1"
 
 
 def require(value, suffix):
@@ -85,8 +86,15 @@ def package(root, seal):
             values[kind] = path.read_bytes()
             require(fx.digest(values[kind]) == row[kind + "Sha256"], "chunk_drift")
         require(values["before"] != values["after"], "chunk_unchanged")
-        result.append({"offset": offset, **values})
+        result.append({"roleCode": role, "offset": offset, **values})
     return source, source_pin, result
+
+
+def select_patches(patches, role):
+    require(role is None or (type(role) is str and role in fx.ROLES), "selected_role_invalid")
+    selected = patches if role is None else [row for row in patches if row["roleCode"] == role]
+    require(bool(selected), "selected_role_missing")
+    return selected
 
 
 def copy_with_patches(source, temporary, patches, reverse=False):
@@ -134,9 +142,10 @@ def writable_root(root):
     return root
 
 
-def create(package_root, package_seal, output):
+def create(package_root, package_seal, output, role=None):
     package_root, output = fx.plain_path(package_root), writable_root(output)
     source, source_pin, patches = package(package_root, package_seal)
+    patches = select_patches(patches, role)
     source_path = fx.plain_path(Path(source["path"]), file=True)
     protected = (package_root, source_path.parent)
     require(not os.path.lexists(output) and output.parent.is_dir() and all(
@@ -149,13 +158,17 @@ def create(package_root, package_seal, output):
     package(package_root, package_seal)
     require(fingerprint(source_path) == source_pin, "source_drift")
     temporary.rename(output / "store.cdb")
-    manifest = {"contractId": CONTRACT, "packageRoot": str(package_root), "packageSha256": package_seal,
+    manifest = {"contractId": CONTRACT if role is None else SELECTED_CONTRACT,
+                "packageRoot": str(package_root), "packageSha256": package_seal,
                 "original": before, "candidate": after, "nativeClientExecuted": False,
                 "installedFilesModified": False, "runtimeAdmissionStatusCode": "not_assessed"}
+    if role is not None:
+        manifest["roleCode"] = role
     raw = fx.encoded(manifest)
     fx.new_file(output / "manifest.private.json", raw)  # Last: only a complete copy is usable.
     return {"contractId": "nll/native-fx-offline-store-receipt/v1", "manifestSha256": fx.digest(raw),
             "original": before, "candidate": after, "statusCode": "offline_copy_verified",
+            "roleCode": role, "allRolesApplied": role is None,
             "nativeClientExecuted": False, "installedFilesModified": False,
             "runtimeAdmissionStatusCode": "not_assessed"}
 
@@ -163,16 +176,30 @@ def create(package_root, package_seal, output):
 def inspect(root, seal, restore=False):
     root = writable_root(root)
     manifest = document(root / "manifest.private.json", seal)
-    require(manifest.get("contractId") == CONTRACT and manifest.get("nativeClientExecuted") is False
+    require(manifest.get("contractId") in (CONTRACT, SELECTED_CONTRACT) and manifest.get("nativeClientExecuted") is False
             and manifest.get("installedFilesModified") is False
             and manifest.get("runtimeAdmissionStatusCode") == "not_assessed", "manifest_invalid")
     with fx.locked(root):
-        _, original, patches = package(Path(manifest["packageRoot"]), manifest["packageSha256"])
+        _, original, all_patches = package(Path(manifest["packageRoot"]), manifest["packageSha256"])
+        patches = all_patches
+        if manifest["contractId"] == SELECTED_CONTRACT:
+            require(type(manifest.get("roleCode")) is str and manifest["roleCode"] in fx.ROLES, "selected_role_invalid")
+            patches = select_patches(patches, manifest["roleCode"])
+        else:
+            require("roleCode" not in manifest, "legacy_role_forbidden")
         require(manifest["original"] == original and manifest["candidate"]["byteLength"] == original["byteLength"]
                 and manifest["candidate"] != original, "manifest_invalid")
         path, partial = root / "store.cdb", root / "store.cdb.restore-partial"
         current = fingerprint(path)
         require(current in (manifest["candidate"], original), "copy_drift")
+        # The whole-file pin alone does not prove the stated selected role. Check
+        # every package range, including the other roles that must stay original.
+        role = manifest.get("roleCode")
+        with path.open("rb") as stream:
+            for row in all_patches:
+                kind = "after" if current != original and (role is None or row["roleCode"] == role) else "before"
+                stream.seek(row["offset"])
+                require(stream.read(len(row[kind])) == row[kind], "selected_role_binding_mismatch")
         if restore:
             if current == manifest["candidate"]:
                 if os.path.lexists(partial):
@@ -203,10 +230,13 @@ def main():
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--sha256", required=True)
     parser.add_argument("--output-root", type=Path)
+    parser.add_argument("--role", choices=fx.ROLES,
+                        help="Apply only this boss-element role to the new offline copy (not a weakness code).")
     args = parser.parse_args()
     try:
         require((args.command == "create") == (args.output_root is not None), "arguments_invalid")
-        result = (create(args.root, args.sha256, args.output_root) if args.command == "create"
+        require(args.command == "create" or args.role is None, "arguments_invalid")
+        result = (create(args.root, args.sha256, args.output_root, args.role) if args.command == "create"
                   else inspect(args.root, args.sha256, args.command == "restore"))
         print(json.dumps(result))
         return 0
