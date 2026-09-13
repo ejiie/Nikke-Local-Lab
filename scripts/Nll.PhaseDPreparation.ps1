@@ -12,6 +12,54 @@ function Read-PhaseDPreparationJson {
     finally { $sha.Dispose() }
     [pscustomobject]@{ value = ([Text.Encoding]::UTF8.GetString($bytes) | ConvertFrom-Json); sha256 = $hash; length = $bytes.Length; path = $Path }
 }
+function Resolve-PhaseDBossAffinity {
+    param([object]$Profile, [string]$WeaknessCode)
+    # Pure selection from existing profile fields. This does not validate asset
+    # contents, decide transform requirements, or grant runtime admission.
+    $targetByWeakness = @{ fire = 'wind'; water = 'fire'; wind = 'iron'; electric = 'water'; iron = 'electric' }
+    $elements = @('fire', 'water', 'wind', 'electric', 'iron')
+    if ($WeaknessCode -cnotin $elements) { throw 'phase_d_launch_request_invalid' }
+    try {
+        $sourceElement = [string]$Profile.sourceAffinity.bossElementCode
+        $sourceWeakness = [string]$Profile.sourceAffinity.weaknessCode
+        if ($sourceElement -cnotin $elements -or $sourceWeakness -cnotin $elements -or
+            $targetByWeakness[$sourceWeakness] -cne $sourceElement) { throw 'phase_d_boss_variant_profile_invalid' }
+        $targetElement = $targetByWeakness[$WeaknessCode]
+        $variants = @(); $sourceFx = $null; $targetFx = $null
+        if ($Profile.elementShield.modeCode -ceq 'dynamic_affinity_linked') {
+            $variants = @($Profile.elementShield.fxVariants)
+            $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+            if ($variants.Count -ne $elements.Count) { throw 'phase_d_boss_variant_element_shield_fx_unresolved' }
+            foreach ($variant in $variants) {
+                if ($variant.bossElementCode -cnotin $elements -or -not $seen.Add($variant.bossElementCode) -or
+                    @($variant.mappings).Count -eq 0) { throw 'phase_d_boss_variant_element_shield_fx_unresolved' }
+                foreach ($mapping in $variant.mappings) {
+                    if ($mapping.sourceKindCode -cnotin @('boss_specific', 'common') -or
+                        $mapping.sourceFxPrefabSetSha256 -cnotmatch '^[0-9a-f]{64}$' -or
+                        $mapping.targetFxPrefabSetSha256 -cnotmatch '^[0-9a-f]{64}$' -or
+                        @($mapping.assetBundles).Count -eq 0) { throw 'phase_d_boss_variant_element_shield_fx_unresolved' }
+                    foreach ($bundle in $mapping.assetBundles) {
+                        if ($bundle.sha256 -cnotmatch '^[0-9a-f]{64}$' -or $bundle.byteLength -le 0) {
+                            throw 'phase_d_boss_variant_element_shield_fx_unresolved'
+                        }
+                    }
+                }
+            }
+            $sourceFx = @($variants | Where-Object { $_.bossElementCode -ceq $sourceElement })[0]
+            $targetFx = @($variants | Where-Object { $_.bossElementCode -ceq $targetElement })[0]
+        }
+        elseif ($Profile.elementShield.modeCode -cne 'none') { throw 'phase_d_boss_variant_element_shield_fx_unresolved' }
+        [pscustomobject]@{
+            sourceBossElementCode = $sourceElement; sourceWeaknessCode = $sourceWeakness
+            selectedWeaknessCode = $WeaknessCode; targetBossElementCode = $targetElement
+            shieldFxVariants = $variants; sourceShieldFxVariant = $sourceFx; targetShieldFxVariant = $targetFx
+        }
+    }
+    catch {
+        if ($_.Exception.Message -cin @('phase_d_boss_variant_profile_invalid', 'phase_d_boss_variant_element_shield_fx_unresolved')) { throw }
+        throw 'phase_d_boss_variant_profile_invalid'
+    }
+}
 function Get-PhaseDPreparation {
     param([string]$RepositoryRoot, [int]$SeasonNumber, [string]$WeaknessCode,
         [string]$RuntimeSelectionPath = 'C:\NLL\ControlCenter\runtime-selection.private.json')
@@ -22,7 +70,6 @@ function Get-PhaseDPreparation {
         clientBuildCode = $null; plan = $null
     }
     try {
-        $targetByWeakness = @{ fire = 'wind'; water = 'fire'; wind = 'iron'; electric = 'water'; iron = 'electric' }
         if ($SeasonNumber -le 0 -or $WeaknessCode -cnotin @('fire', 'water', 'wind', 'electric', 'iron')) { throw 'phase_d_launch_request_invalid' }
         $configRoot = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot 'config/boss-runtime-variants')).TrimEnd('\')
         $registry = Read-PhaseDPreparationJson (Join-Path $configRoot 'registry.json') 'phase_d_boss_variant_registry_missing'
@@ -42,15 +89,10 @@ function Get-PhaseDPreparation {
         $boss = $profile.value
         if (-not (($boss.schemaVersion -eq 1 -and $boss.contractId -ceq 'nll/boss-runtime-variant-profile/v1') -or
             ($boss.schemaVersion -eq 2 -and $boss.contractId -ceq 'nll/boss-runtime-variant-profile/v2')) -or
-            $boss.seasonNumber -ne $SeasonNumber -or $boss.profileCode -cne $entry.profileCode -or
-            -not $targetByWeakness.ContainsKey([string]$boss.sourceAffinity.bossElementCode) -or
-            -not $targetByWeakness.ContainsKey([string]$boss.sourceAffinity.weaknessCode)) { throw 'phase_d_boss_variant_profile_invalid' }
-        $targetElement = $targetByWeakness[$WeaknessCode]
-        $fx = @()
-        if ($boss.elementShield.modeCode -ceq 'dynamic_affinity_linked') {
-            $fx = @($boss.elementShield.fxVariants | Where-Object { $_.bossElementCode -ceq $targetElement })
-            if ($fx.Count -ne 1) { throw 'phase_d_boss_variant_element_shield_fx_unresolved' }
-        }
+            $boss.seasonNumber -ne $SeasonNumber -or $boss.profileCode -cne $entry.profileCode) { throw 'phase_d_boss_variant_profile_invalid' }
+        $affinity = Resolve-PhaseDBossAffinity -Profile $boss -WeaknessCode $WeaknessCode
+        $targetElement = $affinity.targetBossElementCode
+        $fx = @(); if ($null -ne $affinity.targetShieldFxVariant) { $fx = @($affinity.targetShieldFxVariant) }
         $selection = if (Test-Path -LiteralPath $RuntimeSelectionPath) {
             Read-PhaseDPreparationJson $RuntimeSelectionPath 'phase_d_bundle_selection_invalid'
         } else { $null }
@@ -71,7 +113,7 @@ function Get-PhaseDPreparation {
         try { $result.bindingSha256 = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($binding)))).Replace('-', '').ToLowerInvariant() }
         finally { $sha.Dispose() }
         $result.clientBuildCode = $build
-        $result.plan = [pscustomobject]@{ registry = $registry; profile = $profile; bundle = $bundle; selectionSha256 = $(if ($selection) { $selection.sha256 } else { $null }); bundleSha256 = $bundleHash; targetElementCode = $targetElement; shieldFxVariants = $fx }
+        $result.plan = [pscustomobject]@{ registry = $registry; profile = $profile; bundle = $bundle; selectionSha256 = $(if ($selection) { $selection.sha256 } else { $null }); bundleSha256 = $bundleHash; affinity = $affinity; targetElementCode = $targetElement; shieldFxVariants = $fx }
         $result.statusCode = 'ready'
     }
     catch {

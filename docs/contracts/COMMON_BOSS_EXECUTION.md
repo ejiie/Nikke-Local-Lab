@@ -90,6 +90,11 @@ completed를 원본 runtime 인수로 확대하지 않는다. 표시 상태는 �
 
 ## P2 이후 이관해야 하는 확인된 제약
 
+P2-1에서는 기존 준비기에 순수 해석 함수 `Resolve-PhaseDBossAffinity`를 연결했다.
+내부 `plan.affinity`는 원본 속성/약점과 선택 약점을 구분하며 전체 FX 매핑과 선택한
+원본/대상 FX를 보존한다. 출처는 mapping 단위로 유지한다. 공개 wire 계약은 변경하지
+않았으며, 이 선택 결과는 자산 적합성이나 runtime admission 증거가 아니다.
+
 - 일반 준비기는 여전히 profile v1/v2까지만 수락한다. v3 지원을 붙일 때 profile 검증,
   원본 참조, 실행별 변경/복구 manifest와 준비 상태를 함께 연결해야 한다.
 - 별도 UserValidation 서버에 있는 profile 지원을 공통 서버로 이관해야 한다.

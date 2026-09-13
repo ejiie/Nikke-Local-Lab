@@ -336,8 +336,8 @@ try {
     $bossRuntimeVariantProfileSha256 = $preparation.plan.profile.sha256
     $bossRuntimeVariantProfileByteLength = $preparation.plan.profile.length
     $bossVariantProfile = $preparation.plan.profile.value
-    $sourceBossElementCode = [string]$bossVariantProfile.sourceAffinity.bossElementCode
-    $sourceBossWeaknessCode = [string]$bossVariantProfile.sourceAffinity.weaknessCode
+    $sourceBossElementCode = [string]$preparation.plan.affinity.sourceBossElementCode
+    $sourceBossWeaknessCode = [string]$preparation.plan.affinity.sourceWeaknessCode
     $targetBossElementCode = $preparation.plan.targetElementCode
     $targetShieldFxVariants = @($preparation.plan.shieldFxVariants)
     # The old seed/account/persistence pipeline remains authoritative. A selected
