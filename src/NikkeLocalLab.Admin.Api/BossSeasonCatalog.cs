@@ -112,7 +112,10 @@ public sealed class FilesystemBossSeasonCatalogService(string catalogPath, strin
         using var profile = JsonDocument.Parse(bytes);
         var p = profile.RootElement;
         if (p.GetProperty("schemaVersion").GetInt32() == 3) { result[season] = ("awaiting_runtime_delivery", "boss_runtime_delivery_required"); continue; }
-        Require(p.GetProperty("schemaVersion").GetInt32() == 2 && p.GetProperty("contractId").GetString() == "nll/boss-runtime-variant-profile/v2" &&
+        // Existing admitted profiles may be v1 (including the verified S26).
+        // Catalog presentation does not impose the NEW publisher's v2-only gate.
+        var version = p.GetProperty("schemaVersion").GetInt32();
+        Require(version is 1 or 2 && p.GetProperty("contractId").GetString() == $"nll/boss-runtime-variant-profile/v{version}" &&
             p.GetProperty("seasonNumber").GetInt32() == season && p.GetProperty("profileCode").GetString() == entry.GetProperty("profileCode").GetString() &&
             p.GetProperty("sourceAffinity").GetProperty("weaknessCode").GetString() == snapshot.Seasons[season - 1].DefaultWeaknessCode);
         if (entry.GetProperty("operationalStatusCode").GetString() == "enabled") result[season] = ("processed", null);

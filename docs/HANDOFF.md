@@ -18,6 +18,28 @@
 
 현행 요약(아래 중간 단계의 ‘미설치/남음’보다 우선):
 
+**초기 UI 배포 후 추가 실제 HTTP 검사에서 S26 v1 프로필을 미처리로 분류하는 회귀를
+발견했다. 이전 정상본으로 복원한 뒤 v1 호환성을 수정하고 새 봉인 묶음으로 재설치했다.**
+복원 receipt의 status는 verified이며 DB·게임·v6/registry는 변경하지 않았다. 아래 PR #25
+적용 이력은 이 후속 복원을 포함해 읽는다. v1/v2 기존 승인 프로필을 함께 표시하도록
+수정했으며 신규 v2-only publisher/기존 S29 차단은 유지한다. 회귀 3개를 추가했고 새 앱
+후보(`app-publish-2`, Admin SHA-256
+`62cd182efd35dc9179da24385d9762f1abeb523dc20639c8d9ab110408fe8580`)의 실제 loopback
+HTTP 검사도 통과했다: 호스트 2회, S26 processed/S29 drift 차단/S19 unresolved,
+39시즌 이미지 78회 hash 대조·인증/CSRF·영속 작업 조회. 이는 DB 없는 API 구성요소
+검사이며 앱의 전체 Start/worker/게임은 실행하지 않았다. 근거는
+`artifacts/boss-catalog-20260913/http-installed-probe/candidate-4.log`이다.
+API 단위 167개·브라우저 39이미지/단일 카드 검사를 통과했다. `app-package-2`의
+전체 앱 반복 적용/원복 receipt pin은
+`b0fa6898e1a117ca05e3a9e657ded92b2283ae2df18207e6659cd76f0e2e688a`, package pin은
+`33062fbc0c40f6f03b9981a4ef9048fc02b88174036f470f10a50659b00c1b8f`다.
+현재 설치/복원 기준은 **`control-center-delivery-2`**, plan SHA-256
+`72978faf83d5161b7c50d4a73d1c55788c0e239f74757a25dc2ff8a7d3387e11`이며 apply receipt는
+`apply-7dba2558220e4f30adec579e405b3f83.receipt.json`이다. 352개 파일·Start/activation·
+v6/selection을 독립 재검사하고 설치된 동일 DLL의 실제 HTTP 검사도 다시 통과했다
+(`http-installed-probe/installed-5.log`, 이미지 78회). source CI/병합 상태는 이 UI
+호환성 수정 커밋의 run에서 별도로 확인한다. 원복은 새 plan의 `restore`를 사용한다.
+
 - enikk.app 승인 이미지 **39시즌/37개 PNG**와 시즌 선택 → 단일 보스/5약점 화면,
   미처리 예/아니오·처리 상태 UI를 설치했다. 로컬 snapshot은 1~40이며 S19와
   최신 공식 시즌 여부는 미해소로 유지한다. 다음 관리도구 실행부터 적용된다.
@@ -27,7 +49,7 @@
   `755bbc39c144a4545a35fbaaf874f1fed91ac9e42be3dae3b8a632bd19fd6b51`, 실제 적용 receipt는
   `artifacts/boss-catalog-20260913/control-center-delivery-1/apply-2fb9af3c0b4644f297bb8156b8a667a0.receipt.json`이다.
   앱 전체 352파일·Start/activation·v6/selection 대조를 통과했고 운영 DB/게임은 건드리지 않았다.
-  원복은 이 plan의 `restore`로 앱과 Start/activation을 함께 복원한다. 과거 3파일 복원은 쓰지 않는다.
+  이 첫 plan은 이미 원복했다. 현행 복원에는 위 두 번째 plan을 사용하고 과거 3파일 복원은 쓰지 않는다.
 - 설치된 activation은 아래 실제 오프라인 S29 검사를 통과한 `pipeline-3`를 가리킨다.
   앱 파일 적용만 했으며 관리도구/worker나 게임을 시작하지 않았다. S29 상태는 계속
   **awaiting_runtime_delivery**다. 별도 native 실행 구성·전달/원복 연결과 사용자의
@@ -39,8 +61,9 @@
   helper를 사용자 실행 계획/전체 종료 controller에 연결하는 작업은 아직 남아 있다.
   실제 현재 driver snapshot의 새 정책 읽기 검사도 통과했다(ADVT Stopped, BASE Running).
   변경 후 Phase 3B-2 전체 baseline/계약 검사도 통과했다
-  (`artifacts/boss-catalog-20260913/baseline-driver-1.log`). 이 후속 소스의 CI 결과는
-  별도 확인하며 PR #25의 UI 배포 성공과 혼용하지 않는다.
+  (`artifacts/boss-catalog-20260913/baseline-driver-1.log`). 승인 소스 `2682bdc`는
+  Actions `34745124495` 3 jobs 성공 후 PR #26으로 병합됐다(main
+  `77fda7d54cbcaf786e0edf84acb345846e8e0572`). UI v1 호환성 수정은 별도 후속 커밋이다.
 
 운영자가 **실게임 테스트를 직접 맡고 그 외 작업을 전부 진행**하도록 명시했다.
 따라서 에이전트는 새 게임 실행/UAC 접속 실험을 자동 재개하지 않는다. 구현·오프라인
