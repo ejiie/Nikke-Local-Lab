@@ -17,6 +17,7 @@ internal sealed record UserValidationBootstrapPlan(
   [JsonIgnore] internal string RuntimeRoot => RuntimeParent + @"\" + AssessmentUid;
   [JsonIgnore] internal string ClientRoot => @"C:\NLL\Clients\NIKKE-151.8.5-UserValidation-" + TrialUid;
   [JsonIgnore] internal string RunRoot => @"C:\NLL\Staging\NativeFxUserValidation\" + TrialUid + @"\runs\" + AssessmentUid;
+  [JsonIgnore] internal string ParentPlanPath => RunRoot + @"\validation.private.json";
 
   internal static UserValidationBootstrapPlan Parse(byte[] bytes)
   {

@@ -11,6 +11,8 @@ internal static class UserValidationLaunchEvidence
     UserValidationBootstrapPlan.RejectDuplicates(root);
     Require(root.GetProperty("contractId").GetString() == "nll/native-fx-user-validation/v1" &&
         root.GetProperty("trialUid").GetString() == plan.TrialUid &&
+        root.GetProperty("assessmentUid").GetString() == plan.AssessmentUid &&
+        root.GetProperty("caseCode").GetString() == plan.CaseCode &&
         root.GetProperty("executionOwnerCode").GetString() == "user" &&
         root.GetProperty("seasonNumber").GetInt32() == plan.SeasonNumber &&
         root.GetProperty("weaknessCode").GetString() == plan.WeaknessCode &&

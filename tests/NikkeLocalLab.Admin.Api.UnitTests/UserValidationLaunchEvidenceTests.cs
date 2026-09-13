@@ -78,6 +78,8 @@ public sealed class UserValidationLaunchEvidenceTests
     {
       ["contractId"] = "nll/native-fx-user-validation/v1",
       ["trialUid"] = p.TrialUid,
+      ["assessmentUid"] = p.AssessmentUid,
+      ["caseCode"] = p.CaseCode,
       ["executionOwnerCode"] = "user",
       ["seasonNumber"] = p.SeasonNumber,
       ["weaknessCode"] = p.WeaknessCode,
