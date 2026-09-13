@@ -10,6 +10,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\tools\NikkeLocalLab.ControlCenter.Desktop\DesktopHostSession.cs" Link="DesktopHostSession.cs" />
+    <Compile Include="..\..\tools\Phase3B2\NativeFxUserValidationBootstrap\UserValidationBootstrapPlan.cs" Link="UserValidationBootstrapPlan.cs" />
+    <Compile Include="..\..\tools\Phase3B2\NativeFxUserValidationBootstrap\UserValidationLaunchEvidence.cs" Link="UserValidationLaunchEvidence.cs" />
+    <Compile Include="..\..\tools\Phase3B2\NativeFxUserValidationBootstrap\UserValidationPinnedFiles.cs" Link="UserValidationPinnedFiles.cs" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Admin.Api\NikkeLocalLab.Admin.Api.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Application.PrivateServer\NikkeLocalLab.Application.PrivateServer.csproj" />

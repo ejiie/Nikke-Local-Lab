@@ -56,6 +56,17 @@ ACE-BASE, refuses dependent-service stops, and retains failure on denial/timeout
 The historical strict baseline guard is unchanged. Its synthetic checks run without
 real service/driver operations; this helper alone is not a prepared gameplay launcher.
 
+The separate `NativeFxUserValidationBootstrap` consumes a strict user-owned plan and
+full independent client inventory. It does not register a new tutorial account.
+Its offline inspect option cannot authenticate or start the game; startup additionally
+requires an elevated token, the exact controller Job, a fresh plan-bound isolation
+receipt, and the current ACE-ADVT authorization. Empty client files and literal spaces/
+parentheses are preserved with exact hashes; runtime inputs cannot be empty. A data-only
+receipt is not OS proof. `Complete-FxValidationManagedScope` sequences service stop,
+scope checks, shared setting/input restoration, exact driver restoration, and only then
+isolation release. Failure stops subsequent steps. The preparing/controller/delivery
+composition is still pending; no ready-for-gameplay state is published by this work.
+
 > 상태 참고 (2026-09-06): 아래 S29 결과는 당시 admission 기록입니다. 현재 S29의 profile v3/등록 v2 불일치는 별도 보류이며, 151 실게임 완료는 S26 기준입니다. [안정화 계획](../STABILIZATION_PLAN.md)을 함께 확인합니다.
 
 > 2026-09-13 현재: 운영자가 관리자 실행과 ACE 서비스 별도 관리를 승인했다. 새 실험은
