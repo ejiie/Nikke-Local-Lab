@@ -12,6 +12,28 @@
 - 활성 OS는 Micron입니다. 저장소·client·bundle·백업의 정확한 위치는 [현재 경로](MICRON_CURRENT_PATHS.md)만 기준으로 합니다.
 - 위 완료는 운영자의 실게임 확인이며, 새 자동 관측 receipt나 모든 보스·음성·약점 조합의 검증을 뜻하지 않습니다.
 
+## 2026-09-13 사용자 실행 초기 오류 기록 보강
+
+운영자의 첫 S29/수냉 실행은 상위 PowerShell이 종료되면서
+`boss_validation_controller_failed`가 됐다. `execution.started.json` 이전에 실패했고,
+당시 숨김 실행의 원본 예외는 보존되지 않아 직접 원인을 확정하지 못했다.
+아래 오프라인 마감은 이 실제 사용자 시작 경로의 성공을 보장하지 않는다.
+
+API에 내장한 `UserValidationDiagnostics.ps1`을 새 UI action 폴더에만 기록하고,
+기존 봉인 controller를 별도 script scope로 호출한다. 실행기/5속성 entry/전달 manifest,
+client 복제본과 기존 실패 증거는 수정하지 않는다. 최초 로그 쓰기에 실패하면
+controller를 호출하지 않는다. 첫 marker·제어된 오류 코드·예외/내부 예외 종류·
+HResult/Win32 코드·프로젝트 script/행·최근 오류 이력(최대 256개)·프로세스 종료 코드를
+남긴다. raw 메시지·source line·인자·target/게임 ID는 기록하지 않고 메시지는 hash만 남긴다.
+처리된 오류 이력을 모두 실패 원인으로 단정하지 않는다. 프로세스 강제 종료/파서 시작
+이전 실패는 최종 controller 로그가 없을 수 있어 API가 그 결손과 종료 코드를 별도 기록한다.
+
+검증 명령은 `scripts/test-nll-user-validation-diagnostics.ps1`과 Admin API 단위 검사다.
+실제 게임/UAC는 에이전트가 호출하지 않는다. 설치 반영 여부는 새 app-only delivery의
+receipt로 확인하며, 이전 배포 receipt를 새 수정의 설치 증거로 사용하지 않는다.
+사용자가 다시 실행한 뒤 새 로그로 원인을 식별한다. 이번 변경 자체가 원인 수정이나
+S29 실게임 인수 완료를 뜻하지 않는다.
+
 ## 2026-09-13 재계획 1~5 마감 현황
 
 아래 과거 준비 기록의 ‘미구현/미설치/남음’보다 이 절이 우선한다. S26은 이미 운영자가

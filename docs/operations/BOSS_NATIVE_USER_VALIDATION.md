@@ -86,3 +86,19 @@ GitHub에 첨부하지 않는다. 재다운로드·무결성·관리자/서비�
 
 자동 로그는 요청/파일/프로세스 관측 근거이며, 화면 정상·전투 정상 판정은 사용자
 확인으로 별도 기록한다. 실패 실행 receipt는 원복 성공으로 덮어쓰지 않는다.
+## 초기 오류 진단 로그 — 2026-09-13
+
+오류 기록 보강 앱을 설치한 뒤 새 사용자 실행은 기존 run 아래
+`ui-actions/<operationUid>/`에 다음 파일을 남깁니다. 이전 실패 폴더는 보존합니다.
+
+- `diagnostic.started.json`: controller의 첫 사전 검사보다 먼저 기록하는 시작 증거.
+- `controller-diagnostic.json`: 제어된 오류 코드, 예외/내부 예외 종류, HResult/Win32
+  코드, 프로젝트 스크립트/행, 최근 오류 이력과 정상 반환/실패 구분.
+- `process-exit.json`: 상위 프로세스 종료 코드 및 controller 최종 로그 존재 여부.
+- `launch-error.json` / `action-error.json`: 프로세스 생성 실패 또는 API 완료 처리 오류.
+
+raw 메시지·인자·source line·target은 저장하지 않으며 메시지는 비가역 hash로만
+구분합니다. 오류 이력에는 처리된 오류도 있으므로 전부 직접 원인으로 취급하지 않습니다.
+강제 종료나 PowerShell 자체 시작 실패에는 최종 controller 로그가 없을 수 있습니다.
+첫 로그를 만들 수 없으면 controller를 시작하지 않습니다. 이 파일들은 Git 외부의
+진단 증거이며 실행/원복 성공 또는 실제 전투 인수 증거를 대신하지 않습니다.

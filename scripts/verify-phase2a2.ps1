@@ -51,6 +51,7 @@ Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/workspa
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/raid-launch-status.test.cjs"))
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/boss-seasons.test.cjs"))
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/user-validation.test.cjs"))
+Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-user-validation-diagnostics.ps1'))
 $BossPipelineChecks = Join-Path $RepositoryRoot 'tools/NikkeLocalLab.BossPipeline.Checks/NikkeLocalLab.BossPipeline.Checks.csproj'
 Invoke-Checked dotnet @('restore', $BossPipelineChecks, '--locked-mode')
 Invoke-Checked dotnet @('build', $BossPipelineChecks, '-c', 'Release', '--no-restore')
