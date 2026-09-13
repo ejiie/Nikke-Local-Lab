@@ -105,15 +105,44 @@ v6/selection을 독립 재검사하고 설치된 동일 DLL의 실제 HTTP 검�
   `9aaca41cd63ec6f13293038ec03e4402c1ef13f9b1ee7fe74317bcd012ee437e`다.
   이 후보의 실제 S26/v1·S29/v3 파서와 selected-manager **142개**, 새 source-free
   계정/버전 회귀 **34개**가 통과했다. 빌드에는 기존 upstream warning 22개가 있고 오류는 없다.
-  설치 v6/선택 hash와 원본 source manifest를 보존했다. 아직 새 서버를 기동·설치하지 않았다.
-- 남은 연결은 준비된 계정/독립 서버의 materialization, 선택한 단일 보스 속성의 native
-  store 전달/원복, 사용자 실행 controller 및 durable job의 실제 delivery receipt 연결이다.
+  설치 v6/선택 hash와 원본 source manifest를 보존했다. 이 소스 `29323d5`는 로컬 전체 검사
+  (API **259개**)와 Actions `34749682740` 3 jobs 성공 후 PR #30으로 병합됐다
+  (main `eb26bd55ef5a45ca286a39a5b0717abdf3be9632`, source와 동일 tree 확인).
+- `prepare-nll-user-validation-runtime.ps1`로 위 trial 아래 서로 다른 assessment의
+  서버/계정/부트스트랩 **5세트 배치 완료**. `EpinelPS-151-UserValidation/<assessment>`는
+  새 v3 DLL 및 v6의 봉인 dependency/cache 사본만 쓴다. bootstrap은 8파일, 서버는
+  파생 pack을 쓰는 4약점 85파일/원본 철갑 84파일이다. 운영 v6를 교체하지 않았다.
+  실제 입력 검사 `user-runtime-input-inspection-3.log`에서 5세트의 prepared account,
+  약점 pack, 독립 경로와 client 1,154개/20,430,834,145-byte 물리 pin을 확인했다.
+  첫 검사는 철갑의 정상 `variantStaticDataSha256:null`을 잘못 거절했고 이를 고쳤다.
+  서버/게임/인증 및 launch permission 생성은 하지 않았다.
+- 새 `NativeFxUserValidationChild`는 명시적 `--user-start`, 고정 배치 경로, elevated token과
+  정확한 Job 소속을 요구한다. 부모·bootstrap·staging·server/child 입력을 검사하고
+  독립 서버 → 부모의 loopback/격리 확인 → 준비된 계정 bootstrap 순서로 연결했다.
+  서버/부트스트랩은 상속 환경을 비운 후 각각 최소 설정만 넣고, 서버의 SQLite와
+  profile/선택 약점을 고정한다. 게임 중 서버 종료·시간 초과는 실패이며 종료 후에도
+  외부 controller의 Job/service/driver/입력 원복 증거가 필요하다. 새 child 빌드와
+  조기 거절 4조건은 통과했지만 아직 해당 child를 실제 runtime 경로에서 시작하지 않았다.
+- native store의 부분 쓰기/원복 엔진은 전체 원본 hash와 선택 chunk를 쓰기 전에 대조한다.
+  중단 복구는 선택 구간의 before/after 혼합만 허용하고 나머지 전체 바이트를 원본 hash로
+  검증한 뒤 원복한다. 계획은 약점→보스 속성 한 역할만 허용하고 기본 철갑/보정 불필요
+  전격 및 baseline/restored는 변경 없음으로 둔다. controller용 파일 wrapper는 독립
+  clone의 정확한 CDB, rollback pin, 단일 물리 파일·배타적 handle 및 사전 cold 확인을
+  요구하며 최초 쓰기 전 durable marker를 flush한다. caller의 cold boolean 자체가
+  OS 관측 증거는 아니므로 외부 controller 연결 전에는 사용하지 않는다.
+  합성 부분 쓰기/원복 **67개** 및 실제 오프라인 `selected-fire-store`의 fire 24,153-byte
+  구간 적용→원본 hash 복원→반복 원복이 통과했다. 실제 client에는 적용하지 않았다.
+  근거는 `store-transaction-probe/evidence-1/`, restore receipt SHA-256
+  `c33189517e48313c7e8776df679a6c7acdba2631ca2f1fdcb9e4f7c454e488b2`다.
+- 남은 연결은 선택한 단일 보스 속성의 native store 계획/rollback 배치,
+  외부 사용자 실행 controller·관측기 및 durable job의 실제 delivery receipt 연결이다.
   S29는 계속 `awaiting_runtime_delivery`; 운영 registry/v6/선택/DB와 공유 cache는 유지한다.
   기존 `ResourceProbeExecution`은 최대 300초, 기존 `db.json`과 모든 `EPINELPS_` 설정을
   거부하므로 준비된 계정/속성 전투에 그대로 재사용하지 않는다. 검증된 normal
   `--headless --local-only` 경로에 별도 bounded controller/고정 SQLite 설정/환경·Job·
-  전체 input pin을 적용한다. 계정 준비와 별도 v3 서버 빌드까지 완료했으며 서버 staging,
-  사용자 controller 및 native delivery/원복의 실제 연결은 남았다. 아직 서버/controller를 시작하지 않았다.
+  전체 input pin을 적용한다. 계정·서버 staging과 bounded child, native 부분 쓰기 엔진까지
+  구현했으며 외부 사용자 controller 및 실제 native 전달/원복 연결은 남았다.
+  아직 서버/controller를 시작하지 않았으며 사용자 실행 안내 단계가 아니다.
 
 - enikk.app 승인 이미지 **39시즌/37개 PNG**와 시즌 선택 → 단일 보스/5약점 화면,
   미처리 예/아니오·처리 상태 UI를 설치했다. 로컬 snapshot은 1~40이며 S19와

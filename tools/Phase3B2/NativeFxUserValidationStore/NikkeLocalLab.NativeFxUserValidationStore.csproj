@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../EpinelUserValidation/UserValidationStoreTransaction.cs" Link="UserValidationStoreTransaction.cs" />
+    <Compile Include="../NativeFxUserValidationBootstrap/UserValidationBootstrapPlan.cs" Link="UserValidationBootstrapPlan.cs" />
+    <Compile Include="../NativeFxUserValidationBootstrap/UserValidationPinnedFiles.cs" Link="UserValidationPinnedFiles.cs" />
+  </ItemGroup>
+</Project>
