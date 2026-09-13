@@ -3,9 +3,12 @@
 ## 2026-09-13: season UI and offline worker composition
 
 The operator owns actual-game acceptance. Existing 151/S26 acceptance stays closed.
-The new season picker and durable import API are implemented, but are not installed
-in the operating Control Center yet. Original boss photos and per-execution native
-delivery/rollback remain pending; offline candidate creation is not completion.
+The new season picker and durable import API are implemented and installed in the
+Control Center with a hash-bound pipeline activation, following PR #25's complete CI.
+Authorized enikk.app PNGs are available locally for 39 seasons (37 unique contents).
+S19 and the current live season remain unresolved. Per-execution native delivery and
+rollback remain pending; offline candidate creation is not completion. Installing
+the app/configuration did not start the app, worker, game or operating database.
 
 - A hash-bound local catalog lists seasons 1 through the largest known static-data
   season. Exact Challenge manager/preset/target and localized names resolve 39 of
@@ -39,6 +42,13 @@ config SHA and season; `--inspect-job <job-uid>` checks an existing receipt chai
 without launching another worker. Source CI builds it but never supplies original
 data. Synthetic publication, queue, UI, process and failure checks are separate
 from user-game acceptance. See [current handoff](../HANDOFF.md) for exact evidence.
+
+The additional user approval permits ACE-ADVT automatic startup and normal SCM stop
+after the user-launched validation's complete user-mode scope is cold. The opt-in
+`Nll.NativeFxManagedDriver.ps1` validates both exact driver identities/hashes, preserves
+ACE-BASE, refuses dependent-service stops, and retains failure on denial/timeout/drift.
+The historical strict baseline guard is unchanged. Its synthetic checks run without
+real service/driver operations; this helper alone is not a prepared gameplay launcher.
 
 > 상태 참고 (2026-09-06): 아래 S29 결과는 당시 admission 기록입니다. 현재 S29의 profile v3/등록 v2 불일치는 별도 보류이며, 151 실게임 완료는 S26 기준입니다. [안정화 계획](../STABILIZATION_PLAN.md)을 함께 확인합니다.
 

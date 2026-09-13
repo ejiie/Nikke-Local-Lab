@@ -72,6 +72,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Startup maintenance checks failed.' }
           pwsh -NoProfile -File scripts/test-nll-control-center-delivery.ps1
           if ($LASTEXITCODE -ne 0) { throw 'App deployment transaction checks failed.' }
+          pwsh -NoProfile -File scripts/test-nll-native-fx-managed-driver.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'User-validation driver lifecycle checks failed.' }
           python -B scripts/test-nll-boss-catalog-images.py
           if ($LASTEXITCODE -ne 0) { throw 'Boss presentation checks failed.' }
           python -B scripts/test-nll-boss-profile-qte.py
@@ -182,6 +184,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Startup maintenance checks failed.' }
           pwsh -NoProfile -File scripts/test-nll-control-center-delivery.ps1
           if ($LASTEXITCODE -ne 0) { throw 'App deployment transaction checks failed.' }
+          pwsh -NoProfile -File scripts/test-nll-native-fx-managed-driver.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'User-validation driver lifecycle checks failed.' }
           python -B scripts/test-nll-boss-catalog-images.py
           if ($LASTEXITCODE -ne 0) { throw 'Boss presentation checks failed.' }
           python -B scripts/test-nll-boss-profile-qte.py
