@@ -24,11 +24,12 @@ P2 상세 계획은 원본 속성과 속성별 FX 출처를 함께 사용하도�
 연결했고 PS7/WinPS5의 새 합성 35개 및 S29 다섯 약점별 매핑 검사를 통과했다. 다음은
 P2-2 특수 패턴 조건·FX 조립이다. [원본 읽기 조사](operations/P2_2_ELEMENT_SHIELD_INVESTIGATION.md)에서
 FX 없는 짧은 면역 함수, 동일 모델 공유 참조, 수냉 전용 FX의 하위 회전 차이를 확인했다.
-패턴 단위 조건/FX 연결과 QTE 로딩 경로는 추가 조사 중이며 변환 구현·S29 실행 허용·설치는
-아직 하지 않았다. [행동 트리 대조](operations/S29_BEHAVIOR_PATTERN_TRACE.md)에서 직접 QTE 5개가
-한 RandomSelector의 대안이며 일반 쉴드는 별도 timeline 경로임을 확인했다. 짧은 쉴드는
-같은 그룹의 높은 레벨 함수로 일반 결과 양쪽 종료 경로에서 호출된다. 실제 교체/해제 규칙,
-화면상 QTE 성공과 task 반환값의 대응, 사라짐 구간 피해 판정은 미해결이다. 저장소 정리·최적화는
+[행동 트리 대조](operations/S29_BEHAVIOR_PATTERN_TRACE.md)에서 직접 QTE 5개의 대안 구조와
+짧은 쉴드 함수의 종료 경로를 확인했다. [조건·표시 추가 조사](operations/P2_2_SHIELD_CONDITION_FX_MAP.md)에서
+일반 BreakCol 대상 여섯 개가 Body collider에 연결되고, 특수 QTE의 각 22개 preset index가
+실제 prefab에 결박됨을 확인했다. 다음은 Body 속성 제한 상속, QTE ElementId의 조건·표시
+전달, 목표 FX 적합성이다. 전체 전투 흐름보다 속성 쉴드 처리에 집중한다. 변환 구현·S29 실행
+허용·설치는 아직 하지 않았다. 저장소 정리·최적화는
 운영자 지시대로 P2~P6 완료 후 수행한다.
 프로젝트 용량 후보도 조사했지만 파일 삭제·통합 설치는 하지 않았다. 아래는 기존
 검사 정비의 구현/설치 이력이며 새 공통 경로의 완료 증거가 아니다.

@@ -35,6 +35,7 @@
 - [보스 자동 추가·공통 실행 경로 통합 계획](operations/COMMON_BOSS_EXECUTION_PLAN.md)
 - [P2-2 속성 제한 패턴·실드 FX 조사와 상세 계획](operations/P2_2_ELEMENT_SHIELD_INVESTIGATION.md)
 - [S29 행동 트리·소환·쉴드·특수 QTE 경로 대조](operations/S29_BEHAVIOR_PATTERN_TRACE.md)
+- [P2-2 속성 쉴드 조건 출처·대상·표시 대응표](operations/P2_2_SHIELD_CONDITION_FX_MAP.md)
 - [프로젝트 전체 용량 정리 후보 — 2026-09-14](operations/PROJECT_STORAGE_AUDIT_20260914.md)
 - [안정화 변경 후 직접 테스트할 순서](operations/STABILIZATION_ACCEPTANCE.md)
 - [신규 보스·보정 FX 사용자 실게임 검증](operations/BOSS_NATIVE_USER_VALIDATION.md)
