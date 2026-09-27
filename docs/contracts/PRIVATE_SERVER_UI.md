@@ -1,5 +1,7 @@
 # Private server and original-client UI contract
 
+2026-09-17 추가 UI 범위: 유니온 탭은 최신순 스크롤 시즌 목록과 `시즌 N 보스를 불러오시겠습니까?` 확인을 제공한다. 예를 눌렀을 때만 원본 행동 트리까지 5보스를 조립한다. 취소는 변경하지 않는다. [유니온 하드 계획](../operations/UNION_RAID_HARD_IMPLEMENTATION.md)이 이번 확장의 권위이며, 아래 과거 Phase의 Union 비지원 표시는 역사적 인수 범위다.
+
 ## 제품 정의
 
 Nikke Local Lab의 최종 제품은 별도 게임 화면이나 독립 전투 simulator가 아닙니다. **원본 NIKKE 클라이언트가 격리된 로컬 compatibility façade에 접속하고, 원본 시즌제 클래식 Solo Raid UI·asset·전투 runtime으로 지원 Challenge를 실행하는 환경**입니다.

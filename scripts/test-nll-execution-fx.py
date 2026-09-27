@@ -2,6 +2,7 @@
 
 import importlib.util
 import os
+import json
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -132,6 +133,44 @@ class DeliveryTests(unittest.TestCase):
                      "/PC/a.bundle#x", "/pc/a.bundle", "https://invalid/PC/a.bundle", "/PC/a\\b.bundle"):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 delivery.request_path(path)
+
+    def test_common_recipe_delivers_nonlegacy_target_and_preserves_reuse(self):
+        # A water source with only electric adjusted proves delivery is selected
+        # from prepared inputs, not the old fixed fire/wind/iron list.
+        recipes = delivery.candidate.recipes
+        root = self.fixture.root / "common"; root.mkdir()
+        source_pin = fixtures.pin(b"synthetic-water")
+        profile = {"schemaVersion": 4, "sourceAffinity": {"bossElementCode": "water"},
+                   "elementShield": {"fxVariants": []}}
+        manifest = {"contractId": "nll/boss-shield-fx-recipes/v1", "policyCode": recipes.POLICY,
+                    "sourceBossElementCode": "water", "preparationStatusCode": "size_candidates_ready", "variants": []}
+        output = b"synthetic-electric-sized"
+        for element in fixtures.gate.TARGETS:
+            target_pin = fixtures.pin(("synthetic-" + element).encode())
+            mapping = {"sourceFxPrefabSetSha256": "a" * 64,
+                       "targetFxPrefabSetSha256": "a" * 64 if element == "water" else fixtures.fx.digest(element.encode()),
+                       "assetBundles": [target_pin]}
+            profile["elementShield"]["fxVariants"].append({"bossElementCode": element, "mappings": [mapping]})
+            adjusted = element == "electric"
+            manifest["variants"].append({"bossElementCode": element,
+                **{k: mapping[k] for k in ("sourceFxPrefabSetSha256", "targetFxPrefabSetSha256")},
+                "operationCode": "adjust_candidate" if adjusted else "reuse",
+                "sourceAssetBundles": [source_pin], "targetAssetBundles": [target_pin],
+                "recipe": {"outputBundle": fixtures.pin(output) if adjusted else target_pin}})
+        recipe_root = root / "shield-fx-preparation"
+        delivered = recipes.deliver(recipe_root, manifest, {fixtures.fx.digest(output): output})
+        profile["shieldFxPreparation"] = recipes.profile_binding(delivered, fixtures.gate.digest(recipe_root / "recipes.receipt.json"))
+        path = root / "boss-runtime-variant.profile.json"; path.write_text(json.dumps(profile))
+        sealed = {"profileSha256": fixtures.gate.digest(path)}
+        with patch.object(delivery.candidate, "verify", return_value=sealed):
+            result = delivery.stage(root, "b" * 64, self.source, self.fixture.cache, self.output, "c" * 32, "iron")
+            self.assertEqual((self.output / "overlay.bundle").read_bytes(), output)
+            self.assertEqual(fixtures.gate.read(self.output / "manifest.private.json")["requestPath"], "/PC/synthetic/electric.bundle")
+            self.assertEqual(result["weaknessCode"], "iron")
+            unused = self.fixture.root / "reuse-output"
+            with self.assertRaisesRegex(ValueError, "overlay_not_required"):
+                delivery.stage(root, "b" * 64, self.source, self.fixture.cache, unused, "d" * 32, "electric")
+            self.assertFalse(unused.exists())
 
 
 if __name__ == "__main__":

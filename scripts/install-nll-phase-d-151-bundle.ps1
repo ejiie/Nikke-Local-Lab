@@ -97,8 +97,9 @@ try {
         [IO.File]::WriteAllBytes($change.before.path, [IO.File]::ReadAllBytes($change.replacement.path))
     }
     for ($i=0; $i -lt $paths.Count; $i++) {
+        $enabled = if (Test-PhaseDSharedIsolationPath $paths[$i]) { 'False' } else { 'True' }
         New-NetFirewallRule -Name ('NLL.PhaseD151.Program.' + $i) -DisplayName ('NLL Phase D 151 program ' + $i) `
-            -Group $isolationGroup -Direction Outbound -Action Block -Enabled True -Profile Any -Program $paths[$i] | Out-Null
+            -Group $isolationGroup -Direction Outbound -Action Block -Enabled $enabled -Profile Any -Program $paths[$i] | Out-Null
     }
     $null = Read-PdRuntimeBundle $testPointer
     Write-RnNewJson $activePointer $pointer

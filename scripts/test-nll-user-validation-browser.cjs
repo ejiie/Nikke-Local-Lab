@@ -49,7 +49,7 @@ const seasons = Array.from({length:34},(_,index)=>index+1).map(seasonNumber => (
       await route.fulfill({json:payload});
     });
     await page.goto("http://127.0.0.1:18788/editor/");
-    await page.evaluate(async()=>{byId("login-screen").hidden=true;byId("app-shell").hidden=false;setPage("raid");await bossSeasons.refreshCatalog();bossSeasons.selectSeason(29);});
+    await page.evaluate(async()=>{byId("app-shell").inert=false;setPage("raid");await bossSeasons.refreshCatalog();bossSeasons.selectSeason(29);});
     await page.waitForFunction(()=>!document.getElementById("user-validation-start").disabled);
     assert.equal(await page.locator("#selected-boss-card .boss-card").count(),1);
     assert.equal(await page.locator("#standard-boss-launch").isVisible(),false);

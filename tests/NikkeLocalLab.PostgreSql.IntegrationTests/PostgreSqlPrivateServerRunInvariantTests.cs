@@ -1764,7 +1764,8 @@ public sealed class PostgreSqlPrivateServerRunInvariantTests
             "PublishCatalogFixtureAsync",
             BindingFlags.NonPublic | BindingFlags.Static)!,
         dataSource,
-        5);
+        5,
+        "profile-character");
     var characterUids = Property<IReadOnlyList<EntityUid>>(
         sourceFixture,
         "CharacterUids");

@@ -43,7 +43,7 @@ internal static class BossContentDiscovery
       var statEnhancementRows = DeserializeEntry<MonsterStatEnhanceRecord>(
           archive,
           "MonsterStatEnhanceTable.mpk");
-      var manager = managerRows.Where(row => row.RankingGroupId == seasonNumber).Take(2).ToArray();
+      var manager = SoloRaidManagerSelection.ForSeason(managerRows, seasonNumber);
       if (manager.Length != 1 && privateOutputPath is not null)
       {
         await WriteAtomicTextAsync(privateOutputPath, JsonSerializer.Serialize(new
@@ -141,7 +141,7 @@ internal static class BossContentDiscovery
           .Select(id => stateEffects[id])
           .ToArray();
 
-      var directSkillFunctionIds = skillRelations
+      var directSkillFunctionIds = (targetMonster.SkillData ?? [])
           .SelectMany(row => (row.UseFunctionIdSkill ?? []).Concat(row.HurtFunctionIdSkill ?? []));
       var passiveFunctionIds = selectedStateEffects.SelectMany(StateEffectFunctionIds);
       var rootFunctionIds = directSkillFunctionIds.Concat(passiveFunctionIds)
@@ -202,6 +202,11 @@ internal static class BossContentDiscovery
       if (behaviorKeys.Length == 0) unresolvedCodes.Add("behavior_root_missing");
       if (shieldFunctions.Length > 0 && fxTuples.Length == 0)
         unresolvedCodes.Add("element_shield_fx_binding_missing");
+
+      var shieldPatterns = BossShieldPatternDiscovery.Describe(targetMonster, parts,
+          monsterSkills, stateEffects, functions, targetQuickTimeEvents, elementById);
+      if (shieldPatterns.GetProperty("missingReferenceCount").GetInt32() != 0)
+        unresolvedCodes.Add("shield_pattern_reference_missing");
 
       var receipt = new
       {
@@ -290,6 +295,7 @@ internal static class BossContentDiscovery
               .Order(StringComparer.Ordinal)
               .ToArray()
         },
+        shieldPatterns,
         unresolvedReasonCodes = unresolvedCodes,
         discoveryStatusCode = unresolvedCodes.Count == 0
             ? "static_graph_resolved"
@@ -586,7 +592,7 @@ internal static class BossContentDiscovery
     return new(HashStrings([canonical]), values);
   }
 
-  private static string FxAttachmentSha256(FunctionRecord row) => HashStrings([
+  internal static string FxAttachmentSha256(FunctionRecord row) => HashStrings([
       string.Join("\n", new[]
       {
         ((int)row.FxTarget01).ToString(CultureInfo.InvariantCulture),

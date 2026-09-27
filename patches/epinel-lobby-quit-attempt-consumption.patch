@@ -1,0 +1,89 @@
+diff --git a/EpinelPS/LobbyServer/SoloRaid/SoloRaidHelper.cs b/EpinelPS/LobbyServer/SoloRaid/SoloRaidHelper.cs
+index 33daad7..799af43 100644
+--- a/EpinelPS/LobbyServer/SoloRaid/SoloRaidHelper.cs
++++ b/EpinelPS/LobbyServer/SoloRaid/SoloRaidHelper.cs
+@@ -396,13 +396,11 @@ public class SoloRaidHelper
+         // Reset the raid data
+         if (type == SoloRaidType.Normal) raid.RaidOpenCount--; // If the raid is a normal raid, decrement the raid open count
+         if (raid.RaidOpenCount < 0) raid.RaidOpenCount = 0; // If the raid open count is less than 0, set it to 0
+-        if (type == SoloRaidType.Trial) raid.TrialCount--;
+-        if (raid.TrialCount < 0) raid.TrialCount = 0;
+ 
+         // The Challenge lobby's red Quit button closes the active Trial. It is
+         // an abandon operation, not an early completion signal. A legitimate
+         // Challenge result is already finalized by SetDamage after team five,
+-        // so closing an active Trial releases run admission while retaining
++        // so closing an active Trial keeps the attempt consumed at Open, retaining
+         // every accepted deck in independent history and the five-team best.
+         ClassicSoloRaidBattleReceipt.RetainLegacySnapshots(raid);
+         ClassicSoloRaidBattleReceipt.Close(raid, level, "abandoned");
+@@ -430,6 +428,7 @@ public class SoloRaidHelper
+         var raidData = GetSoloRaidData(user, raidId);
+         if (raidData is null) return info;
+         info.RaidOpenCount = raidData.RaidOpenCount;
++        info.TrialCount = raidData.TrialCount;
+ 
+         info.LastClearLevel = Math.Max(
+             NormalCompatibilityLastClearLevel,
+@@ -441,7 +440,6 @@ public class SoloRaidHelper
+         var trialLevelData = GetBestCompletedTrialLevel(raidData, 8);
+         if (trialLevelData is null) return info;
+ 
+-        info.TrialCount = raidData.TrialCount;
+         info.TrialDamage = ClassicSoloRaidRankingDamagePrefixResolver.Encode(
+             rankingDamagePrefix,
+             trialLevelData.TotalDamage);
+diff --git a/tests/EpinelPS.SelectedManager.Tests/ClassicBattleHistoryTests.cs b/tests/EpinelPS.SelectedManager.Tests/ClassicBattleHistoryTests.cs
+index fdd1f9d..6d849c6 100644
+--- a/tests/EpinelPS.SelectedManager.Tests/ClassicBattleHistoryTests.cs
++++ b/tests/EpinelPS.SelectedManager.Tests/ClassicBattleHistoryTests.cs
+@@ -9,6 +9,36 @@ namespace EpinelPS.SelectedManager.Tests;
+ 
+ public sealed class ClassicBattleHistoryTests
+ {
++    [Theory]
++    [InlineData(0)]
++    [InlineData(1)]
++    [InlineData(2)]
++    [InlineData(3)]
++    [InlineData(4)]
++    [InlineData(5)]
++    public void LobbyQuitConsumesAttemptAndOnlyFiveDecksCompleteRun(int decks)
++    {
++        var user = ClassicRouteTestFixture.ActiveUser();
++        var raid = user.SoloRaidData[ClassicRouteTestFixture.TargetManager];
++        raid.TrialCount = 1; // Charged once by Open, never refunded by lobby Quit.
++        for (var i = 0; i < decks; i++)
++        {
++            var response = new ResSetSoloRaidTrialDamage();
++            Assert.True(SoloRaidHelper.SetDamageTrial(user, ref response,
++                ClassicRouteTestFixture.DamageRequest(10 + i), ClassicRouteTestFixture.TargetManager));
++        }
++        Assert.Equal(decks < 5, SoloRaidHelper.CloseSoloRaid(user, ClassicRouteTestFixture.TargetManager, 8, SoloRaidType.Trial));
++        Assert.Equal(1, raid.TrialCount);
++        Assert.False(SoloRaidHelper.CloseSoloRaid(user, ClassicRouteTestFixture.TargetManager, 8, SoloRaidType.Trial));
++        Assert.Equal(1, raid.TrialCount);
++        Assert.Equal(decks == 5, SoloRaidHelper.GetBestCompletedTrialLevel(raid, 8) is not null);
++        Assert.Equal(decks, raid.BattleHistory.Count);
++        Assert.Equal(decks == 5 ? 1 : 0, raid.BattleRunStatus.Values.Count(status => status == "completed"));
++        Assert.Equal(1, SoloRaidHelper.GetUserSoloRaidInfo(user, ClassicRouteTestFixture.TargetManager,
++            ClassicRouteTestFixture.RankingDamagePrefix).TrialCount);
++        Assert.DoesNotContain(raid.SoloRaidLevels, level => level.IsOpen);
++    }
++
+     [Fact]
+     public void LegacyKnownDecksRemainVisibleAndQuitDoesNotRewriteBattleSnapshots()
+     {
+diff --git a/tests/EpinelPS.SelectedManager.Tests/AdversarialScenarioScaffoldTests.cs b/tests/EpinelPS.SelectedManager.Tests/AdversarialScenarioScaffoldTests.cs
+index 6b90391..496a401 100644
+--- a/tests/EpinelPS.SelectedManager.Tests/AdversarialScenarioScaffoldTests.cs
++++ b/tests/EpinelPS.SelectedManager.Tests/AdversarialScenarioScaffoldTests.cs
+@@ -146,7 +146,7 @@ public sealed class AdversarialScenarioScaffoldTests
+             SoloRaidType.Trial));
+ 
+         Assert.Empty(user.SoloRaidData[ClassicRouteTestFixture.TargetManager].SoloRaidLevels);
+-        Assert.Equal(0, user.SoloRaidData[ClassicRouteTestFixture.TargetManager].TrialCount);
++        Assert.Equal(1, user.SoloRaidData[ClassicRouteTestFixture.TargetManager].TrialCount);
+         Assert.Equal(decoyBefore, JsonConvert.SerializeObject(user.SoloRaidData[ClassicRouteTestFixture.DecoyManager]));
+     }
+ 

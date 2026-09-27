@@ -210,7 +210,11 @@ public static class AdminApiHost
     app.MapPrivateServerExecutionAdminEndpoints();
     app.MapPhaseDExecutionEndpoints();
     app.MapBossSeasonEndpoints();
+    app.MapUnionRaidEndpoints();
     app.MapAccountImportEndpoints();
+    app.MapAccountDirectoryEndpoints();
+    app.MapRaidRecordEndpoints();
+    app.MapAccountConnectionEndpoints();
     return app;
   }
 }

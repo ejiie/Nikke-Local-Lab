@@ -23,6 +23,7 @@ def load(name, filename):
 
 fx = load("native_fx_candidate", "materialize-nll-shield-fx-candidate.py")
 transform = load("native_fx_transform", "materialize-nll-shield-fx-transform-variant.py")
+recipes = load("native_fx_recipes", "nll-shield-fx-recipes.py")
 ROLES = ("electric", "fire", "wind", "iron")
 
 
@@ -46,7 +47,7 @@ def validate_binding(binding, expected_keys, root, unity):
                and binding.get("runtimeAdmissionStatusCode") == "not_assessed",
                "native_fx_binding_invalid")
     rows = binding.get("bindings", [])
-    fx.require(len(rows) == 4 and {r["role"] for r in rows} == set(ROLES), "native_fx_roles_invalid")
+    fx.require(len(rows) == len(expected_keys) and {r["role"] for r in rows} == set(expected_keys), "native_fx_roles_invalid")
     for row in rows:
         role = row["role"]
         fx.require(row["assetKey"] == expected_keys[role], "native_fx_key_mismatch")
@@ -62,7 +63,36 @@ def validate_binding(binding, expected_keys, root, unity):
 
 def stage(args, unity):
     source = fx.plain_path(args.fx_candidate_root)
-    fx.inspect_or_restore(source, args.fx_manifest_sha256)
+    profile_path = getattr(args, "profile_path", None)
+    prepared = profile_path is not None
+    if prepared:
+        profile_path = fx.plain_path(profile_path, file=True)
+        fx.require(fx.fingerprint(profile_path)["sha256"] == args.profile_sha256, "native_fx_profile_drift")
+        profile = json.loads(profile_path.read_bytes())
+        prepared_rows = recipes.verify_profile_binding(profile, source)
+        fx.require(fx.fingerprint(source / "recipes.receipt.json")["sha256"] == args.fx_manifest_sha256,
+                   "native_fx_recipe_drift")
+        source_role = profile["sourceAffinity"]["bossElementCode"]
+        adjusted = [r for r in prepared_rows if r["operationCode"] == "adjust_candidate"]
+        fx.require(adjusted and len({r["bossElementCode"] for r in adjusted}) == len(adjusted),
+                   "native_fx_mapping_ambiguous")
+        original_pins = {r["bossElementCode"]: r["targetBundle"] for r in adjusted}
+        fx.require(len({r["sourceBundle"]["sha256"] for r in adjusted}) == 1, "native_fx_source_ambiguous")
+        original_pins[source_role] = adjusted[0]["sourceBundle"]
+        roles = tuple(sorted(original_pins))
+        cache = fx.plain_path(args.cache_root)
+        originals = {}
+        for role, pin in original_pins.items():
+            matches = [p for p in cache.rglob("*") if p.is_file() and p.stat().st_size == pin["byteLength"]
+                       and fx.fingerprint(fx.plain_path(p, file=True)) == pin]
+            fx.require(bool(matches), "native_fx_source_missing")
+            originals[role] = matches[0]
+    else:
+        fx.inspect_or_restore(source, args.fx_manifest_sha256)
+        roles = ROLES
+        source_role = "electric"
+        originals = {role: source / ("source/electric.bundle" if role == "electric" else f"backup/{role}.bundle")
+                     for role in roles}
     plan_path = fx.plain_path(args.input_plan, file=True)
     tool = fx.plain_path(args.catalog_tool, file=True)
     tool_inventory = {p.name: fx.fingerprint(fx.plain_path(p, file=True)) for p in tool.parent.iterdir() if p.is_file()}
@@ -80,12 +110,10 @@ def stage(args, unity):
     fx.require(not output.exists() and output.parent.is_dir() and all(
         output != p and output not in p.parents and p not in output.parents for p in protected),
         "native_fx_output_invalid")
-    originals = {role: source / ("source/electric.bundle" if role == "electric" else f"backup/{role}.bundle")
-                 for role in ROLES}
     old_pins = {role: fx.fingerprint(path) for role, path in originals.items()}
     keys = {role: asset_key(fx.plain_path(path, file=True).read_bytes(), unity) for role, path in originals.items()}
-    fx.require(len(set(keys.values())) == 4, "native_fx_keys_ambiguous")
-    plan["assets"] = [{"role": role, "key": keys[role]} for role in ROLES]
+    fx.require(len(set(keys.values())) == len(roles), "native_fx_keys_ambiguous")
+    plan["assets"] = [{"role": role, "key": keys[role]} for role in roles]
     output.mkdir()
     encoded = fx.encoded(plan)
     private_plan = output / "export-plan.private.json"
@@ -102,8 +130,8 @@ def stage(args, unity):
                and receipt.get("statusCode") == "offline_payload_bound"
                and receipt.get("nativeClientExecuted") is False
                and receipt.get("runtimeAdmissionStatusCode") == "not_assessed"
-               and len(receipt.get("payloads", [])) == 4
-               and {p["roleCode"] for p in receipt["payloads"]} == set(ROLES), "native_fx_export_receipt_invalid")
+               and len(receipt.get("payloads", [])) == len(roles)
+               and {p["roleCode"] for p in receipt["payloads"]} == set(roles), "native_fx_export_receipt_invalid")
     for payload in receipt["payloads"]:
         fx.require(fx.fingerprint(native / (payload["roleCode"] + ".bundle")) ==
                    {k: payload[k] for k in ("byteLength", "sha256")}, "native_fx_export_payload_drift")
@@ -111,13 +139,27 @@ def stage(args, unity):
     fx.require(binding["planSha256"] == fx.digest(encoded), "native_fx_plan_mismatch")
     validate_binding(binding, keys, native, unity)
     rows = []
-    for role in ("fire", "wind", "iron"):
-        derived, evidence = transform.materialize(native / "electric.bundle", native / (role + ".bundle"), unity)
+    for role in (tuple(r["bossElementCode"] for r in adjusted) if prepared else ("fire", "wind", "iron")):
+        if prepared:
+            evidence, derived = recipes.materialize_pair((native / (source_role + ".bundle")).read_bytes(),
+                                                         (native / (role + ".bundle")).read_bytes(), unity)
+            expected = next(r for r in json.loads((source / "recipes.receipt.json").read_bytes())["variants"]
+                            if r["bossElementCode"] == role)["recipe"]
+            fx.require(derived is not None and evidence["operationCode"] == "adjust_candidate"
+                       and evidence["changes"] == expected["changes"]
+                       and evidence["sourceSizeInputsSha256"] == expected["sourceSizeInputsSha256"],
+                       "native_fx_recipe_correspondence_changed")
+        else:
+            derived, evidence = transform.materialize(native / "electric.bundle", native / (role + ".bundle"), unity)
         fx.new_file(output / (role + ".bundle"), derived)
         rows.append({"roleCode": role, "original": fx.fingerprint(native / (role + ".bundle")),
                      "overlay": {"sha256": fx.digest(derived), "byteLength": len(derived)}, "evidence": evidence})
     validate_binding(binding, keys, native, unity)
-    fx.inspect_or_restore(source, args.fx_manifest_sha256)
+    if prepared:
+        recipes.verify_profile_binding(profile, source)
+        fx.require(fx.fingerprint(profile_path)["sha256"] == args.profile_sha256, "native_fx_profile_drift")
+    else:
+        fx.inspect_or_restore(source, args.fx_manifest_sha256)
     fx.require(old_pins == {role: fx.fingerprint(path) for role, path in originals.items()}
                and fx.fingerprint(plan_path)["sha256"] == args.input_plan_sha256
                and tool_inventory == {p.name: fx.fingerprint(fx.plain_path(p, file=True))
@@ -127,9 +169,11 @@ def stage(args, unity):
              "catalogToolSha256": args.catalog_tool_sha256, "sourceCandidateManifestSha256": args.fx_manifest_sha256,
              "catalogToolInventorySha256": fx.digest(fx.encoded(tool_inventory)),
              "bindingManifestSha256": receipt["manifestSha256"], "entries": rows,
-             "unchangedOriginalRoleCount": sum(old_pins[role] == fx.fingerprint(native / (role + ".bundle")) for role in ROLES),
+             "unchangedOriginalRoleCount": sum(old_pins[role] == fx.fingerprint(native / (role + ".bundle")) for role in roles),
              "runtimeAdmissionStatusCode": "not_assessed", "nativeClientExecuted": False,
              "installedFilesModified": False, "legacyHttpRouteReused": False}
+    if prepared:
+        final.update(recipePolicyCode=recipes.POLICY, profileSha256=args.profile_sha256, sourceRoleCode=source_role)
     fx.new_file(output / "receipt.json", fx.encoded(final))
     return final
 
@@ -140,6 +184,9 @@ def main():
         parser.add_argument("--" + name, type=Path, required=True)
     for name in ("input-plan-sha256", "catalog-tool-sha256", "fx-manifest-sha256"):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--profile-path", type=Path)
+    parser.add_argument("--profile-sha256")
+    parser.add_argument("--cache-root", type=Path)
     args = parser.parse_args()
     try:
         sys.path.insert(0, str(fx.plain_path(args.unitypy_root)))

@@ -18,6 +18,274 @@ public sealed class PostgreSqlClassicSoloRaidRuntimeStateTests
       new(2026, 8, 20, 1, 0, 0, TimeSpan.Zero);
 
   [Fact]
+  public async Task RaidRecordsKeepModeScopeCursorAndProjectileForeignKeys()
+  {
+    await using var source = PostgreSqlDataSourceFactory.Create(ConnectionString());
+    await ResetSchemasAsync(source);
+    await new PostgreSqlMigrationRunner().MigrateAsync(source);
+    await PublishSixSeasonRaidCatalogAsync(source);
+    var account = await CreateInitializedAccountUidAsync(source);
+    var otherAccount = await CreateInitializedAccountUidAsync(source);
+    await using var db = await source.OpenConnectionAsync();
+    await using var tx = await db.BeginTransactionAsync();
+    var selected = Guid.Empty;
+    for (var i = 0; i < 103; i++)
+    {
+      var battle = Guid.NewGuid(); if (i == 0) selected = battle;
+      await using var insert = new NpgsqlCommand("""
+          INSERT INTO lab_private_server.raid_battle_observation
+            (battle_uid,account_uid,mode,season_number,raid_level,boss_step,team,request_damage,accepted_damage,accepted_at_utc,payload,payload_sha256)
+          VALUES (@battle,@account,@mode,7,8,1,1,500,500,@at,'{"Weakness":"iron"}',decode(repeat('aa',32),'hex'));
+          INSERT INTO lab_private_server.raid_character_damage (battle_uid,ordinal,slot,attack_total_damage)
+            SELECT @battle,n,n,100 FROM generate_series(1,5) n;
+          """, db, tx);
+      insert.Parameters.AddWithValue("battle", battle);
+      insert.Parameters.AddWithValue("account", i == 102 ? otherAccount : account);
+      insert.Parameters.AddWithValue("mode", i == 101 ? "solo_challenge" : "solo_challenge_practice");
+      insert.Parameters.AddWithValue("at", TestInstant.AddSeconds(-i).UtcDateTime);
+      await insert.ExecuteNonQueryAsync();
+    }
+    var analysis = new NikkeLocalLab.BattleLog.ProjectileAnalysis("ready", new string('a', 64),
+      NikkeLocalLab.BattleLog.ProjectileAnalysis.CurrentVersion, Enumerable.Range(1, 5).Select(i => new NikkeLocalLab.BattleLog.ProjectileCharacter(i, 10, 90)).ToArray());
+    NikkeLocalLab.BattleLog.ProjectileAnalysisStore.Save(db, tx, selected, analysis);
+    NikkeLocalLab.BattleLog.ProjectileAnalysisStore.Save(db, tx, selected, analysis);
+    await tx.CommitAsync();
+    var store = new RaidRecordStore(source);
+    var first = await store.ListAsync(account, 7, "solo", 1, "practice", "iron", null, default);
+    Assert.Equal(100, first.Records.Count); Assert.NotNull(first.NextCursor);
+    Assert.Equal("450", first.Records[0].ProjectileExcludedDamage);
+    Assert.Equal(5, first.Records[0].Characters.Count);
+    Assert.Null(first.Records[1].ProjectileExcludedDamage);
+    var next = await store.ListAsync(account, 7, "solo", 1, "practice", "iron", first.NextCursor, default);
+    Assert.Single(next.Records); Assert.Null(next.NextCursor);
+    Assert.DoesNotContain(next.Records[0].BattleUid, first.Records.Select(r => r.BattleUid));
+    Assert.Single((await store.ListAsync(account, 7, "solo", 1, "live", "all", null, default)).Records);
+    Assert.Empty((await store.ListAsync(account, 7, "solo", 1, "practice", "fire", null, default)).Records);
+    Assert.Empty((await store.ListAsync(account, 7, "union", 1, "practice", "all", null, default)).Records);
+  }
+
+  [Fact]
+  public async Task LocalUnionMembershipAndSeasonSelectionSurviveReopenAndMigrationReplay()
+  {
+    await using var source = PostgreSqlDataSourceFactory.Create(ConnectionString());
+    await ResetSchemasAsync(source);
+    var migrations = PostgreSqlMigrationRunner.LoadEmbeddedMigrations(typeof(PostgreSqlMigrationRunner).Assembly);
+    await new PostgreSqlMigrationRunner(migrations.Where(m => m.Version <= 23).ToArray()).MigrateAsync(source);
+    await PublishSixSeasonRaidCatalogAsync(source);
+    var oldAccount = await CreateInitializedAccountUidAsync(source);
+    Assert.Equal(MigrationBaseline.Count - 23, await new PostgreSqlMigrationRunner().MigrateAsync(source));
+    var member = await LocalUnionStore.ReadAsync(source, oldAccount);
+    Assert.Equal("NLL", member!.Name);
+    Assert.Equal(3, member.Level);
+    Assert.Equal(0, member.SeasonNumber);
+    var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "synthetic-union-publication"));
+    await LocalUnionStore.SelectAsync(source, 3, new string('a', 64), root, new string('b', 64));
+    await using var reopened = PostgreSqlDataSourceFactory.Create(ConnectionString());
+    var selected = await LocalUnionStore.ReadAsync(reopened, oldAccount);
+    Assert.Equal(3, selected!.SeasonNumber);
+    Assert.True(selected.NormalCleared);
+    await LocalUnionStore.SelectAsync(reopened, 3, new string('c', 64), root, new string('d', 64));
+    Assert.Equal(0, await new PostgreSqlMigrationRunner().MigrateAsync(reopened));
+    Assert.Equal(new string('c', 64), (await LocalUnionStore.ReadAsync(reopened, oldAccount))!.CatalogSha256);
+    await using var connection = await reopened.OpenConnectionAsync();
+    Assert.Equal(1, await ScalarAsync(connection, "SELECT count(*) FROM lab_private_server.local_union_member"));
+    Assert.Equal(1, await ScalarAsync(connection, "SELECT count(*) FROM lab_private_server.local_union_raid_season"));
+    await using (var progress = new NpgsqlCommand("""
+        INSERT INTO lab_private_server.local_union_raid_runtime(local_union_id,season_number,payload)
+        VALUES (1,3,'{"Version":1,"Bosses":{"1":{"Level":2,"Damage":42}}}'::jsonb);
+        """, connection))
+      await progress.ExecuteNonQueryAsync();
+    // Updating the source binding for the same season must not reset shared HP.
+    await LocalUnionStore.SelectAsync(reopened, 3, new string('e', 64), root, new string('f', 64));
+    Assert.Equal(42, await ScalarAsync(connection,
+      "SELECT (payload->'Bosses'->'1'->>'Damage')::int FROM lab_private_server.local_union_raid_runtime WHERE season_number=3"));
+    var newAccount = Guid.NewGuid();
+    // Observe the immediate membership trigger inside the profile creation
+    // transaction; the complete profile graph is tested by the existing store
+    // integration suite. Do not commit this deliberately partial fixture.
+    await using var creation = await connection.BeginTransactionAsync();
+    await using var insert = new NpgsqlCommand("""
+        INSERT INTO lab_profile.local_account(local_account_uid,account_combat_state_uid,canonical_sha256,created_at_utc)
+        VALUES (@account,@combat,@hash,now());
+        """, connection, creation);
+    insert.Parameters.AddWithValue("account", newAccount);
+    insert.Parameters.AddWithValue("combat", Guid.NewGuid());
+    insert.Parameters.AddWithValue("hash", Hash("new-local-union-member"));
+    await insert.ExecuteNonQueryAsync();
+    Assert.Equal(2, await ScalarAsync(connection, "SELECT count(*) FROM lab_private_server.local_union_member"));
+    await creation.RollbackAsync();
+  }
+
+  [Fact]
+  public async Task VersionIndependentMigrationPreservesLegacyEnvelopesAndSelectsLatestHead()
+  {
+    await using var source = PostgreSqlDataSourceFactory.Create(ConnectionString());
+    await ResetSchemasAsync(source);
+    var migrations = PostgreSqlMigrationRunner.LoadEmbeddedMigrations(typeof(PostgreSqlMigrationRunner).Assembly);
+    await new PostgreSqlMigrationRunner(migrations.Where(m => m.Version <= 22).ToArray()).MigrateAsync(source);
+    await PublishSixSeasonRaidCatalogAsync(source);
+    var account = await CreateInitializedAccountUidAsync(source);
+    var binding = await new ClassicSoloRaidRuntimeStateStore(source).ResolveOperationalBindingAsync(account, 26, TestInstant);
+    var latestUid = Guid.Empty;
+    var payload = Enumerable.Repeat((byte)7, 60).ToArray();
+    await using var connection = await source.OpenConnectionAsync();
+    for (var i = 1; i <= 2; i++)
+    {
+      latestUid = Guid.NewGuid();
+      await using var insert = new NpgsqlCommand("""
+          INSERT INTO lab_private_server.classic_solo_raid_runtime_state
+              (classic_solo_raid_runtime_state_uid,local_account_id,raid_snapshot_id,season_number,
+               client_build_code,client_executable_sha256,created_at_utc,selected_weakness_code)
+          SELECT $1,a.local_account_id,s.raid_snapshot_id,26,$2,$3,$4,'water'
+            FROM lab_profile.local_account a,lab_private_server.runtime_raid_snapshot s
+           WHERE a.local_account_uid=$5 AND s.raid_snapshot_uid=$6;
+          INSERT INTO lab_private_server.classic_solo_raid_runtime_state_revision
+              (classic_solo_raid_runtime_state_revision_uid,classic_solo_raid_runtime_state_id,revision_number,
+               source_launch_context_uid,source_profile_revision_set_sha256,state_schema_version,protected_payload,
+               protected_payload_byte_length,protected_payload_sha256,state_content_sha256,state_present,has_open_run,
+               completed_best_total_damage,completed_best_team_count,open_team_count,raid_date_day,captured_at_utc,persisted_at_utc)
+          SELECT $7,classic_solo_raid_runtime_state_id,1,$8,$3,1,$9,60,$10,$3,true,false,100,5,0,1,$4,$4
+            FROM lab_private_server.classic_solo_raid_runtime_state WHERE classic_solo_raid_runtime_state_uid=$1;
+          UPDATE lab_private_server.classic_solo_raid_runtime_state
+             SET current_classic_solo_raid_runtime_state_revision_id=(SELECT classic_solo_raid_runtime_state_revision_id
+                 FROM lab_private_server.classic_solo_raid_runtime_state_revision WHERE classic_solo_raid_runtime_state_revision_uid=$7)
+           WHERE classic_solo_raid_runtime_state_uid=$1;
+          """, connection);
+      insert.Parameters.AddWithValue(Guid.NewGuid());
+      insert.Parameters.AddWithValue("legacy-" + i);
+      insert.Parameters.AddWithValue(Hash("legacy"));
+      insert.Parameters.AddWithValue(TestInstant.AddSeconds(i));
+      insert.Parameters.AddWithValue(account);
+      insert.Parameters.AddWithValue(binding.RaidSnapshotUid);
+      insert.Parameters.AddWithValue(latestUid);
+      insert.Parameters.AddWithValue(Guid.NewGuid());
+      insert.Parameters.AddWithValue(payload);
+      insert.Parameters.AddWithValue(SHA256.HashData(payload));
+      insert.CommandText = System.Text.RegularExpressions.Regex.Replace(insert.CommandText,
+          @"\$(\d+)", match => "@p" + match.Groups[1].Value);
+      for (var p = 0; p < insert.Parameters.Count; p++) insert.Parameters[p].ParameterName = "p" + (p + 1);
+      await insert.ExecuteNonQueryAsync();
+    }
+    await using var fingerprint = new NpgsqlCommand("""
+        SELECT md5(string_agg(row_to_json(r)::text,'' ORDER BY classic_solo_raid_runtime_state_revision_id))
+        FROM lab_private_server.classic_solo_raid_runtime_state_revision r;
+        """, connection);
+    var before = await fingerprint.ExecuteScalarAsync();
+    Assert.Equal(MigrationBaseline.Count - 22, await new PostgreSqlMigrationRunner().MigrateAsync(source));
+    Assert.Equal(before, await fingerprint.ExecuteScalarAsync());
+    var head = (await new ClassicSoloRaidRuntimeStateStore(source).GetHeadAsync(new(account, 26,
+        binding.RaidSnapshotUid, binding.RaidSnapshotSha256, "future-unlisted", Hash("future"), "water")))!;
+    Assert.Equal(latestUid, head.RevisionUid);
+    Assert.Equal("legacy-2", head.ClientBuildCode);
+    Assert.Equal(payload, head.ProtectedPayload);
+    Assert.Equal(0, await new PostgreSqlMigrationRunner().MigrateAsync(source));
+  }
+
+  [Fact]
+  public async Task FutureBuildAndChangedSnapshotContinueOneHeadAndRejectStaleOlderLaunch()
+  {
+    await using var source = PostgreSqlDataSourceFactory.Create(ConnectionString());
+    var key = await CreateFailureTestKeyAsync(source);
+    var store = new ClassicSoloRaidRuntimeStateStore(source);
+    var first = await store.PersistAsync(Capture(key, Guid.NewGuid(), null, 1, "initial", 100, TestInstant));
+    var snapshot = await new CommonBossRuntimeBindingStore(source).PublishAsync(26,
+        Hash("future-profile"), Hash("future-source"), Hash("future-seal"));
+    var future = key with
+    {
+      ClientBuildCode = "unlisted-future",
+      ClientExecutableSha256 = Hash("future-exe"),
+      RaidSnapshotUid = snapshot.RaidSnapshotUid,
+      RaidSnapshotSha256 = snapshot.RaidSnapshotSha256
+    };
+    var inherited = (await store.GetHeadAsync(future))!;
+    Assert.Equal(first.HeadRevisionUid, inherited.RevisionUid);
+    Assert.Equal(key.ClientBuildCode, inherited.ClientBuildCode);
+    Assert.Equal(key.RaidSnapshotUid, inherited.RaidSnapshotUid);
+    var nextCapture = Capture(future, Guid.NewGuid(), first.HeadRevisionUid, 2, "future", 200, TestInstant.AddSeconds(1));
+    var next = await store.PersistAsync(nextCapture);
+    Assert.True(next.StateAdvanced);
+    Assert.True((await store.PersistAsync(nextCapture)).ExactReplay);
+    var fromOldBuild = (await store.GetHeadAsync(key))!;
+    Assert.Equal(next.HeadRevisionUid, fromOldBuild.RevisionUid);
+    Assert.Equal(future.ClientBuildCode, fromOldBuild.ClientBuildCode);
+    Assert.Equal(future.RaidSnapshotUid, fromOldBuild.RaidSnapshotUid);
+    var stale = await store.PersistAsync(Capture(key, Guid.NewGuid(), first.HeadRevisionUid, 3, "stale", 300, TestInstant.AddSeconds(2)));
+    Assert.Equal("stale_head_quarantined", stale.ResultCode);
+    Assert.Equal(next.HeadRevisionUid, (await store.GetHeadAsync(key))!.RevisionUid);
+    await AssertStateCountsAsync(source, 1, 2, 3);
+  }
+
+  [Fact]
+  public async Task CommonBossPublicationIsAtomicReplayableAndPreservesLegacyAndNewProgression()
+  {
+    await using var source = PostgreSqlDataSourceFactory.Create(ConnectionString());
+    await ResetSchemasAsync(source);
+    await new PostgreSqlMigrationRunner().MigrateAsync(source);
+    var catalog = await PublishSixSeasonRaidCatalogAsync(source);
+    var account = await CreateInitializedAccountUidAsync(source);
+    var store = new CommonBossRuntimeBindingStore(source);
+    var runtime = new ClassicSoloRaidRuntimeStateStore(source);
+    var legacy = await runtime.ResolveOperationalBindingAsync(account, 26, TestInstant);
+    var oldKey = new ClassicSoloRaidRuntimeStateKey(account, 26, legacy.RaidSnapshotUid,
+        legacy.RaidSnapshotSha256, "synthetic", Hash("client"), "fire");
+    var oldCapture = Capture(oldKey, Guid.NewGuid(), null, 0x31, "old", 100, TestInstant);
+    var oldSaved = await runtime.PersistAsync(oldCapture);
+    var adopted = await store.PublishAsync(26, Hash("legacy-profile"), Hash("legacy-source"), Hash("legacy-seal"), requireLegacy: true);
+    Assert.Equal(legacy.RaidSnapshotUid, adopted.RaidSnapshotUid);
+    Assert.Equal(legacy.RaidSnapshotSha256, adopted.RaidSnapshotSha256);
+    Assert.Equal(oldSaved.HeadRevisionUid, (await runtime.GetHeadAsync(oldKey))!.RevisionUid);
+
+    var missing = await Assert.ThrowsAsync<InvalidOperationException>(() => store.FindAsync(25, Hash("p25")));
+    Assert.Equal("phase_d_raid_state_operational_binding_missing", missing.Message);
+    var attempts = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ =>
+        store.PublishAsync(25, Hash("p25"), Hash("s25"), Hash("seal25"))));
+    var first = attempts[0];
+    Assert.All(attempts, row => Assert.Equal(first.RaidSnapshotUid, row.RaidSnapshotUid));
+    var resolved = await runtime.ResolveOperationalBindingAsync(account, 25, profileSha256: Hash("p25"));
+    var key = new ClassicSoloRaidRuntimeStateKey(account, 25, resolved.RaidSnapshotUid,
+        resolved.RaidSnapshotSha256, "synthetic", Hash("client"), "water");
+    var capture = Capture(key, Guid.NewGuid(), null, 0x32, "new", 200, TestInstant);
+    var saved = await runtime.PersistAsync(capture);
+    Assert.True((await runtime.PersistAsync(capture)).ExactReplay);
+    var fxOnly = await store.PublishAsync(25, Hash("p25-fx"), Hash("s25"), Hash("new-seal"));
+    Assert.Equal(first.RaidSnapshotUid, fxOnly.RaidSnapshotUid);
+    Assert.Equal(saved.HeadRevisionUid, (await runtime.GetHeadAsync(key))!.RevisionUid);
+    var changed = await store.PublishAsync(25, Hash("p25-source2"), Hash("s25-new"), Hash("seal2"));
+    Assert.NotEqual(first.RaidSnapshotUid, changed.RaidSnapshotUid);
+    var upgraded = await store.PublishAsync(25, Hash("p25-next-build"), Hash("s25-next-archive"), Hash("seal-next"),
+        equivalentProfileSha256: Hash("p25"));
+    Assert.Equal(first.RaidSnapshotUid, upgraded.RaidSnapshotUid);
+    Assert.Equal(first.RaidSnapshotSha256, upgraded.RaidSnapshotSha256);
+    var replayUpgrade = await store.PublishAsync(25, Hash("p25-next-build"), Hash("s25-next-archive"), Hash("seal-next"),
+        equivalentProfileSha256: Hash("p25"));
+    Assert.Equal(upgraded.RaidSnapshotUid, replayUpgrade.RaidSnapshotUid);
+    await Assert.ThrowsAsync<InvalidOperationException>(() => store.PublishAsync(25, Hash("p25-bad-previous"), Hash("bad-previous-source"), Hash("seal"),
+        equivalentProfileSha256: Hash("unregistered")));
+    await Assert.ThrowsAsync<InvalidOperationException>(() => store.FindAsync(25, Hash("p25-bad-previous")));
+    await Assert.ThrowsAsync<InvalidOperationException>(() => store.PublishAsync(25, Hash("p25-ambiguous"), Hash("s25-next-archive"), Hash("seal"),
+        equivalentProfileSha256: Hash("p25-source2")));
+    Assert.Equal(saved.HeadRevisionUid, (await runtime.GetHeadAsync(key with { RaidSnapshotUid = changed.RaidSnapshotUid, RaidSnapshotSha256 = changed.RaidSnapshotSha256 }))!.RevisionUid);
+    Assert.Equal(saved.HeadRevisionUid, (await runtime.GetHeadAsync(key))!.RevisionUid);
+    await Assert.ThrowsAsync<InvalidOperationException>(() => store.PublishAsync(25, Hash("p25"), Hash("wrong"), Hash("seal25")));
+    await Assert.ThrowsAsync<InvalidOperationException>(() => store.FindAsync(24, Hash("p25")));
+
+    await using var connection = await source.OpenConnectionAsync();
+    await using (var fail = new NpgsqlCommand("""
+        CREATE FUNCTION lab_private_server.fail_common_publication() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'synthetic_publication_failure'; END; $$;
+        CREATE TRIGGER synthetic_publication_failure BEFORE INSERT ON lab_private_server.common_boss_runtime_binding
+        FOR EACH ROW EXECUTE FUNCTION lab_private_server.fail_common_publication();
+        """, connection)) { await fail.ExecuteNonQueryAsync(); }
+    await Assert.ThrowsAsync<PostgresException>(() => store.PublishAsync(24, Hash("p24"), Hash("s24"), Hash("seal24")));
+    Assert.Equal(0L, await ScalarAsync(connection, "SELECT count(*) FROM lab_private_server.runtime_raid_snapshot WHERE season_number=24"));
+    await using (var clear = new NpgsqlCommand("DROP TRIGGER synthetic_publication_failure ON lab_private_server.common_boss_runtime_binding", connection))
+    { await clear.ExecuteNonQueryAsync(); }
+    _ = await store.PublishAsync(24, Hash("p24"), Hash("s24"), Hash("seal24"));
+    Assert.Equal(1L, await ScalarAsync(connection, "SELECT count(*) FROM lab_private_server.runtime_raid_snapshot WHERE season_number=24"));
+    Assert.Equal(catalog.Members.Count, await ScalarAsync(connection, "SELECT count(*) FROM lab_raid.raid_snapshot"));
+  }
+
+  [Fact]
   public async Task PublishedCatalogBindingWorksWithoutBootAndFailsClosedWhenAmbiguous()
   {
     var connectionString = ConnectionString();
@@ -428,7 +696,8 @@ public sealed class PostgreSqlClassicSoloRaidRuntimeStateTests
     Assert.False(largeResult.Quarantined);
     Assert.Equal(largePayload, (await store.GetHeadAsync(iron))!.ProtectedPayload);
     Assert.True((await store.PersistAsync(large)).ExactReplay);
-    await RuntimePersistenceAdapterProbe.RunIfRequestedAsync(legacy with { ClientBuildCode = "synthetic-roundtrip" });
+    var adapterAccount = await CreateInitializedAccountUidAsync(dataSource);
+    await RuntimePersistenceAdapterProbe.RunIfRequestedAsync(legacy with { LocalAccountUid = adapterAccount, ClientBuildCode = "synthetic-roundtrip" });
   }
 
   private static async Task<ClassicSoloRaidRuntimeStateKey> CreateFailureTestKeyAsync(NpgsqlDataSource dataSource)
@@ -536,19 +805,21 @@ public sealed class PostgreSqlClassicSoloRaidRuntimeStateTests
     Assert.Equal(1, firstHead!.RevisionNumber);
     Assert.Equal(firstCapture.ProtectedPayload, firstHead.ProtectedPayload);
     Assert.Null(await store.GetHeadAsync(key with { AccountUid = Guid.NewGuid() }));
-    Assert.Null(await store.GetHeadAsync(key with { ClientBuildCode = "another" }));
-    Assert.Null(await store.GetHeadAsync(key with { ClientExecutableSha256 = Hash("another") }));
+    Assert.Equal((await store.GetHeadAsync(key))!.RevisionUid, (await store.GetHeadAsync(key with { ClientBuildCode = "another" }))!.RevisionUid);
+    Assert.Equal((await store.GetHeadAsync(key))!.RevisionUid, (await store.GetHeadAsync(key with { ClientExecutableSha256 = Hash("another") }))!.RevisionUid);
     var unchanged = await store.PersistAsync(Capture("first", first.RevisionUid));
     Assert.Equal("state_unchanged", unchanged.ResultCode);
     Assert.Equal(first.RevisionUid, unchanged.RevisionUid);
     var a = Capture("changed-a", first.RevisionUid);
-    var b = Capture("changed-b", first.RevisionUid);
+    var b = Capture("changed-b", first.RevisionUid) with
+    { Key = key with { ClientBuildCode = "unlisted-next", ClientExecutableSha256 = Hash("next-exe") } };
     var outcomes = await Task.WhenAll(store.PersistAsync(a), store.PersistAsync(b));
     Assert.Single(outcomes, outcome => outcome.ResultCode == "state_advanced");
     Assert.Single(outcomes, outcome => outcome.Quarantined);
     var finalHead = await store.GetHeadAsync(key);
     Assert.Equal(2, finalHead!.RevisionNumber);
     Assert.Equal(outcomes.Single(outcome => !outcome.Quarantined).RevisionUid, finalHead.RevisionUid);
+    Assert.Equal(finalHead.RevisionUid, (await store.GetHeadAsync(b.Key))!.RevisionUid);
     var replayA = await store.PersistAsync(a);
     var replayB = await store.PersistAsync(b);
     Assert.Equal(outcomes[0] with { ExactReplay = true }, replayA);

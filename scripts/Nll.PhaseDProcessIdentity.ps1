@@ -45,9 +45,33 @@ function New-PhaseDProcessIdentity {
     finally { $process.Dispose() }
 }
 
+function Test-PhaseDProcessStartInstant {
+    param([object]$Value, [DateTime]$ExpectedUtc)
+    $parsed=[DateTime]::MinValue
+    if ($Value -is [DateTime]) { $parsed=$Value }
+    elseif (-not [DateTime]::TryParse([string]$Value, [Globalization.CultureInfo]::InvariantCulture,
+        [Globalization.DateTimeStyles]::RoundtripKind, [ref]$parsed)) { return $false }
+    return $parsed.ToUniversalTime().Ticks -eq $ExpectedUtc.ToUniversalTime().Ticks
+}
+
 function Get-PhaseDVerifiedProcess {
     param([object]$Identity, [switch]$ForTermination)
     $started = [DateTime]::MinValue
+    $timestampValid = $false
+    if ($null -ne $Identity) {
+        # PS 7.5 ConvertFrom-Json can decode ISO timestamps as DateTime. Casting
+        # that value back to a culture-formatted string loses fractional ticks.
+        # Keep the exact timestamp; the retained kernel handle comparison below
+        # continues to reject every real start-time mismatch.
+        if ($Identity.processStartedAtUtc -is [DateTime]) {
+            $started = $Identity.processStartedAtUtc
+            $timestampValid = $true
+        } else {
+            $timestampValid = [DateTime]::TryParse([string]$Identity.processStartedAtUtc,
+                [Globalization.CultureInfo]::InvariantCulture,
+                [Globalization.DateTimeStyles]::RoundtripKind, [ref]$started)
+        }
+    }
     if ($null -ne $Identity -and $Identity.PSObject.Properties.Name -contains 'exitedBeforeCapture' -and
         $Identity.exitedBeforeCapture -eq $true -and [int]$Identity.processId -gt 0) {
         $candidate = Get-Process -Id ([int]$Identity.processId) -ErrorAction SilentlyContinue
@@ -57,9 +81,7 @@ function Get-PhaseDVerifiedProcess {
     }
     if ($null -eq $Identity -or [int]$Identity.processId -le 0 -or
         -not [IO.Path]::IsPathRooted([string]$Identity.executablePath) -or
-        -not [DateTime]::TryParse([string]$Identity.processStartedAtUtc,
-            [Globalization.CultureInfo]::InvariantCulture,
-            [Globalization.DateTimeStyles]::RoundtripKind, [ref]$started)) {
+        -not $timestampValid) {
         throw 'phase_d_process_identity_unresolved'
     }
     $process = Open-PhaseDProcess -Id ([int]$Identity.processId) -ForTermination:$ForTermination
@@ -214,9 +236,9 @@ function Write-PhaseDFirstFailure {
 }
 
 function Invoke-PhaseDStateLock {
-    param([string]$LaunchRoot, [scriptblock]$Action)
+    param([string]$LaunchRoot, [scriptblock]$Action, [int]$TimeoutMilliseconds = 10000)
     $lockPath = Join-Path $LaunchRoot 'execution-state.lock'
-    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
     $lease = $null
     while ($null -eq $lease) {
         try {
@@ -229,6 +251,48 @@ function Invoke-PhaseDStateLock {
         }
     }
     try { & $Action } finally { $lease.Dispose() }
+}
+
+function Write-PhaseDProgress {
+    param([string]$LaunchRoot, [string]$StageCode, [Nullable[DateTimeOffset]]$OccurredAtUtc = $null)
+    # Telemetry never changes admission or interrupts an owned cleanup.
+    if (-not (Test-Path -LiteralPath $LaunchRoot -PathType Container)) { return }
+    $stages=@('api_preparation','account_snapshot','coordinator_preparation','fx_stage','runtime_preparation',
+        'fx_apply','server_start','server_created','resource_check','game_start','game_spawned','health_observation',
+        'running','game_exited','runtime_stopping','fx_restore','runtime_restore','database_restart','progress_save',
+        'finalizing','ready','recovery_required')
+    try {
+        if ($StageCode -cnotin $stages) { throw 'phase_d_progress_stage_invalid' }
+        Invoke-PhaseDStateLock $LaunchRoot -TimeoutMilliseconds 250 -Action {
+            $path=Join-Path $LaunchRoot 'execution-progress.json'
+            $uid=Split-Path -Leaf $LaunchRoot
+            $observed=[DateTimeOffset]::UtcNow
+            $at=if ($null -ne $OccurredAtUtc) { [DateTimeOffset]$OccurredAtUtc } else { $observed }
+            if (Test-Path -LiteralPath $path) {
+                $progress=Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($progress.contractId -cne 'nll/phase-d-execution-progress/v1' -or $progress.launchContextUid -cne $uid -or
+                    $progress.stageCode -cnotin $stages -or @($progress.events).Count -ge 128) { throw 'phase_d_progress_invalid' }
+            } else {
+                $stateFile=Join-Path $LaunchRoot 'execution-state.json'
+                if (-not (Test-Path -LiteralPath $stateFile)) { return }
+                $stateValue=Get-Content -LiteralPath $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json
+                $progress=[pscustomobject]@{contractId='nll/phase-d-execution-progress/v1';launchContextUid=$uid;
+                    requestReceivedAtUtc=$stateValue.createdAtUtc;stageCode=$StageCode;updatedAtUtc=$observed.ToString('o');events=@()}
+            }
+            $origin=[DateTimeOffset]$progress.requestReceivedAtUtc
+            if ($at -lt $origin -or $at -gt $observed) { throw 'phase_d_progress_clock_invalid' }
+            $previous=if (@($progress.events).Count) { [DateTimeOffset]$progress.events[-1].occurredAtUtc } else { $origin }
+            $progress.events=@($progress.events)+@([ordered]@{stageCode=$StageCode;occurredAtUtc=$at.ToString('o');
+                observedAtUtc=$observed.ToString('o');cumulativeMilliseconds=[math]::Max(0,($at-$origin).TotalMilliseconds);
+                intervalMilliseconds=[math]::Max(0,($at-$previous).TotalMilliseconds)})
+            # A late startup owner cannot turn an already-exited game back into running.
+            if ([array]::IndexOf($stages,$StageCode) -ge [array]::IndexOf($stages,[string]$progress.stageCode)) {
+                $progress.stageCode=$StageCode
+            }
+            $progress.updatedAtUtc=$observed.ToString('o')
+            Write-AtomicJson $path $progress
+        }
+    } catch { Write-Verbose 'phase_d_progress_write_failed' }
 }
 
 function Invoke-PhaseDStartedTransition {

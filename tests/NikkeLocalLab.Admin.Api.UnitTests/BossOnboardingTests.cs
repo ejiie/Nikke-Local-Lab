@@ -127,6 +127,34 @@ public sealed class BossOnboardingTests : IDisposable
     var job = await Service().StartAsync(Request(), None); await Service().RunNextAsync(None);
     Assert.Equal("failed", Service().Get(job.JobUid)!.StatusCode);
   }
+  [Theory]
+  [InlineData("boss_onboarding_shield_preparation_review_required")]
+  [InlineData("boss_pipeline_database_binding_failed")]
+  [InlineData("phase_d_raid_state_operational_binding_missing")]
+  public async Task WorkerFailureCodeSurvivesRecoveryAndPersistence(string code)
+  {
+    runner.Action = (_, output, _) =>
+    {
+      Directory.CreateDirectory(output);
+      File.WriteAllText(Path.Combine(output, "failure-code.txt"), code);
+      throw new BossPipelineException(PowerShellBossPipelineRunner.ReadFailureCode(output));
+    };
+    var job = await Service().StartAsync(Request(), None);
+    await Service().RunNextAsync(None);
+    Assert.Equal("failed", Service().Get(job.JobUid)!.StatusCode);
+    Assert.Equal(code, Service().Get(job.JobUid)!.FailureCode);
+  }
+  [Theory]
+  [InlineData("private path C:\\synthetic-secret")]
+  [InlineData("boss_bad\nprivate-data")]
+  [InlineData("boss_bad\n")]
+  [InlineData("")]
+  public void UntrustedWorkerDiagnosticDoesNotBecomePublic(string text)
+  {
+    Directory.CreateDirectory(root);
+    File.WriteAllText(Path.Combine(root, "failure-code.txt"), text);
+    Assert.Equal("boss_pipeline_failed", PowerShellBossPipelineRunner.ReadFailureCode(root));
+  }
   [Fact]
   public async Task CandidateAndCompletedAreDifferentTerminalStates()
   {

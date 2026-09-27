@@ -4,6 +4,9 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Text.Json;
 
+if (args.FirstOrDefault() is "--native-fx" or "--native-fx-step")
+  return NativeFxProcessChecks.Run(args);
+
 // The local gate supplies a freshly built, pinned tool. Never invoke its entry
 // point, GameData constructor/parser, server, database or original client.
 // Reflection is only the adapter to private compiled types; assertions inspect

@@ -10,6 +10,47 @@ namespace NikkeLocalLab.Admin.Api.UnitTests;
 
 public sealed class PhaseDExecutionStateTests
 {
+  [Theory]
+  [InlineData("game_exited")]
+  [InlineData("fx_restore")]
+  [InlineData("progress_save")]
+  [InlineData("ready")]
+  public async Task DisplayProgressDoesNotChangeAdmissionState(string stage)
+  {
+    using var fixture = new ExecutionStateFixture();
+    var uid = EntityUid.New();
+    fixture.WriteState(uid, "\"watcherProcessStartedAtUtc\": null", "phase_d_test_failure", "started");
+    var root = Path.Combine(fixture.ExecutionRoot, uid.ToString());
+    var now = DateTimeOffset.UtcNow;
+    var progress = new PhaseDProgress("nll/phase-d-execution-progress/v1", uid.ToString(), now.AddSeconds(-10),
+        stage, now, [new(stage, now, now, 10000, 10000)]);
+    File.WriteAllText(Path.Combine(root, "execution-progress.json"),
+        JsonSerializer.Serialize(progress, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+    var before = Directory.GetFiles(root).ToDictionary(path => path, File.ReadAllText);
+    var result = await fixture.Service.GetAsync(uid);
+    Assert.Equal("started", result!.StatusCode);
+    Assert.Equal(stage, result.Progress!.StageCode);
+    Assert.Equal(10000, Assert.Single(result.Progress.Events).CumulativeMilliseconds);
+    Assert.Equal("phase_d_test_failure", result.FailureCode);
+    foreach (var (path, contents) in before) Assert.Equal(contents, File.ReadAllText(path));
+  }
+
+  [Theory]
+  [InlineData(null)]
+  [InlineData("{")]
+  [InlineData("{}")]
+  public async Task MissingOrCorruptProgressNeverBreaksStatusRead(string? contents)
+  {
+    using var fixture = new ExecutionStateFixture();
+    var uid = EntityUid.New();
+    fixture.WriteState(uid, "\"watcherProcessStartedAtUtc\": null", "phase_d_test_failure", "started");
+    if (contents is not null)
+      File.WriteAllText(Path.Combine(fixture.ExecutionRoot, uid.ToString(), "execution-progress.json"), contents);
+    var result = await fixture.Service.GetAsync(uid);
+    Assert.Equal("started", result!.StatusCode);
+    Assert.Equal(contents is null ? null : "status_unknown", result.Progress?.StageCode);
+  }
+
   [Fact]
   public async Task StatusReadIsIsolatedFromCorruptHistoryAndDoesNotWriteFiles()
   {
@@ -265,6 +306,14 @@ public sealed class PhaseDExecutionStateTests
     {
       Assert.Equal("draft", launch.StatusCode);
       Assert.Equal("water", launch.WeaknessCode);
+      Assert.Equal("coordinator_preparation", launch.Progress!.StageCode);
+      Assert.Equal(new[] { "api_preparation", "account_snapshot", "coordinator_preparation" },
+          launch.Progress.Events.Select(e => e.StageCode));
+      Assert.All(launch.Progress.Events, e =>
+      {
+        Assert.True(e.OccurredAtUtc >= launch.Progress.RequestReceivedAtUtc);
+        Assert.True(e.CumulativeMilliseconds >= 0 && e.IntervalMilliseconds >= 0);
+      });
       Assert.Equal("draft", (await service.GetAsync(launch.LaunchContextUid))!.StatusCode);
       var failure = await Assert.ThrowsAsync<PhaseDExecutionException>(() => service.StartAsync(request));
       Assert.Equal("phase_d_operation_in_progress", failure.Message);

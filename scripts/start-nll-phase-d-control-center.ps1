@@ -46,6 +46,17 @@ function Unprotect-Secret {
     try { $plain=[Security.Cryptography.ProtectedData]::Unprotect($protected,$entropy,[Security.Cryptography.DataProtectionScope]::CurrentUser); try { [Text.Encoding]::UTF8.GetString($plain) } finally { [Array]::Clear($plain,0,$plain.Length) } }
     finally { [Array]::Clear($protected,0,$protected.Length); [Array]::Clear($entropy,0,$entropy.Length) }
 }
+function Test-ControlCenterRuntimeActive {
+    if (@(Get-Process -Name nikke,EpinelPS,'NikkeLocalLab.Phase3B2.PhysicalBootstrap' -ErrorAction SilentlyContinue).Count) { return $true }
+    foreach ($execution in @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'artifacts\automation\phase-d-executions') `
+            -Directory -ErrorAction SilentlyContinue)) {
+        $ownerPath = Join-Path $execution.FullName 'coordinator.owner.json'
+        if (-not (Test-Path -LiteralPath $ownerPath -PathType Leaf)) { continue }
+        $owner = Get-Content -LiteralPath $ownerPath -Raw | ConvertFrom-Json
+        if (Test-PinnedProcess -Id ([int]$owner.ProcessId) -Name 'powershell' -StartedAtUtc ([string]$owner.StartedAtUtc)) { return $true }
+    }
+    return $false
+}
 $root='C:\NLL\ControlCenter'; $repositoryRoot='C:\Users\nlloperator\Documents\Github\Nikke-Local-Lab'
 $pgCtl='C:\NLL\Runtime\PostgreSQL-17-native\bin\pg_ctl.exe'; $data=Join-Path $root 'postgresql\data'; $log=Join-Path $root 'logs\postgresql.log'
 $bootstrap=Join-Path $root 'session\bootstrap.secret'; $session=Join-Path $root 'session\session.json'; $port=55433
@@ -97,6 +108,8 @@ $admin=$null
 try {
     # Do not pipe pg_ctl output. On Windows, postgres descendants can inherit
     # the pipeline handle and keep Windows PowerShell waiting indefinitely.
+    Assert-Start (-not (Test-ControlCenterRuntimeActive)) 'control_center_game_still_running'
+    Wait-ControlCenterCompletionWatchers
     $pgStatus=Invoke-ControlCenterPgCtl @('status','-D',$data)
     if($pgStatus -eq 0){
         $pgStop=Invoke-ControlCenterPgCtl @('stop','-D',$data,'-m','fast','-w','-t','60')
@@ -136,7 +149,7 @@ try {
         Start-Process 'http://127.0.0.1:17878/editor/' | Out-Null
         Write-Host ''; Write-Host 'NLL Control Center is running.' -ForegroundColor Cyan
         Write-Host 'One-time login code was copied to the clipboard. Paste it into the login box.'
-        Write-Host 'During game launch PostgreSQL is paused automatically and restored after completion.'
+        Write-Host 'PostgreSQL remains available while the game runs and progress is saved.'
         [void](Read-Host 'Press Enter here only after all game/client work is finished')
     }
     Assert-Start (@(Get-Process -Name nikke,EpinelPS,'NikkeLocalLab.Phase3B2.PhysicalBootstrap' -ErrorAction SilentlyContinue).Count -eq 0) 'control_center_game_still_running'
@@ -148,8 +161,15 @@ finally {
     if(Test-Path -LiteralPath $bootstrap){Remove-Item -LiteralPath $bootstrap -Force}
     # The desktop/test which created the unique stop signal removes it only
     # after observing this host exit. Never delete a caller-supplied signal path.
-    if ((Invoke-ControlCenterPgCtl @('status','-D',$data)) -eq 0) {
-        [void](Invoke-ControlCenterPgCtl @('stop','-D',$data,'-m','fast','-w','-t','60'))
+    # An early desktop close must not remove the live runtime's transactional DB.
+    # Cleanup/recovery owns the remaining execution; the next start can reclaim
+    # the cluster only after that execution finishes.
+    $databaseCanStop = -not (Test-ControlCenterRuntimeActive)
+    if ($databaseCanStop) {
+        Wait-ControlCenterCompletionWatchers
+        if ((Invoke-ControlCenterPgCtl @('status','-D',$data)) -eq 0) {
+            [void](Invoke-ControlCenterPgCtl @('stop','-D',$data,'-m','fast','-w','-t','60'))
+        }
     }
     foreach($name in @('NIKKE_LAB_DB','NIKKE_LAB_ID_SECRET','NIKKE_LAB_HOME','NLL_CONTROL_CENTER_BOOTSTRAP_PATH','NLL_CONTROL_CENTER_PG_CTL','NLL_CONTROL_CENTER_PG_DATA','NLL_CONTROL_CENTER_PG_LOG','NLL_PHASE_D_CONTROL_CENTER')){[Environment]::SetEnvironmentVariable($name,$null,'Process')}
     $databasePassword=$null; $identitySecret=$null

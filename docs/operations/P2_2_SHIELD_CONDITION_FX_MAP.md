@@ -1,9 +1,16 @@
 # P2-2 속성 쉴드의 조건 출처와 표시 연결 조사
 
+**현재 작업 기준:** 운영자는 전격·수냉을 그대로 사용하고 공용 세 속성의 크기를 이 기준에 맞추며,
+우월 코드 피해 제한을 유지하도록 재확인했다. 아래 내부 구조·재생 차이는 조사 이력이지 추가
+인수 조건이 아니다. 확인된 기준 크기와 후속 자동화 입력은
+[기준 크기 문서](P2_2_SHIELD_SIZE_REFERENCE.md)를 따른다.
+
 2026-09-14. 운영자는 후속 탐색의 초점을 **보스 속성 변경 시 속성 쉴드의 피해 허용 조건과
 표시를 함께 일치시키는 데 필요한 정보**로 재확인했다. [행동 트리 대조](S29_BEHAVIOR_PATTERN_TRACE.md)의
 전체 전투 흐름·사라짐 피해 판정 조사는 이 목적에 필요한 연결 근거로 한정한다.
-이번 작업은 추가 원본 읽기와 계획 정비이며 변환 구현·설치·실게임 인수 완료가 아니다.
+1~8절은 추가 원본 읽기와 계획 정비 기록이다. 후속 공통 탐색·FX 판정 구현은 9절,
+공통 보정 후보와 recipe 전달은 10절에 기록한다.
+필요한 자산 보정·설치·실게임 인수까지 완료한 것은 아니다.
 
 후속 조사에서 **공용 FX는 Transform 외에도 크기 보조 설정과 입자 스케일 설정이 다르며,
 풍압에는 기존 대응 범위 밖의 활성 입자 객체가 있음**을 확인했다. 현재 Transform 복사 검사의
@@ -235,3 +242,205 @@ GameObject 활성, `playOnAwake=true`, emission 활성, ParticleSystem과 Render
 `fx-animation-coverage.json` 및 `consumer-static-1/element-size-inputs.json`이다.
 메타데이터 상태·두 빈 effectLists·FX 비교는 직접 읽은 사실이고, 실행 상속·helper 적용·QTE 표시
 전달은 미해결이다. 원본 파일은 전후 hash가 일치하며 새 원본 bundle 추출은 추가하지 않았다.
+
+## 9. 공통 탐색·FX 판정 1차 구현
+
+운영자의 후속 작업 착수 지시에 따라 다음을 제품 소스에 연결했다. GitHub 반영은 보류한다.
+
+- `BossShieldPatternDiscovery`가 몬스터/주 파츠/개별 파츠 패시브와 스킬 use/hurt별 조건
+  연결을 `content-discovery`의 `shieldPatterns`에 남긴다. 함수·그룹·FX·부착점은 hash로
+  결박하며, FX가 없는 개별 함수도 보존한다. 일반 저지의 BreakObject와 QTE 속성/약점/그룹은
+  별도 경로다. 모델 자산의 collider 소유 및 실제 조건·표시 소비는 미해결로 남긴다.
+- 연결 함수의 순환은 종료하고 결손 상태/함수/스킬/속성 참조를 보존한다. SkillId=0인 슬롯에도
+  use/hurt 함수 입력이 있으면 탐색한다. 기존 필터로 이 입력을 누락시키지 않는다.
+- `nll-shield-fx-assessment.py`가 원본 `sourceAffinity.bossElementCode`의 실제 bundle을 선택해
+  다섯 목표 속성을 같은 방식으로 검사한다. `sourceKindCode`, 시즌, profile 버전은 적합성
+  판정 조건이 아니다. 전체 Transform 계층, 활성 상태, FxHelper의 크기·focus·표시 설정,
+  입자/renderer의 크기 관련 설정과 참조를 비교한다. 색상과 단말 입자의 회전 차이는 보존
+  후보로 기록하며 실제 렌더링 검증으로 승격하지 않는다.
+- 그룹명에 보스 이름이 섞인 자산은 전체 하위 leaf 이름 집합과 구조를 대조한다. 부분 집합이나
+  최소 대응 개수로 성공하지 않는다. 풍압은 다른 파괴 그룹과 root 직속 객체를 미대응으로
+  보존한다. 이번 보수적 전체 그룹 비교는 풍압 7/14 대응이며, 앞선 진단의 부분 leaf 비교
+  13/14와 기준이 다르다. 대응 개수 증가를 위해 객체를 임의로 연결하지 않는다.
+- 공통 프로필 조립기가 `shield-pattern-fx-assessment.receipt.json`을 먼저 쓴다. 결손 탐색이나
+  FX 검토 필요는 보고서에 남고 기존 Transform 변형·profile 생성 전에 중단한다. 판정 보고서
+  hash는 성공한 후보 receipt에도 연결한다. onboarding은 모든 형식에서 검사기와 UnityPy 입력을
+  전달하며 CandidateOnly 입력 pin에도 새 검사기를 포함한다. 이 중단은 일반 조립 오류와 구분한
+  `boss_onboarding_shield_preparation_review_required`로 전달한다.
+
+원본 데이터 대조 결과:
+
+| 입력 | 조건 수 | 일반 저지 수 | QTE 수 | 이번 검증 결과 |
+| --- | --- | --- | --- | --- |
+| S26 | 0 | 0 | 0 | 공통 탐색→행동 트리 결박→쉴드 `not_required`→v2 profile 생성과 C# 검증 통과 |
+| S29 | 3 | 2 | 5 | 전격 `source_reuse`, 수냉 `reuse_candidate`, 공용 세 속성 `review_required`; 보고서를 남기고 자산 변형/profile 생성 전에 중단 |
+| S34 | 1 | 1 | 2 | 같은 탐색 함수로 정적 참조 해소; 해당 FX 자산의 적합성/프로필 생성은 이번에 검증하지 않음 |
+
+원본 세 입력의 새 탐색 결손 수는 모두 0이다. C#의 원본 타입 기반 합성 검사 13개와 기존
+QTE 검사 37개가 통과했다. Python QTE/쉴드 검사 14개(신규 10개), 기존 onboarding 12개와
+FX 29개도 통과했다. 비전격을 포함한 다섯 원본 속성, 순서 변경, 전체 계층 누락, 크기 helper
+불일치, 결손 pin/탐색, 순환, 원본 보존, 변형 전 보고서 기록을 확인했다.
+onboarding의 판정 전달 분기 5개도 확인했다. 보고서는 탐색/행동 트리 hash와 결박하며,
+잘못된 입력 결박과 성공 exit code에 섞인 검토 필요 상태도 거절한다. 작업 전후 필수 로컬
+계약 검사가 통과했고, 마지막 전달 분기 변경 뒤 관련 저장소/자동화/Actions 검사를 재확인했다.
+
+이 구현은 **공통 탐색과 적합성 판정까지**다. 기존 Transform 전용 보정기와 기존 v3 recipe
+형식은 이번에 일반화하지 않았다. 확인되지 않은 공용 FX 보정을 실행하지 않도록 앞단에 판정을
+연결했다. 재사용 후보만 있는 경우에도 현재 recipe 전달 형식과 연결되기 전에는
+`shield_fx_reuse_delivery_required`로 남긴다. 이 후속 연결과 필요한 보정 구현을 완료하기 전에
+P2-2 전체 또는 S29 준비/실행 완료라고 기록하지 않는다. 후보 판정의 `review_required`는
+에이전트가 추가 근거와 코드를 정비할 상태이지, 별도 사용자 승인으로 건너뛰는 상태가 아니다.
+
+로컬 근거는 `artifacts/common-boss-execution-20260914/p2-2-implementation/`의
+`actual-discovery/`, `assembly-26/`, `assembly-29/`다. 원본 pack/설정/자산을 변경하거나 게임·
+계정 DB를 실행하지 않았으며, 설치와 저장소 정리도 수행하지 않았다.
+
+## 10. 공간·크기 보정 후보와 공통 recipe 전달
+
+운영자의 다음 작업 착수 지시에 따라 `nll-shield-fx-recipes.py`를 공통 조립기에 연결했다.
+입력은 원본 `sourceAffinity.bossElementCode`와 다섯 목표 속성의 실제 FX mapping/pin이다.
+준비 계약 `nll/boss-shield-fx-recipes/v1`은 각 mapping을 `reuse`, `adjust_candidate`,
+`unresolved`로 전달한다. 시즌·profile 버전·전격 원본·고정 세 보정 대상 분기를 사용하지 않는다.
+재사용에는 변경된 bundle을 만들지 않고 원래 목표 자산 pin을 전달한다.
+
+보정 정책 `source_geometry_candidate/v1`의 근거와 한계:
+
+- 원본 보스용 FX의 공간·크기 설정을 같은 전체 계층의 목표 속성 FX에 적용하는 **후보 정책**이다.
+  원본 전용 FX와의 정적 일치가 실제 helper 소비나 렌더링 적합성을 증명하지는 않는다.
+- 전체 node/부모/자식과 보정 component가 대응할 때만 생성한다. 부분 leaf 대응이나 최소
+  대응 개수는 허용하지 않는다. 미대응 객체를 연결·삭제·이동하지 않는다.
+- 허용 필드는 Transform의 local position/scale, FxHelper의 UseScaleHelper/ScaleHelper,
+  ParticleSystem의 scalingMode/InitialModule.startSize, renderer의 m_MaxParticleSize다.
+  보정 전후 값은 hash로 결박한다. 회전·색상·수명·활성화·애니메이션·오디오·pool 설정은 보존한다.
+- 저장 후 다시 읽어 허용 필드의 값과 나머지 필드/객체의 보존 hash를 검사한다. 새 소유 폴더에
+  hash 이름으로 파생 자산을 저장하고, 소비자는 원본 pin으로 recipe와 자산을 재생성해 정확히
+  대조한다. report/자산 변조, 추가 파일, 기존 출력 덮어쓰기, reparse 경로를 거절한다.
+- 조립기의 판정 보고서는 recipe receipt hash와 자산 생성 수를 포함한다. onboarding도 이 hash를
+  확인한다. 준비 후보의 `review_required`는 성공 exit code로 섞여도 실행 준비 성공이 되지 않는다.
+  기존 실행 profile wire로 연결하는 P2-3은 별도이며, 현재 보고서는 `runtimeAdmissionStatusCode`
+  `not_assessed`와 `renderingStatusCode` `unresolved`를 유지한다.
+
+9절의 원본 대조 요약을 정정한다. 기존 저장된 S29 보고서에는 `material_reference_unresolved`도
+있었다. 이번 재검사에서 원본 renderer의 명시적인 `(file=0,path=0)` 재질 슬롯 두 개를 결손으로
+오인했음을 확인했다. null은 재질 부재로 보존하고 슬롯별 부재 여부를 비교하도록 수정했다.
+null이 아닌 미해결/외부 참조는 계속 미해결이다. 아래 표는 이 수정 후 최종 결과다.
+
+| S29 목표 보스 속성 | 공통 준비 결과 | 변경 필드 수 | 남은 확인 |
+| --- | --- | --- | --- |
+| 전격 | 원본 재사용 | 0 | 실제 렌더링 소비 |
+| 수냉 | 목표 원본 재사용 | 0 | 단말 회전 차이 보존, 실제 렌더링 소비 |
+| 작열 | 공간·크기 보정 후보 생성/재검증 | 12 | 초기 활성화 및 입자 startRotation 차이 |
+| 철갑 | 공간·크기 보정 후보 생성/재검증 | 12 | 초기 활성화 및 입자 startLifetime 차이 |
+| 풍압 | 전체 계층 대응 미해결, 생성 없음 | 0 | 다른 파괴 그룹과 root 직속 입자의 연결 근거 |
+
+작열/철갑의 위 두 잔여 차이를 추가로 복사할 근거는 없다. 조건·표시 소비 지점 또는 실제
+원본 runtime 관측으로 연출 차이인지 필요한 수정인지 구분한다. Body 속성 제한 상속과 QTE
+조건·표시 전달도 미해결 상태를 유지한다. **P2-2 전체 완료나 S29 실행 가능 판정이 아니다.**
+
+검증은 신규 합성 recipe 검사 8개, 기존 QTE/판정 14개, onboarding 12개, 기존 FX 29개다.
+새 검사는 다섯 원본 속성, 재사용만 있는 전달, 부분 계층 거절, 허용 필드 밖 보존, round-trip
+변조, receipt/파생 자산 변조, null 재질과 결손 참조 구분을 확인한다. onboarding의 실제 PowerShell
+모의 도구 검사에는 검토 필요 exit 0/1, recipe 변조, 입력 결박 변조, 보고서 결손도 추가했다.
+두 Actions 검증 job에 새 합성 검사를 연결했다. 실제 S26은 같은 조립기로 profile 생성 성공,
+S29는 후보 2개와 보고서를 전달·검증한 뒤 검토 필요로 종료했다.
+
+최종 로컬 근거는 `artifacts/common-boss-execution-20260914/p2-2-recipes/assembly-29-final/`,
+`assembly-26/`, `focused-final.log`다. 앞선 `actual-29`, `actual-29-2`, `assembly-29`는 개발 중
+판정/보정 단계이며 최종 결과와 구분한다. 필수 계약 검사는 작업 전후 별도 log로 보존한다.
+원본 캐시·설치·계정 DB·기존 profile/registry는 변경하지 않았고 게임 실행·정리·commit/push도
+수행하지 않았다.
+
+## 11. 풍압 독립 입자와 공용 FX 재생 차이 조사
+
+운영자가 승인한 후속 1·2번의 정적 조사를 수행했다. 원본 다섯 FX bundle을 다시 읽고,
+각 root PlayableDirector가 실제로 선택한 Timeline의 track/marker, exposed reference,
+Animator와 animation binding을 연결했다. 자산을 추가로 추출하거나 보정·설치하지 않았다.
+앞선 전체 AnimationClip 개수와 이름 기반 단말 비교만으로 재생 동작을 판단하지 않는다.
+
+### 11.1 풍압의 root 직속 입자
+
+- root 바로 아래의 별도 입자는 활성/PlayOnAwake 설정이며, 위치 0과 배율 1을 가진다.
+  anchor 및 유지·파괴 그룹 바깥에 있으므로 anchor 보정만으로 이 입자의 공간 배율을 맞출 수 없다.
+- `looping=false`, 시간/거리당 방출률 0, 시간 0의 burst 1회·입자 4개다. 개별 입자 수명은
+  약 0.4~0.65초 범위다. `lengthInSec=5`를 5초간 계속 방출한다는 뜻으로 해석하면 안 된다.
+- Director의 exposed reference 표에는 이 객체가 있지만, **선택된 Timeline의 ControlPlayableAsset이
+  그 슬롯을 사용하지 않는다.** 실제 control 두 개는 각각 유지 그룹과 파괴 그룹에 연결된다.
+  현재 Animator controller는 둘 다 null이며, 연결된 animation은 유지 그룹과 그 하위에만 적용된다.
+- 따라서 정적 분류는 **현재 Timeline 제어 밖의 출생 시 단발 방출 설정**이다. 전격 원본에서 이름이
+  대응되지 않는 파괴 입자의 대체라고 연결할 근거는 없다. 원래 제작 의도나 게임 코드의 추가 제어,
+  실제 화면에서의 노출·크기까지 증명한 것은 아니다. 불필요한 객체로 간주해 삭제하지 않는다.
+
+exposed reference 표에 존재하는 것과 실제 track이 소비하는 것은 다르다. 철갑에도 현재 control이
+사용하지 않는 파괴 그룹 슬롯이 있고 다른 속성에는 비어 있는 슬롯이 있다. 미사용 슬롯만으로
+결손 판정하거나 실행 경로를 새로 만들지 않는다.
+
+### 11.2 초기 활성화·회전·수명의 판정
+
+다섯 원본 모두 사용 중인 ControlTrack 두 개가 유지·파괴 그룹으로 정확히 연결된다.
+두 control의 `active=1`, `updateParticle=1`, `postPlayback=2`, `searchHierarchy=0`도 공통이다.
+root Timeline의 JumpMarker는 0.8333초에서 0.5초 DestinationMarker를 참조하고 `IsSkip=0`이다.
+이는 저장된 연결의 확인이며, 실제 게임에서 JumpReceiver를 호출하는 시점까지 확인한 것은 아니다.
+
+Unity의 [ControlPlayableAsset 문서](https://docs.unity3d.com/Packages/com.unity.timeline@1.6/api/UnityEngine.Timeline.ControlPlayableAsset.html)는
+`active`가 객체 활성화 제어를, `postPlayback`이 Timeline 종료 후 활성 상태를 지정한다고 설명한다.
+이 문서는 필드의 일반 의미를 해석하는 참고 자료이며, 실제 client의 Timeline package 버전/구현을
+동일하다고 인증하는 근거는 아니다. `postPlayback=2`의 실제 native 종료 동작은 미검증이다.
+
+| 차이 | 직접 확인한 내용 | 현재 보정 결정 |
+| --- | --- | --- |
+| 공용 파괴 그룹의 초기 활성 상태 | Timeline의 활성화·입자 제어에 연결된 객체의 초기 값 | 전용 원본의 inactive 값을 일괄 복사하지 않고 target 상태와 Timeline을 함께 보존 |
+| 작열의 startRotation | 한 파괴 입자의 무작위 회전 상한이 원본 약 7.2595, 작열 약 6.2832; 하한 0 | 목표 속성의 회전 연출을 보존. 공간 배율 보정 필드에 추가하지 않음 |
+| 철갑의 startLifetime | 한 파괴 입자의 수명 범위가 원본 약 0.4~0.6초, 철갑 약 0.4~0.5초 | 목표 속성의 입자 수명을 보존. Body/QTE의 피해 허용 시간으로 간주하지 않음 |
+
+보존 결정은 해당 차이를 버그라고 볼 근거가 없다는 뜻이다. 실제 쉴드와 화면 표시의 전체
+적합성을 통과했다는 뜻은 아니다. 초기 상태와 재생 제어를 함께 검증하고, 회전·수명의 차이는
+최종 표시 확인 항목으로 남긴다.
+
+### 11.3 추가로 확인한 재생 차이와 검사기의 한계
+
+현재 선택된 Timeline의 animation은 속성마다 **하나씩**이며 모두 유지 그룹 Animator에 연결된다.
+수냉 bundle 안의 추가 clip/Timeline은 현재 root Director가 선택한 경로가 아니다.
+실제 연결과 저장된 animation data를 대조하면 두 그룹으로 나뉜다.
+
+| 비교 | 전격·수냉·철갑 | 작열·풍압 |
+| --- | --- | --- |
+| 유지 control 구간 | 약 0.0167~1.0833초 | 약 0.0167~0.9167초 |
+| 파괴 control 구간 | 약 0.9167~1.5833초 | 약 0.9167~1.4167초 |
+| 연결된 clip 길이 | 약 1.0833초 | 약 0.4초 |
+| generic binding 수 | 13 | 1 |
+| Animator 자신의 Transform binding 첫 세 채널 | 시작 0.05, 0.4초에 0.1 | 시작 0, 0.4초에 0.1 |
+
+동일 그룹 내 연결 대상·binding과 decoded streamed key/constant 값은 일치했다. Renderer의
+12개 추가 binding이 있는 쪽과 없는 쪽의 재생 차이도 확인했지만, numeric attribute를 추정한
+native 표시 기능으로 승격하지 않았다. 앞선 `fx-animation-coverage.json`의 빈 곡선 배열은
+**애니메이션이 없다는 뜻이 아니었다.** 실제 값은 muscle clip 안의 streamed/constant 저장소에 있다.
+
+현재 `nll-shield-fx-assessment.py`는 Animator/PlayableDirector의 재생 연결을 비교하지 않는다.
+따라서 10절의 ‘작열 잔여 회전/철갑 잔여 수명’은 **그 검사기가 비교한 필드 안에서의 잔여 차이**다.
+작열에는 위 Timeline/animation 차이도 있다. 12개 필드 보정 통과를 모든 재생 차이 해소로
+간주하지 않는다. 수냉의 재사용 판단에는 이번 실제 선택 경로의 동등성 근거가 추가됐다.
+
+### 11.4 공통 조립기에 적용할 규칙
+
+‘전체 계층이 원본과 같아야 한다’를 게임 요구사항으로 두지 않는다. 다음과 같이 구분한다.
+
+1. 실제 제어 연결을 기준으로 입자를 분류한다. 현재 Timeline 제어 대상, 해당 그룹의 하위 입자,
+   별도 PlayOnAwake 입자를 모두 기록한다. 보스 이름·leaf 개수만으로 유지/파괴 역할을 결정하지 않는다.
+2. 보정하려는 영역 안에서는 대상·좌표계·허용 필드 대응을 완전히 확인한다. 영역 밖 객체도
+   재사용/독립 보정/미해결 중 하나로 남기며, 대응 개수에서 빠졌다고 무시하지 않는다.
+3. 기본 공간·크기, 재생 제어, 회전·수명 등 연출 차이를 구분해서 recipe에 전달한다.
+   구조·타이밍을 원본과 같게 만드는 일괄 복사를 추가하지 않는다.
+4. 풍압은 독립 burst의 보스 기준 위치·크기 근거가 필요하다. 이를 원본 파괴 가지로 이동하거나
+   기존 anchor 배율을 임의 적용하지 않는다. 게임에서 확인할 항목으로 위치·크기·출현/해제 시점을
+   구체화한다. 작열도 초기/종료 재생 차이가 표시 적합성에 주는 영향을 확인한다.
+
+이번 작업은 조사와 위 판정/규칙 확정이다. 기존 보정 코드의 전체 대응 검사를 성급히 완화하거나
+실행 허용을 바꾸지 않았다. 다음 구현은 공통 준비 보고서에 실제 제어/animation 연결을 담고,
+보정 영역별 대응과 모든 입자의 처리 상태를 전달하는 것이다. 해당 근거 없이 풍압 보정 성공을
+만들지 않으며, 실제 표시 확인은 원본 runtime 인수 항목으로 유지한다.
+
+근거: `artifacts/common-boss-execution-20260914/p2-2-fx-lifecycle/resolved/`와
+`findings.receipt.json`. bundle 5개, 선택 Timeline 5개, 제어 연결 10개, animation 연결 5개를
+교차 검사했다. 최초 `lifecycle.json`과 중간 `lifecycle-2.json`/`connections.json`은 탐색 단계이며
+최종 연결 근거는 `resolved/`다. 원본 bundle은 읽기 전후 hash가 같고 기존 S29 profile hash도
+유지했다. 게임·설치·보정 자산 생성·commit/push·정리는 수행하지 않았다.

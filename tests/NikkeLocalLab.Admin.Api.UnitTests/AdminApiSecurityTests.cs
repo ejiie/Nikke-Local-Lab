@@ -822,7 +822,9 @@ public sealed partial class AdminApiSecurityTests
     public static async Task<RunningApi> StartAsync(
         TimeProvider? timeProvider = null,
         TimeSpan? sessionLifetime = null,
-        NikkeLocalLab.Application.ProfileManagement.IProfileManagementService? profiles = null)
+        NikkeLocalLab.Application.ProfileManagement.IProfileManagementService? profiles = null,
+        IBossSeasonSynchronizer? seasonSynchronizer = null,
+        ICharacterCatalogSynchronizer? characterSynchronizer = null)
     {
       string? bootstrapCode = null;
       var application = AdminApiHost.Build(
@@ -838,6 +840,8 @@ public sealed partial class AdminApiSecurityTests
             {
               if (timeProvider is not null) services.AddSingleton(timeProvider);
               if (profiles is not null) services.AddSingleton(profiles);
+              if (seasonSynchronizer is not null) services.AddSingleton(seasonSynchronizer);
+              if (characterSynchronizer is not null) services.AddSingleton(characterSynchronizer);
             }
           });
       await application.StartAsync();

@@ -68,16 +68,24 @@ internal static class ClassicSoloRaidRuntimeState
     Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(receipt, JsonOptions()));
   }
 
-  internal static Task<ClassicSoloRaidRuntimeOperationalBinding>
+  internal static async Task<ClassicSoloRaidRuntimeOperationalBinding>
       ResolveOperationalBindingAsync(
           NpgsqlDataSource dataSource,
           IReadOnlyDictionary<string, string> options,
           Guid accountUid)
   {
     var store = new ClassicSoloRaidRuntimeStateStore(dataSource);
-    return store.ResolveOperationalBindingAsync(
+    byte[]? profileHash = null;
+    if (options.TryGetValue("boss-variant-profile", out var profilePath))
+    {
+      var profile = await BossRuntimeVariantProfile.LoadAsync(profilePath);
+      if (profile.SeasonNumber != RequiredPositiveInteger(options, "season-number"))
+        throw new InvalidOperationException("phase_d_boss_variant_profile_season_mismatch");
+      profileHash = Convert.FromHexString(profile.Sha256);
+    }
+    return await store.ResolveOperationalBindingAsync(
         accountUid,
-        RequiredPositiveInteger(options, "season-number"));
+        RequiredPositiveInteger(options, "season-number"), profileSha256: profileHash);
   }
 
   internal static async Task CaptureAsync(IReadOnlyDictionary<string, string> options)
@@ -97,6 +105,7 @@ internal static class ClassicSoloRaidRuntimeState
       var core = JsonConvert.DeserializeObject<CoreInfo>(await File.ReadAllTextAsync(sourcePath)) ??
           throw new InvalidOperationException("phase_d_raid_state_source_invalid");
       Require(core.Users.Count == 1, "phase_d_raid_state_source_user_cardinality_invalid");
+      EpinelPS.Database.RaidDamageObservationStore.FlushSolo(core, required: true);
       var payload = Extract(core.Users[0]);
       ValidatePayload(payload);
       var clear = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(payload, Formatting.None));
@@ -256,10 +265,7 @@ internal static class ClassicSoloRaidRuntimeState
       var previous = await store.GetHeadAsync(StoreKey(binding));
       if (previous is not null && previous.RevisionUid == capture.ExpectedHeadRevisionUid)
       {
-        var previousClear = Unprotect(previous.ProtectedPayload, secret, AssociatedData(binding with
-        {
-          AccountRevisionSetSha256 = previous.SourceProfileRevisionSetSha256
-        }));
+        var previousClear = Unprotect(previous.ProtectedPayload, secret, AssociatedData(SourceBinding(binding, previous)));
         try
         {
           Require(SHA256.HashData(previousClear).AsSpan().SequenceEqual(previous.StateContentSha256),
@@ -375,24 +381,6 @@ internal static class ClassicSoloRaidRuntimeState
     user.SoloRaidData.Clear();
     var store = new ClassicSoloRaidRuntimeStateStore(dataSource);
     var head = await store.GetHeadAsync(StoreKey(binding));
-    var sourceBinding = binding;
-    var inheritedCompletedRecord = false;
-    if (head is null && binding.ClientBuildCode == "build_151.8.5" &&
-        LowerHex(binding.ClientExecutableSha256) ==
-            "36fa20306d010087cdb336bbbb8a6718013d4a16838178045b1270af631b1732")
-    {
-      // Operator-approved 150 -> 151 transition, same account/season/snapshot.
-      // Existing 151 state always wins. Read the immutable old head using its
-      // original authenticated binding; never overwrite or relabel that row.
-      sourceBinding = binding with
-      {
-        ClientBuildCode = "build_150.6.9",
-        ClientExecutableSha256 = FromHex(
-            "2cfaa12b7d708aa6a741faee17c3ac14d8e9cd6be1b5e4e773ee1535b6ddaa30")
-      };
-      head = await store.GetHeadAsync(StoreKey(sourceBinding));
-      inheritedCompletedRecord = head is not null;
-    }
     if (head is null)
     {
       // Seed DB records are not authority for this account/selected weakness.
@@ -401,15 +389,12 @@ internal static class ClassicSoloRaidRuntimeState
           false, false, null, null, null, 0, 0, false, false, false);
     }
 
-    var clear = Unprotect(head.ProtectedPayload, identitySecret, AssociatedData(new Binding(
-        binding.AccountUid,
-        head.SourceProfileRevisionSetSha256,
-        binding.SeasonNumber,
-        binding.RaidSnapshotUid,
-        binding.RaidSnapshotSha256,
-        sourceBinding.ClientBuildCode,
-        sourceBinding.ClientExecutableSha256,
-        sourceBinding.SelectedWeaknessCode)));
+    var sourceBinding = SourceBinding(binding, head);
+    var executionMatches = head.RaidSnapshotUid == binding.RaidSnapshotUid &&
+        head.RaidSnapshotSha256.AsSpan().SequenceEqual(binding.RaidSnapshotSha256) &&
+        head.ClientBuildCode == binding.ClientBuildCode &&
+        head.ClientExecutableSha256.AsSpan().SequenceEqual(binding.ClientExecutableSha256);
+    var clear = Unprotect(head.ProtectedPayload, identitySecret, AssociatedData(sourceBinding));
     try
     {
       Require(CryptographicOperations.FixedTimeEquals(
@@ -436,17 +421,6 @@ internal static class ClassicSoloRaidRuntimeState
         ValidatePayload(payload);
       }
       var metrics = ProjectMetrics(payload);
-      if (inheritedCompletedRecord)
-      {
-        if (metrics.CompletedBestTeamCount != 5)
-        {
-          return new ClassicSoloRaidRestoreProjection(
-              false, false, null, null, null, 0, 0, false, false, legacyPartialCompletion);
-        }
-        RuntimeCompletedRaidMigration.KeepCompletedOnly(payload.Raid!);
-        ValidatePayload(payload);
-        metrics = ProjectMetrics(payload);
-      }
       var openRunDiscardedForProfileRevisionMismatch = false;
       if (!payload.StatePresent)
       {
@@ -457,11 +431,11 @@ internal static class ClassicSoloRaidRuntimeState
 
       var profileMatches = CryptographicOperations.FixedTimeEquals(
           head.SourceProfileRevisionSetSha256, currentProfileRevisionSetSha256);
-      if (!profileMatches && metrics.HasOpenRun)
+      if ((!profileMatches || !executionMatches) && metrics.HasOpenRun)
       {
         // A partial Challenge run is profile-bound, but a completed five-team
         // best is not. Apply the same state transition as the lobby Quit action:
-        // discard exactly the open Trial and release its open counter while
+        // close exactly the open Trial and preserve its consumed attempt while
         // retaining the closed best record for the new profile revision.
         foreach (var openLevel in payload.Raid!.SoloRaidLevels.Where(level => level.IsOpen))
           ClassicSoloRaidBattleReceipt.Close(payload.Raid, openLevel, "abandoned");
@@ -469,14 +443,13 @@ internal static class ClassicSoloRaidRuntimeState
             level.RaidLevel == 8 && (int)level.Type == 2 && level.IsOpen);
         Require(removedOpenRuns == 1 && payload.Raid.TrialCount >= 0,
             "phase_d_active_raid_profile_revision_mismatch");
-        if (payload.Raid.TrialCount > 0) payload.Raid.TrialCount--;
         ValidatePayload(payload);
         metrics = ProjectMetrics(payload);
         Require(!metrics.HasOpenRun,
             "phase_d_active_raid_profile_revision_mismatch");
         openRunDiscardedForProfileRevisionMismatch = true;
       }
-      if (!profileMatches)
+      if (!profileMatches || !executionMatches)
       {
         foreach (var practice in payload.Raid!.SoloRaidLevels.Where(level => level.IsOpen && level.Type == SoloRaidType.Practice))
           ClassicSoloRaidBattleReceipt.Close(payload.Raid, practice, "abandoned");
@@ -487,8 +460,8 @@ internal static class ClassicSoloRaidRuntimeState
       return new ClassicSoloRaidRestoreProjection(
           true,
           true,
-          inheritedCompletedRecord ? null : head.RevisionUid,
-          inheritedCompletedRecord ? null : LowerHex(head.StateContentSha256),
+          head.RevisionUid,
+          LowerHex(head.StateContentSha256),
           metrics.CompletedBestTotalDamage,
           metrics.CompletedBestTeamCount,
           metrics.OpenTeamCount,
@@ -496,8 +469,8 @@ internal static class ClassicSoloRaidRuntimeState
           openRunDiscardedForProfileRevisionMismatch,
           legacyPartialCompletion)
       {
-        InheritedCompletedRecordFromBuild = inheritedCompletedRecord ? sourceBinding.ClientBuildCode : null,
-        InheritedSourceRevisionUid = inheritedCompletedRecord ? head.RevisionUid : null
+        InheritedCompletedRecordFromBuild = !executionMatches ? sourceBinding.ClientBuildCode : null,
+        InheritedSourceRevisionUid = !executionMatches ? head.RevisionUid : null
       };
     }
     finally
@@ -699,6 +672,15 @@ internal static class ClassicSoloRaidRuntimeState
       receipt.ClientBuildCode,
       FromHex(receipt.ClientExecutableSha256),
       receipt.SelectedWeaknessCode);
+
+  private static Binding SourceBinding(Binding current, ClassicSoloRaidRuntimeStateHead head) => current with
+  {
+    AccountRevisionSetSha256 = head.SourceProfileRevisionSetSha256,
+    RaidSnapshotUid = head.RaidSnapshotUid,
+    RaidSnapshotSha256 = head.RaidSnapshotSha256,
+    ClientBuildCode = head.ClientBuildCode,
+    ClientExecutableSha256 = head.ClientExecutableSha256
+  };
 
   private static ClassicSoloRaidRuntimeStateKey StoreKey(Binding binding) => new(
       binding.AccountUid,

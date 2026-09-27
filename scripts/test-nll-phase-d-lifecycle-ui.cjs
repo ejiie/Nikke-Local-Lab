@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const source = fs.readFileSync(path.join(__dirname, "../src/NikkeLocalLab.Admin.Api/wwwroot/editor/editor.js"), "utf8");
-const names = ["humanStatus", "hasReadyLaunchPreparation", "refreshLaunchPreparation", "updateRaidActions", "renderLaunch", "startLaunch", "refreshLaunch", "loadLaunchHistory"];
+const names = ["humanStatus", "hasReadyLaunchPreparation", "refreshLaunchPreparation", "launchProgressDisplay", "updateRaidActions", "renderLaunch", "startLaunch", "refreshLaunch", "loadLaunchHistory"];
 const bodies = names.map(name => {
   const match = new RegExp(`^(?:async )?function ${name}\\(`, "m").exec(source);
   assert.ok(match, name);
@@ -27,7 +27,7 @@ let nextTimer = 0;
 const timers = new Map();
 const context = vm.createContext({
   bossUserValidation: { refresh: async () => {} },
-  state, byId, AbortController, document: { querySelector: () => ({ disabled: false, querySelector: () => null }) },
+  state, byId, AbortController, performance, document: { querySelector: () => ({ disabled: false, querySelector: () => null }) },
   elementLabels: { water: "수냉" }, bossSeasonLabels: { 26: "프로비던스" },
   showJson() {}, setTimeout: callback => { const id = ++nextTimer; timers.set(id, callback); return id; },
   clearTimeout: id => timers.delete(id), run: (_, action) => action(),

@@ -138,7 +138,7 @@ def resolve_bundles(asset_root: Path, prefab_names: tuple[str, ...]) -> dict[str
 
 
 def resolve_shield(
-    source: dict[str, Any], private: dict[str, Any], asset_root: Path
+    source: dict[str, Any], private: dict[str, Any], asset_root: Path, bundle_resolver=resolve_bundles
 ) -> dict[str, Any]:
     shield = source.get("elementShield") or {}
     if shield.get("modeCode") == "none":
@@ -213,7 +213,7 @@ def resolve_shield(
             )
             candidate = selected[0]
             names = tuple(candidate["fx"])
-            bundles = resolve_bundles(asset_root, names)
+            bundles = bundle_resolver(asset_root, names)
             mappings.append(
                 {
                     "sourceFxPrefabSetSha256": source_digest,
@@ -339,6 +339,46 @@ def assemble_normalization(source: dict[str, Any], shield: dict[str, Any], cache
             "targetBossElementCodes": list(fx.ROLES), "variants": rows}
 
 
+def assess_shield_patterns(source: dict[str, Any], shield: dict[str, Any],
+                          cache: Path, unitypy: Any) -> dict[str, Any]:
+    patterns = source.get("shieldPatterns")
+    dynamic = shield["modeCode"] != "none"
+    reasons = []
+    if not isinstance(patterns, dict) or patterns.get("contractId") != "nll/boss-shield-pattern-discovery/v1":
+        reasons.append("shield_pattern_discovery_refresh_required")
+    elif (patterns.get("staticReferenceStatusCode") != "resolved"
+          or type(patterns.get("missingReferenceCount")) is not int or patterns["missingReferenceCount"] != 0
+          or any(not isinstance(patterns.get(field), list) for field in
+                 ("entryPoints", "partTargets", "conditions", "normalInterrupts", "quickTimeEvents"))
+          or len(patterns["conditions"]) != shield.get("functionRecordCount")
+          or len(patterns["quickTimeEvents"]) != (source.get("quickTimeEventAffinity") or {}).get("recordCount")):
+        reasons.append("shield_pattern_reference_unresolved")
+    assessment = {"contractId": "nll/boss-shield-preparation-assessment/v1",
+                  "sourceBossElementCode": source["sourceAffinity"]["bossElementCode"],
+                  "patterns": patterns, "reasonCodes": reasons,
+                  "runtimeAdmissionStatusCode": "not_assessed", "assetWrites": 0}
+    if dynamic:
+        if unitypy is None:
+            reasons.append("shield_fx_inspector_unavailable")
+        else:
+            inspector = local_module("shield_fx_assessment", "nll-shield-fx-assessment.py")
+            try:
+                assessment["fx"] = inspector.assess(assessment["sourceBossElementCode"],
+                                                   shield["fxVariants"], cache, unitypy)
+            except (ValueError, KeyError, TypeError, OSError):
+                reasons.append("shield_fx_inputs_unresolved")
+            if "fx" in assessment:
+                if any(row["statusCode"] not in {"source_reuse", "reuse_candidate"}
+                       for row in assessment["fx"]["variants"]):
+                    reasons.append("shield_fx_fit_review_required")
+                else:
+                    # Preparation recipes deliver unchanged pins directly. The installed
+                    # runtime profile wire still needs the separate P2-3 binding work.
+                    reasons.append("shield_fx_runtime_binding_required")
+    assessment["preparationStatusCode"] = "review_required" if reasons else "not_required"
+    return assessment
+
+
 def run(args: argparse.Namespace) -> None:
     source_path = args.source_discovery.resolve()
     private_path = args.private_discovery.resolve()
@@ -367,17 +407,50 @@ def run(args: argparse.Namespace) -> None:
         and behavior.get("rootReferenceSetSha256")
         == behavior_source.get("rootReferenceSetSha256")
         and behavior.get("graphMatchCount") == behavior.get("rootReferenceCount")
-        and behavior.get("disabledNodeCount") == 0,
+        and type(behavior.get("disabledNodeCount")) is int
+        and behavior["disabledNodeCount"] >= 0,
         "boss_profile_behavior_closure_invalid",
     )
-    v3 = (getattr(args, "allow_v3_candidate", False)
-          and (source.get("quickTimeEventAffinity") or {}).get("modeCode")
-          == "target_monster_linked_element_only")
-    if v3:
+    shield = resolve_shield(source, private, asset_root)
+    unitypy = None
+    if shield["modeCode"] != "none" and args.unitypy_root is not None and args.unitypy_root.is_dir():
+        sys.path.insert(0, str(args.unitypy_root.resolve()))
+        import UnityPy
+        unitypy = UnityPy
+    assessment = assess_shield_patterns(source, shield, asset_root, unitypy)
+    assessment.update({"sourceDiscoverySha256": hash_file(source_path),
+                       "behaviorAssemblySha256": hash_file(behavior_path)})
+    fx_binding = None
+    if "fx" in assessment and unitypy is not None:
+        recipes = local_module("shield_fx_recipes", "nll-shield-fx-recipes.py")
+        manifest, outputs = recipes.prepare(assessment["sourceBossElementCode"], shield["fxVariants"], asset_root, unitypy)
+        recipe_root = args.profile_output.absolute().parent / "shield-fx-preparation"
+        recipes.plain_path(recipe_root)
+        recipe_root = recipe_root.resolve()
+        require(not recipe_root.is_relative_to(asset_root) and not asset_root.is_relative_to(recipe_root),
+                "boss_profile_shield_output_overlaps_input")
+        recipes.deliver(recipe_root, manifest, outputs)
+        # Consume the portable recipes again against pinned originals before reporting
+        # delivery. These preparation candidates do not change the installed profile wire.
+        recipes.verify_delivery(recipe_root, assessment["sourceBossElementCode"], shield["fxVariants"], asset_root, unitypy)
+        assessment.update(shieldFxRecipesSha256=hash_file(recipe_root / "recipes.receipt.json"),
+                          shieldFxRecipeDeliveryStatusCode="verified_preparation_candidates",
+                          assetWrites=len(outputs))
+        if manifest["preparationStatusCode"] in {"reuse_ready", "size_candidates_ready"}:
+            fx_binding = recipes.profile_binding(manifest, assessment["shieldFxRecipesSha256"])
+            assessment["reasonCodes"] = [code for code in assessment["reasonCodes"] if code not in
+                                         {"shield_fx_fit_review_required", "shield_fx_runtime_binding_required"}]
+            assessment["preparationStatusCode"] = "review_required" if assessment["reasonCodes"] else "prepared"
+    assessment_path = (getattr(args, "shield_assessment_output", None)
+                       or args.profile_output.with_name("shield-pattern-fx-assessment.receipt.json")).resolve()
+    write_atomic(assessment_path, assessment)
+    require(assessment["preparationStatusCode"] in {"not_required", "prepared"},
+            "boss_profile_shield_assessment_review_required")
+    has_qte = (source.get("quickTimeEventAffinity") or {}).get("modeCode") == "target_monster_linked_element_only"
+    if has_qte:
         qte = require_v3_qte(source)
     else:
         require_v2_qte_compatibility(source)
-    shield = resolve_shield(source, private, asset_root)
     dynamic = shield["modeCode"] == "dynamic_affinity_linked"
     profile = {
         "schemaVersion": 2,
@@ -419,19 +492,18 @@ def run(args: argparse.Namespace) -> None:
             "rawSourceIdentifiersPersisted": False,
         },
     }
-    if v3:
-        require(args.unitypy_root is not None and args.unitypy_root.is_dir(),
-                "boss_profile_v3_unitypy_missing")
-        sys.path.insert(0, str(args.unitypy_root.resolve()))
-        import UnityPy
-        transform = local_module("boss_fx_transform", "materialize-nll-shield-fx-transform-variant.py")
-        profile.update({"schemaVersion": 3, "contractId": "nll/boss-runtime-variant-profile/v3",
-                        "quickTimeEventAffinity": qte,
-                        "shieldFxTransformNormalization": assemble_normalization(
-                            source, shield, asset_root, transform.materialize, UnityPy)})
+    if dynamic or has_qte:
+        profile.update({"schemaVersion": 4, "contractId": "nll/boss-runtime-variant-profile/v4"})
+    if dynamic:
+        require(fx_binding is not None, "boss_profile_shield_recipe_binding_missing")
+        profile["shieldFxPreparation"] = fx_binding
+        recipes.verify_profile_binding(profile, recipe_root)
+    if has_qte:
+        profile["quickTimeEventAffinity"] = qte
         profile["transformation"].update({
-            "modeCode": "target_monster_element_dynamic_shield_fx_and_qte_element",
-            "allowedTableCodes": ["monster", "function", "quick_time_event"]})
+            "modeCode": ("target_monster_element_dynamic_shield_fx_and_qte_element" if dynamic
+                         else "target_monster_element_and_qte_element"),
+            "allowedTableCodes": ["monster", *(["function"] if dynamic else []), "quick_time_event"]})
     profile_path = args.profile_output.resolve()
     write_atomic(profile_path, profile)
     receipt = {
@@ -442,6 +514,7 @@ def run(args: argparse.Namespace) -> None:
         "profileSha256": hash_file(profile_path),
         "sourceDiscoverySha256": hash_file(source_path),
         "behaviorAssemblySha256": hash_file(behavior_path),
+        "shieldPreparationAssessmentSha256": hash_file(assessment_path),
         "skillClosureStatusCode": "resolved",
         "behaviorClosureStatusCode": "resolved",
         "elementShieldModeCode": shield["modeCode"],
@@ -462,6 +535,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--asset-cache-root", required=True, type=Path)
     result.add_argument("--profile-output", required=True, type=Path)
     result.add_argument("--receipt-output", required=True, type=Path)
+    result.add_argument("--shield-assessment-output", type=Path)
     result.add_argument("--allow-v3-candidate", action="store_true")
     result.add_argument("--unitypy-root", type=Path)
     return result

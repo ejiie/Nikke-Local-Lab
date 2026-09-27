@@ -236,12 +236,16 @@ try {
     if ($null -ne $client) {
         try { $client.WaitForExit() } finally { $client.Dispose() }
     }
+    # Identity was checked above. Publish the observation before any slow cleanup.
+    Write-PhaseDProgress $LaunchRoot 'game_exited'
 
     if ($jobRequired) {
+        Write-PhaseDProgress $LaunchRoot 'runtime_stopping'
         Stop-PhaseDExecutionJob $LaunchRoot $ExpectedRunnerBundleSha256
         Protect-PhaseDJobServerLog $LaunchRoot $ExpectedRunnerBundleSha256
         Invoke-PhaseDExecutionFxCleanup $LaunchRoot $ExpectedRunnerBundleSha256
     }
+    Write-PhaseDProgress $LaunchRoot 'runtime_restore'
     $completionArguments = [ordered]@{
         ObservedStageCode = 'startup_only'; OutcomeCode = 'client_exit'
         ServerRoot = $ServerRoot; EvidenceRoot = $EvidenceRoot
@@ -286,18 +290,16 @@ try {
         Write-PhaseDPhysicalCleanupCheckpoint $LaunchRoot $ExpectedRunnerBundleSha256 $completionPath
         $physicalCleanupCommitted = $true
     }
-    $pgStartExitCode = Invoke-PhaseDPgCtl `
+    Write-PhaseDProgress $LaunchRoot 'database_restart'
+    Ensure-PhaseDPostgresRunning `
         -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-pg.identity.json') `
         -PgCtlPath $ControlCenterPgCtlPath `
-        -Arguments @(
-            'start', '-D', $ControlCenterPgDataPath,
-            '-l', $ControlCenterPgLogPath, '-w', '-t', '60')
-    if ($pgStartExitCode -ne 0) {
-        throw 'phase_d_control_center_database_restart_failed'
-    }
+        -DataPath $ControlCenterPgDataPath -LogPath $ControlCenterPgLogPath
     $databaseRestarted = $true
+    Write-PhaseDProgress $LaunchRoot 'progress_save'
     $persistence = Invoke-SoloRaidPersistence -LaunchContextUid $launchContextUid
     $raidStatePersisted = $true
+    Write-PhaseDProgress $LaunchRoot 'finalizing'
     $state = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 |
         ConvertFrom-Json
     $state.statusCode = 'completed'
@@ -328,6 +330,7 @@ try {
     Assert-Watcher `
         (-not (Test-Path -LiteralPath $SoloRaidPendingPayloadPath)) `
         'phase_d_raid_state_pending_delete_failed'
+    Write-PhaseDProgress $LaunchRoot 'ready'
     [IO.File]::WriteAllText(
         $watcherLogPath,
         "completed $completionSha256`n",
@@ -339,6 +342,7 @@ try {
 }
 catch {
     $primaryFailure = $_
+    Write-PhaseDProgress $LaunchRoot 'recovery_required'
     try { Write-PhaseDFirstFailure -LaunchRoot $LaunchRoot -Owner watcher -Stage completion -Failure $primaryFailure } catch { }
     $failureCode = if ($primaryFailure.Exception.Message -cmatch '^[a-z0-9._-]{3,128}$') {
         $primaryFailure.Exception.Message
@@ -414,13 +418,10 @@ catch {
                 Write-PhaseDRollbackCleanupCheckpoint $LaunchRoot $ExpectedRunnerBundleSha256
                 $physicalCleanupCommitted=$true
             }
-            $pgStartExitCode = Invoke-PhaseDPgCtl `
+            Ensure-PhaseDPostgresRunning `
                 -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-pg.identity.json') `
                 -PgCtlPath $ControlCenterPgCtlPath `
-                -Arguments @(
-                    'start', '-D', $ControlCenterPgDataPath,
-                    '-l', $ControlCenterPgLogPath, '-w', '-t', '60')
-            if ($pgStartExitCode -ne 0) { throw 'restart_failed' }
+                -DataPath $ControlCenterPgDataPath -LogPath $ControlCenterPgLogPath
             $databaseRestarted = $true
         }
         catch {

@@ -150,6 +150,62 @@ internal static class RuntimePersistenceIntegrationChecks
       try { await Capture(ironAgain,ironRestored.HeadRevisionUid,"mismatched"); }
       catch (InvalidOperationException) { failed = true; }
       Check(failed && !File.Exists(Path.Combine(root,"mismatched.pending.json")));
+
+      // Any future build continues the same authenticated history and daily state.
+      // No known-version pair or completed-best prerequisite is involved.
+      options["weakness-code"] = "iron";
+      var initialHead = (await raidStore.GetHeadAsync(raidKey))!;
+      var previousHistory = JsonConvert.SerializeObject(changed.SoloRaidData[123].BattleHistory);
+      var expectedTrials = 0;
+      var expectedCostume = 99;
+      foreach (var build in new[] { "synthetic-future-a", "synthetic-future-b", preferencesKey.ClientBuildCode })
+      {
+        var exe = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(build));
+        options["client-build-code"] = build;
+        options["client-executable-sha256"] = Convert.ToHexStringLower(exe);
+        var target = UserWithCsn(707);
+        var targetPreferences = new RuntimePreferencesKey(account, build, exe);
+        await RuntimePreferencesPersistence.RestoreAsync(target, source, secret, targetPreferences, profile, "iron",
+            new() { [707] = characterUid });
+        var projectionAcrossVersion = await ClassicSoloRaidRuntimeState.RestoreAsync(target, source, secret,
+            options, account, operational, Convert.FromHexString(profile));
+        Check(projectionAcrossVersion.HeadRevisionUid == initialHead.RevisionUid);
+        Check(projectionAcrossVersion.CompletedBestTotalDamage == 150 && !projectionAcrossVersion.OpenRunRestored);
+        Check(target.SoloRaidData[123].TrialCount == expectedTrials && target.SoloRaidData[123].LastDateDay == 1);
+        Check(JsonConvert.SerializeObject(target.SoloRaidData[123].BattleHistory) == previousHistory);
+        Check(target.UserTeams[team.Type].Teams.Single().Slots.Single().Value == 707 && target.Characters.Single().CostumeId == expectedCostume);
+        // One additional lobby abandonment must remain consumed across the next build.
+        target.SoloRaidData[123].TrialCount = ++expectedTrials;
+        target.Characters.Single().CostumeId = ++expectedCostume;
+        var next = await Capture(target, initialHead.RevisionUid, build);
+        await ClassicSoloRaidRuntimeState.PersistAsync(next);
+        Check(!(bool)Newtonsoft.Json.Linq.JObject.Parse(await File.ReadAllTextAsync(next["receipt"]))["quarantined"]!);
+        var nextHead = (await raidStore.GetHeadAsync(raidKey))!;
+        Check(nextHead.ClientBuildCode == build && nextHead.RevisionNumber == initialHead.RevisionNumber + 1);
+        // Every build reads the same logical head, including going back to an older build.
+        Check((await raidStore.GetHeadAsync(raidKey with { ClientBuildCode = "unlisted-build" }))!.RevisionUid == nextHead.RevisionUid);
+        var reloaded = UserWithCsn(708);
+        var restoredAcrossVersion = await ClassicSoloRaidRuntimeState.RestoreAsync(reloaded, source, secret,
+            options, account, operational, Convert.FromHexString(profile));
+        Check(reloaded.SoloRaidData[123].TrialCount == expectedTrials && restoredAcrossVersion.HeadRevisionUid == nextHead.RevisionUid);
+        initialHead = nextHead;
+      }
+      // A version without a completed run must still recover its consumed attempts.
+      options["weakness-code"] = "wind";
+      var noBest = UserWithCsn(709);
+      var buildKey = new RuntimePreferencesKey(account, options["client-build-code"], Convert.FromHexString(options["client-executable-sha256"]));
+      await RuntimePreferencesPersistence.RestoreAsync(noBest, source, secret, buildKey, profile, "wind", new() { [709] = characterUid });
+      noBest.SoloRaidData[123].TrialCount = 3;
+      noBest.SoloRaidData[123].LastDateDay = 42;
+      var noBestCapture = await Capture(noBest, null, "no-best");
+      await ClassicSoloRaidRuntimeState.PersistAsync(noBestCapture);
+      options["client-build-code"] = "synthetic-next-unlisted";
+      options["client-executable-sha256"] = new string('f',64);
+      var nextNoBest = UserWithCsn(710);
+      var noBestRestored = await ClassicSoloRaidRuntimeState.RestoreAsync(nextNoBest, source, secret, options,
+          account, operational, Convert.FromHexString(profile));
+      Check(noBestRestored.StateRestored && noBestRestored.CompletedBestTeamCount == 0);
+      Check(nextNoBest.SoloRaidData[123].TrialCount == 3 && nextNoBest.SoloRaidData[123].LastDateDay == 42);
     }
     finally
     {

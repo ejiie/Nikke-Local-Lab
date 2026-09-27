@@ -27,6 +27,18 @@ Local Lab이 발급한 무작위 자체 UID만 사용합니다. 실제 계정 UI
 
 각 화면·route는 `supported`, `hidden`, `visible_no_op`, `not_supported` 중 하나로 versioning합니다. 니케는 roster/build, 스쿼드는 저장 team, 인벤토리는 Local Lab이 지원하는 전투 항목의 read-only subset만 투영합니다. Phase 2A1의 장착 상태를 전체 원본 inventory라고 주장하지 않습니다. 대원모집은 `visible_no_op`이며 click acknowledgement 뒤 page transition이 없습니다.
 
+### 니케 보유 일괄 추가 (2026-09-16)
+
+관리도구의 `모두 보유로 설정`은 현재 도감 전체에서 미보유 니케만 편집 대기 목록에 추가한다.
+검색·필터로 숨겨진 항목도 포함하고, 기존 보유 빌드와 다른 대기 편집은 보존한다.
+운영자는 신규 니케의 기본 육성 상태를 선택했다. `character_owned=true` 편집을 기존
+preview → Save / Save As 경로로 저장하며, 클릭만으로 DB를 저장하지 않는다.
+각 신규 빌드는 캐릭터 레벨·스킬 1, 한계돌파·코어 0, 적용 가능한 호감도 1,
+장비·큐브·소장품 미착용으로 생성한다. 계정의 싱크로 설정은 유지한다.
+capability의 적용 여부·상한·결손은 해당 계정에 고정된 catalog snapshot에서 해소하며,
+해당 catalog 밖 UID나 보유 해제 요청은 거절한다. 이미 보유한 UID의 추가는 no-op이다.
+기존 revision은 유지하고 추가 결과를 새 revision에 저장한다. 최대 육성을 의미하지 않는다.
+
 ### AccountCombatStateRevision
 
 계정 전체에 적용되는 전투 상태의 불변 revision입니다.
@@ -217,6 +229,22 @@ OL은 장비별 line `1..3`의 sparse 좌표로 보존합니다. `{1, 3}`처럼 
 `Save As`와 portable export는 다른 동작입니다. Phase 2A2는 Save As와 source-free sanitized import/rebase까지만 구현하며 portable export는 아직 제공하지 않습니다. 향후 구체적인 소비자가 생겨 export를 구현한다면 schema version, catalog manifest hash, canonical payload hash와 normalized value만 포함해야 합니다. 실제 계정 식별자, 원본 ID, 파일 경로, 자격증명, raw payload는 금지하며 dataset이 다르면 자동 이름 매칭하지 않고 명시적 mapping/rebase를 요구합니다.
 
 ## 별도 관리 도구
+
+### 캐릭터 목록 동기화 (2026-09-16 운영자 요청)
+
+- 니케 도감의 `모두 보유로 설정` 옆 `캐릭터 목록 동기화`는 시즌 동기화와 같은 로컬
+  `StaticData.pack`과 공식 설치본의 읽기 전용 설정·한국어 이름 자료를 사용한다.
+- 캐릭터 importer의 안정적인 자체 UID와 불변 catalog snapshot을 재사용한다. 완성된
+  이름·속성·제조사·버스트 등의 목록을 원자적으로 선택하고 기존 캐릭터를 삭제하지 않는다.
+  없는 초상화만 기존 공개 이미지 공급 경로에서 가져온다. 이미지 결손은 표시하고 다음 클릭에 재시도한다.
+- 동기화 자체는 계정/보유/육성값을 변경하지 않는다. 신규 캐릭터는 미보유다.
+  보유 추가 Save는 명시적인 `character_catalog` reference operation에 고정된 snapshot으로
+  저장한다. 저장 재시도 시 최신 snapshot을 다시 선택하지 않는다. 기존 보유 UID가 모두
+  새 catalog에 있어야 하며 기존 build 값·장비·스쿼드와 과거 revision은 보존한다.
+- `character_catalog`는 `character_owned`와 함께만 허용한다. 신규 빌드의 기본 육성값은
+  선택한 snapshot의 capability에서 해소하며 다른 계정을 자동 재연결하지 않는다.
+- 읽기/가져오기 실패 시 선택된 목록을 유지한다. 같은 입력의 재클릭은 중복 캐릭터나
+  계정 revision을 만들지 않는다. 게임 실행·음성·보스 실행 구성은 변경하지 않는다.
 
 별도 관리 UI는 권장합니다. 단, PostgreSQL을 직접 편집하는 DB client가 아니라 loopback Application/API의 command client여야 합니다.
 

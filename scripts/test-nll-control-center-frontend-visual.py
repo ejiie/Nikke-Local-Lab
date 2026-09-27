@@ -197,8 +197,7 @@ def main() -> int:
             page.goto(f"http://127.0.0.1:{args.port}/editor/", wait_until="networkidle")
             page.evaluate(
                 """([catalog, values]) => {
-                  document.getElementById('login-screen').hidden = true;
-                  document.getElementById('app-shell').hidden = false;
+                  document.getElementById('app-shell').inert = false;
                   state.presentation = catalog;
                   state.presentationByCharacter = new Map(catalog.characters.map((item) => [item.characterUid, item]));
                   state.presentationByConsole = new Map(catalog.consoles.map((item) => [item.definitionUid, item]));
@@ -284,11 +283,11 @@ def main() -> int:
                   ];
                   state.accountUid = first;
                   state.accountLobbyByUid = new Map([
-                    [first, { displayName: '밍카엘', commanderLevel: 896 }],
-                    [second, { displayName: '밍카', commanderLevel: 911 }]
+                    [first, { displayName: '테스트 지휘관 A', commanderLevel: 100 }],
+                    [second, { displayName: '테스트 지휘관 B', commanderLevel: 200 }]
                   ]);
                   renderAccounts();
-                  document.getElementById('top-account-name').textContent = '밍카엘';
+                  document.getElementById('top-account-name').textContent = '테스트 지휘관 A';
                   document.getElementById('top-account-detail').textContent = '메인 계정';
                   setPage('home');
                 }"""

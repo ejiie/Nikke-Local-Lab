@@ -110,7 +110,7 @@ async function measure() {
     assert.equal(await evaluate(`(async()=>{
       const response=await fetch('/admin-auth/v1/bootstrap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:${JSON.stringify(input.code)}})});
       if(!response.ok) throw new Error('bootstrap_failed');
-      document.querySelector('#login-screen').hidden=true; document.querySelector('#app-shell').hidden=false;
+      document.querySelector('#app-shell').inert=false;
       document.querySelector('#refresh-accounts').disabled=false; return true; })()`), true);
     input.code = null;
     assert.equal(responses.length, 0);

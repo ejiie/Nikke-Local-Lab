@@ -8,7 +8,11 @@ namespace NikkeLocalLab.Persistence.PostgreSql;
 
 public sealed record RuntimePreferencesKey(Guid AccountUid, string ClientBuildCode, byte[] ClientExecutableSha256);
 public sealed record RuntimePreferencesHead(Guid RevisionUid, int RevisionNumber, byte[] ProtectedPayload,
-    byte[] ProtectedPayloadSha256, byte[] ContentSha256);
+    byte[] ProtectedPayloadSha256, byte[] ContentSha256)
+{
+  public string ClientBuildCode { get; init; } = "";
+  public byte[] ClientExecutableSha256 { get; init; } = [];
+}
 public sealed record RuntimePreferencesCapture(RuntimePreferencesKey Key, Guid LaunchContextUid,
     Guid? ExpectedRevisionUid, byte[] ProtectedPayload, byte[] ProtectedPayloadSha256,
     byte[] ContentSha256, DateTimeOffset CapturedAtUtc);
@@ -27,16 +31,23 @@ public sealed class RuntimePreferencesStore(NpgsqlDataSource dataSource)
     await using var command = connection.CreateCommand();
     command.CommandText = """
         SELECT revision.revision_uid, revision.revision_number, revision.protected_payload,
-               revision.protected_payload_sha256, revision.content_sha256
+               revision.protected_payload_sha256, revision.content_sha256,
+               context.client_build_code, context.client_executable_sha256
           FROM lab_private_server.runtime_preferences state
+          JOIN lab_private_server.runtime_preferences_scope scope USING (preferences_uid)
           JOIN lab_private_server.runtime_preferences_revision revision ON revision.revision_uid = state.current_revision_uid
-         WHERE state.local_account_uid = $1 AND state.client_build_code = $2 AND state.client_executable_sha256 = $3;
+          JOIN lab_private_server.runtime_preferences_revision_context context ON context.revision_uid = revision.revision_uid
+         WHERE scope.local_account_uid = $1;
         """;
-    BindKey(command, key);
+    command.Parameters.AddWithValue(key.AccountUid);
     await using var reader = await command.ExecuteReaderAsync(cancellationToken);
     if (!await reader.ReadAsync(cancellationToken)) return null;
     var head = new RuntimePreferencesHead(reader.GetGuid(0), reader.GetInt32(1), reader.GetFieldValue<byte[]>(2),
-        reader.GetFieldValue<byte[]>(3), reader.GetFieldValue<byte[]>(4));
+        reader.GetFieldValue<byte[]>(3), reader.GetFieldValue<byte[]>(4))
+    {
+      ClientBuildCode = reader.GetString(5),
+      ClientExecutableSha256 = reader.GetFieldValue<byte[]>(6)
+    };
     Require(head.ProtectedPayload.Length is >= 53 and <= 16_777_216 && head.ContentSha256.Length == 32 &&
         SHA256.HashData(head.ProtectedPayload).AsSpan().SequenceEqual(head.ProtectedPayloadSha256), "runtime_preferences_head_invalid");
     return head;
@@ -73,16 +84,35 @@ public sealed class RuntimePreferencesStore(NpgsqlDataSource dataSource)
         return new RuntimePreferencesResult(reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetGuid(2), true);
       }
     }
+    await using (var accountMutex = connection.CreateCommand())
+    {
+      accountMutex.CommandText = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0));";
+      accountMutex.Parameters.AddWithValue("nll/runtime-preferences-account/" + capture.Key.AccountUid.ToString("D"));
+      await accountMutex.ExecuteNonQueryAsync(cancellationToken);
+    }
     await using (var create = connection.CreateCommand())
     {
       create.CommandText = """
           INSERT INTO lab_private_server.runtime_preferences
               (local_account_uid, client_build_code, client_executable_sha256, preferences_uid)
-          VALUES ($1, $2, $3, $4) ON CONFLICT (local_account_uid, client_build_code, client_executable_sha256) DO NOTHING;
+          SELECT $1, $2, $3, $4
+           WHERE NOT EXISTS (SELECT 1 FROM lab_private_server.runtime_preferences_scope WHERE local_account_uid = $1)
+          ON CONFLICT (local_account_uid, client_build_code, client_executable_sha256) DO NOTHING;
           """;
       BindKey(create, capture.Key);
       create.Parameters.AddWithValue(Guid.NewGuid());
       await create.ExecuteNonQueryAsync(cancellationToken);
+    }
+    await using (var designate = connection.CreateCommand())
+    {
+      designate.CommandText = """
+          INSERT INTO lab_private_server.runtime_preferences_scope (local_account_uid, preferences_uid)
+          SELECT local_account_uid, preferences_uid FROM lab_private_server.runtime_preferences
+           WHERE local_account_uid = $1 AND client_build_code = $2 AND client_executable_sha256 = $3
+          ON CONFLICT (local_account_uid) DO NOTHING;
+          """;
+      BindKey(designate, capture.Key);
+      await designate.ExecuteNonQueryAsync(cancellationToken);
     }
     Guid preferencesUid;
     Guid? currentUid;
@@ -93,11 +123,12 @@ public sealed class RuntimePreferencesStore(NpgsqlDataSource dataSource)
       read.CommandText = """
           SELECT state.preferences_uid, state.current_revision_uid, revision.revision_number, revision.content_sha256
             FROM lab_private_server.runtime_preferences state
+            JOIN lab_private_server.runtime_preferences_scope scope USING (preferences_uid)
             LEFT JOIN lab_private_server.runtime_preferences_revision revision ON revision.revision_uid = state.current_revision_uid
-           WHERE state.local_account_uid = $1 AND state.client_build_code = $2 AND state.client_executable_sha256 = $3
+           WHERE scope.local_account_uid = $1
            FOR UPDATE OF state;
           """;
-      BindKey(read, capture.Key);
+      read.Parameters.AddWithValue(capture.Key.AccountUid);
       await using var reader = await read.ExecuteReaderAsync(cancellationToken);
       Require(await reader.ReadAsync(cancellationToken), "runtime_preferences_missing");
       preferencesUid = reader.GetGuid(0);
@@ -132,6 +163,15 @@ public sealed class RuntimePreferencesStore(NpgsqlDataSource dataSource)
       append.Parameters.AddWithValue(capture.ContentSha256);
       append.Parameters.AddWithValue(capture.CapturedAtUtc.ToUniversalTime());
       await append.ExecuteNonQueryAsync(cancellationToken);
+      await using var context = connection.CreateCommand();
+      context.CommandText = """
+          INSERT INTO lab_private_server.runtime_preferences_revision_context
+              (revision_uid, client_build_code, client_executable_sha256) VALUES ($1,$2,$3);
+          """;
+      context.Parameters.AddWithValue(resultUid.Value);
+      context.Parameters.AddWithValue(capture.Key.ClientBuildCode);
+      context.Parameters.AddWithValue(capture.Key.ClientExecutableSha256);
+      await context.ExecuteNonQueryAsync(cancellationToken);
       await using var advance = connection.CreateCommand();
       advance.CommandText = "UPDATE lab_private_server.runtime_preferences SET current_revision_uid = $1 WHERE preferences_uid = $2;";
       advance.Parameters.AddWithValue(resultUid.Value);

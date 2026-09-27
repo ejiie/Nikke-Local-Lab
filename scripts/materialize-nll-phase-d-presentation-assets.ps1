@@ -4,7 +4,8 @@ param(
         'C:\NLL\ControlCenter\app\wwwroot\editor\presentation.json',
     [string]$OutputRoot =
         'C:\Users\nlloperator\Documents\Github\Nikke-Local-Lab\artifacts\phase-d\presentation-assets',
-    [ValidateRange(0, 193)] [int]$MaximumMissingCharacterCount = 0
+    [ValidateRange(0, 10000)] [int]$MaximumMissingCharacterCount = 0,
+    [switch]$CharactersOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -214,6 +215,14 @@ try {
         })
     }
 
+    if ($CharactersOnly) {
+        Assert-PresentationAsset ($unresolvedCharacterUids.Count -le $MaximumMissingCharacterCount) 'phase_d_presentation_character_assets_incomplete'
+        Write-AtomicPresentationJson (Join-Path $OutputRoot 'assets.receipt.json') ([ordered]@{
+            contractId='nll/character-portraits/v1'; characterMembers=[object[]]$characterMembers
+            unresolvedCharacterUids=[string[]]$unresolvedCharacterUids
+        })
+        return
+    }
     $bossMembers = New-Object Collections.Generic.List[object]
     foreach ($boss in @(
         @{ season = 26; uri = 'https://enikk.app/bosses/full_xbg002_zeus.png' },

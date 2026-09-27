@@ -8,8 +8,27 @@ namespace NikkeLocalLab.Admin.Api;
 public sealed record BossPipelineOptions(string PowerShellPath, string PowerShellSha256, string WorkerPath, string WorkerSha256,
     string ConfigurationPath, string ConfigurationSha256, int TimeoutSeconds = 1800);
 
-public sealed class PowerShellBossPipelineRunner(BossPipelineOptions options, UserValidationDelivery? userValidation = null) : IBossPipelineRunner
+public sealed class BossPipelineException(string failureCode) : Exception("boss_pipeline_failed")
 {
+  public string FailureCode { get; } = IsFailureCode(failureCode) ? failureCode : "boss_pipeline_failed";
+  public static bool IsFailureCode(string value) => System.Text.RegularExpressions.Regex.IsMatch(value,
+      "\\A(?:boss_|phase_d_)[a-z0-9_]{1,100}\\z");
+}
+
+public sealed class PowerShellBossPipelineRunner(BossPipelineOptions options, UserValidationDelivery? userValidation = null,
+    Func<string, BossOnboardingJob, Task<BossPipelineResult>>? resultReader = null) : IBossPipelineRunner
+{
+  public static string ReadFailureCode(string outputRoot)
+  {
+    try
+    {
+      var bytes = FilesystemBossSeasonCatalogService.ReadFile(Path.Combine(outputRoot, "failure-code.txt"), 128);
+      var code = new UTF8Encoding(false, true).GetString(bytes);
+      return BossPipelineException.IsFailureCode(code) ? code : "boss_pipeline_failed";
+    }
+    catch (Exception error) when (FilesystemBossSeasonCatalogService.IsReadFailure(error) || error is DecoderFallbackException)
+    { return "boss_pipeline_failed"; }
+  }
   private static string JobName(Guid uid) => "Local\\NLL.BossOnboarding." + uid.ToString("N");
   private static string Literal(string value) => "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";
   private static void Pin(string path, string hash, int maximum)
@@ -48,13 +67,13 @@ public sealed class PowerShellBossPipelineRunner(BossPipelineOptions options, Us
     try
     {
       await child.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
-      if (child.ExitCode != 0) throw new InvalidOperationException("boss_pipeline_worker_failed");
+      if (child.ExitCode != 0) throw new BossPipelineException(ReadFailureCode(outputRoot));
       for (var attempt = 0; attempt < 20 && owner.ActiveProcesses != 0; attempt++)
         await Task.Delay(50, timeout.Token).ConfigureAwait(false);
       if (owner.ActiveProcesses != 0) throw new InvalidOperationException("boss_pipeline_children_running");
       Pin(options.WorkerPath, options.WorkerSha256, 1048576);
       Pin(options.ConfigurationPath, options.ConfigurationSha256, 1048576);
-      return ReadResult(outputRoot, job, userValidation);
+      return resultReader is null ? ReadResult(outputRoot, job, userValidation) : await resultReader(outputRoot, job).ConfigureAwait(false);
     }
     finally { owner.TerminateAndWait(15000); }
   }
@@ -101,7 +120,6 @@ public sealed class PowerShellBossPipelineRunner(BossPipelineOptions options, Us
         Require(FilesystemBossSeasonCatalogService.IsHash(expected) && FilesystemBossSeasonCatalogService.Hash(bytes) == expected);
         return JsonDocument.Parse(bytes);
       }
-      Require(status == "awaiting_runtime_delivery");
       using var chunks = ReadPinned("native-chunks/receipt.json", nativePin.GetString());
       var ch = chunks.RootElement;
       Require(ch.GetProperty("contractId").GetString() == "nll/native-fx-chunk-candidate/v1" &&
@@ -115,7 +133,9 @@ public sealed class PowerShellBossPipelineRunner(BossPipelineOptions options, Us
       Require(layout.RootElement.GetProperty("contractId").GetString() == "nll/native-fx-fixed-layout-candidate/v1");
       using var native = ReadPinned("native-candidate/receipt.json", layout.RootElement.GetProperty("sourceCandidateSha256").GetString());
       Require(native.RootElement.GetProperty("contractId").GetString() == "nll/native-fx-candidate-receipt/v1" &&
-          native.RootElement.GetProperty("sourceCandidateManifestSha256").GetString() == c.GetProperty("shieldFxCandidateManifestSha256").GetString());
+          native.RootElement.GetProperty("sourceCandidateManifestSha256").GetString() ==
+          (c.TryGetProperty("shieldFxPreparationManifestSha256", out var preparationPin) && preparationPin.ValueKind != JsonValueKind.Null
+              ? preparationPin.GetString() : c.GetProperty("shieldFxCandidateManifestSha256").GetString()));
     }
     string? admissionHash = null;
     if (status == "completed")

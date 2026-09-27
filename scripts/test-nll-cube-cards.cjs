@@ -36,7 +36,7 @@ async function main() {
     });
     await page.goto("http://127.0.0.1:18788/editor/");
     await page.evaluate(cubes => {
-      byId("login-screen").hidden = true; byId("app-shell").hidden = false;
+      byId("app-shell").inert = false;
       state.currentProfile = { values: [
         { fieldCode: "synchro_level", integerValue: 773 },
         { fieldCode: "account_cube_level", subjectUid: cubes[0].definitionUid, integerValue: 3 }

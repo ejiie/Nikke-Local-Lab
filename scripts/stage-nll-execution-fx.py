@@ -40,11 +40,21 @@ def stage(root, seal_sha, source_pack, cache, output, execution_code, weakness):
                       "execution_fx_output_exists_or_parent_missing")
     sealed = candidate.verify(root, seal_sha, source_pack, cache)
     target = candidate.TARGETS[weakness]
-    candidate.require(target in fx.ROLES and sealed["shieldFxCandidateManifestSha256"] is not None,
-                      "execution_fx_overlay_not_required")
-    profile, rows = fx.load_profile(root / "boss-runtime-variant.profile.json", sealed["profileSha256"])
-    row = next(row for row in rows if row["bossElementCode"] == target)
-    original_pin, overlay_pin = fx.pin(row, "targetBundle"), fx.pin(row, "variantBundle")
+    profile = candidate.read(root / "boss-runtime-variant.profile.json")
+    if profile["schemaVersion"] == 4:
+        rows = candidate.recipes.verify_profile_binding(profile, root / "shield-fx-preparation")
+        selected = [r for r in rows if r["bossElementCode"] == target and r["operationCode"] == "adjust_candidate"]
+        candidate.require(len(selected) == 1, "execution_fx_overlay_not_required_or_mapping_not_unique")
+        row = selected[0]
+        original_pin, overlay_pin = row["targetBundle"], row["outputBundle"]
+        overlay_path = root / "shield-fx-preparation" / (overlay_pin["sha256"] + ".bundle")
+    else:
+        candidate.require(target in fx.ROLES and sealed["shieldFxCandidateManifestSha256"] is not None,
+                          "execution_fx_overlay_not_required")
+        profile, rows = fx.load_profile(root / "boss-runtime-variant.profile.json", sealed["profileSha256"])
+        row = next(row for row in rows if row["bossElementCode"] == target)
+        original_pin, overlay_pin = fx.pin(row, "targetBundle"), fx.pin(row, "variantBundle")
+        overlay_path = root / f"shield-fx-candidate/overlay/{target}.bundle"
     # Every hash-identical cache alias needs its own route. This first delivery
     # contract only supports one; never select an arbitrary first match.
     matches = []
@@ -60,7 +70,7 @@ def stage(root, seal_sha, source_pack, cache, output, execution_code, weakness):
     candidate.require(len(matches) == 1, "execution_fx_request_path_ambiguous_or_missing")
     route = request_path("/" + matches[0].relative_to(cache).as_posix())
     original = matches[0].read_bytes()
-    overlay = fx.plain_path(root / f"shield-fx-candidate/overlay/{target}.bundle", file=True).read_bytes()
+    overlay = fx.plain_path(overlay_path, file=True).read_bytes()
     for payload, pin in ((original, original_pin), (overlay, overlay_pin)):
         candidate.require({"sha256": fx.digest(payload), "byteLength": len(payload)} == pin,
                           "execution_fx_input_drifted")

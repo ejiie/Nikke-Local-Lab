@@ -1,7 +1,7 @@
 """Stage length-preserving native FX bundles, without touching any installation.
 
-Only equal-sized Transform payloads from a hash-bound, previously verified native
-candidate are copied into their original serialized positions. Container metadata,
+Only equal-sized, verified sizing payloads from a hash-bound native candidate
+are copied into their original serialized positions. Container metadata,
 object offsets and every other byte stay intact. This is an OFFLINE candidate, not
 proof of the game's catalog integrity acceptance or visual correctness.
 """
@@ -109,7 +109,7 @@ def objects(environment):
     return result
 
 
-def materialize(original, overlay, unity, decompress):
+def materialize(original, overlay, unity, decompress, allowed_changes=None):
     nodes = directory(original, decompress)
     original_env, overlay_env = unity.load(original), unity.load(overlay)
     before, after = objects(original_env), objects(overlay_env)
@@ -132,7 +132,9 @@ def materialize(original, overlay, unity, decompress):
         ranges.append((start, end))
         if raw == target:
             continue
-        require(obj.type.name == "Transform" and len(raw) == len(target), "change_not_allowed")
+        allowed = (obj.type.name == "Transform" if allowed_changes is None else
+                   allowed_changes.get((obj.type.name, key)) == fx.digest(target))
+        require(allowed and len(raw) == len(target), "change_not_allowed")
         candidate[start:end] = target
         changes.append((start, end))
     previous = 0
@@ -175,7 +177,16 @@ def stage(source, source_sha256, output, unity, decompress):
     read(source / "native/binding.private.json", receipt["bindingManifestSha256"])
     read(source / "export-plan.private.json", receipt["exportPlanSha256"])
     entries = receipt["entries"]
-    require(len(entries) == 3 and {r["roleCode"] for r in entries} == set(fx.ROLES), "roles_invalid")
+    prepared = "recipePolicyCode" in receipt
+    if prepared:
+        spec = importlib.util.spec_from_file_location("layout_recipes", Path(__file__).with_name("nll-shield-fx-recipes.py"))
+        recipes = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(recipes)
+        require(receipt["recipePolicyCode"] == recipes.POLICY and 0 < len(entries) <= 5
+                and len({r["roleCode"] for r in entries}) == len(entries)
+                and all(r["roleCode"] in ("fire", "water", "wind", "electric", "iron") for r in entries), "roles_invalid")
+    else:
+        require(len(entries) == 3 and {r["roleCode"] for r in entries} == set(fx.ROLES), "roles_invalid")
     payloads, rows = {}, []
     for row in sorted(entries, key=lambda item: item["roleCode"]):
         role = row["roleCode"]
@@ -183,12 +194,21 @@ def stage(source, source_sha256, output, unity, decompress):
         overlay = read(source / (role + ".bundle"), row["overlay"]["sha256"])
         require(len(original) == row["original"]["byteLength"]
                 and len(overlay) == row["overlay"]["byteLength"], "input_size_mismatch")
-        payload, count = materialize(original, overlay, unity, decompress)
+        allowed_changes = None
+        if prepared:
+            reference = read(source / "native" / (receipt["sourceRoleCode"] + ".bundle"), row["evidence"]["sourceBundle"]["sha256"])
+            evidence, regenerated = recipes.materialize_pair(reference, original, unity)
+            require(regenerated == overlay and evidence == row["evidence"], "recipe_rederivation_failed")
+            before, after = objects(unity.load(original)), objects(unity.load(overlay))
+            allowed_changes = {(obj.type.name, key): fx.digest(obj.get_raw_data()) for key, obj in after.items()
+                               if obj.get_raw_data() != before[key].get_raw_data()}
+        payload, count = materialize(original, overlay, unity, decompress, allowed_changes)
         payloads[role] = payload
         rows.append({"roleCode": role, "original": row["original"],
                      "verifiedOverlay": row["overlay"],
                      "fixedLayout": {"sha256": fx.digest(payload), "byteLength": len(payload)},
-                     "changedTransformCount": count, "objectPayloadsMatchVerifiedOverlay": True,
+                     "changedTransformCount": count if allowed_changes is None else sum(k[0] == "Transform" for k in allowed_changes),
+                     "changedObjectCount": count, "objectPayloadsMatchVerifiedOverlay": True,
                      "directoryAndOffsetsUnchanged": True})
     for path, pin in list(pins.items()):
         read(path, pin)

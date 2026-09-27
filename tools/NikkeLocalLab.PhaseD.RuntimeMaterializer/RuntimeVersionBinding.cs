@@ -15,6 +15,9 @@ internal static class RuntimeVersionBinding
     "build_151.8.5" when executableSha256 ==
         "36fa20306d010087cdb336bbbb8a6718013d4a16838178045b1270af631b1732" =>
         "d14690756e7e8d24cf13df50a7db62a6c932c28e7a759ba6e731fdfcf1e15a5b",
+    "build_152.8.11" when executableSha256 ==
+        "9c50d1e5e2312783b7ae908237081ff2976e06dcb0d90ae1d59f563afc5c73ef" =>
+        "42611495f81734528e8d9f3b4286ed2f8531ad0d75be087a1fb8ef39f9c32367",
     _ => throw new InvalidOperationException("phase_d_client_staticdata_binding_invalid")
   };
 }
@@ -41,16 +44,5 @@ internal static class RuntimeProgressionSnapshot
       user.StageClearHistorys
     });
     return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
-  }
-}
-
-internal static class RuntimeCompletedRaidMigration
-{
-  internal static void KeepCompletedOnly(SoloRaidInfo raid)
-  {
-    raid.SoloRaidLevels.RemoveAll(static level => level.IsOpen);
-    raid.TrialCount = 0;
-    raid.RaidOpenCount = 0;
-    raid.LastDateDay = 0;
   }
 }

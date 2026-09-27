@@ -58,7 +58,9 @@ function Publish-NllBossProfile {
         [Parameter(Mandatory)][string]$RegistryRoot,
         [Parameter(Mandatory)][ValidatePattern('^[a-f0-9]{64}$')][string]$ExpectedRegistrySha256,
         [Parameter(Mandatory)][string]$AdmissionReceiptPath,
-        [switch]$ReplaceExistingProfile
+        [switch]$ReplaceExistingProfile,
+        [object]$DeliveryPin = $null,
+        [string]$MaterializerPath = ''
     )
     Assert-NllBossPublication ($PSVersionTable.PSVersion.Major -ge 7) 'powershell7_required'
     $RegistryRoot = Get-NllBossPublicationPath $RegistryRoot
@@ -68,8 +70,21 @@ function Publish-NllBossProfile {
     $AdmissionReceiptPath = Get-NllBossPublicationPath $AdmissionReceiptPath
     $profile = Read-NllBossPublicationFile $ProfilePath
     $value = $profile.value
-    Assert-NllBossPublication ($value.schemaVersion -eq 2 -and
-        $value.contractId -ceq 'nll/boss-runtime-variant-profile/v2') 'runtime_delivery_required'
+    Assert-NllBossPublication (($value.schemaVersion -eq 2 -and
+        $value.contractId -ceq 'nll/boss-runtime-variant-profile/v2') -or
+        ($value.schemaVersion -eq 4 -and $value.contractId -ceq 'nll/boss-runtime-variant-profile/v4' -and
+         $null -ne $DeliveryPin)) 'runtime_delivery_required'
+    if ($null -ne $DeliveryPin) {
+        Assert-NllBossPublication ((Read-NllBossPublicationFile $DeliveryPin.path).sha256 -ceq $DeliveryPin.sha256) 'delivery_drifted'
+        foreach ($weakness in @('fire','water','wind','electric','iron')) {
+            $lines = @(& $MaterializerPath --validate-common-boss-delivery true --delivery-path $DeliveryPin.path `
+                --delivery-sha256 $DeliveryPin.sha256 --boss-variant-profile $ProfilePath --weakness-code $weakness 2>&1)
+            Assert-NllBossPublication ($LASTEXITCODE -eq 0) 'delivery_not_prepared'
+            $ready = ($lines -join "`n") | ConvertFrom-Json
+            Assert-NllBossPublication ($ready.statusCode -ceq 'prepared' -and $ready.profileSha256 -ceq $profile.sha256) 'delivery_not_prepared'
+        }
+        $ArtifactPins[$DeliveryPin.path] = $DeliveryPin.sha256
+    }
     Assert-NllBossPublication ($value.seasonNumber -gt 0 -and
         $value.profileCode -cmatch '^[a-z][a-z0-9._-]{0,63}$' -and
         $Validation.contractId -ceq 'nll/boss-runtime-variant-profile-validation/v1' -and
@@ -107,6 +122,10 @@ function Publish-NllBossProfile {
         $installedPath = Join-Path $RegistryRoot $relative
         $alreadyPresent = $matched.Count -eq 1 -and $matched[0].profileSha256 -ceq $profile.sha256 -and
             $matched[0].profileRelativePath -ceq $relative -and $matched[0].operationalStatusCode -ceq 'enabled'
+        if ($alreadyPresent -and $null -ne $DeliveryPin) {
+            $alreadyPresent = $matched[0].PSObject.Properties.Name -contains 'delivery' -and
+                $matched[0].delivery.sha256 -ceq $DeliveryPin.sha256 -and $matched[0].delivery.path -ceq $DeliveryPin.path
+        }
         Assert-NllBossPublication ($alreadyPresent -or $registry.sha256 -ceq $ExpectedRegistrySha256) 'registry_changed'
         Assert-NllBossPublication ($alreadyPresent -or $matched.Count -eq 0 -or $ReplaceExistingProfile) 'replacement_not_authorized'
         Assert-NllBossPublication (-not (Test-Path -LiteralPath $AdmissionReceiptPath) -or $alreadyPresent) 'receipt_conflict'
@@ -122,6 +141,7 @@ function Publish-NllBossProfile {
         if (-not $alreadyPresent) {
             $entry = [ordered]@{ seasonNumber = $value.seasonNumber; profileCode = $value.profileCode
                 profileRelativePath = $relative; profileSha256 = $profile.sha256; operationalStatusCode = 'enabled' }
+            if ($null -ne $DeliveryPin) { $entry.delivery = $DeliveryPin }
             $updated = [ordered]@{ schemaVersion = 1; contractId = 'nll/boss-runtime-variant-registry/v1'
                 profiles = @(@($entries | Where-Object { $_.seasonNumber -ne $value.seasonNumber }) + @($entry) |
                     Sort-Object { [int]$_.seasonNumber }, { [string]$_.profileCode }) }

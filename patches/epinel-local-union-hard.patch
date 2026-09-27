@@ -1,0 +1,1262 @@
+--- a/EpinelPS/LobbyServer/LobbyHandlerRegistry.cs
++++ b/EpinelPS/LobbyServer/LobbyHandlerRegistry.cs
+@@ -70,7 +70,9 @@
+                 continue;
+             }
+ 
+-            bool serializeByAccount = string.Equals(type.Namespace, ClassicSoloRaidNamespace, StringComparison.Ordinal);
++            bool serializeByAccount = string.Equals(type.Namespace, ClassicSoloRaidNamespace, StringComparison.Ordinal)
++                || type.Namespace == "EpinelPS.LobbyServer.Guild"
++                || type == typeof(EpinelPS.LobbyServer.Team.SetTeam);
+             registrations.Add(new LobbyHandlerRegistration(attribute.Url, type, serializeByAccount));
+         }
+ 
+--- a/EpinelPS/Data/GameData.cs
++++ b/EpinelPS/Data/GameData.cs
+@@ -28,6 +28,21 @@
+     private int currentFile;
+ 
+     public readonly Dictionary<string, FieldMapRecord> MapData = [];
++
++    [LoadRecord("GuildEmblemTable.json", "Id")]
++    public readonly Dictionary<int, GuildEmblemRecord> GuildEmblemRecords = [];
++
++    [LoadRecord("ConfigGameTable.json", "Id")]
++    public readonly Dictionary<string, ConfigGameRecord> LocalConfigGameRecords = [];
++    [LoadRecord("UnionRaidManagerTable.json", "Id")]
++    public readonly Dictionary<int, UnionRaidManagerRecord> LocalUnionManagers = [];
++    [LoadRecord("UnionRaidPresetTable.json", "Id")]
++    public readonly Dictionary<int, UnionRaidPresetRecord> LocalUnionPresets = [];
++    [LoadRecord("ShootingRangeTable.json", "Id")]
++    public readonly Dictionary<int, ShootingRangeRecord> LocalShootingRanges = [];
++    [LoadRecord("UnionRaidRankingTierTable.json", "Id")]
++    public readonly Dictionary<int, UnionRaidRankingTierRecord> LocalUnionRankingTiers = [];
++
+     //ArchiveEvent
+     [LoadRecord("ArchiveEventDungeonTable.json", "Id")]
+     public readonly Dictionary<int, ArchiveEventDungeonRecord> ArchiveEventDungeonreRecordRaws = [];
+--- a/EpinelPS/Models/UserModel.cs
++++ b/EpinelPS/Models/UserModel.cs
+@@ -183,6 +183,7 @@
+     public DispatchData UserDispatchData { get; set; } = new();
+ 
+     public GuildData Guild { get; set; } = new();
++    public LocalUnionRaidState? LocalUnionRaid { get; set; }
+ 
+     //解放
+     public Dictionary<int, NetLiberateData> LiberateDatas { get; set; } = [];
+--- a/EpinelPS/LobbyServer/Controllers/LobbyController.cs
++++ b/EpinelPS/LobbyServer/Controllers/LobbyController.cs
+@@ -39,6 +39,7 @@
+         ResEnterLobbyServer response = new()
+         {
+             User = LobbyHandler.CreateNetUserDataFromUser(user),
++            Gsn = user.LocalUnionRaid is not null ? user.Guild.guildId ?? 0 : 0,
+             ResetHour = JsonDb.Instance.ResetHourUtcTime,
+             Nickname = userDB.Nickname,
+             SynchroLv = 1,
+--- a/EpinelPS/LobbyServer/LobbyUser/GetUser.cs
++++ b/EpinelPS/LobbyServer/LobbyUser/GetUser.cs
+@@ -18,6 +18,7 @@
+ 
+ 
+         response.User = LobbyHandler.CreateNetUserDataFromUser(user);
++        response.Gsn = user.LocalUnionRaid is not null ? user.Guild.guildId ?? 0 : 0;
+         response.ResetHour = JsonDb.Instance.ResetHourUtcTime;
+         response.OutpostBattleTime = new NetOutpostBattleTime() { MaxBattleTime = 864000000000, MaxOverBattleTime = 12096000000000, BattleTime = battleTimeMs };
+         response.OutpostBattleLevel = user.OutpostBattleLevel;
+--- a/EpinelPS/LobbyServer/Team/SetTeam.cs
++++ b/EpinelPS/LobbyServer/Team/SetTeam.cs
+@@ -11,6 +11,14 @@
+     {
+         ReqSetTeam req = await ReadData<ReqSetTeam>();
+         User user = GetUser();
++        if (req.Type == (int)TeamType.UnionRaid)
++        {
++            EpinelPS.LobbyServer.Guild.LocalUnionTeams.Save(user, req);
++            var savedUnion = new ResSetTeam { Type = req.Type };
++            savedUnion.Teams.AddRange(user.UserTeams[req.Type].Teams.Select(team => team.Clone()));
++            await WriteDataAsync(savedUnion);
++            return;
++        }
+         if (req.Type == (int)TeamType.SoloRaid)
+         {
+             RuntimePreferencesMutation.Update(user.ID, current => RuntimePreferencesMutation.SetSoloRaidTeam(current, req));
+--- a/EpinelPS/LobbyServer/LobbyUser/GetContentsData.cs
++++ b/EpinelPS/LobbyServer/LobbyUser/GetContentsData.cs
+@@ -13,7 +13,11 @@
+ 
+         // this request returns a list of "special" stages that mark when something is unlocked, ex: the shop or interception
+ 
+-        ResGetContentsOpenData response = new();
++        ResGetContentsOpenData response = new()
++        {
++            GuildLevel = user.Guild.guildId == Guild.LocalUnion.LocalGuildNumber
++                ? user.LocalUnionRaid?.Level ?? 0 : 0
++        };
+ 
+         List<int> stages = [];
+ 
+--- a/EpinelPS/Database/JsonDb.cs
++++ b/EpinelPS/Database/JsonDb.cs
+@@ -109,10 +109,10 @@
+             // check if character level is valid
+             foreach (var c in user.Characters)
+             {
+-                if (c.Level > 1000)
++                if (c.Level > 1200)
+                 {
+-                    Console.WriteLine($"Warning: Character level for character {c.Tid} cannot be above 1000, setting to 1000");
+-                    c.Level = 1000;
++                    Console.WriteLine("Warning: Character level exceeds the local maximum 1200; clamping to 1200.");
++                    c.Level = 1200;
+                 }
+             }
+ 
+--- /dev/null
++++ b/EpinelPS/Models/LocalUnionRaidState.cs
+@@ -0,0 +1,14 @@
++namespace EpinelPS.Models;
++
++// Populated only by NLL's local account projection from its persistent store.
++// Absent state leaves upstream users untouched.
++public sealed class LocalUnionRaidState
++{
++    public string Name { get; set; } = "NLL";
++    public int Level { get; set; } = 3;
++    public int SeasonNumber { get; set; }
++    public int ManagerTid { get; set; }
++    public int NormalLastLevel { get; set; }
++    public bool NormalCleared { get; set; }
++    public string ConnectionEnvironmentVariable { get; set; } = "";
++}
+--- /dev/null
++++ b/EpinelPS/LobbyServer/Guild/LocalUnion.cs
+@@ -0,0 +1,106 @@
++using EpinelPS.Models;
++using EpinelPS.Data;
++using Google.Protobuf.WellKnownTypes;
++
++namespace EpinelPS.LobbyServer.Guild;
++
++public static class LocalUnion
++{
++    public const int LocalGuildNumber = 1;
++
++    public static UnionRaidRankingTierRecord ResolveRankTier(IEnumerable<UnionRaidRankingTierRecord>? tiers = null)
++    {
++        // NLL has no settled season rank. Resolve the source's unranked tier, including its number.
++        // Protobuf's zero defaults mean Challenger/0, which is not a valid source-table key.
++        var tier = (tiers ?? GameData.Instance.LocalUnionRankingTiers.Values)
++            .SingleOrDefault(x => x.RankType == UnionRaidRankingTier.Beginner)
++            ?? throw new InvalidOperationException("local_union_ranking_tier_unresolved");
++        if (tier.Id <= 0 || tier.TierNumber < 0)
++            throw new InvalidOperationException("local_union_ranking_tier_invalid");
++        return tier;
++    }
++
++    public static ResGetGuild Get(User user, ReqGetGuild request, IEnumerable<GuildEmblemRecord>? emblems = null,
++        NetWholeUserData? profile = null, IEnumerable<UnionRaidRankingTierRecord>? tiers = null)
++    {
++        if (user.LocalUnionRaid is not { Level: >= 1 } state || user.Guild.guildId != LocalGuildNumber ||
++            (request.Gsn != 0 && request.Gsn != LocalGuildNumber))
++            return new ResGetGuild { IsSimple = request.IsSimple };
++        profile ??= LobbyHandler.CreateWholeUserDataFromDbUser(user);
++        if (profile.Usn != (long)user.ID || profile.Server <= 0)
++            throw new InvalidOperationException("local_union_member_profile_unresolved");
++        // Zero is not an emblem in the source table. Resolve a valid unlocked emblem
++        // from the current pack rather than emitting a missing table reference.
++        var emblem = (emblems ?? GameData.Instance.GuildEmblemRecords.Values)
++            .Where(x => x.Id > 0 && x.Grade <= state.Level).OrderBy(x => x.Grade).ThenBy(x => x.Id).FirstOrDefault()
++            ?? throw new InvalidOperationException("local_union_emblem_unresolved");
++        var tier = ResolveRankTier(tiers);
++        var response = new ResGetGuild
++        {
++            IsSimple = request.IsSimple,
++            Guild = new NetGuildData { Gsn = LocalGuildNumber, Name = state.Name, Grade = state.Level, Emblem = emblem.Id,
++                Locale = "ko", JoinLevel = 1, Desc = "Local Lab", Notice = "NLL",
++                UnionRaidTier = (int)tier.RankType, UnionRaidTierNumber = tier.TierNumber }
++        };
++        response.Members.Add(new NetGuildMemberData { Usn = profile.Usn, Nickname = profile.Nickname,
++            Lv = profile.Lv, Icon = profile.Icon, Frame = profile.Frame, Server = profile.Server,
++            IconPrism = profile.IconPrism, Type = 1, LastActionAt = profile.LastActionAt,
++            UserTitleId = profile.UserTitleId,
++            SendMailAt = Timestamp.FromDateTime(DateTime.UnixEpoch),
++            UserTitleDisplayData = new NetUserTitleDisplayData() });
++        return response;
++    }
++
++    public static NetUnionRaidData Raid(User user, DateTimeOffset now, LocalUnionEngine? engine = null)
++    {
++        if (user.LocalUnionRaid is not { Level: >= 3, NormalCleared: true, ManagerTid: > 0 } state ||
++            user.Guild.guildId != LocalGuildNumber)
++            return new NetUnionRaidData { UnionRaidState = UnionRaidState.Disable };
++        var periodStart = EpinelPS.LobbyServer.Soloraid.ClassicSoloRaidPeriodProvider.GetRaidDayStartUtc(now);
++        var result = new NetUnionRaidData
++        {
++            UnionRaidState = UnionRaidState.Open,
++            UnionRaidManagerTid = state.ManagerTid,
++            NormalClearDay = 1,
++            UnionRaidJoinData = new NetUnionRaidJoinData(),
++            CurrentStatus = new NetUnionRaidGuildInfo { Gsn = LocalGuildNumber, AchieveLevel = state.NormalLastLevel,
++                AchieveStep = 5, LeftHp = 0 },
++            UnionRaidRanking = new NetUnionRaidRankInfo { NormalClearDay = 1 },
++            PeriodData = new NetUnionRaidPeriodData { VisibleDate = periodStart.AddDays(-2).UtcDateTime.Ticks, StartDate = periodStart.AddDays(-1).UtcDateTime.Ticks,
++                EndDate = periodStart.AddDays(7).UtcDateTime.Ticks, DisableDate = periodStart.AddDays(8).UtcDateTime.Ticks, SettleDate = periodStart.AddDays(8).UtcDateTime.Ticks }
++        };
++        if(engine is null) return LocalUnionApi.Execute(user,(e,_)=>Raid(user,now,e));
++        result.HardInfo.AddRange(engine.Info());
++        result.UnionRaidJoinData=engine.Join();
++        result.UnionRaidRanking=engine.Rank();
++        result.TotalRank=1;
++        return result;
++    }
++}
++
++[GameRequest("/guild/get")]
++public sealed class GetLocalUnion : LobbyMessage
++{
++    protected override async Task HandleAsync()
++    {
++        var user = GetUser();
++        var request = await ReadData<ReqGetGuild>();
++        var response = LocalUnion.Get(user, request);
++        var member = response.Members.SingleOrDefault(x => x.Usn == (long)user.ID);
++        // Structural evidence only: do not log account identifiers or packet bodies.
++        EpinelPS.Utils.Logging.WriteLine($"[LocalUnion] simple={request.IsSimple} guildPresent={response.Guild is not null} memberCount={response.Members.Count} selfPresent={member is not null} serverPresent={member?.Server > 0} mailTimestampPresent={member?.SendMailAt is not null} titleDisplayPresent={member?.UserTitleDisplayData is not null}");
++        await WriteDataAsync(response);
++    }
++}
++
++[GameRequest("/guild/unionraid/get")]
++public sealed class GetLocalUnionRaid : LobbyMessage
++{
++    protected override async Task HandleAsync()
++    {
++        var request = await ReadData<ReqGetUnionRaidData>();
++        var data = request.Gsn is 0 or LocalUnion.LocalGuildNumber
++            ? LocalUnion.Raid(GetUser(), DateTimeOffset.UtcNow) : new NetUnionRaidData { UnionRaidState = UnionRaidState.Disable };
++        await WriteDataAsync(new ResGetUnionRaidData { Data = data });
++    }
++}
+--- /dev/null
++++ b/tests/EpinelPS.SelectedManager.Tests/LocalUnionTests.cs
+@@ -0,0 +1,161 @@
++using EpinelPS.LobbyServer.Guild;
++using EpinelPS.Models;
++using Xunit;
++using EpinelPS.LobbyServer;
++using EpinelPS.Database;
++using Google.Protobuf;
++using Microsoft.AspNetCore.Http;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.Extensions.DependencyInjection;
++using EpinelPS.Data;
++
++namespace EpinelPS.SelectedManager.Tests;
++
++public sealed class LocalUnionTests
++{
++    private static UnionRaidRankingTierRecord[] Tiers() =>
++        [new() { Id = 71, RankType = UnionRaidRankingTier.Beginner, TierNumber = 0 },
++         new() { Id = 72, RankType = UnionRaidRankingTier.Challenger, TierNumber = 1 }];
++
++    [Theory]
++    [InlineData(false)]
++    [InlineData(true)]
++    public void GuildWireRankResolvesInSourceTableWithoutChangingAdmission(bool simple)
++    {
++        var user = new User { LocalUnionRaid = new() { Level = 3, NormalCleared = true } };
++        user.Guild.guildId = LocalUnion.LocalGuildNumber;
++        var tiers = Tiers();
++        var index = tiers.ToDictionary(x => ((int)x.RankType, x.TierNumber));
++        Assert.False(index.ContainsKey((0, 0)));
++        var response = LocalUnion.Get(user, new() { IsSimple = simple }, [new() { Id = 17, Grade = 1 }], Profile(user), tiers);
++        var wire = ResGetGuild.Parser.ParseFrom(response.ToByteArray());
++        var tier = index[(wire.Guild.UnionRaidTier, wire.Guild.UnionRaidTierNumber)];
++        Assert.Equal(UnionRaidRankingTier.Beginner, tier.RankType);
++        Assert.Equal(3, wire.Guild.Grade);
++        Assert.True(user.LocalUnionRaid.NormalCleared);
++    }
++
++    [Fact]
++    public void UnrankedTierRequiresOneValidSourceRowAndUsesItsNumber()
++    {
++        Assert.Throws<InvalidOperationException>(() => LocalUnion.ResolveRankTier([]));
++        var row = Tiers()[0];
++        Assert.Throws<InvalidOperationException>(() => LocalUnion.ResolveRankTier([row, row]));
++        row.TierNumber = 7;
++        Assert.Equal(7, LocalUnion.ResolveRankTier([row]).TierNumber);
++        row.Id = 0;
++        Assert.Throws<InvalidOperationException>(() => LocalUnion.ResolveRankTier([row]));
++    }
++
++    [Fact]
++    public async Task ObservedLobbyStartupRouteReturnsAUnionRaidMessageInsteadOfEmptySuccess()
++    {
++        // The 152 client calls this inside its startup batch, including the guild prefix.
++        var registry = LobbyHandlerRegistry.Discover(typeof(LobbyMessage).Assembly);
++        Assert.IsType<GetLocalUnionRaid>(registry.CreateHandler("/guild/unionraid/get"));
++        Assert.IsType<GetLocalUnion>(registry.CreateHandler("/guild/get"));
++        var options = new DbContextOptionsBuilder<GameContext>().UseSqlite("Data Source=:memory:").Options;
++        using var services = new ServiceCollection().AddSingleton(new GameContext(options)).BuildServiceProvider();
++        var context = new DefaultHttpContext { RequestServices = services };
++        context.Request.Path = "/v1/guild/unionraid/get";
++        // A foreign guild avoids the operational JsonDb singleton and must still receive typed data.
++        context.Request.Body = new MemoryStream(new ReqGetUnionRaidData { Gsn = 999, IsSimple = true }.ToByteArray());
++        context.Response.Body = new MemoryStream();
++        await new LobbyRequestDispatcher(registry).DispatchAsync(context);
++        var response = ResGetUnionRaidData.Parser.ParseFrom(((MemoryStream)context.Response.Body).ToArray());
++        Assert.NotNull(response.Data);
++        Assert.Equal(UnionRaidState.Disable, response.Data.UnionRaidState);
++        Assert.Equal("application/octet-stream+protobuf", context.Response.ContentType);
++    }
++
++    [Fact]
++    public void MembershipAndNormalClearAreRequiredForHardOpening()
++    {
++        var user = new User();
++        var now = new DateTimeOffset(2026, 9, 17, 0, 0, 0, TimeSpan.Zero);
++        Assert.Null(LocalUnion.Get(user, new ReqGetGuild()).Guild);
++        Assert.Equal(UnionRaidState.Disable, LocalUnion.Raid(user, now).UnionRaidState);
++        user.Guild.guildId = LocalUnion.LocalGuildNumber;
++        user.LocalUnionRaid = new LocalUnionRaidState { ManagerTid = 101, NormalLastLevel = 10, SeasonNumber = 1 };
++        var guild = LocalUnion.Get(user, new ReqGetGuild(), [new GuildEmblemRecord { Id = 17, Grade = 1 }], Profile(user), Tiers());
++        Assert.Equal("NLL", guild.Guild.Name);
++        Assert.Equal(17, guild.Guild.Emblem);
++        Assert.Equal(UnionRaidState.Disable, LocalUnion.Raid(user, now).UnionRaidState);
++        user.LocalUnionRaid.NormalCleared = true;
++        user.LocalPersistenceBinding = new(){ AccountUid=Guid.NewGuid() };
++        var engine = new LocalUnionEngine(user,new(),new(Enumerable.Range(1,5).Select(step=>new LocalUnionTier(step,1,100,false)).ToList(),3,5),now);
++        var raid = LocalUnion.Raid(user, now,engine);
++        Assert.Equal(UnionRaidState.Open, raid.UnionRaidState);
++        Assert.Equal(1, raid.NormalClearDay);
++        Assert.Equal(5, raid.HardInfo.Count);
++        Assert.Equal(raid.PeriodData, LocalUnion.Raid(user, now.AddMinutes(1),engine).PeriodData);
++        user.LocalUnionRaid.Level = 2;
++        Assert.Equal(UnionRaidState.Disable, LocalUnion.Raid(user, now).UnionRaidState);
++    }
++
++    [Fact]
++    public void EmblemMustResolveFromCurrentPackAndBeUnlockedAtTheUnionLevel()
++    {
++        var user = new User { LocalUnionRaid = new LocalUnionRaidState { Level = 3 } };
++        user.Guild.guildId = LocalUnion.LocalGuildNumber;
++        GuildEmblemRecord[] emblems = [new() { Id = 9, Grade = 4 }, new() { Id = 31, Grade = 1 }, new() { Id = 20, Grade = 1 }];
++        var response = LocalUnion.Get(user, new ReqGetGuild { IsSimple = true }, emblems, Profile(user), Tiers());
++        var wire = ResGetGuild.Parser.ParseFrom(response.ToByteArray());
++        Assert.Equal(20, wire.Guild.Emblem);
++        Assert.Throws<InvalidOperationException>(() => LocalUnion.Get(user, new ReqGetGuild(), [], Profile(user)));
++    }
++
++    private static NetWholeUserData Profile(User user) => new() { Usn = (long)user.ID, Server = 1001,
++        Nickname = "synthetic", Lv = 10, Icon = 11, Frame = 12, UserTitleId = 13, LastActionAt = 100 };
++
++    [Fact]
++    public void ProductionMemberProjectionUsesTheSameAccountSourceAsWholeUserResponses()
++    {
++        var options = new DbContextOptionsBuilder<GameContext>().UseSqlite("Data Source=:memory:").Options;
++        using var database = new GameContext(options);
++        database.Database.OpenConnection();
++        database.Database.EnsureCreated();
++        database.Users.Add(new GameUser { ID = 73, Nickname = "current-profile" });
++        database.SaveChanges();
++        var user = new User { ID = 73, LocalUnionRaid = new LocalUnionRaidState(), ProfileIconId = 11, TitleId = 13 };
++        user.Guild.guildId = LocalUnion.LocalGuildNumber;
++        var response = LocalUnion.Get(user, new ReqGetGuild { IsSimple = true },
++            [new GuildEmblemRecord { Id = 17, Grade = 1 }], tiers: Tiers());
++        var wire = ResGetGuild.Parser.ParseFrom(response.ToByteArray());
++        var member = Assert.Single(wire.Members);
++        Assert.Equal("current-profile", member.Nickname);
++        Assert.Equal(1001, member.Server);
++        Assert.Equal(11, member.Icon);
++        Assert.Equal(13, member.UserTitleId);
++        Assert.NotNull(member.SendMailAt);
++        Assert.NotNull(member.UserTitleDisplayData);
++    }
++
++    [Theory]
++    [InlineData(true)]
++    [InlineData(false)]
++    public void MemberWireCarriesCommonProfileAndNonNullMessageFields(bool simple)
++    {
++        var user = new User { LocalUnionRaid = new LocalUnionRaidState() };
++        user.Guild.guildId = LocalUnion.LocalGuildNumber;
++        var profile = Profile(user);
++        var response = LocalUnion.Get(user, new ReqGetGuild { IsSimple = simple },
++            [new GuildEmblemRecord { Id = 17, Grade = 1 }], profile, Tiers());
++        var wire = ResGetGuild.Parser.ParseFrom(response.ToByteArray());
++        var member = Assert.Single(wire.Members);
++        Assert.Equal(profile.Usn, member.Usn);
++        Assert.Equal(profile.Server, member.Server);
++        Assert.Equal(profile.Nickname, member.Nickname);
++        Assert.Equal(profile.Icon, member.Icon);
++        Assert.Equal(profile.Frame, member.Frame);
++        Assert.Equal(profile.UserTitleId, member.UserTitleId);
++        Assert.Equal(profile.LastActionAt, member.LastActionAt);
++        Assert.NotNull(member.SendMailAt);
++        Assert.Equal(DateTime.UnixEpoch, member.SendMailAt.ToDateTime());
++        Assert.NotNull(member.UserTitleDisplayData);
++        Assert.Equal(simple, wire.IsSimple);
++        profile.Server = 0;
++        Assert.Throws<InvalidOperationException>(() => LocalUnion.Get(user, new ReqGetGuild(),
++            [new GuildEmblemRecord { Id = 17, Grade = 1 }], profile));
++    }
++}
+--- /dev/null
++++ b/EpinelPS/Models/LocalUnionProgress.cs
+@@ -0,0 +1,52 @@
++namespace EpinelPS.Models;
++
++public sealed class LocalUnionProgress
++{
++    public int Version { get; set; } = 1;
++    public Dictionary<int, LocalUnionBossProgress> Bosses { get; set; } = [];
++    public Dictionary<Guid, LocalUnionMemberProgress> Members { get; set; } = [];
++    public List<LocalUnionBattleRecord> Battles { get; set; } = [];
++}
++public sealed class LocalUnionBossProgress
++{
++    public int Level { get; set; } = 1;
++    public long Damage { get; set; }
++}
++public sealed class LocalUnionMemberProgress
++{
++    public string Nickname { get; set; } = "";
++    public string RaidDay { get; set; } = "";
++    public int HardPlayCount { get; set; }
++    public List<Guid> UsedCharacters { get; set; } = [];
++    public LocalUnionBattle? Active { get; set; }
++    public LocalUnionBattle? Practice { get; set; }
++    public Dictionary<int,List<LocalUnionTeamSlot>> Teams { get; set; } = [];
++    public List<string> SeenBosses { get; set; } = [];
++}
++public sealed class LocalUnionTeamSlot
++{
++    public int Slot { get; set; }
++    public Guid Character { get; set; }
++    public int Level { get; set; }
++    public int Combat { get; set; }
++}
++public sealed class LocalUnionBattle
++{
++    public Guid BattleUid { get; set; } = Guid.NewGuid();
++    public int Level { get; set; }
++    public int Step { get; set; }
++    public int Team { get; set; }
++    public long StartedAt { get; set; }
++    public List<LocalUnionTeamSlot> Characters { get; set; } = [];
++}
++public sealed class LocalUnionBattleRecord
++{
++    public Guid Account { get; set; }
++    public LocalUnionBattle Battle { get; set; } = new();
++    public string RequestHash { get; set; } = "";
++    public long Damage { get; set; }
++    public long LeftHp { get; set; }
++    public long At { get; set; }
++    public bool Kill { get; set; }
++    public bool Practice { get; set; }
++}
+--- /dev/null
++++ b/EpinelPS/Database/LocalUnionRuntimeStore.cs
+@@ -0,0 +1,61 @@
++using EpinelPS.Models;
++using Newtonsoft.Json;
++using Npgsql;
++using NpgsqlTypes;
++
++namespace EpinelPS.Database;
++
++public static class LocalUnionRuntimeStore
++{
++    public static T Execute<T>(User user, Func<LocalUnionProgress,T> action)
++    {
++        var selected = user.LocalUnionRaid ?? throw new InvalidOperationException("local_union_not_selected");
++        var account = user.LocalPersistenceBinding?.AccountUid ?? throw new InvalidOperationException("local_union_identity_missing");
++        if (account == Guid.Empty || selected.SeasonNumber <= 0 || string.IsNullOrWhiteSpace(selected.ConnectionEnvironmentVariable))
++            throw new InvalidOperationException("local_union_binding_missing");
++        var connectionString = Environment.GetEnvironmentVariable(selected.ConnectionEnvironmentVariable);
++        if (string.IsNullOrWhiteSpace(connectionString)) throw new InvalidOperationException("local_union_store_unavailable");
++        using var connection = new NpgsqlConnection(connectionString);
++        connection.Open();
++        using var transaction = connection.BeginTransaction();
++        // Serialize all accounts of the shared local union and reject stale selections.
++        short unionId;
++        using (var admission = new NpgsqlCommand("""
++            SELECT u.selected_season_number,u.local_union_id FROM lab_private_server.local_union u
++            JOIN lab_private_server.local_union_member m USING(local_union_id)
++            JOIN lab_profile.local_account a USING(local_account_id)
++            WHERE a.local_account_uid=@account FOR UPDATE OF u
++            """, connection, transaction))
++        {
++            admission.Parameters.AddWithValue("account",account);
++            using var reader = admission.ExecuteReader();
++            if (!reader.Read() || reader.IsDBNull(0) || reader.GetInt32(0) != selected.SeasonNumber)
++                throw new InvalidOperationException("local_union_selection_changed");
++            unionId = reader.GetInt16(1);
++        }
++        using var read = new NpgsqlCommand("SELECT payload::text FROM lab_private_server.local_union_raid_runtime WHERE local_union_id=@union AND season_number=@season",connection,transaction);
++        read.Parameters.AddWithValue("union",unionId);
++        read.Parameters.AddWithValue("season",selected.SeasonNumber);
++        var json=read.ExecuteScalar() as string;
++        var state=json is null ? new LocalUnionProgress() : JsonConvert.DeserializeObject<LocalUnionProgress>(json)
++            ?? throw new InvalidOperationException("local_union_progress_invalid");
++        if(state.Version!=1) throw new InvalidOperationException("local_union_progress_version_unsupported");
++        var before=JsonConvert.SerializeObject(state);
++        var result=action(state);
++        var next=JsonConvert.SerializeObject(state);
++        if(next!=before || json is null)
++        {
++            using var write=new NpgsqlCommand("""
++                INSERT INTO lab_private_server.local_union_raid_runtime(local_union_id,season_number,payload)
++                VALUES(@union,@season,@payload) ON CONFLICT(local_union_id,season_number) DO UPDATE
++                SET payload=EXCLUDED.payload,revision=local_union_raid_runtime.revision+1,updated_at_utc=now()
++                """,connection,transaction);
++            write.Parameters.AddWithValue("union",unionId);
++            write.Parameters.AddWithValue("season",selected.SeasonNumber);
++            write.Parameters.AddWithValue("payload",NpgsqlDbType.Jsonb,next);
++            write.ExecuteNonQuery();
++        }
++        transaction.Commit();
++        return result;
++    }
++}
+--- /dev/null
++++ b/EpinelPS/LobbyServer/Guild/LocalUnionContent.cs
+@@ -0,0 +1,39 @@
++using EpinelPS.Data;
++
++namespace EpinelPS.LobbyServer.Guild;
++
++public sealed record LocalUnionTier(int Step, int Level, long Hp, bool Trial);
++
++public sealed record LocalUnionContent(IReadOnlyList<LocalUnionTier> Tiers, int Entries, int Teams)
++{
++    public LocalUnionTier Tier(int step,int level) => Tiers.SingleOrDefault(x=>x.Step==step && x.Level==level)
++        ?? throw new InvalidOperationException("local_union_stage_unresolved");
++
++    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<GameData,System.Collections.Concurrent.ConcurrentDictionary<int,LocalUnionContent>> Cache=new();
++    public static LocalUnionContent Resolve(User user) => Cache.GetOrCreateValue(GameData.Instance)
++        .GetOrAdd(user.LocalUnionRaid?.ManagerTid ?? 0,_=>Resolve(user,GameData.Instance));
++
++    public static LocalUnionContent Resolve(User user,GameData data)
++    {
++        var state=user.LocalUnionRaid ?? throw new InvalidOperationException("local_union_not_selected");
++        var manager=data.LocalUnionManagers[state.ManagerTid];
++        int Config(string key) => data.LocalConfigGameRecords.TryGetValue(key,out var row) &&
++            int.TryParse(row.Value,out var value) && value>0 ? value : throw new InvalidOperationException("local_union_config_unresolved");
++        var tiers=new List<LocalUnionTier>();
++        foreach(var preset in data.LocalUnionPresets.Values.Where(x=>x.PresetGroupId==manager.MonsterPreset && x.DifficultyType==UnionRaidDifficultyType.Hard))
++        {
++            var wave=data.WaveIntercept001Table[preset.Wave];
++            // The catalog admission already requires an unambiguous boss target.
++            var targets=wave.TargetList!.Distinct().ToArray();
++            if(targets.Length!=1) throw new InvalidOperationException("local_union_target_unresolved");
++            var monster=data.MonsterTable[targets[0]];
++            var stat=data.MonsterStatEnhanceTable.Values.Single(x=>x.GroupId==monster.StatenhanceId && x.Lv==preset.MonsterStageLv);
++            var hp=checked((long)((decimal)stat.LevelHp*monster.HpRatio/10000));
++            if(hp<=0) throw new InvalidOperationException("local_union_hp_unresolved");
++            tiers.Add(new(preset.WaveOrder,preset.WaveChangeStep,hp,preset.IsTrial));
++        }
++        if(!tiers.Select(x=>x.Step).Distinct().Order().SequenceEqual(Enumerable.Range(1,5)) ||
++            tiers.GroupBy(x=>(x.Step,x.Level)).Any(x=>x.Count()!=1)) throw new InvalidOperationException("local_union_stages_invalid");
++        return new(tiers,Config("UnionRaidHardEnterCount"),Config("UnionRaidTeamCount"));
++    }
++}
+--- /dev/null
++++ b/EpinelPS/LobbyServer/Guild/LocalUnionEngine.cs
+@@ -0,0 +1,107 @@
++using EpinelPS.Models;
++using EpinelPS.LobbyServer.Soloraid;
++
++namespace EpinelPS.LobbyServer.Guild;
++
++// The caller holds the shared guild transaction; no mutation is acknowledged before commit.
++public sealed class LocalUnionEngine(User user, LocalUnionProgress state, LocalUnionContent content, DateTimeOffset now)
++{
++    public Guid Account => user.LocalPersistenceBinding?.AccountUid ?? throw new InvalidOperationException("local_union_identity_missing");
++    public LocalUnionMemberProgress Member
++    {
++        get
++        {
++            if(!state.Members.TryGetValue(Account,out var member)) state.Members[Account]=member=new();
++            var day=ClassicSoloRaidPeriodProvider.GetRaidDayStartUtc(now).ToString("O");
++            if(member.RaidDay!=day)
++            {
++                member.RaidDay=day; member.HardPlayCount=0;member.UsedCharacters.Clear();member.Active=null;member.Practice=null;
++            }
++            return member;
++        }
++    }
++    public NetUnionRaidJoinData Join()
++    {
++        var member=Member;
++        var result=new NetUnionRaidJoinData{HardPlayCount=member.HardPlayCount};
++        foreach(var pair in user.LocalPersistenceBinding!.CharacterUidByCsn)
++            if(Guid.TryParse(pair.Value,out var uid)&&member.UsedCharacters.Contains(uid))result.CsnList.Add(pair.Key);
++        return result;
++    }
++    public LocalUnionBossProgress Boss(int step)
++    {
++        content.Tier(step,1);
++        if(!state.Bosses.TryGetValue(step,out var boss))state.Bosses[step]=boss=new();
++        return boss;
++    }
++    public List<NetUnionRaidGuildInfo> Info() => Enumerable.Range(1,5).Select(step=>
++    {
++        var boss=Boss(step);var tier=content.Tier(step,boss.Level);
++        var info=new NetUnionRaidGuildInfo{Gsn=LocalUnion.LocalGuildNumber,AchieveStep=step,AchieveLevel=boss.Level};
++        if(tier.Trial) info.LastBossTotalDamage=boss.Damage; else info.LeftHp=Math.Max(0,tier.Hp-boss.Damage);
++        return info;
++    }).ToList();
++    public UnionRaidJoinResult Enter(int level,int step,int team,bool practice=false)
++    {
++        var member=Member;var tier=content.Tier(step,level);
++        if(practice)
++        {
++            if(member.Practice is not { } prior || prior.Level!=level || prior.Step!=step)
++                member.Practice=new(){Level=level,Step=step,StartedAt=now.UtcTicks};
++            return UnionRaidJoinResult.Success;
++        }
++        var boss=Boss(step);
++        if(boss.Level!=level || !tier.Trial && boss.Damage>=tier.Hp)return UnionRaidJoinResult.FailureAlreadyKilled;
++        if(team<1||team>content.Teams||!member.Teams.TryGetValue(team,out var characters)||characters.Count is <1 or >5 ||
++            characters.Select(x=>x.Character).Distinct().Count()!=characters.Count) return UnionRaidJoinResult.Banned;
++        if(member.Active is {} active && active.Level==level && active.Step==step && active.Team==team &&
++            active.Characters.Select(x=>(x.Slot,x.Character)).SequenceEqual(characters.Select(x=>(x.Slot,x.Character))))
++            return UnionRaidJoinResult.Success;
++        if(member.HardPlayCount>=content.Entries || characters.Any(x=>member.UsedCharacters.Contains(x.Character)))return UnionRaidJoinResult.Banned;
++        member.HardPlayCount++;
++        member.UsedCharacters.AddRange(characters.Select(x=>x.Character));
++        member.Active=new(){Level=level,Step=step,Team=team,StartedAt=now.UtcTicks,Characters=characters.Select(x=>new LocalUnionTeamSlot{Slot=x.Slot,Character=x.Character}).ToList()};
++        return UnionRaidJoinResult.Success;
++    }
++    public LocalUnionBattleRecord Damage(int level,int step,int team,long damage,string hash,bool practice=false,NetAntiCheatBattleData? report=null)
++    {
++        if(damage<0 || string.IsNullOrEmpty(hash))throw new InvalidOperationException("local_union_result_invalid");
++        var previous=state.Battles.SingleOrDefault(x=>x.Account==Account && x.RequestHash==hash && x.Practice==practice);
++        if(previous is not null)return previous;
++        var member=Member;var active=practice?member.Practice:member.Active;
++        if(active is null || active.Level!=level || active.Step!=step || !practice && active.Team!=team)
++            throw new InvalidOperationException("local_union_result_without_entry");
++        if(practice)
++        {
++            if(!member.Teams.TryGetValue(team,out var characters) || characters.Count is <1 or >5)
++                throw new InvalidOperationException("local_union_team_invalid");
++            active.Team=team;active.Characters=characters.Select(x=>new LocalUnionTeamSlot{Slot=x.Slot,Character=x.Character}).ToList();
++        }
++        foreach(var slot in active.Characters)
++        {
++            var csn=user.LocalPersistenceBinding!.CharacterUidByCsn.FirstOrDefault(x=>x.Value==slot.Character.ToString()).Key;
++            var character=user.Characters.SingleOrDefault(x=>x.Csn==csn);
++            var observed=report?.Characters.SingleOrDefault(x=>x.Csn==csn)?.CharacterSpec;
++            slot.Level=observed?.Level ?? character?.Level ?? 0;
++            slot.Combat=checked((int)Math.Clamp(observed?.Combat ?? 0,0,int.MaxValue));
++        }
++        var tier=content.Tier(step,level);var boss=Boss(step);
++        var left=tier.Trial?0:Math.Max(0,tier.Hp-(practice?0:boss.Level==level?boss.Damage:tier.Hp));
++        var applied=tier.Trial?damage:Math.Min(damage,left);
++        var kill=!tier.Trial && left>0 && applied==left;
++        if(!practice && boss.Level==level)
++        {
++            boss.Damage=checked(boss.Damage+applied);
++            if(kill && content.Tiers.Any(x=>x.Step==step && x.Level==level+1)){boss.Level++;boss.Damage=0;}
++        }
++        var result=new LocalUnionBattleRecord{Account=Account,Battle=active,RequestHash=hash,Damage=applied,
++            LeftHp=tier.Trial?0:left-applied,At=now.UtcTicks,Kill=kill,Practice=practice};
++        state.Battles.Add(result);
++        if(practice)member.Practice=null;else member.Active=null;
++        return result;
++    }
++    public bool Playing(int level,int step) => state.Members.Where(x=>x.Key!=Account).Any(x=>
++        x.Value.Active is {} b && b.Level==level && b.Step==step && x.Value.RaidDay==Member.RaidDay);
++    public NetUnionRaidRankInfo Rank() => new(){Ranking=1,NormalClearDay=1,
++        TotalDamage=state.Battles.Where(x=>!x.Practice).Aggregate(0L,(total,x)=>checked(total+x.Damage))};
++}
+--- /dev/null
++++ b/EpinelPS/LobbyServer/Guild/LocalUnionTeams.cs
+@@ -0,0 +1,55 @@
++using EpinelPS.Data;
++using EpinelPS.Database;
++using EpinelPS.Models;
++
++namespace EpinelPS.LobbyServer.Guild;
++
++public static class LocalUnionTeams
++{
++    public static void Save(User user,ReqSetTeam request)
++    {
++        var limit=LocalUnionContent.Resolve(user).Teams;
++        if(request.Type!=(int)TeamType.UnionRaid || request.Teams.Select(x=>x.TeamNumber).Distinct().Count()!=request.Teams.Count)
++            throw new InvalidOperationException("local_union_team_invalid");
++        var incoming=new Dictionary<int,List<LocalUnionTeamSlot>>();
++        foreach(var team in request.Teams)
++        {
++            if(team.TeamNumber<1||team.TeamNumber>limit||team.Slots.Count>5||team.Slots.Select(x=>x.Slot).Distinct().Count()!=team.Slots.Count)
++                throw new InvalidOperationException("local_union_team_invalid");
++            var slots=new List<LocalUnionTeamSlot>();
++            foreach(var slot in team.Slots.OrderBy(x=>x.Slot))
++            {
++                if(slot.Slot is <1 or >5 || slot.ValueType!=0)throw new InvalidOperationException("local_union_slot_invalid");
++                if(slot.Value==0)continue;
++                if(!user.Characters.Any(x=>x.Csn==slot.Value) || !user.LocalPersistenceBinding!.CharacterUidByCsn.TryGetValue(slot.Value,out var uid))
++                    throw new InvalidOperationException("local_union_character_unresolved");
++                slots.Add(new(){Slot=slot.Slot,Character=Guid.Parse(uid)});
++            }
++            if(slots.Select(x=>x.Character).Distinct().Count()!=slots.Count)throw new InvalidOperationException("local_union_team_duplicate_character");
++            incoming.Add(team.TeamNumber,slots);
++        }
++        var teams=LocalUnionRuntimeStore.Execute(user,state=>
++        {
++            if(!state.Members.TryGetValue(user.LocalPersistenceBinding!.AccountUid,out var member))state.Members[user.LocalPersistenceBinding.AccountUid]=member=new();
++            foreach(var team in incoming)member.Teams[team.Key]=team.Value;
++            return member.Teams;
++        });
++        Apply(user,teams);
++    }
++    public static void Restore(User user) => Apply(user,LocalUnionRuntimeStore.Execute(user,state=>
++        state.Members.GetValueOrDefault(user.LocalPersistenceBinding!.AccountUid)?.Teams ?? []));
++
++    public static void Apply(User user,Dictionary<int,List<LocalUnionTeamSlot>> teams)
++    {
++        var ids=user.LocalPersistenceBinding!.CharacterUidByCsn.ToDictionary(x=>Guid.Parse(x.Value),x=>x.Key);
++        var result=new NetUserTeamData{Type=(int)TeamType.UnionRaid,LastContentsTeamNumber=1};
++        foreach(var pair in teams.OrderBy(x=>x.Key))
++        {
++            var team=new NetTeamData{TeamNumber=pair.Key};
++            foreach(var slot in pair.Value)
++                if(ids.TryGetValue(slot.Character,out var csn))team.Slots.Add(new NetTeamSlot{Slot=slot.Slot,ValueType=0,Value=csn});
++            result.Teams.Add(team);
++        }
++        user.UserTeams[(int)TeamType.UnionRaid]=result;
++    }
++}
+--- /dev/null
++++ b/EpinelPS/LobbyServer/Guild/LocalUnionApi.cs
+@@ -0,0 +1,134 @@
++using System.Security.Cryptography;
++using EpinelPS.Database;
++using EpinelPS.Models;
++using Google.Protobuf;
++
++namespace EpinelPS.LobbyServer.Guild;
++
++public static class LocalUnionApi
++{
++    public static T Execute<T>(User user,Func<LocalUnionEngine,LocalUnionProgress,T> action)
++    {
++        if(user.Guild.guildId!=LocalUnion.LocalGuildNumber || user.LocalUnionRaid is not {NormalCleared:true,Level:>=3})
++            throw new InvalidOperationException("local_union_not_admitted");
++        var content=LocalUnionContent.Resolve(user);
++        return LocalUnionRuntimeStore.Execute(user,state=>
++        {
++            var engine=new LocalUnionEngine(user,state,content,DateTimeOffset.UtcNow);
++            engine.Member.Nickname=LobbyHandler.CreateWholeUserDataFromDbUser(user).Nickname;
++            return action(engine,state);
++        });
++    }
++    public static string Hash(IMessage message) => Convert.ToHexString(SHA256.HashData(message.ToByteArray()));
++    public static void Guild(long gsn)
++    {
++        if(gsn is not (0 or LocalUnion.LocalGuildNumber))throw new InvalidOperationException("local_union_foreign_guild");
++    }
++    public static ResEnterUnionRaidHard Enter(User user,ReqEnterUnionRaidHard request) => Execute(user,(engine,_)=>
++    {
++        var admission=engine.Enter(request.RaidLevel,request.RaidStep,request.Team);
++        var result=new ResEnterUnionRaidHard{JoinResult=admission==UnionRaidJoinResult.Banned?UnionRaidJoinResult.Success:admission,
++            PeriodResult=admission==UnionRaidJoinResult.Banned?UnionRaidPeriodResult.FailureHard:UnionRaidPeriodResult.Success,JoinData=engine.Join()};
++        result.HardInfo.AddRange(engine.Info());return result;
++    });
++    public static ResSetUnionRaidHardDamage Damage(User user,ReqSetUnionRaidHardDamage request)=>Execute(user,(engine,_)=>
++    {
++        var record=engine.Damage(request.RaidLevel,request.RaidStep,request.Team,request.Damage,Hash(request),report:request.AntiCheatBattleData);
++        var result=new ResSetUnionRaidHardDamage{Status=record.Kill?StepStatus.Kill:StepStatus.Alive,JoinData=engine.Join()};
++        result.HardInfo.AddRange(engine.Info());return result;
++    });
++    public static ResGetUnionRaidHardStepInfo HardInfo(User user,ReqGetUnionRaidHardStepInfo request)
++    {
++        Guild(request.Gsn);return Execute(user,(engine,_)=>{var result=new ResGetUnionRaidHardStepInfo();result.Info.AddRange(engine.Info());return result;});
++    }
++    public static ResGetUnionRaidStepInfo NormalInfo(User user,ReqGetUnionRaidStepInfo request)
++    {
++        Guild(request.Gsn);return new(){Info=LocalUnion.Raid(user,DateTimeOffset.UtcNow).CurrentStatus,NormalClearDay=1};
++    }
++    public static ResGetUnionRaidHardNowPlaying Playing(User user,ReqGetUnionRaidHardNowPlaying request)
++    {
++        Guild(request.Gsn);return Execute(user,(engine,_)=>new ResGetUnionRaidHardNowPlaying{NowPlaying=engine.Playing(request.RaidLevel,request.RaidStep)});
++    }
++    public static ResEnterUnionRaidHardPractice Practice(User user,ReqEnterUnionRaidHardPractice request)=>Execute(user,(engine,_)=>
++        new ResEnterUnionRaidHardPractice{JoinResult=engine.Enter(request.Level,request.Step,0,true)});
++    public static ResSetUnionRaidHardPracticeDamage PracticeDamage(User user,ReqSetUnionRaidHardPracticeDamage request)=>Execute(user,(engine,_)=>
++    {
++        engine.Damage(request.RaidLevel,request.RaidStep,request.Team,request.Damage,Hash(request),true,request.AntiCheatBattleData);
++        return new ResSetUnionRaidHardPracticeDamage();
++    });
++    public static ResGetUnionRaidBossPopupData GetPopup(User user,ReqGetUnionRaidBossPopupData request)=>Execute(user,(engine,_)=>
++    {
++        if(request.RaidId!=user.LocalUnionRaid!.ManagerTid)throw new InvalidOperationException("local_union_season_mismatch");
++        var result=new ResGetUnionRaidBossPopupData();
++        result.PopupData.AddRange(engine.Member.SeenBosses.Select(key=>{var v=key.Split(':').Select(int.Parse).ToArray();return new NetUnionRaidBossPopupData{Difficulty=v[0],Level=v[1],Step=v[2]};}));
++        return result;
++    });
++    public static ResSetUnionRaidBossPopupData SetPopup(User user,ReqSetUnionRaidBossPopupData request)=>Execute(user,(engine,_)=>
++    {
++        if(request.RaidId!=user.LocalUnionRaid!.ManagerTid)throw new InvalidOperationException("local_union_season_mismatch");
++        foreach(var item in request.PopupData)
++        {
++            if(item.Difficulty is <1 or >2 || item.Level<1 || item.Step is <1 or >5)throw new InvalidOperationException("local_union_popup_invalid");
++            var key=$"{item.Difficulty}:{item.Level}:{item.Step}";
++            if(!engine.Member.SeenBosses.Contains(key))engine.Member.SeenBosses.Add(key);
++        }
++        return new ResSetUnionRaidBossPopupData();
++    });
++    public static ResListUnionRaidWorldRanking Ranking(User user,ReqListUnionRaidWorldRanking request)=>Execute(user,(engine,_)=>
++    {
++        var guild=LocalUnion.Get(user,new()).Guild;
++        var tier=LocalUnion.ResolveRankTier();
++        var result=new ResListUnionRaidWorldRanking();
++        if(request.Rank<=1)result.Rankings.Add(new NetUnionRaidRankingData{GuildData=new NetSimpleGuildData{
++            Gsn=guild.Gsn,Name=guild.Name,Emblem=guild.Emblem,Grade=guild.Grade,MemberCount=1,
++            UnionRaidTier=(int)tier.RankType,UnionRaidTierNumber=tier.TierNumber},Tier=tier.Id,RankInfo=engine.Rank()});
++        return result;
++    });
++    private static long Usn(User user,Guid account) => account==user.LocalPersistenceBinding!.AccountUid?(long)user.ID:
++        (BitConverter.ToInt64(account.ToByteArray(),0)&long.MaxValue);
++    private static string Nickname(LocalUnionProgress state,Guid account) => state.Members.GetValueOrDefault(account)?.Nickname ?? "";
++    private static IEnumerable<NetUnionRaidTeamCharacter> Team(User user,LocalUnionBattleRecord record)
++    {
++        var ids=user.LocalPersistenceBinding.CharacterUidByCsn.ToDictionary(x=>Guid.Parse(x.Value),x=>x.Key);
++        foreach(var slot in record.Battle.Characters)
++            if(ids.TryGetValue(slot.Character,out var csn) && user.Characters.SingleOrDefault(x=>x.Csn==csn) is {} character)
++                yield return new(){Slot=slot.Slot,Tid=character.Tid,Lv=slot.Level,Combat=slot.Combat};
++    }
++    private static NetUnionRaidDetailLog Detail(User user,LocalUnionProgress state,LocalUnionBattleRecord record)
++    {
++        var result=new NetUnionRaidDetailLog{Usn=Usn(user,record.Account),Nickname=Nickname(state,record.Account),RaidLevel=record.Battle.Level,
++            Damage=record.Damage,DamageAt=record.At,Kill=record.Kill,Difficulty=2};result.Team.AddRange(Team(user,record));return result;
++    }
++    public static ResGetUnionRaidWholeBattleLog WholeLog(User user,ReqGetUnionRaidWholeBattleLog request)
++    {
++        Guild(request.Gsn);return Execute(user,(_,state)=>{var result=new ResGetUnionRaidWholeBattleLog();
++            result.Log.AddRange(state.Battles.Where(x=>!x.Practice).OrderByDescending(x=>x.At).Select(x=>new NetUnionRaidSimpleLog{
++                Usn=Usn(user,x.Account),Nickname=Nickname(state,x.Account),RaidLevel=x.Battle.Level,Step=x.Battle.Step,Damage=x.Damage,
++                Kill=x.Kill,DamageAt=x.At,LeftHp=x.LeftHp,Day=1,Difficulty=2}));return result;});
++    }
++    public static ResGetUnionRaidUserBattleLog UserLog(User user,ReqGetUnionRaidUserBattleLog request)
++    {
++        Guild(request.Gsn);return Execute(user,(engine,state)=>{var result=new ResGetUnionRaidUserBattleLog();
++            foreach(var record in state.Battles.Where(x=>x.Account==engine.Account && (request.Step==0||x.Battle.Step==request.Step)).OrderByDescending(x=>x.At))
++                (record.Practice?result.PracticeLog:result.Log).Add(Detail(user,state,record));return result;});
++    }
++    public static ResGetUnionRaidStepBattleLog StepLog(User user,ReqGetUnionRaidStepBattleLog request)
++    {
++        Guild(request.Gsn);return Execute(user,(_,state)=>{var result=new ResGetUnionRaidStepBattleLog();
++            result.Log.AddRange(state.Battles.Where(x=>!x.Practice && x.Battle.Step==request.Step).OrderByDescending(x=>x.At).Select(x=>Detail(user,state,x)));return result;});
++    }
++    public static ResGetUnionRaidMemberLog MemberLog(User user,ReqGetUnionRaidMemberLog request)
++    {
++        Guild(request.Gsn);return Execute(user,(_,state)=>{var result=new ResGetUnionRaidMemberLog();
++            foreach(var x in state.Battles.Where(x=>!x.Practice && Usn(user,x.Account)==request.Usn).OrderByDescending(x=>x.At))
++            {var log=new NetUnionRaidMemberLog{Usn=request.Usn,Nickname=Nickname(state,x.Account),Level=x.Battle.Level,Step=x.Battle.Step,
++                Damage=x.Damage,DamageAt=x.At,Kill=x.Kill,Day=1,Difficulty=2};log.Team.AddRange(Team(user,x));result.Log.Add(log);}return result;});
++    }
++}
++
++public abstract class LocalUnionRequest<TRequest,TResponse> : LobbyMessage
++    where TRequest:IMessage,new() where TResponse:IMessage,new()
++{
++    protected abstract TResponse Process(User user,TRequest request);
++    protected override async Task HandleAsync()=>await WriteDataAsync(Process(GetUser(),await ReadData<TRequest>()));
++}
+--- /dev/null
++++ b/EpinelPS/LobbyServer/Guild/LocalUnionRoutes.cs
+@@ -0,0 +1,125 @@
++namespace EpinelPS.LobbyServer.Guild;
++
++// Paths are taken verbatim from the 152 protobuf contract, including `pratice`.
++
++[GameRequest("/guild/unionraid/getjoindata")]
++public sealed class LocalGetUnionRaidJoinData:LocalUnionRequest<ReqGetUnionRaidJoinData,ResGetUnionRaidJoinData>
++{
++    protected override ResGetUnionRaidJoinData Process(User user,ReqGetUnionRaidJoinData request)=>LocalUnionApi.Execute(user,(engine,_)=>new ResGetUnionRaidJoinData{UnionRaidJoinData=engine.Join()});
++}
++
++[GameRequest("/guild/unionraid/getstepinfo")]
++public sealed class LocalGetUnionRaidStepInfo:LocalUnionRequest<ReqGetUnionRaidStepInfo,ResGetUnionRaidStepInfo>
++{
++    protected override ResGetUnionRaidStepInfo Process(User user,ReqGetUnionRaidStepInfo request)=>LocalUnionApi.NormalInfo(user,request);
++}
++
++[GameRequest("/guild/unionraid/hard/getstepinfo")]
++public sealed class LocalGetUnionRaidHardStepInfo:LocalUnionRequest<ReqGetUnionRaidHardStepInfo,ResGetUnionRaidHardStepInfo>
++{
++    protected override ResGetUnionRaidHardStepInfo Process(User user,ReqGetUnionRaidHardStepInfo request)=>LocalUnionApi.HardInfo(user,request);
++}
++
++[GameRequest("/guild/unionraid/get/nowplaying")]
++public sealed class LocalGetUnionRaidNowPlaying:LocalUnionRequest<ReqGetUnionRaidNowPlaying,ResGetUnionRaidNowPlaying>
++{
++    protected override ResGetUnionRaidNowPlaying Process(User user,ReqGetUnionRaidNowPlaying request)=>NormalPlaying(user,request);
++    private static ResGetUnionRaidNowPlaying NormalPlaying(User user,ReqGetUnionRaidNowPlaying request){LocalUnionApi.Guild(request.Gsn);return new(){NowPlaying=false};}
++}
++
++[GameRequest("/guild/unionraid/hard/get/nowplaying")]
++public sealed class LocalGetUnionRaidHardNowPlaying:LocalUnionRequest<ReqGetUnionRaidHardNowPlaying,ResGetUnionRaidHardNowPlaying>
++{
++    protected override ResGetUnionRaidHardNowPlaying Process(User user,ReqGetUnionRaidHardNowPlaying request)=>LocalUnionApi.Playing(user,request);
++}
++
++[GameRequest("/guild/unionraid/hard/enter")]
++public sealed class LocalEnterUnionRaidHard:LocalUnionRequest<ReqEnterUnionRaidHard,ResEnterUnionRaidHard>
++{
++    protected override ResEnterUnionRaidHard Process(User user,ReqEnterUnionRaidHard request)=>LocalUnionApi.Enter(user,request);
++}
++
++[GameRequest("/guild/unionraid/hard/setdamage")]
++public sealed class LocalSetUnionRaidHardDamage:LocalUnionRequest<ReqSetUnionRaidHardDamage,ResSetUnionRaidHardDamage>
++{
++    protected override ResSetUnionRaidHardDamage Process(User user,ReqSetUnionRaidHardDamage request)=>LocalUnionApi.Damage(user,request);
++}
++
++[GameRequest("/guild/unionraid/hard/practice/enter")]
++public sealed class LocalEnterUnionRaidHardPractice:LocalUnionRequest<ReqEnterUnionRaidHardPractice,ResEnterUnionRaidHardPractice>
++{
++    protected override ResEnterUnionRaidHardPractice Process(User user,ReqEnterUnionRaidHardPractice request)=>LocalUnionApi.Practice(user,request);
++}
++
++[GameRequest("/guild/unionraid/pratice/setdamage/hard")]
++public sealed class LocalSetUnionRaidHardPracticeDamage:LocalUnionRequest<ReqSetUnionRaidHardPracticeDamage,ResSetUnionRaidHardPracticeDamage>
++{
++    protected override ResSetUnionRaidHardPracticeDamage Process(User user,ReqSetUnionRaidHardPracticeDamage request)=>LocalUnionApi.PracticeDamage(user,request);
++}
++
++[GameRequest("/guild/unionraid/bosspopup/get")]
++public sealed class LocalGetUnionRaidBossPopupData:LocalUnionRequest<ReqGetUnionRaidBossPopupData,ResGetUnionRaidBossPopupData>
++{
++    protected override ResGetUnionRaidBossPopupData Process(User user,ReqGetUnionRaidBossPopupData request)=>LocalUnionApi.GetPopup(user,request);
++}
++
++[GameRequest("/guild/unionraid/bosspopup/set")]
++public sealed class LocalSetUnionRaidBossPopupData:LocalUnionRequest<ReqSetUnionRaidBossPopupData,ResSetUnionRaidBossPopupData>
++{
++    protected override ResSetUnionRaidBossPopupData Process(User user,ReqSetUnionRaidBossPopupData request)=>LocalUnionApi.SetPopup(user,request);
++}
++
++[GameRequest("/guild/unionraid/ranking/world")]
++public sealed class LocalListUnionRaidWorldRanking:LocalUnionRequest<ReqListUnionRaidWorldRanking,ResListUnionRaidWorldRanking>
++{
++    protected override ResListUnionRaidWorldRanking Process(User user,ReqListUnionRaidWorldRanking request)=>LocalUnionApi.Ranking(user,request);
++}
++
++[GameRequest("/guild/unionraid/log/whole")]
++public sealed class LocalGetUnionRaidWholeBattleLog:LocalUnionRequest<ReqGetUnionRaidWholeBattleLog,ResGetUnionRaidWholeBattleLog>
++{
++    protected override ResGetUnionRaidWholeBattleLog Process(User user,ReqGetUnionRaidWholeBattleLog request)=>LocalUnionApi.WholeLog(user,request);
++}
++
++[GameRequest("/guild/unionraid/log/user")]
++public sealed class LocalGetUnionRaidUserBattleLog:LocalUnionRequest<ReqGetUnionRaidUserBattleLog,ResGetUnionRaidUserBattleLog>
++{
++    protected override ResGetUnionRaidUserBattleLog Process(User user,ReqGetUnionRaidUserBattleLog request)=>LocalUnionApi.UserLog(user,request);
++}
++
++[GameRequest("/guild/unionraid/log/step")]
++public sealed class LocalGetUnionRaidStepBattleLog:LocalUnionRequest<ReqGetUnionRaidStepBattleLog,ResGetUnionRaidStepBattleLog>
++{
++    protected override ResGetUnionRaidStepBattleLog Process(User user,ReqGetUnionRaidStepBattleLog request)=>LocalUnionApi.StepLog(user,request);
++}
++
++[GameRequest("/guild/unionraid/memberlog")]
++public sealed class LocalGetUnionRaidMemberLog:LocalUnionRequest<ReqGetUnionRaidMemberLog,ResGetUnionRaidMemberLog>
++{
++    protected override ResGetUnionRaidMemberLog Process(User user,ReqGetUnionRaidMemberLog request)=>LocalUnionApi.MemberLog(user,request);
++}
++
++[GameRequest("/guild/unionraid/enter")]
++public sealed class LocalEnterUnionRaid:LocalUnionRequest<ReqEnterUnionRaid,ResEnterUnionRaid>
++{
++    protected override ResEnterUnionRaid Process(User user,ReqEnterUnionRaid request)=>new(){PeriodResult=UnionRaidPeriodResult.Failure,JoinResult=UnionRaidJoinResult.FailureAlreadyKilled,Info=LocalUnion.Raid(user,DateTimeOffset.UtcNow).CurrentStatus,JoinData=LocalUnionApi.Execute(user,(engine,_)=>engine.Join()),NormalClearDay=1};
++}
++
++[GameRequest("/guild/unionraid/setdamage")]
++public sealed class LocalSetUnionRaidDamage:LocalUnionRequest<ReqSetUnionRaidDamage,ResSetUnionRaidDamage>
++{
++    protected override ResSetUnionRaidDamage Process(User user,ReqSetUnionRaidDamage request)=>new(){PeriodResult=UnionRaidPeriodResult.Failure,DamageResult=UnionRaidDamageResult.Banned,Info=LocalUnion.Raid(user,DateTimeOffset.UtcNow).CurrentStatus,JoinData=LocalUnionApi.Execute(user,(engine,_)=>engine.Join()),NormalClearDay=1};
++}
++
++[GameRequest("/guild/unionraid/practice/enter")]
++public sealed class LocalEnterUnionRaidPractice:LocalUnionRequest<ReqEnterUnionRaidPractice,ResEnterUnionRaidPractice>
++{
++    protected override ResEnterUnionRaidPractice Process(User user,ReqEnterUnionRaidPractice request)=>new(){PeriodResult=UnionRaidPeriodResult.Failure,JoinResult=UnionRaidJoinResult.FailureAlreadyKilled};
++}
++
++[GameRequest("/guild/unionraid/pratice/setdamage")]
++public sealed class LocalSetUnionRaidPracticeDamage:LocalUnionRequest<ReqSetUnionRaidPracticeDamage,ResSetUnionRaidPracticeDamage>
++{
++    protected override ResSetUnionRaidPracticeDamage Process(User user,ReqSetUnionRaidPracticeDamage request)=>new(){PeriodResult=UnionRaidPeriodResult.Failure};
++}
++
+--- /dev/null
++++ b/EpinelPS/LobbyServer/Guild/LocalGuildQueries.cs
+@@ -0,0 +1,51 @@
++using EpinelPS.Data;
++
++namespace EpinelPS.LobbyServer.Guild;
++
++[GameRequest("/guild/getlog")]
++public sealed class LocalGuildLog:LocalUnionRequest<ReqGetGuildLog,ResGetGuildLog>
++{
++    protected override ResGetGuildLog Process(User user,ReqGetGuildLog request)
++    {
++        LocalUnionApi.Guild(request.Gsn);
++        // NLL membership is provisioned locally; no player join/kick events have occurred.
++        return new();
++    }
++}
++[GameRequest("/guild/chat/get")]
++public sealed class LocalGuildChat:LocalUnionRequest<ReqGetGuildChatList,ResGetGuildChatList>
++{
++    protected override ResGetGuildChatList Process(User user,ReqGetGuildChatList request)
++    {
++        var result=new ResGetGuildChatList();result.MemberList.AddRange(LocalUnion.Get(user,new()).Members);return result;
++    }
++}
++[GameRequest("/guild/publicinfo")]
++public sealed class LocalGuildPublicInfo:LocalUnionRequest<ReqGetGuildPublicInfo,ResGetGuildPublicInfo>
++{
++    protected override ResGetGuildPublicInfo Process(User user,ReqGetGuildPublicInfo request)
++    {
++        LocalUnionApi.Guild(request.Gsn);var guild=LocalUnion.Get(user,new());
++        var result=new ResGetGuildPublicInfo{Guild=guild.Guild};result.Members.AddRange(guild.Members);return result;
++    }
++}
++[GameRequest("/shootingrange/v2/get")]
++public sealed class LocalShootingRangeRanking:LocalUnionRequest<ReqGetShootingRangeRankingV2,ResGetShootingRangeRankingV2>
++{
++    public static ResGetShootingRangeRankingV2 Build(IEnumerable<ShootingRangeRecord> rows,NetWholeUserData profile)
++    {
++        var result=new ResGetShootingRangeRankingV2();
++        // GuildInfo indexes rankings by (element, battle length), without SpecActiveSpot.
++        // NLL supplies ordinary shooting-range buckets; fixed-spec practice is not a second ranking.
++        // Require one ordinary source row per display key instead of choosing an arbitrary ID.
++        var rankingRows=rows.GroupBy(x=>(x.ShootingRangeType,x.ShootingRangeBattleLengthType))
++            .Select(group=>group.Single(x=>!x.SpecActiveSpot)).OrderBy(x=>x.Id).ToArray();
++        // Empty ranking buckets still need a non-null self record for the guild view.
++        foreach(var row in rankingRows)
++            result.RankingList.Add(new NetShootingRangeRankingTotalData{ShootingRangeId=row.Id,
++                UserGuildRanking=new NetShootingRangeRankingData{User=profile.Clone()}});
++        return result;
++    }
++    protected override ResGetShootingRangeRankingV2 Process(User user,ReqGetShootingRangeRankingV2 request)=>
++        Build(GameData.Instance.LocalShootingRanges.Values,LobbyHandler.CreateWholeUserDataFromDbUser(user));
++}
+--- /dev/null
++++ b/tests/EpinelPS.SelectedManager.Tests/LocalUnionRuntimeTests.cs
+@@ -0,0 +1,120 @@
++using EpinelPS;
++using EpinelPS.Models;
++using EpinelPS.LobbyServer;
++using EpinelPS.LobbyServer.Guild;
++using EpinelPS.Data;
++using Google.Protobuf;
++using Newtonsoft.Json;
++using Xunit;
++
++namespace EpinelPS.SelectedManager.Tests;
++
++public sealed class LocalUnionRuntimeTests
++{
++    static readonly DateTimeOffset Now=new(2026,9,17,1,0,0,TimeSpan.Zero);
++    static LocalUnionContent Content()=>new(Enumerable.Range(1,5).SelectMany(step=>new[]{new LocalUnionTier(step,1,100,false),new LocalUnionTier(step,2,200,step==5)}).ToArray(),3,5);
++    static User User()=>new(){LocalPersistenceBinding=new(){AccountUid=Guid.NewGuid()}};
++    static LocalUnionEngine Engine(User user,LocalUnionProgress state,DateTimeOffset? now=null)=>new(user,state,Content(),now??Now);
++    static void Teams(LocalUnionEngine engine)
++    {
++        for(var team=1;team<=5;team++)engine.Member.Teams[team]=Enumerable.Range(1,5).Select(slot=>new LocalUnionTeamSlot{Slot=slot,Character=Guid.NewGuid()}).ToList();
++    }
++    [Fact]
++    public void EntryAndResultReplaySurviveSerializationAndDoNotConsumeOrDamageTwice()
++    {
++        var user=User();var state=new LocalUnionProgress();var engine=Engine(user,state);Teams(engine);
++        Assert.Equal(UnionRaidJoinResult.Success,engine.Enter(1,1,1));
++        Assert.Equal(UnionRaidJoinResult.Success,engine.Enter(1,1,1));
++        Assert.Equal(1,engine.Join().HardPlayCount);
++        var first=engine.Damage(1,1,1,40,"packet-a");
++        var restored=JsonConvert.DeserializeObject<LocalUnionProgress>(JsonConvert.SerializeObject(state))!;
++        var next=Engine(user,restored);var replay=next.Damage(1,1,1,40,"packet-a");
++        Assert.Equal(first.Battle.BattleUid,replay.Battle.BattleUid);Assert.Single(restored.Battles);
++        Assert.Equal(60,next.Info()[0].LeftHp);Assert.Equal(1,next.Join().HardPlayCount);
++        Assert.Throws<InvalidOperationException>(()=>next.Damage(1,1,1,40,"unadmitted"));
++    }
++    [Fact]
++    public void SharedBossKillClampsOverkillAdvancesOnceAndUsesLeftHpOneof()
++    {
++        var state=new LocalUnionProgress();var first=Engine(User(),state);var second=Engine(User(),state);Teams(first);Teams(second);
++        first.Enter(1,1,1);second.Enter(1,1,1);
++        Assert.True(first.Damage(1,1,1,150,"first").Kill);
++        Assert.Equal(0,second.Damage(1,1,1,70,"late").Damage);
++        Assert.Equal(100,first.Rank().TotalDamage);
++        var info=NetUnionRaidGuildInfo.Parser.ParseFrom(first.Info()[0].ToByteArray());
++        Assert.True(info.HasLeftHp);Assert.False(info.HasLastBossTotalDamage);Assert.Equal(2,info.AchieveLevel);Assert.Equal(200,info.LeftHp);
++    }
++    [Fact]
++    public void TrialAccumulatesScoreWithoutKillAndPracticeDoesNotConsumeEntriesOrChangeProgress()
++    {
++        var user=User();var state=new LocalUnionProgress();var engine=Engine(user,state);Teams(engine);
++        engine.Enter(1,5,1);engine.Damage(1,5,1,100,"kill");engine.Enter(2,5,2);
++        var score=engine.Damage(2,5,2,500,"score");Assert.False(score.Kill);
++        Assert.True(engine.Info()[4].HasLastBossTotalDamage);Assert.Equal(500,engine.Info()[4].LastBossTotalDamage);
++        var before=JsonConvert.SerializeObject(state.Bosses);engine.Enter(2,5,0,true);engine.Damage(2,5,2,800,"practice",true);
++        Assert.Equal(before,JsonConvert.SerializeObject(state.Bosses));Assert.Equal(2,engine.Join().HardPlayCount);Assert.Equal(600,engine.Rank().TotalDamage);
++    }
++    [Fact]
++    public void DailyLimitAndUsedCharactersResetAtSeoulFiveWithoutResettingBossHp()
++    {
++        var user=User();var state=new LocalUnionProgress();var engine=Engine(user,state);Teams(engine);
++        for(var t=1;t<=3;t++){Assert.Equal(UnionRaidJoinResult.Success,engine.Enter(1,1,t));engine.Damage(1,1,t,1,$"result{t}");}
++        Assert.Equal(UnionRaidJoinResult.Banned,engine.Enter(1,1,4));
++        var next=Engine(user,state,new DateTimeOffset(2026,9,17,20,0,0,TimeSpan.Zero));
++        Assert.Equal(0,next.Join().HardPlayCount);Assert.Empty(next.Member.UsedCharacters);Assert.Equal(97,next.Info()[0].LeftHp);
++        Assert.Equal(UnionRaidJoinResult.Success,next.Enter(1,1,1));
++    }
++    [Fact]
++    public void LogicalCharacterTeamsRebindToNewRuntimeCsn()
++    {
++        var user=User();var uid=Guid.NewGuid();user.LocalPersistenceBinding!.CharacterUidByCsn[900]=uid.ToString();
++        LocalUnionTeams.Apply(user,new(){[2]=[new(){Slot=3,Character=uid}]});
++        Assert.Equal(900,user.UserTeams[(int)TeamType.UnionRaid].Teams.Single().Slots.Single().Value);
++        user.LocalPersistenceBinding.CharacterUidByCsn.Clear();user.LocalPersistenceBinding.CharacterUidByCsn[1200]=uid.ToString();
++        LocalUnionTeams.Apply(user,new(){[2]=[new(){Slot=3,Character=uid}]});
++        Assert.Equal(1200,user.UserTeams[(int)TeamType.UnionRaid].Teams.Single().Slots.Single().Value);
++    }
++    [Fact]
++    public void ShootingRangeWireSupportsClientDisplayDictionaryAcrossBothSourceVariants()
++    {
++        var rows=(from element in Enum.GetValues<ShootingRangeType>()
++                  from length in Enum.GetValues<ShootingRangeBattleLength>()
++                  from fixedSpec in new[]{true,false}
++                  select new ShootingRangeRecord{Id=1+(int)element*3+(int)length+(fixedSpec?0:100),
++                      ShootingRangeType=element,ShootingRangeBattleLengthType=length,SpecActiveSpot=fixedSpec}).Reverse().ToArray();
++        var source=rows.ToDictionary(x=>x.Id);
++        // Sending both variants reproduced GuildInfo's duplicate-key exception even though protobuf succeeded.
++        Assert.Throws<ArgumentException>(()=>rows.ToDictionary(x=>(x.ShootingRangeType,x.ShootingRangeBattleLengthType)));
++        var wire=ResGetShootingRangeRankingV2.Parser.ParseFrom(LocalShootingRangeRanking.Build(rows,new(){Usn=1,Server=1001}).ToByteArray());
++        var display=wire.RankingList.ToDictionary(x=>{
++            var row=source[x.ShootingRangeId];return (row.ShootingRangeType,row.ShootingRangeBattleLengthType);
++        });
++        Assert.Equal(15,display.Count);
++        Assert.Equal(rows.Where(x=>!x.SpecActiveSpot).Select(x=>x.Id).Order(),wire.RankingList.Select(x=>x.ShootingRangeId));
++        foreach(var row in rows)Assert.True(display.ContainsKey((row.ShootingRangeType,row.ShootingRangeBattleLengthType)));
++        Assert.All(wire.RankingList,x=>{Assert.False(source[x.ShootingRangeId].SpecActiveSpot);Assert.Equal(1L,x.UserGuildRanking.User.Usn);});
++        var reordered=LocalShootingRangeRanking.Build(rows.Reverse(),new(){Usn=1,Server=1001});
++        Assert.Equal(wire.ToByteArray(),reordered.ToByteArray());
++    }
++    [Theory]
++    [InlineData(false)]
++    [InlineData(true)]
++    public void ShootingRangeRejectsMissingOrAmbiguousOrdinarySourceRow(bool duplicate)
++    {
++        ShootingRangeRecord[] rows=duplicate
++            ? [new(){Id=17,SpecActiveSpot=false},new(){Id=27,SpecActiveSpot=false}]
++            : [new(){Id=17,SpecActiveSpot=true}];
++        Assert.Throws<InvalidOperationException>(()=>LocalShootingRangeRanking.Build(rows,new()));
++    }
++    [Fact]
++    public void AllUnionRaidProtoPathsAreRegisteredIncludingTheSourcePracticeTypo()
++    {
++        var registry=LobbyHandlerRegistry.Discover(typeof(LobbyMessage).Assembly);
++        string[] suffixes=["get","getjoindata","getstepinfo","get/nowplaying","hard/getstepinfo","hard/get/nowplaying","enter","hard/enter","setdamage","hard/setdamage",
++            "practice/enter","hard/practice/enter","pratice/setdamage","pratice/setdamage/hard","ranking/world","log/whole","log/user","log/step","memberlog","bosspopup/get","bosspopup/set"];
++        foreach(var suffix in suffixes)Assert.NotNull(registry.CreateHandler("/guild/unionraid/"+suffix));
++        Assert.IsType<LocalShootingRangeRanking>(registry.CreateHandler("/shootingrange/v2/get"));
++        Assert.True(registry.GetRegistration("/guild/unionraid/hard/enter").SerializeByAccount);
++        Assert.True(registry.GetRegistration("/team/setteam").SerializeByAccount);
++    }
++}
+--- /dev/null
++++ b/tests/EpinelPS.SelectedManager.Tests/LocalContentOpeningTests.cs
+@@ -0,0 +1,83 @@
++using System.Reflection;
++using System.Runtime.CompilerServices;
++using EpinelPS;
++using EpinelPS.Data;
++using EpinelPS.Database;
++using EpinelPS.LobbyServer;
++using EpinelPS.Models;
++using Google.Protobuf;
++using Microsoft.AspNetCore.Http;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.Extensions.DependencyInjection;
++using Xunit;
++
++namespace EpinelPS.SelectedManager.Tests;
++
++[CollectionDefinition("Local content singleton checks", DisableParallelization = true)]
++public sealed class LocalContentSingletonCollection { }
++
++[Collection("Local content singleton checks")]
++public sealed class LocalContentOpeningTests
++{
++    [Theory]
++    [InlineData(3, 1, true, 3, true)]
++    [InlineData(2, 1, true, 2, false)]
++    [InlineData(3, 0, true, 0, false)]
++    [InlineData(3, 2, true, 0, false)]
++    [InlineData(3, 1, false, 0, false)]
++    public async Task ContentOpeningWireUsesLocalMembershipLevel(int level, int guild, bool selected, int expected, bool opens)
++    {
++        var gameField = typeof(GameData).GetField("_instance", BindingFlags.Static | BindingFlags.NonPublic)!;
++        var priorGame = gameField.GetValue(null);
++        var coreProperty = typeof(User).Assembly.GetType("EpinelPS.Database.JsonDb")!.GetProperty("Instance")!;
++        var priorCore = coreProperty.GetValue(null);
++        try
++        {
++            var game = (GameData)RuntimeHelpers.GetUninitializedObject(typeof(GameData));
++            var rule = new ContentsOpenRecord { Id = ContentsOpen.UnionRaid, OpenCondition = [new() { OpenConditionType = ContentsOpenCondition.GuildLevel, OpenConditionValue = 3 }] };
++            typeof(GameData).GetField("ContentsOpenTable")!.SetValue(game, new Dictionary<ContentsOpen, ContentsOpenRecord> { [rule.Id] = rule });
++            var gacha = typeof(GameData).GetField("gachaTypes")!;
++            gacha.SetValue(game, Activator.CreateInstance(gacha.FieldType));
++            gameField.SetValue(null, game);
++            var user = new User { ID = 1, LocalUnionRaid = selected ? new() { Level = level, NormalCleared = true } : null };
++            user.Guild.guildId = guild;
++            user.GachaBannerMaxPulls[17] = 11;
++            coreProperty.SetValue(null, new CoreInfo { Users = [user] });
++            using var database = new GameContext(new DbContextOptionsBuilder<GameContext>().UseSqlite("Data Source=:memory:").Options);
++            using var services = new ServiceCollection().AddSingleton(database).BuildServiceProvider();
++            var context = new DefaultHttpContext { RequestServices = services };
++            context.Items["UserID"] = (ulong)1;
++            context.Request.Path = "/v1/user/getcontentsdata";
++            context.Request.Body = new MemoryStream(new ReqGetContentsOpenData().ToByteArray());
++            context.Response.Body = new MemoryStream();
++            await new LobbyRequestDispatcher(LobbyHandlerRegistry.Discover(typeof(LobbyMessage).Assembly)).DispatchAsync(context);
++            var wire = ResGetContentsOpenData.Parser.ParseFrom(((MemoryStream)context.Response.Body).ToArray());
++            Assert.Equal(expected, wire.GuildLevel);
++            Assert.Equal(opens, wire.GuildLevel >= rule.OpenCondition.Single().OpenConditionValue);
++            Assert.Equal(11, wire.MaxGachaCount);
++        }
++        finally { gameField.SetValue(null, priorGame); coreProperty.SetValue(null, priorCore); }
++    }
++
++    [Fact]
++    public void DatabaseValidationPreservesLevelsThrough1200AndIsIdempotent()
++    {
++        var type = typeof(User).Assembly.GetType("EpinelPS.Database.JsonDb")!;
++        var property = type.GetProperty("Instance")!;
++        var prior = property.GetValue(null);
++        try
++        {
++            var user = new User { SynchroDeviceLevel = 1200 };
++            foreach (var level in new[] { 999, 1000, 1001, 1199, 1200, 1201 }) user.Characters.Add(new() { Level = level });
++            property.SetValue(null, new CoreInfo { Users = [user] });
++            var validate = type.GetMethod("ValidateDb", BindingFlags.Static | BindingFlags.NonPublic)!;
++            for (var replay = 0; replay < 2; replay++)
++            {
++                validate.Invoke(null, null);
++                Assert.Equal(new[] { 999, 1000, 1001, 1199, 1200, 1200 }, user.Characters.Select(x => x.Level));
++                Assert.Equal(1200, user.SynchroDeviceLevel);
++            }
++        }
++        finally { property.SetValue(null, prior); }
++    }
++}

@@ -1,5 +1,23 @@
 # Solo Raid boss onboarding pipeline
 
+## 2026-09-17: current native behavior input
+
+The installed 152 catalog has 42 seasons. S41 import now resolves the current native
+behavior bundle, instead of the retained older server-cache bundle that had no match.
+The UI backend completed S41 publication and database binding; five affinity preparations
+and two account-based, no-game execution rehearsals passed. S26 also passed the same
+acquisition path with a warm cache. Actual-game acceptance remains with the operator.
+See [152 compatibility](../operations/CLIENT_152_COMPATIBILITY_ASSESSMENT.md).
+
+## 2026-09-16: current catalog correction
+
+The installed catalog now resolves all 40 slots, including S19. Its two manager
+rows differ only in ID; catalog discovery and onboarding share content-equivalent
+manager selection, while conflicting presets still fail. S19 is unprocessed and
+available for import, not verified in actual play. Boss images now come from local
+game bundles. See [season synchronization](../operations/BOSS_SEASON_SYNC_PLAN.md).
+The dated section below preserves the earlier state.
+
 ## 2026-09-13: season UI and offline worker composition
 
 The operator owns actual-game acceptance. Existing 151/S26 acceptance stays closed.
@@ -698,6 +716,17 @@ The official `C:\NIKKE` installation is never an input or mutation target.
 The pipeline intentionally preserves the original behavior tree. “Behavior assembly”
 means resolving and proving the complete original tree and its references; it does not
 invent or simulate a boss pattern.
+
+With native inputs configured, behavior acquisition uses the pinned embedded/inner
+catalogs to select their unique external-behavior bundle and the linked outer catalog
+to assemble only its verified native chunks. `export-native-behavior` and
+`acquire-nll-boss-behavior.py` implement this common path without season/build branches.
+The private cache is keyed by the native input plan hash; warm reads verify the small
+catalog/index pins and selected bundle. They do not hash the complete client store.
+An unrelated old server bundle cannot substitute for missing or changed current input.
+The acquired original and acquisition receipt are sealed with the onboarding candidate;
+execution resolves their exact identities through the published common delivery seal.
+Legacy offline callers without native configuration retain their explicit cache input.
 
 ## Historical Season 29 result (v2; not current admission)
 

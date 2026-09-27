@@ -226,6 +226,11 @@ $preparedArtifacts = @(
 foreach ($preparedArtifact in $preparedArtifacts) {
     Assert-Deploy (Test-Path -LiteralPath $preparedArtifact -PathType Leaf) 'phase_d_prepared_artifact_missing'
 }
+# The API invokes this helper out of process; prepared deployments must carry
+# the same database contract on both sides, including after a migration edit.
+Assert-Deploy ((Get-Sha256Lower (Join-Path (Split-Path $cliPath) 'NikkeLocalLab.Persistence.PostgreSql.dll')) -ceq
+    (Get-Sha256Lower (Join-Path $adminPublishRoot 'NikkeLocalLab.Persistence.PostgreSql.dll'))) `
+    'phase_d_import_cli_persistence_mismatch'
 Assert-Deploy `
     ((Get-Item -LiteralPath $weaknessVariantServerDll).Length -eq 15406592L -and
      (Get-Sha256Lower $weaknessVariantServerDll) -ceq `

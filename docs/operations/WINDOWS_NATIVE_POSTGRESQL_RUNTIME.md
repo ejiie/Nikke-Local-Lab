@@ -53,7 +53,9 @@ Phase D의 구현 경로는 `C:\NLL\ControlCenter\postgresql\data`, loopback por
 
 최종 installation smoke UID `1b6beb08-a5db-4741-b71f-064271a45b21`에서 PostgreSQL과 Admin API 기동, DPAPI 2개, one-time admin session과 인증 조회가 통과했다. 종료 뒤 `postgres.exe=0`, `postmaster.pid=false`, database/admin listener가 모두 closed였고 persistent DB mutation은 없었다. receipt는 `C:\NLL\ControlCenter\source-free\installation-smoke\1b6beb08-a5db-4741-b71f-064271a45b21\smoke.receipt.json`, SHA-256은 `cfcfcc793472a6ce240d98529ea71b023e0b35625dc5caa5ddc281e43d816c65`다.
 
-게임 실행은 같은 PostgreSQL을 계속 켠 상태에서 수행하지 않는다. Phase D coordinator가 runtime candidate와 파생 DB 생성을 끝낸 다음 `pg_ctl stop -m fast -w`를 수행하고 `postgres.exe`/`pg_ctl.exe`가 0임을 확인한 뒤 기존 v8 start를 호출한다. completion watcher는 client 종료와 rollback/cleanup 뒤 같은 cluster를 다시 시작한다. 따라서 persistent data는 유지되지만 게임 전투 중 PostgreSQL RAM 점유와 hypervisor 의존성은 없다.
+2026-09-18부터 공통 실행기는 관리 PostgreSQL을 게임 실행 중에도 유지한다. 유니온 API가 초기 정보 조회·입장·편성·결과를 같은 영속 DB transaction으로 처리하기 때문이다. coordinator는 지정 cluster가 실행 중인지 확인하며, completion/실패 복구는 실행 중이면 그대로 재사용하고 중단 상태일 때만 재기동한다. 모든 시즌/모드에 같은 수명주기를 적용한다. 관리도구 종료 시에도 게임·시작 coordinator·종료 watcher가 DB를 사용 중이면 종료하지 않는다. DB는 기존처럼 loopback에서만 수신한다.
+
+이전 v8 절차는 파생 DB 생성 후 관리 PostgreSQL을 중단하고 게임 종료 후 재기동하여 전투 중 메모리를 줄였다. 해당 절차에 런타임 직접 DB 접근 API를 추가하면서 InitSuccess HTTP 500 회귀가 발생했다. 과거 절차를 현재 실행 요구로 사용하지 않는다. 수정과 검사·설치 상태는 [유니온 하드 기록](UNION_RAID_HARD_IMPLEMENTATION.md)을 따른다.
 
 ## 게임 실행 preflight
 

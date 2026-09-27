@@ -379,7 +379,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         command.AccountUid,
         command.ExpectedProfileRevisionUid,
         cancellationToken).ConfigureAwait(false);
-    var edited = await EnsureCubeInventoryAsync(ApplyOperations(current, canonicalOperations), cancellationToken).ConfigureAwait(false);
+    var edited = await EnsureCubeInventoryAsync(await ApplyOperationsAsync(current, canonicalOperations, cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
     var changes = BuildAllChanges(current.Profile, edited);
     var candidateJson = SerializeCandidate(command, canonicalOperations);
     var draft = await _importStore.SaveProfileEditCandidateAsync(
@@ -478,7 +478,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         command.ExpectedProfileRevisionUid,
         cancellationToken).ConfigureAwait(false);
     var operations = candidate.Operations.Select(MapOperation).ToArray();
-    var profile = await EnsureCubeInventoryAsync(ApplyOperations(current, operations), cancellationToken).ConfigureAwait(false);
+    var profile = await EnsureCubeInventoryAsync(await ApplyOperationsAsync(current, operations, cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
     var changes = BuildAllChanges(current.Profile, profile);
     var expectedDiffJson = SerializeDiff(
         "profile_edit_diff/v1",
@@ -566,7 +566,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
         command.ExpectedSourceProfileRevisionUid,
         cancellationToken).ConfigureAwait(false);
     var operations = candidate.Operations.Select(MapOperation).ToArray();
-    var profile = await EnsureCubeInventoryAsync(ApplyOperations(current, operations), cancellationToken).ConfigureAwait(false);
+    var profile = await EnsureCubeInventoryAsync(await ApplyOperationsAsync(current, operations, cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
     var changes = BuildAllChanges(current.Profile, profile);
     var expectedDiffJson = SerializeDiff(
         "profile_edit_diff/v1",
@@ -1851,8 +1851,13 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
       ImportCatalogApplicability catalogApplicability,
       LocalProfileRevisionOrigin origin = LocalProfileRevisionOrigin.OfflineSanitizedImport)
   {
-    if (!BindingEquals(current.Profile.CharacterCatalog, draft.CharacterCatalog) ||
-        !BindingEquals(current.Profile.CombatSupportCatalog, draft.CombatSupportCatalog))
+    var replaceFullProfile = scopes.Contains("full_profile", StringComparer.Ordinal);
+    // A complete import supplies both the account state and every build against
+    // its own immutable catalogs. Preserve the old revision, not its catalog binding.
+    // Partial imports still require rebase; retained cubes are checked against
+    // the destination catalog by EnsureCubeInventoryAsync before applying.
+    if (!replaceFullProfile && (!BindingEquals(current.Profile.CharacterCatalog, draft.CharacterCatalog) ||
+        !BindingEquals(current.Profile.CombatSupportCatalog, draft.CombatSupportCatalog)))
     {
       throw Failure(App.ProfileManagementFailureKind.Conflict, "sanitized_profile_catalog_rebase_required");
     }
@@ -1876,8 +1881,10 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
           : null;
 
     return new LocalAccountProfileWrite(
-        current.Profile.CharacterCatalog,
-        current.Profile.CombatSupportCatalog,
+        replaceFullProfile ? new LocalProfileCatalogBindingWrite(draft.CharacterCatalog.CatalogSnapshotUid,
+            draft.CharacterCatalog.DatasetSnapshotUid, draft.CharacterCatalog.ManifestSha256) : current.Profile.CharacterCatalog,
+        replaceFullProfile ? new LocalProfileCatalogBindingWrite(draft.CombatSupportCatalog.CatalogSnapshotUid,
+            draft.CombatSupportCatalog.DatasetSnapshotUid, draft.CombatSupportCatalog.ManifestSha256) : current.Profile.CombatSupportCatalog,
         replaceAccount ? MaterializeAccountState(draft.AccountState, origin, current.Profile.AccountState.Cubes) : current.Profile.AccountState,
         builds,
         squad,
@@ -2134,9 +2141,10 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
       stored.DatasetSnapshotUid == decoded.DatasetSnapshotUid &&
       stored.CatalogManifestSha256 == decoded.ManifestSha256;
 
-  private static LocalAccountProfileWrite ApplyOperations(
+  private async Task<LocalAccountProfileWrite> ApplyOperationsAsync(
       LocalCurrentAccountProfile current,
-      IReadOnlyList<App.ProfileEditOperation> operations)
+      IReadOnlyList<App.ProfileEditOperation> operations,
+      CancellationToken cancellationToken)
   {
     if (operations.Count == 0)
     {
@@ -2151,6 +2159,11 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
 
     var accountState = current.Profile.AccountState;
     var builds = current.Profile.Builds.ToDictionary(static item => item.CharacterUid);
+    var characterCatalog = await ResolveOwnershipCatalogAsync(current.Profile.CharacterCatalog, operations,
+        builds.Keys.ToHashSet(), cancellationToken).ConfigureAwait(false);
+    var additions = await CreateOwnedCharacterBuildsAsync(characterCatalog, operations,
+        builds.Keys.ToHashSet(), cancellationToken).ConfigureAwait(false);
+    foreach (var build in additions) builds.Add(build.CharacterUid, build);
     var consoles = accountState.Consoles.ToArray();
     var cubes = accountState.Cubes.ToDictionary(static cube => cube.DefinitionUid);
     var accountChanged = false;
@@ -2158,6 +2171,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
     foreach (var operation in operations)
     {
       operation.Validate();
+      if (operation.FieldCode is "character_owned" or "character_catalog") continue;
       if (operation.FieldCode == "synchro_level" && operation.SubjectUid is null &&
           operation is { ValueKind: "integer", IntegerValue: { } synchro })
       {
@@ -2250,7 +2264,7 @@ public sealed partial class PostgreSqlProfileManagementService : App.IProfileMan
     }
 
     return new LocalAccountProfileWrite(
-        current.Profile.CharacterCatalog,
+        characterCatalog,
         current.Profile.CombatSupportCatalog,
         accountState,
         builds.Values,

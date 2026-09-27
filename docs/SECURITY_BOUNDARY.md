@@ -9,7 +9,7 @@
 - 운영자가 명시적으로 승인한 비배포·개인 로컬 compatibility 연구
 - 아래의 환경별 좁은 정적 입력 수집 예외에 한정된, runtime-cold 인증 없는 HTTPS asset-CDN 요청
 - exact build/content hash를 고정한 snapshot 가능한 disposable VM/별도 OS와 `127.0.0.1`-only Local Lab/EpinelPS process
-- commit `28b2f5413a0a1e3521a11ae162f91851335c8b40`에 pin한 public EpinelPS source의 read-only 감사와 별도 local checkout 실행
+- 공개 EpinelPS source의 read-only 감사와 검토한 commit에 고정한 별도 local checkout 실행. 기존 기준은 `28b2f5413a0a1e3521a11ae162f91851335c8b40`이며, 운영자가 요청한 152 적용 후보는 `61f052830f31443e3cf78917d292a93950e69ec1`의 버전 변경을 기존 NLL source에 별도 반영한다. 공개 HEAD 변경 자체가 활성 설치본 자동 교체 지시는 아니다.
 - disposable VM/OS에서만 수행하는 system hosts/root CA 변경과, client-local certificate bundle/native compatibility shim 변경. 사전 backup, 원본·적용 SHA-256, 변경 목록과 검증 가능한 rollback이 필수
 
 ## 제외
@@ -23,6 +23,17 @@
 - manifest에 없는 native binary, certificate 또는 prebuilt selector의 실행
 - public/LAN bind, internet port forwarding 또는 제3자 접속
 - Local Lab, EpinelPS fork, client/asset, certificate, selector 또는 patched binary의 배포
+
+### 2026-09-17 152 decode 메타데이터 요청 한정 승인 — 사용 완료
+
+운영자는 `https://global-lobby.nikke-kr.com/v1/get-static-data-pack-info-mpk`에 대해
+로그인·쿠키·토큰 없는 익명 메타데이터 POST를 각각 1회씩, 총 3회 명시적으로 승인했다.
+세 번째 승인은 Epinel의 protobuf Accept 및 해당 요청에 한정한 TLS 1.1 사용을 포함했다.
+인증서/hostname 검증·응답 크기 제한을 유지하고 리디렉션·자동 재시도·시스템 TLS 변경은 하지 않았다.
+결과는 첫 HTTP 오류(상태 번호 미기록), 두 번째 HTTP 406, 세 번째 HTTP 567이며 입력을 확보하지 못했다.
+**세 번의 승인 범위는 모두 사용 완료됐다.** 다른 API·추가 요청·로그인·TLS 검증 우회나
+runtime outbound를 허용하는 상시 예외가 아니다. 상세는
+[152 호환성 조사](operations/CLIENT_152_COMPATIBILITY_ASSESSMENT.md)를 따른다.
 
 ## 원본 클라이언트 게이트
 
@@ -53,6 +64,10 @@
 게임 파일/실계정 정보를 업로드하지 않으며 게임 실행 또는 공식 API/asset-CDN
 수집 허가로 확대하지 않는다. 이미지는 Git 제외 로컬 경로에 저장하고 시즌 카드에는
 lab의 인증된 로컬 image endpoint만 제공한다. 결손/모호함은 다른 보스로 대체하지 않는다.
+
+2026-09-19 운영자는 이미지 공급 순서를 에닉 우선, 에닉에 없는 항목은 공식 로컬
+번들 추출로 변경하도록 명시했다. 이 공개 PNG 수집 승인을 현재 동기화에도 적용한다.
+정확한 이름·인증 없는 요청·로컬 캐시 경계를 유지하며, 공식 설치본은 읽기 전용이다.
 
 ### 2026-09-13 중단된 FX 실험의 ACE-ADVT 정상 중지 원복 승인
 
@@ -168,15 +183,20 @@ Phase 3B-2의 `4/7` local exact-content 결손을 닫기 위해 운영자는 **S
 
 이 예외는 catalog가 exact 경로로 지시하지 않은 locale·일반 resource, official API, telemetry, 로그인 또는 client 실행 중 on-demand fetch로 확대되지 않습니다. 모든 네트워크 요청은 Samsung의 별도 materializer process에서만 발생하며 client, launcher와 Epinel server는 cold여야 합니다. Micron의 P0/P1과 실제 client 실행에서는 기존과 같이 official asset/locale auto-fetch가 비활성이고 non-loopback 성공 연결 수가 `0`이어야 합니다.
 
-## 2026-09-05 Micron 151 정적 입력 수집 승인
+## Micron 업데이트용 공개 정적 입력 수집 — 2026-09-17 정정
 
-운영자는 별도 확인 질문에 “당연하지!”로 승인했습니다. 이 추가 승인은
-**Micron의 client·launcher·Epinel server가 모두 cold인 동안**, 검토한 151
-candidate config가 지시하는 `StaticData.pack` 한 객체와 해당 resource build의
-버전 metadata 한 객체를 별도 Git-external `C:\NLL\Staging`에 받는 작업입니다.
-위 Samsung 역사 lane을 현재 Micron 경로로 재해석하는 것이 아닙니다.
+2026-09-05의 151 수집은 당시 수행 이력이다. 문서의 **151 버전 한정을 향후
+업데이트마다 재승인을 받아야 하는 영구 사용자 요구로 해석하지 않는다.**
+2026-09-17 운영자는 152 리소스 안내 요청을 승인하면서 해당 제한은 자신이 만든
+내용이 아니므로 문서를 수정하라고 명시했다. 현재 업데이트 작업에는 다음을 적용한다.
 
-- config SHA-256과 정확히 두 요청의 private manifest를 수집 전에 고정합니다.
+**Micron의 client·launcher·Epinel server가 모두 cold인 동안**, 사용자가 요청한
+NLL 업데이트에 필요한 공개 정적 입력을 수집할 수 있다. 검토한 upstream 설정이나
+이미 검증된 metadata가 정확히 지시하는 `StaticData.pack`과 해당 빌드의 리소스
+버전 안내 파일은 버전 번호가 바뀌었다는 이유만으로 별도 재승인을 요구하지 않는다.
+로컬 파일이 있으면 우선 재사용하며 새 입력은 Git 제외 staging에 저장한다.
+
+- config SHA-256과 정확한 URL·크기 제한을 수집 전에 기록합니다.
 - host는 `cloud.nikke-kr.com`, HTTPS GET만 허용합니다. redirect/proxy/query,
   cookies/credentials/공식 API, 인증서·hostname 검증 우회는 금지합니다.
 - pack 최대 256 MiB, metadata 최대 64 KiB이며, 각 요청 전체 시간을 제한합니다.
@@ -184,8 +204,32 @@ candidate config가 지시하는 `StaticData.pack` 한 객체와 해당 resource
   임의 URL 탐색·다른 버전 입력 대체를 하지 않습니다.
 - 공식 설치본, 기존 frozen client, runtime cache, DB, hosts, CA, 음성 설정을
   변경하지 않습니다. 새 private staging 파일만 생성하고 SHA-256으로 봉인합니다.
-- 이것은 별도 collector의 일회성 수집 권한이지 client/server auto-fetch 또는
-  151 실기동 성공 승인이 아닙니다. 취득 이후 offline 검증과 배포 게이트는 별도입니다.
+- 이것은 업데이트 준비용 별도 collector의 권한이며 client/server 실행 중
+  auto-fetch나 실게임 성공 판정이 아닙니다. 공식 로그인·계정 API·인증 정보 사용은
+  포함하지 않습니다. 취득 이후 offline 검증과 배포는 별도입니다.
+
+### 업데이트용 익명 메타데이터 조회 — 2026-09-17 후속 승인
+
+운영자는 `resourcehosts2` 조회 질문에 **“그냥 계속 승인할 거니까 해당 문서도
+수정하십쇼”**라고 지시했다. 사용자가 요청한 NLL 업데이트에 필요한 다음 두
+익명 메타데이터 경로는 이후 개별 요청 횟수마다 재승인을 요구하지 않는다.
+
+- `https://global-lobby.nikke-kr.com/v1/resourcehosts2`: 대상 빌드 번호만 전송하고
+  리소스 base URL·core/datapack 버전 map을 읽는다.
+- `https://global-lobby.nikke-kr.com/v1/get-static-data-pack-info-mpk`: 빈 공개 protobuf
+  요청으로 StaticData URL·size·hash·salt를 읽는다.
+
+client·launcher·Epinel server가 cold인 별도 준비 작업에서만 조회한다. 로그인,
+계정·session·token·cookie·기본 자격 증명, live traffic capture/replay, 인증서 검증
+우회는 포함하지 않는다. 응답은 최대 64 KiB, 요청은 제한 시간을 적용하고 각 HTTP
+상태와 입력 hash를 기록한다. 자동 무한 재시도나 추정 URL/버전 열거는 하지 않는다.
+기존 3회의 실패 이력은 보존하되 **소진된 승인 횟수를 현재 작업의 차단 사유로
+재사용하지 않는다.** 이는 메타데이터 취득 권한이며 공식 설치본 변경이나 게임
+자동 실행 권한으로 확대하지 않는다.
+
+152의 최초 `latest-653.txt` 요청은 HTTP 404였다. upstream 설정으로 만든 정확한 주소에서
+파일을 받지 못한 사실로 기록하며, 주소 오류/미게시 등 원인은 미확정이다.
+다른 버전의 안내를 152용으로 위장하거나 번호를 추측해 탐색하지 않는다.
 
 ## 2026-09-05 151 진단 복제본 승인
 
@@ -213,3 +257,7 @@ tree 외부 통신 차단, local trust와 rollback 검증을 준비하고 필요
 - 동시 로컬 공격자가 경로 검증과 파일 open 사이에 junction을 교체하는 상황은 Phase 1A threat model 밖입니다. 더 강한 보장이 필요하면 제한 계정/토큰과 handle 기반 final-path 검증을 별도 gate로 추가합니다.
 
 PostgreSQL 연결은 loopback host만 허용하고 `Include Error Detail=true`와 다중/원격 host를 거부합니다. connection string과 비밀번호는 출력하거나 ledger에 저장하지 않습니다.
+
+## 2026-09-18 운영자 요청: 관리도구의 계정 가져오기/동기화
+
+운영자는 자신의 `ejiie/Nikke-Simul` 가져오기 코드를 사용하여 선택한 로컬 계정에 프로필을 가져오고, 실제 소속 유니온으로 분류하는 기능을 명시 요청했다. 이 기능에서는 사용자가 직접 여는 블라블라 로그인 브라우저 및 해당 수집기의 DPAPI 세션으로 프로필·로스터·상세·전초기지·소속 유니온을 읽는 것을 허용한다. 이는 기존의 공식 계정 인증 제외 규칙에 대한 해당 UI 기능 한정 예외다. 에이전트의 임의 로그인/실계정 수집, 원본 게임 프로세스 트래픽 가로채기, 공식 게임 상태 변경은 포함하지 않는다. 인증 정보는 UI/API 응답·진단 로그·저장소에 노출하지 않는다. 세션과 수집 원문은 로컬 비공개 경로에만 둔다. 공개 이미지와 대응표를 캐시하여 대표 사진과 엠블럼을 표시한다.

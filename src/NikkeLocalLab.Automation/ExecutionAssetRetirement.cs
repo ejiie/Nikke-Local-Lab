@@ -14,7 +14,8 @@ namespace NikkeLocalLab.Automation;
 /// </summary>
 public static class ExecutionAssetRetirement
 {
-  public static void Retire(string launchRoot, string bundleSha256, string terminationSha256)
+  public static void Retire(string launchRoot, string bundleSha256, string terminationSha256,
+      Action<string, string, ExecutionAssetBinding, string, Action>? nativeOperation = null, bool applying = false)
   {
     Require(OperatingSystem.IsWindows(), "platform_unsupported");
     launchRoot = Plain(launchRoot);
@@ -77,12 +78,16 @@ public static class ExecutionAssetRetirement
     var fxSha = Text(fx, "manifestSha256");
     Require(binding.ProfileSha256 == Text(spec, "bossRuntimeVariantProfileSha256") &&
         binding.WeaknessCode == Text(spec, "weaknessCode"), "fx_binding_invalid");
-    using var termination = Pinned(Path.Combine(launchRoot, "job-zero.receipt.json"), terminationSha256);
-    var proof = termination.RootElement;
-    Require(Text(proof, "contractId") == "nll/phase-d-job-zero/v1" && Text(proof, "launchContextUid") == uid &&
-        Text(proof, "runnerBundleSha256") == bundleSha256 && Text(proof, "jobNonce") == nonce &&
-        proof.GetProperty("activeProcesses").GetInt32() == 0 && Plain(Text(proof, "runtimeRoot")) == runtime,
-        "exit_proof_invalid");
+    if (!applying)
+    {
+      using var termination = Pinned(Path.Combine(launchRoot, "job-zero.receipt.json"), terminationSha256);
+      var proof = termination.RootElement;
+      Require(Text(proof, "contractId") == "nll/phase-d-job-zero/v1" && Text(proof, "launchContextUid") == uid &&
+          Text(proof, "runnerBundleSha256") == bundleSha256 && Text(proof, "jobNonce") == nonce &&
+          proof.GetProperty("activeProcesses").GetInt32() == 0 && Plain(Text(proof, "runtimeRoot")) == runtime,
+          "exit_proof_invalid");
+    }
+    else Require(!File.Exists(Path.Combine(launchRoot, "job-zero.receipt.json")), "execution_already_closed");
     using var job = OpenJobObject(0x0004, false, "Local\\NLL.PhaseD." + nonce); // QUERY only.
     Require(!job.IsInvalid, "job_absent_or_inaccessible");
     void Verify()
@@ -91,13 +96,22 @@ public static class ExecutionAssetRetirement
       Require(QueryLimits(job, 9, out var limits, (uint)Marshal.SizeOf<Extended>(), IntPtr.Zero) &&
           limits.Basic.Flags == 0x2000, "job_limits_invalid");
       Require(QueryAccounting(job, 1, out var accounting, (uint)Marshal.SizeOf<Accounting>(), IntPtr.Zero) &&
-          accounting.ActiveProcesses == 0, "job_zero_unproven");
-      // An in-job caller can never validly observe zero; explicitly reject it too.
-      Require(IsProcessInJob(GetCurrentProcess(), job, out var inside) && !inside, "owner_inside_job");
+          (applying ? accounting.ActiveProcesses > 0 : accounting.ActiveProcesses == 0), "job_zero_unproven");
+      Require(IsProcessInJob(GetCurrentProcess(), job, out var inside) && inside == applying, "owner_membership_invalid");
     }
     Verify();
-    ExecutionAssetOverlay.RetireAfterProcessTreeExit(Path.Combine(runtime, "execution-fx"), fxSha,
-        binding, terminationSha256, Verify);
+    var fxRoot = Path.Combine(runtime, "execution-fx");
+    using var delivery = Pinned(Path.Combine(fxRoot, "manifest.private.json"), fxSha);
+    if (Text(delivery.RootElement, "contractId") is "nll/common-native-fx-execution/v1" or "nll/common-native-fx-execution/v2")
+    {
+      Require(nativeOperation is not null, "native_consumer_missing");
+      nativeOperation!(fxRoot, fxSha, binding, terminationSha256, Verify);
+    }
+    else
+    {
+      Require(!applying, "apply_contract_invalid");
+      ExecutionAssetOverlay.RetireAfterProcessTreeExit(fxRoot, fxSha, binding, terminationSha256, Verify);
+    }
   }
 
   private static string Text(JsonElement value, string name) => value.GetProperty(name).GetString()

@@ -1,3 +1,4 @@
+. (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 function Invoke-PhaseDRunnerStart {
     param([object]$Specification)
     Assert-PhaseDRunnerSpecification $Specification
@@ -271,7 +272,7 @@ function Invoke-PhaseDRunnerStart {
             -Group $extensionFirewallGroup -Direction Outbound -Action Block `
             -Enabled True -Profile Any -Program $bootstrapPath | Out-Null
         $firewallApplied = $true
-        if ($Specification.clientBuildCode -ceq 'build_151.8.5') {
+        if ($Specification.clientBuildCode -cne 'build_150.6.9') {
             New-NetFirewallRule -Name 'NLL.PhaseD.RuntimeServerBlock' -DisplayName 'NLL Phase D local runtime server' -Group $extensionFirewallGroup -Direction Outbound -Action Block -Enabled True -Profile Any -Program $serverPath | Out-Null
         }
         $extensionRules = @(Get-NetFirewallRule -Group $extensionFirewallGroup)
@@ -279,13 +280,22 @@ function Invoke-PhaseDRunnerStart {
             $extensionRules | Get-NetFirewallApplicationFilter
         )
         Assert-True (
-            $extensionRules.Count -eq $(if ($Specification.clientBuildCode -ceq 'build_151.8.5') { 2 } else { 1 }) -and
+            $extensionRules.Count -eq $(if ($Specification.clientBuildCode -cne 'build_150.6.9') { 2 } else { 1 }) -and
             $extensionPrograms.Count -eq $extensionRules.Count -and
             (@($extensionPrograms.Program) -ccontains $bootstrapPath) -and
-            ($Specification.clientBuildCode -cne 'build_151.8.5' -or (@($extensionPrograms.Program) -ccontains $serverPath))
+            ($Specification.clientBuildCode -ceq 'build_150.6.9' -or (@($extensionPrograms.Program) -ccontains $serverPath))
         ) 'phase3b2_epinel_minimal_start_firewall_apply_failed'
     
+        if ($Specification.contractId -ceq 'nll/phase-d-runner-input/v3' -and $null -ne $Specification.executionFx) {
+            $stageCode = 'native_fx_apply'
+            Write-PhaseDProgress $Specification.launchRoot 'fx_apply'
+            $runnerManifest = Join-Path $Specification.launchRoot 'tools/runner/runner.bundle.json'
+            $fxOutput = @(& $Specification.runtimeMaterializer --apply-common-native-fx true `
+                --launch-root $Specification.launchRoot --expected-bundle-sha256 (Get-Sha256Hex $runnerManifest) 2>&1)
+            Assert-True ($LASTEXITCODE -eq 0) 'phase_d_native_fx_apply_failed'
+        }
         $stageCode = 'server_start_and_listener_observation'
+        Write-PhaseDProgress $Specification.launchRoot 'server_start'
         $env:EPINELPS_CLASSIC_SOLO_RAID_ACCOUNT_ID = [string]$context.accountId
         $env:EPINELPS_CLASSIC_SOLO_RAID_MANAGER_ID = [string]$context.managerId
         $env:EPINELPS_CLASSIC_SOLO_RAID_MANAGER_SELECTION = 'profile_trusted_unique/v1'
@@ -301,6 +311,8 @@ function Invoke-PhaseDRunnerStart {
                 -RedirectStandardOutput $stdoutPath `
                 -RedirectStandardError $stderrPath
             Assert-PhaseDRunnerJobProcess -Specification $Specification -ProcessId $serverProcess.Id
+            try { Write-PhaseDProgress $Specification.launchRoot 'server_created' ([DateTimeOffset]$serverProcess.StartTime.ToUniversalTime()) }
+            catch { Write-Verbose 'phase_d_progress_process_timestamp_unavailable' }
         }
         finally {
             Remove-Item Env:\EPINELPS_CLASSIC_SOLO_RAID_ACCOUNT_ID,
@@ -339,10 +351,12 @@ function Invoke-PhaseDRunnerStart {
     
         if ($Specification.resourcePreflightRequired) {
             $stageCode = 'required_resource_catalog_set_loopback_preflight'
+            Write-PhaseDProgress $Specification.launchRoot 'resource_check'
             Invoke-PhaseDRunnerResourcePreflight -Specification $Specification
         }
     
         $stageCode = 'physical_bootstrap_and_sail_observation'
+        Write-PhaseDProgress $Specification.launchRoot 'game_start'
         $env:NLL_PHASE3B2_ASSESSMENT_UID = $assessmentUid
         $env:NLL_PHASE3B2_EVIDENCE_LANE = $BootstrapEvidenceLane
         try {
@@ -383,8 +397,17 @@ function Invoke-PhaseDRunnerStart {
             $clientProcessId -gt 0 -and
             $null -ne (Get-PinnedProcess $clientProcessId 'nikke')
         ) 'phase3b2_epinel_minimal_start_bootstrap_contract_invalid'
+        $observedClient=$null
+        try {
+            $observedClient=Get-PinnedProcess $clientProcessId 'nikke'
+            if ($null -ne $observedClient) {
+                Write-PhaseDProgress $Specification.launchRoot 'game_spawned' ([DateTimeOffset]$observedClient.StartTime.ToUniversalTime())
+            }
+        } catch { Write-Verbose 'phase_d_progress_process_timestamp_unavailable' }
+        finally { if ($observedClient -is [Diagnostics.Process]) { $observedClient.Dispose() } }
     
         $stageCode = 'thirty_second_interactive_health_observation'
+        Write-PhaseDProgress $Specification.launchRoot 'health_observation'
         $samples = @()
         $deadline = New-PhaseDRunnerStopwatch
         while ($deadline.Elapsed.TotalSeconds -lt 30) {
@@ -426,6 +449,7 @@ function Invoke-PhaseDRunnerStart {
                 $_.nonLoopbackConnectionCount -ne 0
             }).Count -eq 0
         ) 'phase3b2_epinel_minimal_start_health_or_network_invalid'
+        Write-PhaseDProgress $Specification.launchRoot 'running'
     
         $receipt = [ordered]@{
             schemaVersion = 1
@@ -515,6 +539,7 @@ function Invoke-PhaseDRunnerStart {
     }
     catch {
         $failureMessage = $_.Exception.Message
+        Write-PhaseDProgress $Specification.launchRoot 'recovery_required'
         if ($Specification.contractId -ceq 'nll/phase-d-runner-input/v3') {
             # No restore, PID stop, firewall removal or claimed rollback in this Job.
             Write-AtomicUtf8NoBom $runFailurePath (([ordered]@{

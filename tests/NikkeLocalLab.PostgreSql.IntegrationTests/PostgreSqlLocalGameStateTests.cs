@@ -2502,7 +2502,8 @@ public sealed partial class PostgreSqlLocalGameStateTests
 
   private static async Task<SyntheticCatalogFixture> PublishCatalogFixtureAsync(
       NpgsqlDataSource dataSource,
-      int characterCount)
+      int characterCount,
+      string characterSnapshotTag = "profile-character")
   {
     var method = typeof(PostgreSqlLocalAccountProfileTests).GetMethod(
         "PublishSyntheticCatalogsAsync",
@@ -2514,7 +2515,8 @@ public sealed partial class PostgreSqlLocalGameStateTests
         characterCount,
         false,
         false,
-        false);
+        false,
+        characterSnapshotTag);
     var character = Property<object>(sourceFixture, "Character");
     var support = Property<object>(sourceFixture, "Support");
     var characterBinding = Property<LocalProfileCatalogBindingWrite>(character, "Binding");

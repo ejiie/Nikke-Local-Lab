@@ -18,6 +18,7 @@ public sealed record BossSeasonCatalogProjection(int SchemaVersion, string Contr
 public interface IBossSeasonCatalogService
 {
   BossSeasonCatalogProjection Get();
+  BossSeasonCatalogProjection GetRevision(string catalogSha256) => Get();
   byte[]? GetImage(int season, string catalogSha256);
 }
 
@@ -130,9 +131,20 @@ public sealed class FilesystemBossSeasonCatalogService(string catalogPath, strin
         // Existing admitted profiles may be v1 (including the verified S26).
         // Catalog presentation does not impose the NEW publisher's v2-only gate.
         var version = p.GetProperty("schemaVersion").GetInt32();
-        Require(version is 1 or 2 && p.GetProperty("contractId").GetString() == $"nll/boss-runtime-variant-profile/v{version}" &&
+        Require(version is 1 or 2 or 4 && p.GetProperty("contractId").GetString() == $"nll/boss-runtime-variant-profile/v{version}" &&
             p.GetProperty("seasonNumber").GetInt32() == season && p.GetProperty("profileCode").GetString() == entry.GetProperty("profileCode").GetString() &&
             p.GetProperty("sourceAffinity").GetProperty("weaknessCode").GetString() == snapshot.Seasons[season - 1].DefaultWeaknessCode);
+        if (version == 4)
+        {
+          if (!entry.TryGetProperty("delivery", out var delivery)) { result[season] = ("awaiting_runtime_delivery", "boss_runtime_delivery_required"); continue; }
+          var deliveryBytes = ReadFile(delivery.GetProperty("path").GetString()!, 1048576);
+          Require(Hash(deliveryBytes) == delivery.GetProperty("sha256").GetString());
+          using var bound = JsonDocument.Parse(deliveryBytes);
+          Require(bound.RootElement.GetProperty("contractId").GetString() == "nll/common-boss-delivery/v1" &&
+              bound.RootElement.GetProperty("profileSha256").GetString() == hash);
+        }
+        // Processed means assembled/delivered. Launch still requires the common
+        // preparation gate; this card never claims actual game acceptance.
         if (entry.GetProperty("operationalStatusCode").GetString() == "enabled") result[season] = ("processed", null);
       }
     }
@@ -188,6 +200,12 @@ public static class BossSeasonEndpoints
   {
     var group = endpoints.MapGroup("/admin-api/v1");
     group.MapGet("/boss-seasons", (IBossSeasonCatalogService service) => service.Get());
+    group.MapPost("/characters/sync", async (IServiceProvider provider, CancellationToken token) =>
+        await (provider.GetService<ICharacterCatalogSynchronizer>() ?? throw new ApiRequestException(503, "character_catalog_sync_not_configured"))
+            .SynchronizeAsync(token).ConfigureAwait(false));
+    group.MapPost("/boss-seasons/sync", async (IServiceProvider provider, CancellationToken token) =>
+        await (provider.GetService<IBossSeasonSynchronizer>() ?? throw new ApiRequestException(503, "boss_catalog_sync_not_configured"))
+            .SynchronizeAsync(token).ConfigureAwait(false));
     group.MapGet("/boss-user-validation/{season:int}", (int season, IServiceProvider provider) =>
         provider.GetService<UserValidationDelivery>()?.Get(season) ??
         new UserValidationDeliveryView(1, "nll/user-validation-delivery-view/v1", season, "blocked",

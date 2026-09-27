@@ -111,6 +111,10 @@ class CandidateTests(unittest.TestCase):
     def receipt(self, weakness, v3=True):
         changed = weakness != "iron"
         self.profile["schemaVersion"] = 3 if v3 else 2
+        if v3:
+            self.profile["quickTimeEventAffinity"] = self.qte
+        else:
+            self.profile.pop("quickTimeEventAffinity", None)
         pack = self.root / (weakness + ".pack")
         if changed:
             pack.write_bytes(("synthetic-pack-" + weakness).encode())
@@ -231,6 +235,23 @@ class CandidateTests(unittest.TestCase):
             self.seal(root, source)
         self.assertFalse((root / "onboarding-verified-candidate.receipt.json").exists())
 
+    def test_acquired_behavior_sealed_and_drift_cannot_use_legacy_copy(self):
+        root, source = self.complete_fixture()
+        acquired = root / 'acquired-behavior'
+        acquired.mkdir()
+        bundle = acquired / 'externalbehavior_assets_all_ab12.bundle'
+        shutil.copyfile(self.cache / 'behavior.bundle', bundle)
+        (root / 'behavior-acquisition.receipt.json').write_bytes(fx.encoded({
+            'contractId': 'nll/boss-behavior-acquisition/v1', 'statusCode': 'acquired',
+            'asset': pin(bundle.read_bytes())}))
+        result = self.seal(root, source)
+        paths = {r['relativePath'] for r in result['artifacts']}
+        self.assertIn('acquired-behavior/' + bundle.name, paths)
+        self.assertIn('behavior-acquisition.receipt.json', paths)
+        bundle.write_bytes(b'drift')
+        with self.assertRaises(fx.CandidateError):
+            gate.build_receipt(root, source, 7, 'synthetic-boss', 'e' * 64, self.cache)
+
     def test_restored_or_drifted_fx_never_seal(self):
         root, source = self.complete_fixture()
         candidate = root / "shield-fx-candidate"
@@ -300,7 +321,27 @@ switch ($taskArguments[0]) {
     }
     '-B' {
         switch ([IO.Path]::GetFileName($taskArguments[1])) {
+            'inspect-nll-boss-behavior-assets.py' { Copy-Fixture 'behavior-assembly.receipt.json' (Arg '--output') }
             'materialize-nll-boss-runtime-profile.py' {
+                if ($env:NLL_TEST_FAILURE -eq 'shield-missing') { exit 1 }
+                $assessment = @{ contractId = 'nll/boss-shield-preparation-assessment/v1';
+                    sourceDiscoverySha256 = (Get-FileHash -LiteralPath (Arg '--source-discovery')).Hash.ToLowerInvariant();
+                    behaviorAssemblySha256 = (Get-FileHash -LiteralPath (Arg '--behavior-receipt')).Hash.ToLowerInvariant();
+                    runtimeAdmissionStatusCode = 'not_assessed'; preparationStatusCode = 'not_required' }
+                if ($env:NLL_TEST_FAILURE -eq 'shield-bound-drift') { $assessment.sourceDiscoverySha256 = '0' * 64 }
+                if ($env:NLL_TEST_FAILURE -in @('shield-review', 'shield-review-exit0', 'shield-recipe-drift')) {
+                    $recipeRoot = Join-Path (Split-Path -Parent (Arg '--profile-output')) 'shield-fx-preparation'
+                    New-Item -ItemType Directory -Path $recipeRoot | Out-Null
+                    $recipePath = Join-Path $recipeRoot 'recipes.receipt.json'
+                    [IO.File]::WriteAllText($recipePath, '{"synthetic":true}')
+                    $assessment.fx = @{}
+                    $assessment.shieldFxRecipesSha256 = (Get-FileHash -LiteralPath $recipePath).Hash.ToLowerInvariant()
+                    $assessment.shieldFxRecipeDeliveryStatusCode = 'verified_preparation_candidates'
+                    $assessment.preparationStatusCode = 'review_required'
+                    if ($env:NLL_TEST_FAILURE -eq 'shield-recipe-drift') { [IO.File]::AppendAllText($recipePath, ' ') }
+                }
+                [IO.File]::WriteAllText((Arg '--shield-assessment-output'), ($assessment | ConvertTo-Json -Depth 8))
+                if ($env:NLL_TEST_FAILURE -in @('shield-review', 'shield-recipe-drift')) { exit 1 }
                 Copy-Fixture 'boss-runtime-variant.profile.json' (Arg '--profile-output')
                 Copy-Fixture 'onboarding-candidate.receipt.json' (Arg '--receipt-output')
             }
@@ -329,7 +370,8 @@ exit 0
                    "-MaterializerPath", str(shim), "-MaterializerHostPath", pwsh,
                    "-StaticDataPackPath", str(source), "-SourceDatabasePath", str(database), "-GameConfigPath", str(config),
                    "-AssetCacheRoot", str(self.cache), "-PythonPath", str(shim), "-UnityPyRoot", str(unity), "-RegistryRoot", str(registry)]
-        for failure in ("partial", "bad-qte", "bad-fx", "input-drift", "none"):
+        for failure in ("partial", "bad-qte", "bad-fx", "input-drift", "shield-review", "shield-review-exit0",
+                        "shield-recipe-drift", "shield-bound-drift", "shield-missing", "none"):
             output = self.root / ("run-" + failure)
             result = subprocess.run([*command, "-OutputRoot", str(output)], env={**env, "NLL_TEST_FAILURE": failure},
                                     text=True, capture_output=True, timeout=90)
@@ -341,6 +383,13 @@ exit 0
                 self.assertEqual(len(list(registry.iterdir())), 1)
                 private_path = Path((fixture / "last-private-path.txt").read_text())
                 self.assertFalse(private_path.exists())
+                expected = {"shield-review": "shield_preparation_review_required",
+                            "shield-review-exit0": "shield_preparation_review_required",
+                            "shield-recipe-drift": "shield_recipe_delivery_invalid",
+                            "shield-bound-drift": "shield_assessment_invalid",
+                            "shield-missing": "profile_assembly_failed"}.get(failure)
+                if expected:
+                    self.assertIn("boss_onboarding_" + expected, result.stderr)
         # Same output root is rejected before discovery, including after failure.
         for suffix in ("partial", "none"):
             result = subprocess.run([*command, "-OutputRoot", str(self.root / ("run-" + suffix))], env=env,

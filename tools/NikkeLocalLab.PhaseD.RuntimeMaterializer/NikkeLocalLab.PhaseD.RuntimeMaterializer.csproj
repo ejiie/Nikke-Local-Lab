@@ -15,12 +15,16 @@
     <None Include="$(EpinelReferenceRoot)\libsodium.dll" Link="libsodium.dll" CopyToOutputDirectory="PreserveNewest" />
     <Compile Include="..\..\src\NikkeLocalLab.Automation\ExecutionAssetOverlay.cs" Link="ExecutionAssetOverlay.cs" />
     <Compile Include="..\..\src\NikkeLocalLab.Automation\ExecutionAssetRetirement.cs" Link="ExecutionAssetRetirement.cs" />
+    <Compile Include="../Phase3B2/EpinelUserValidation/UserValidationStoreTransaction.cs" Link="UserValidationStoreTransaction.cs" />
     <Compile Include="..\..\src\NikkeLocalLab.Application.ProfileManagement\PhaseDExecutionDocuments.cs"
              Link="PhaseDExecutionDocuments.cs" />
     <Compile Include="..\..\src\NikkeLocalLab.Persistence.PostgreSql\ClassicSoloRaidRuntimeStateStore.cs"
              Link="ClassicSoloRaidRuntimeStateStore.cs" />
+    <Compile Include="..\..\src\NikkeLocalLab.Persistence.PostgreSql\CommonBossRuntimeBindingStore.cs"
+             Link="CommonBossRuntimeBindingStore.cs" />
     <Compile Include="..\..\src\NikkeLocalLab.Persistence.PostgreSql\RuntimePreferencesStore.cs"
              Link="RuntimePreferencesStore.cs" />
+    <Compile Include="..\..\src\NikkeLocalLab.Persistence.PostgreSql\LocalUnionStore.cs" Link="LocalUnionStore.cs" />
   </ItemGroup>
 
   <Target Name="RequireEpinelReferenceRoot" BeforeTargets="ResolveReferences">

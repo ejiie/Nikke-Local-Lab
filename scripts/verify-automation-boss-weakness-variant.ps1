@@ -71,6 +71,32 @@ $behaviorInspector = Read-RequiredText (Join-Path $repositoryRoot `
     'scripts\inspect-nll-boss-behavior-assets.py')
 $profileAssembler = Read-RequiredText (Join-Path $repositoryRoot `
     'scripts\materialize-nll-boss-runtime-profile.py')
+$shieldAssessment = Read-RequiredText (Join-Path $repositoryRoot 'scripts\nll-shield-fx-assessment.py')
+$shieldDiscovery = Read-RequiredText (Join-Path $repositoryRoot `
+    'tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\BossShieldPatternDiscovery.cs')
+Assert-BossVariant `
+    ($profileAssembler.Contains('assess_shield_patterns(') -and
+     $profileAssembler.Contains('boss_profile_shield_assessment_review_required') -and
+     $onboarding.Contains('--shield-assessment-output $shieldAssessmentPath') -and
+     $onboarding.Contains('boss_onboarding_shield_preparation_review_required') -and
+     $onboarding.Contains("'nll-shield-fx-assessment.py'") -and
+     $shieldAssessment.Contains('full_hierarchy_correspondence_unresolved') -and
+     $shieldAssessment.Contains('UseScaleHelper') -and
+     $shieldDiscovery.Contains('bodyConditionInheritanceStatusCode = "unresolved"') -and
+     $shieldDiscovery.Contains('fxAttachmentKey')) `
+    'boss_shield_preparation_assessment_boundary_missing'
+$shieldRecipes = Read-RequiredText (Join-Path $repositoryRoot 'scripts\nll-shield-fx-recipes.py')
+Assert-BossVariant `
+    ($profileAssembler.Contains('recipes.verify_delivery(') -and
+     $profileAssembler.Contains('shieldFxRecipesSha256') -and
+     $onboarding.Contains('boss_onboarding_shield_recipe_delivery_invalid') -and
+     $onboarding.Contains("'nll-shield-fx-recipes.py'") -and
+     $shieldRecipes.Contains('source_shield_size_candidate/v2') -and
+     $shieldRecipes.Contains('reference_inputs_matched') -and
+     $shieldRecipes.Contains('shield_recipe_preservation_failed') -and
+     $shieldRecipes.Contains('shield_recipe_receipt_changed') -and
+     $shieldRecipes.Contains('exist_ok=False')) `
+    'boss_shield_recipe_delivery_boundary_missing'
 $assetMaterializer = Read-RequiredText (Join-Path $repositoryRoot `
     'scripts\materialize-nll-phase-d-presentation-assets.ps1')
 $repair = Read-RequiredText (Join-Path $repositoryRoot `
@@ -267,6 +293,7 @@ if (Test-Path -LiteralPath $externalRoot -PathType Container) {
 }
 
 Write-Output 'Boss weakness variant automation contract passed.'
+& (Join-Path $PSScriptRoot 'test-nll-phase-d-fx-closure.ps1')
 
 $fxCandidate = Read-RequiredText (Join-Path $repositoryRoot 'scripts\materialize-nll-shield-fx-candidate.py')
 $fxTransform = Read-RequiredText (Join-Path $repositoryRoot 'scripts\materialize-nll-shield-fx-transform-variant.py')

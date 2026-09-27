@@ -19,7 +19,7 @@ function Restore-ControlCenterHosts {
     $script:hostRestores++
     if ($script:hostsFail) { throw 'synthetic_hosts_failure' }
 }
-function Invoke-PhaseDPgCtl { $script:pgStarts++; $script:pgExitCode }
+function Ensure-PhaseDPostgresRunning { $script:pgStarts++; if ($script:pgExitCode) { throw 'synthetic_db_unavailable' } }
 function Get-Sha256Lower { 'synthetic-hash' } # no reading actual hosts
 function Write-AtomicJson { param($Path, $Value) [IO.File]::WriteAllText($Path, ($Value | ConvertTo-Json -Depth 8)) }
 try {

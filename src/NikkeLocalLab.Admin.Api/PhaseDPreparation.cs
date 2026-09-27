@@ -101,7 +101,7 @@ public sealed class PowerShellPhaseDPreparationService(string repositoryRoot, st
     if (result is null || result.SchemaVersion != 1 || result.ContractId != "nll/phase-d-preparation/v1" ||
         result.SeasonNumber != season || result.WeaknessCode != weakness ||
         (result.StatusCode == "ready" ? result.FailureCode is not null || !IsHash(result.BindingSha256) ||
-            result.ClientBuildCode is not ("build_150.6.9" or "build_151.8.5") :
+            result.ClientBuildCode is not ("build_150.6.9" or "build_151.8.5" or "build_152.8.11") :
             result.StatusCode != "blocked" || result.BindingSha256 is not null || result.ClientBuildCode is not null ||
             result.FailureCode is null || !Regex.IsMatch(result.FailureCode, "\\Aphase_d_[a-z0-9_]{3,120}\\z", RegexOptions.CultureInvariant)))
       throw new JsonException("phase_d_preparation_projection_invalid");

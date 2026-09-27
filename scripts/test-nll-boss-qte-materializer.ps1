@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[a-f0-9]{64}$')][string]$ExpectedBundleSha256,
     [switch]$OfflineVariants,
     [string]$SourceDatabasePath = '',
-    [string]$StaticDataPackPath = ''
+    [string]$StaticDataPackPath = '',
+    [string]$PythonPath = 'python'
 )
 
 # Local-only: new ignored outputs, no deployment, listeners, client or PostgreSQL.
@@ -46,7 +47,7 @@ $outputRoot = Join-Path $repository ('artifacts\boss-qte-checks\' + [guid]::NewG
 $null = New-Item -ItemType Directory -Path $outputRoot
 $receipt = [ordered]@{
     contractId = 'nll/boss-qte-local-check/v1'; status = 'failed'
-    bundleSha256 = $ExpectedBundleSha256; behavior = $null; offlineVariants = @()
+    bundleSha256 = $ExpectedBundleSha256; behavior = $null; shieldPatterns = $null; offlineVariants = @()
     originalClientExecuted = $false; operatingDatabaseTouched = $false; deployed = $false
 }
 try {
@@ -56,12 +57,21 @@ try {
         Require ($LASTEXITCODE -eq 0) 'boss_qte_build_failed'
     } finally { Pop-Location }
     $exe = Join-Path $outputRoot 'materializer\NikkeLocalLab.PhaseD.RuntimeMaterializer.exe'
+    $bindingLines = @(& $PythonPath -B (Join-Path $PSScriptRoot 'test-nll-boss-profile-binding.py') --materializer $exe)
+    Require ($LASTEXITCODE -eq 0 -and $bindingLines.Count -eq 1) 'boss_profile_binding_behavior_failed'
+    $receipt.profileBinding = $bindingLines[0] | ConvertFrom-Json
     $lines = @(& $exe --verify-boss-qte true)
     Require ($LASTEXITCODE -eq 0 -and $lines.Count -eq 1) 'boss_qte_behavior_failed'
     $receipt.behavior = $lines[0] | ConvertFrom-Json
     Require ($receipt.behavior.contractId -ceq 'nll/boss-qte-behavior-check/v1' -and
         $receipt.behavior.syntheticOnly -eq $true -and $receipt.behavior.passed -eq 37 -and
         $receipt.behavior.failed -eq 0) 'boss_qte_behavior_invalid'
+    $patternLines = @(& $exe --verify-boss-shield-patterns true)
+    Require ($LASTEXITCODE -eq 0 -and $patternLines.Count -eq 1) 'boss_shield_pattern_behavior_failed'
+    $receipt.shieldPatterns = $patternLines[0] | ConvertFrom-Json
+    Require ($receipt.shieldPatterns.contractId -ceq 'nll/boss-shield-pattern-check/v1' -and
+        $receipt.shieldPatterns.syntheticOnly -eq $true -and $receipt.shieldPatterns.passed -eq 13 -and
+        $receipt.shieldPatterns.failed -eq 0) 'boss_shield_pattern_behavior_invalid'
     if ($OfflineVariants) {
         foreach ($season in @(26, 29)) {
             $name = if ($season -eq 26) { 'providence' } else { 'mother-whale' }

@@ -1,0 +1,213 @@
+diff --git a/EpinelPS/EpinelPS.csproj b/EpinelPS/EpinelPS.csproj
+--- a/EpinelPS/EpinelPS.csproj
++++ b/EpinelPS/EpinelPS.csproj
+@@ -84,6 +84,7 @@
+ 	<ItemGroup>
+ 	  <Compile Include="..\..\..\tools\Phase3B2\EpinelResourceProbe\ResourceProbeExecution.cs" Link="Execution\ResourceProbeExecution.cs" />
+ 		<Compile Include="..\..\..\tools\Phase3B2\EpinelUserValidation\UserValidationProfileVersion.cs" Link="SoloRaidSelection\UserValidationProfileVersion.cs" />
++		<Compile Include="..\..\..\tools\Phase3B2\EpinelBattleStatistics\*.cs" Link="BattleStatistics\%(Filename)%(Extension)" />
+ 	</ItemGroup>
+ 
+ 	<ItemGroup>
+diff --git a/EpinelPS/Models/LocalRuntimePersistenceBinding.cs b/EpinelPS/Models/LocalRuntimePersistenceBinding.cs
+--- a/EpinelPS/Models/LocalRuntimePersistenceBinding.cs
++++ b/EpinelPS/Models/LocalRuntimePersistenceBinding.cs
+@@ -4,6 +4,9 @@
+ public sealed class LocalRuntimePersistenceBinding
+ {
+     public Guid AccountUid { get; set; }
++    public string DamageCaptureConnectionEnvironmentVariable { get; set; } = "";
++    public string DamageCaptureClientBuild { get; set; } = "";
++    public int DamageCaptureSoloSeason { get; set; }
+     public string ProfileRevisionSha256 { get; set; } = "";
+     public string SelectedWeaknessCode { get; set; } = "";
+     public Guid? PreferencesHeadUid { get; set; }
+diff --git a/EpinelPS/Models/ClassicSoloRaidBattleReceipt.cs b/EpinelPS/Models/ClassicSoloRaidBattleReceipt.cs
+--- a/EpinelPS/Models/ClassicSoloRaidBattleReceipt.cs
++++ b/EpinelPS/Models/ClassicSoloRaidBattleReceipt.cs
+@@ -16,6 +16,7 @@
+     public long BossHp { get; set; }
+     public long RunDamageAfter { get; set; }
+     public SoloRaidLogData Log { get; set; } = new();
++    public EpinelPS.Database.RaidDamageObservation? DamageStatistics { get; set; }
+ 
+     public static void Append(SoloRaidInfo raid, SoloRaidLevelData level, SoloRaidLogData log)
+     {
+diff --git a/EpinelPS/Models/LocalUnionProgress.cs b/EpinelPS/Models/LocalUnionProgress.cs
+--- a/EpinelPS/Models/LocalUnionProgress.cs
++++ b/EpinelPS/Models/LocalUnionProgress.cs
+@@ -41,6 +41,7 @@
+ }
+ public sealed class LocalUnionBattleRecord
+ {
++    public EpinelPS.Database.RaidDamageObservation? DamageStatistics { get; set; }
+     public Guid Account { get; set; }
+     public LocalUnionBattle Battle { get; set; } = new();
+     public string RequestHash { get; set; } = "";
+diff --git a/EpinelPS/LobbyServer/Guild/LocalUnionEngine.cs b/EpinelPS/LobbyServer/Guild/LocalUnionEngine.cs
+--- a/EpinelPS/LobbyServer/Guild/LocalUnionEngine.cs
++++ b/EpinelPS/LobbyServer/Guild/LocalUnionEngine.cs
+@@ -63,7 +63,7 @@
+         member.Active=new(){Level=level,Step=step,Team=team,StartedAt=now.UtcTicks,Characters=characters.Select(x=>new LocalUnionTeamSlot{Slot=x.Slot,Character=x.Character}).ToList()};
+         return UnionRaidJoinResult.Success;
+     }
+-    public LocalUnionBattleRecord Damage(int level,int step,int team,long damage,string hash,bool practice=false,NetAntiCheatBattleData? report=null)
++    public LocalUnionBattleRecord Damage(int level,int step,int team,long damage,string hash,bool practice=false,NetAntiCheatBattleData? report=null,int? battleResult=null,long? initialHp=null)
+     {
+         if(damage<0 || string.IsNullOrEmpty(hash))throw new InvalidOperationException("local_union_result_invalid");
+         var previous=state.Battles.SingleOrDefault(x=>x.Account==Account && x.RequestHash==hash && x.Practice==practice);
+@@ -96,6 +96,9 @@
+         }
+         var result=new LocalUnionBattleRecord{Account=Account,Battle=active,RequestHash=hash,Damage=applied,
+             LeftHp=tier.Trial?0:left-applied,At=now.UtcTicks,Kill=kill,Practice=practice};
++        result.DamageStatistics=EpinelPS.Database.RaidDamageObservation.Capture(user,report,active.BattleUid,
++            practice?"union_hard_practice":"union_hard",user.LocalUnionRaid?.SeasonNumber ?? 0,level,step,team,
++            damage,applied,now,battleResult:battleResult,initialHp:initialHp);
+         state.Battles.Add(result);
+         if(practice)member.Practice=null;else member.Active=null;
+         return result;
+diff --git a/EpinelPS/LobbyServer/Guild/LocalUnionApi.cs b/EpinelPS/LobbyServer/Guild/LocalUnionApi.cs
+--- a/EpinelPS/LobbyServer/Guild/LocalUnionApi.cs
++++ b/EpinelPS/LobbyServer/Guild/LocalUnionApi.cs
+@@ -33,7 +33,7 @@
+     });
+     public static ResSetUnionRaidHardDamage Damage(User user,ReqSetUnionRaidHardDamage request)=>Execute(user,(engine,_)=>
+     {
+-        var record=engine.Damage(request.RaidLevel,request.RaidStep,request.Team,request.Damage,Hash(request),report:request.AntiCheatBattleData);
++        var record=engine.Damage(request.RaidLevel,request.RaidStep,request.Team,request.Damage,Hash(request),report:request.AntiCheatBattleData,battleResult:request.BattleResult);
+         var result=new ResSetUnionRaidHardDamage{Status=record.Kill?StepStatus.Kill:StepStatus.Alive,JoinData=engine.Join()};
+         result.HardInfo.AddRange(engine.Info());return result;
+     });
+@@ -53,7 +53,7 @@
+         new ResEnterUnionRaidHardPractice{JoinResult=engine.Enter(request.Level,request.Step,0,true)});
+     public static ResSetUnionRaidHardPracticeDamage PracticeDamage(User user,ReqSetUnionRaidHardPracticeDamage request)=>Execute(user,(engine,_)=>
+     {
+-        engine.Damage(request.RaidLevel,request.RaidStep,request.Team,request.Damage,Hash(request),true,request.AntiCheatBattleData);
++        engine.Damage(request.RaidLevel,request.RaidStep,request.Team,request.Damage,Hash(request),true,request.AntiCheatBattleData,initialHp:request.InitialHp);
+         return new ResSetUnionRaidHardPracticeDamage();
+     });
+     public static ResGetUnionRaidBossPopupData GetPopup(User user,ReqGetUnionRaidBossPopupData request)=>Execute(user,(engine,_)=>
+diff --git a/EpinelPS/Database/LocalUnionRuntimeStore.cs b/EpinelPS/Database/LocalUnionRuntimeStore.cs
+--- a/EpinelPS/Database/LocalUnionRuntimeStore.cs
++++ b/EpinelPS/Database/LocalUnionRuntimeStore.cs
+@@ -41,6 +41,7 @@
+             ?? throw new InvalidOperationException("local_union_progress_invalid");
+         if(state.Version!=1) throw new InvalidOperationException("local_union_progress_version_unsupported");
+         var before=JsonConvert.SerializeObject(state);
++        var previousBattleCount=state.Battles.Count;
+         var result=action(state);
+         var next=JsonConvert.SerializeObject(state);
+         if(next!=before || json is null)
+@@ -55,6 +56,9 @@
+             write.Parameters.AddWithValue("payload",NpgsqlDbType.Jsonb,next);
+             write.ExecuteNonQuery();
+         }
++        foreach(var battle in state.Battles.Skip(previousBattleCount))
++            if(battle.DamageStatistics is {} observation)
++                RaidDamageObservationStore.Write(connection,transaction,observation);
+         transaction.Commit();
+         return result;
+     }
+diff --git a/EpinelPS/Database/ClassicSoloRaidPersistenceCoordinator.cs b/EpinelPS/Database/ClassicSoloRaidPersistenceCoordinator.cs
+--- a/EpinelPS/Database/ClassicSoloRaidPersistenceCoordinator.cs
++++ b/EpinelPS/Database/ClassicSoloRaidPersistenceCoordinator.cs
+@@ -46,6 +46,7 @@
+             var snapshot = JsonConvert.SerializeObject(working, Formatting.Indented);
+             AtomicReplace(snapshot);
+             publish(working);
++            RaidDamageObservationStore.FlushSolo(working);
+             return decision.Result;
+         }
+     }
+@@ -53,7 +54,10 @@
+     public void SaveCurrent()
+     {
+         lock (ProcessWideGate)
++        {
+             AtomicReplace(JsonConvert.SerializeObject(current(), Formatting.Indented));
++            RaidDamageObservationStore.FlushSolo(current());
++        }
+     }
+ 
+     private void AtomicReplace(string snapshot)
+diff --git a/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs b/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs
+--- a/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs
++++ b/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs
+@@ -504,6 +504,14 @@
+ 
+         if (levelData is null) return false;
+ 
++        var requestHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Google.Protobuf.MessageExtensions.ToByteArray(req)));
++        var receipt = user.SoloRaidData[raidId].BattleHistory.LastOrDefault(entry =>
++            entry.RunUid == levelData.LocalRunUid && entry.Log.AcceptedRequestSha256 == requestHash);
++        if (receipt is not null && receipt.DamageStatistics is null && user.LocalPersistenceBinding is { DamageCaptureSoloSeason: > 0 } binding)
++            receipt.DamageStatistics = RaidDamageObservation.Capture(user,req.AntiCheatBattleData,receipt.BattleUid,
++                "solo_challenge",binding.DamageCaptureSoloSeason,req.RaidLevel,1,receipt.Ordinal,
++                req.Damage,receipt.Log.Damage,receipt.AcceptedAtUtc!.Value,receipt.RunUid,req.BattleResult);
++
+         response.Info = new NetTrialSoloRaid
+         {
+             Level = req.RaidLevel,
+diff --git a/tests/EpinelPS.SelectedManager.Tests/RaidDamageCaptureTests.cs b/tests/EpinelPS.SelectedManager.Tests/RaidDamageCaptureTests.cs
+--- /dev/null
++++ b/tests/EpinelPS.SelectedManager.Tests/RaidDamageCaptureTests.cs
+@@ -0,0 +1,59 @@
++using EpinelPS;
++using EpinelPS.Models;
++using EpinelPS.Database;
++using EpinelPS.LobbyServer.Guild;
++using EpinelPS.LobbyServer.Soloraid;
++using Newtonsoft.Json;
++using Xunit;
++
++namespace EpinelPS.SelectedManager.Tests;
++
++public sealed class RaidDamageCaptureTests
++{
++    [Fact]
++    public void NumericProjectionPreservesInt64NullAndZeroWithoutSourceIdentifiers()
++    {
++        var uid=Guid.NewGuid();var user=new User {LocalPersistenceBinding=new(){AccountUid=Guid.NewGuid(),CharacterUidByCsn=new(){[123]=uid.ToString()}}};
++        var report=new NetAntiCheatBattleData{BattleDuration=180};
++        report.Characters.Add(new NetAntiCheatCharacter(){Csn=123,Tid=456,Slot=2,Attack=new(){TotalDamage=9_000_000_007,TotalActualDamage=8_000_000_003},Skill=new()});
++        report.Monsters.Add(new NetAntiCheatMonster(){Hp=new(){TotalDamageReceived=10_000_000_001,TotalActualDamageReceived=7,TotalPartsDestroyDamageReceived=11,TotalProjectileDamageReceived=13}});
++        report.Monsters.Add(new NetAntiCheatMonster());
++        var value=RaidDamageObservation.Capture(user,report,Guid.NewGuid(),"union_hard_practice",2,3,4,1,10,8,DateTimeOffset.UtcNow);
++        var restored=JsonConvert.DeserializeObject<RaidDamageObservation>(JsonConvert.SerializeObject(value))!;
++        var c=Assert.Single(restored.Characters);Assert.Equal(uid,c.CharacterUid);Assert.Equal(9_000_000_007,c.Attack!.TotalDamage);
++        Assert.Equal(8_000_000_003,c.Attack.TotalActualDamage);Assert.Equal(0,c.Skill!.TotalDamage);Assert.Null(c.StatFunctionAttack);
++        Assert.Equal(11,restored.Monsters[0].Hp!.TotalPartsDestroyDamageReceived);Assert.Equal(13,restored.Monsters[0].Hp!.TotalProjectileDamageReceived);
++        Assert.Null(restored.Monsters[1].Hp);Assert.Equal(180,restored.BattleDuration);
++        var json=JsonConvert.SerializeObject(value);Assert.DoesNotContain("Csn",json);Assert.DoesNotContain("Tid",json);Assert.DoesNotContain("BattleLog",json);
++        Assert.False(RaidDamageObservation.Capture(user,null,Guid.NewGuid(),"union_hard",1,1,1,1,0,0,DateTimeOffset.UtcNow).ReportPresent);
++    }
++    [Fact]
++    public void SoloAcceptedReceiptCapturesOnceWhileRetryDoesNotCreateObservation()
++    {
++        var user=ClassicRouteTestFixture.ActiveUser();user.LocalPersistenceBinding=new(){AccountUid=Guid.NewGuid(),DamageCaptureSoloSeason=2};
++        var req=ClassicRouteTestFixture.DamageRequest(44);
++        req.AntiCheatBattleData.Characters.Add(new NetAntiCheatCharacter{Csn=1,Slot=1,CharacterSpec=new(){Level=1},Attack=new(){TotalDamage=900,TotalActualDamage=800}});
++        var response=new ResSetSoloRaidTrialDamage();
++        Assert.True(SoloRaidHelper.SetDamageTrial(user,ref response,req,ClassicRouteTestFixture.TargetManager));
++        Assert.True(SoloRaidHelper.SetDamageTrial(user,ref response,req,ClassicRouteTestFixture.TargetManager));
++        var receipt=Assert.Single(user.SoloRaidData[ClassicRouteTestFixture.TargetManager].BattleHistory);
++        Assert.Equal(receipt.BattleUid,receipt.DamageStatistics!.BattleUid);Assert.Equal(900,receipt.DamageStatistics.Characters[0].Attack!.TotalDamage);
++        var copy=JsonConvert.DeserializeObject<User>(JsonConvert.SerializeObject(user))!;
++        Assert.Equal(receipt.BattleUid,copy.SoloRaidData[ClassicRouteTestFixture.TargetManager].BattleHistory[0].DamageStatistics!.BattleUid);
++        req.BattleResult=4;Assert.True(SoloRaidHelper.SetDamageTrial(user,ref response,req,ClassicRouteTestFixture.TargetManager));
++        Assert.Single(user.SoloRaidData[ClassicRouteTestFixture.TargetManager].BattleHistory);
++    }
++    [Fact]
++    public void UnionPracticeAndRealDamageKeepSeparateKeysAndUnclampedInput()
++    {
++        var user=new User{LocalPersistenceBinding=new(){AccountUid=Guid.NewGuid()},LocalUnionRaid=new(){SeasonNumber=2}};
++        var state=new LocalUnionProgress();var engine=new LocalUnionEngine(user,state,new([new(1,1,100,false)],3,5),DateTimeOffset.UtcNow);
++        engine.Member.Teams[1]=[new(){Slot=1,Character=Guid.NewGuid()}];
++        engine.Enter(1,1,1);var actual=engine.Damage(1,1,1,150,"real",report:new());
++        Assert.Equal(150,actual.DamageStatistics!.RequestDamage);Assert.Equal(100,actual.DamageStatistics.AcceptedDamage);
++        engine.Enter(1,1,0,true);var practice=engine.Damage(1,1,1,70,"practice",true,new(),initialHp:100);
++        Assert.NotEqual(actual.Battle.BattleUid,practice.Battle.BattleUid);Assert.Equal("union_hard_practice",practice.DamageStatistics!.Mode);
++        Assert.Equal(100,practice.DamageStatistics.InitialHp);Assert.Same(practice,engine.Damage(1,1,1,70,"practice",true));
++        Assert.Equal(2,state.Battles.Count);
++    }
++}

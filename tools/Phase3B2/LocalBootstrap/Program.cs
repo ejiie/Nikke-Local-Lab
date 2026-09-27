@@ -101,7 +101,26 @@ internal static class Program
             trustedRoot, "server-profile-v1", "identity", "synthetic-context.json");
         var runRoot = Path.Combine(
             trustedRoot, evidenceLane, assessmentUid);
-#if PHASE_D_151_CLIENT
+#if PHASE_D_MANIFEST_CLIENT
+        using var clientBinding = JsonDocument.Parse(File.ReadAllBytes(
+            Path.Combine(AppContext.BaseDirectory, "client-binding.json")));
+        var clientBuild = clientBinding.RootElement.GetProperty("build").GetString();
+        Require(clientBuild is "151.8.5" or "152.8.11", "client_build_not_admitted");
+        var clientRoot = Path.Combine(@"C:\NLL\Clients", "NIKKE-" + clientBuild + "-ResourceProbe");
+        var clientPath = Path.Combine(clientRoot, @"NIKKE\game\nikke.exe");
+        var resourcePath = Path.Combine(clientRoot, @"Unity\com_proximabeta_NIKKE\");
+        for (var cursor = clientPath; cursor is not null; cursor = Path.GetDirectoryName(cursor))
+            if (File.Exists(cursor) || Directory.Exists(cursor))
+                Require((File.GetAttributes(cursor) & FileAttributes.ReparsePoint) == 0, "client_binding_reparse");
+        Require(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(clientPath))).ToLowerInvariant() ==
+            clientBinding.RootElement.GetProperty("executableSha256").GetString(), "client_binding_drift");
+        if (args is ["--inspect-client-binding"])
+        {
+            Console.WriteLine("{\"status\":\"client_binding_verified\",\"clientStarted\":false}");
+            return 0;
+        }
+        Require(args.Length == 0, "arguments_invalid");
+#elif PHASE_D_151_CLIENT
         var clientPath =
             @"C:\NLL\Clients\NIKKE-151.8.5-ResourceProbe\NIKKE\game\nikke.exe";
         var resourcePath =

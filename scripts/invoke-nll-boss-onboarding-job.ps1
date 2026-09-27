@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory)][string]$JobRoot
 )
 # Offline worker only. No game/server startup, UAC, service/firewall/driver calls,
-# operating DB connection, native patch or live resource download exists here.
+# native patch or live resource download exists here. Before publishing verified
+# files, register only immutable runtime content bindings in the local DB.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 function Require([bool]$Value, [string]$Code) { if (-not $Value) { throw ('boss_pipeline_' + $Code) } }
@@ -47,7 +48,8 @@ $required = @($PSCommandPath, [string]$config.materializerPath, [string]$config.
     [string]$config.catalogPath)
 $required += @('invoke-nll-boss-onboarding.ps1', 'Nll.BossPublication.ps1', 'inspect-nll-boss-behavior-assets.py',
     'materialize-nll-boss-runtime-profile.py', 'materialize-nll-shield-fx-candidate.py',
-    'materialize-nll-shield-fx-transform-variant.py', 'verify-nll-boss-onboarding-candidate.py') | ForEach-Object { Join-Path $scriptRoot $_ }
+    'materialize-nll-shield-fx-transform-variant.py', 'verify-nll-boss-onboarding-candidate.py',
+    'nll-shield-fx-assessment.py', 'nll-shield-fx-recipes.py', 'Nll.CommonBossDelivery.ps1') | ForEach-Object { Join-Path $scriptRoot $_ }
 foreach ($path in $required) { Require ($pins.ContainsKey((Plain $path))) 'required_pin_missing' }
 Verify-Pins
 $requestPath = Join-Path $JobRoot 'request.json'
@@ -68,7 +70,9 @@ Require ($catalog.contractId -ceq 'nll/boss-season-catalog/v1' -and
 $selected = @($catalog.seasons | Where-Object { $_.seasonNumber -eq $request.seasonNumber })
 Require ($selected.Count -eq 1 -and $selected[0].discoveryStatusCode -ceq 'resolved') 'season_unresolved'
 $registryRoot = Plain ([string]$config.registryRoot)
-Require ($registryRoot -ieq (Join-Path $repository 'config\boss-runtime-variants')) 'registry_scope_invalid'
+Require ($registryRoot -ieq (Join-Path $repository 'config\boss-runtime-variants') -or
+    ($registryRoot -ceq 'C:\NLL\RuntimeInputs\CommonBossExecution\profiles' -and
+     $config.PSObject.Properties.Name -contains 'commonDelivery')) 'registry_scope_invalid'
 foreach ($boundary in @($registryRoot, [string]$config.assetCacheRoot, [string]$config.unityPyRoot,
         (Split-Path -Parent $config.staticDataPackPath), (Split-Path -Parent $config.sourceDatabasePath))) {
     $boundary = (Plain $boundary).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
@@ -98,11 +102,22 @@ if ($registered.Count) {
     }
 }
 $candidateRoot = Join-Path $JobRoot 'candidate'
+$acquisitionOptions = @{}
+if ($config.PSObject.Properties.Name -contains 'nativePipeline' -and $null -ne $config.nativePipeline) {
+    foreach ($path in @((Join-Path $scriptRoot 'acquire-nll-boss-fx.py'),
+            (Join-Path $scriptRoot 'acquire-nll-boss-behavior.py'),
+            (Join-Path $scriptRoot 'stage-nll-native-fx.py'), $config.nativePipeline.inputPlanPath,
+            $config.nativePipeline.catalogToolPath, $config.nativePipeline.dotnetPath)) {
+        Require ($pins.ContainsKey((Plain $path))) 'native_pin_missing'
+    }
+    $acquisitionOptions = @{ NativeConfiguration = $config.nativePipeline
+        FxSourceCacheRoot = Join-Path (Split-Path -Parent $jobsRoot) 'fx-source-cache' }
+}
 & (Join-Path $scriptRoot 'invoke-nll-boss-onboarding.ps1') -CandidateOnly -SeasonNumber $request.seasonNumber `
     -ProfileCode $profileCode -DisplayNameCode $displayNameCode -MaterializerPath $config.materializerPath `
     -StaticDataPackPath $config.staticDataPackPath -GameConfigPath $config.gameConfigPath `
     -SourceDatabasePath $config.sourceDatabasePath -AssetCacheRoot $config.assetCacheRoot `
-    -PythonPath $config.pythonPath -UnityPyRoot $config.unityPyRoot -OutputRoot $candidateRoot -RegistryRoot $registryRoot | Out-Null
+    -PythonPath $config.pythonPath -UnityPyRoot $config.unityPyRoot -OutputRoot $candidateRoot -RegistryRoot $registryRoot @acquisitionOptions | Out-Null
 Verify-Pins
 Require ((Hash $requestPath) -ceq $requestHash) 'request_drifted'
 $sealPath = Join-Path $candidateRoot 'onboarding-verified-candidate.receipt.json'
@@ -115,7 +130,10 @@ $profile = Get-Content -LiteralPath $profilePath -Raw -Encoding UTF8 | ConvertFr
 $status = 'awaiting_runtime_delivery'
 $admissionHash = $null
 $nativePackageHash = $null
-if ($profile.schemaVersion -eq 3 -and $config.PSObject.Properties.Name -contains 'nativePipeline' -and $null -ne $config.nativePipeline) {
+if (($profile.schemaVersion -eq 3 -or ($profile.schemaVersion -eq 4 -and
+        $profile.elementShield.modeCode -ceq 'dynamic_affinity_linked' -and
+        @($profile.shieldFxPreparation.variants | Where-Object operationCode -CEQ 'adjust_candidate').Count -gt 0)) -and
+        $config.PSObject.Properties.Name -contains 'nativePipeline' -and $null -ne $config.nativePipeline) {
     $nativeHelper = Join-Path $scriptRoot 'Nll.BossNativeCandidate.ps1'
     foreach ($path in @($nativeHelper, $config.nativePipeline.inputPlanPath, $config.nativePipeline.catalogToolPath,
             $config.nativePipeline.dotnetPath, (Join-Path $scriptRoot 'stage-nll-native-fx.py'),
@@ -124,13 +142,23 @@ if ($profile.schemaVersion -eq 3 -and $config.PSObject.Properties.Name -contains
     }
     Verify-Pins
     . $nativeHelper
+    $fxCache = if (Test-Path -LiteralPath (Join-Path $candidateRoot 'acquired-fx') -PathType Container) {
+        Join-Path $candidateRoot 'acquired-fx'
+    } else { $config.assetCacheRoot }
     $native = New-NllBossNativeCandidate -Configuration $config.nativePipeline -JobRoot $JobRoot `
         -CandidateRoot $candidateRoot -CandidateReceiptSha256 (Hash $sealPath) `
-        -PythonPath $config.pythonPath -UnityPyRoot $config.unityPyRoot
+        -PythonPath $config.pythonPath -UnityPyRoot $config.unityPyRoot -CacheRoot $fxCache
     $nativePackageHash = $native.chunkReceiptSha256
     Verify-Pins
 }
-if ($profile.schemaVersion -eq 2 -and $config.allowLegacyPublication -eq $true) {
+$commonPin = $null
+if ($config.PSObject.Properties.Name -contains 'commonDelivery') {
+    . (Join-Path $scriptRoot 'Nll.CommonBossDelivery.ps1')
+    $commonPin = New-NllCommonBossDelivery -CandidateRoot $candidateRoot -NativeRoot $JobRoot `
+        -NativeStore $config.commonDelivery.nativeStore -MaterializerPath $config.materializerPath `
+        -OutputRoot (Join-Path $JobRoot 'common-delivery')
+}
+if (($profile.schemaVersion -eq 2 -and $config.allowLegacyPublication -eq $true) -or $null -ne $commonPin) {
     $validationLines = @(& $config.materializerPath --validate-boss-variant-profile $profilePath)
     Require ($LASTEXITCODE -eq 0 -and $validationLines.Count -gt 0) 'validation_failed'
     $validation = $validationLines[-1] | ConvertFrom-Json
@@ -150,9 +178,24 @@ if ($profile.schemaVersion -eq 2 -and $config.allowLegacyPublication -eq $true) 
     Verify-Pins
     . (Join-Path $scriptRoot 'Nll.BossPublication.ps1')
     $admissionPath = Join-Path $candidateRoot 'onboarding-admission.receipt.json'
+    # Register first: a DB failure must leave the catalog unprocessed so the UI
+    # can retry. A later publication failure can reuse this immutable DB binding.
+    if ($null -ne $commonPin) {
+        Require ($config.PSObject.Properties.Name -contains 'databaseConnectionStringEnvironmentVariable') 'database_binding_not_configured'
+        $databaseEnvironment = [string]$config.databaseConnectionStringEnvironmentVariable
+        Require ($databaseEnvironment -cmatch '^[A-Z][A-Z0-9_]{2,63}$') 'database_environment_invalid'
+        $databaseOutput = @(& $config.materializerPath --register-common-boss-database true `
+            --delivery-path $commonPin.path --delivery-sha256 $commonPin.sha256 `
+            --boss-variant-profile $profilePath --connection-string-env $databaseEnvironment 2>&1)
+        Require ($LASTEXITCODE -eq 0) 'database_binding_failed'
+        $databaseReceipt = ($databaseOutput -join "`n") | ConvertFrom-Json
+        Require ($databaseReceipt.statusCode -ceq 'registered' -and $databaseReceipt.seasonNumber -eq $request.seasonNumber) 'database_binding_invalid'
+        [IO.File]::WriteAllText((Join-Path $JobRoot 'database-binding.receipt.json'), ($databaseReceipt | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
+    }
     Publish-NllBossProfile -ProfilePath $profilePath -Validation $validation -VariantReceipts @($variants) `
         -ArtifactPins $artifactPins -RegistryRoot $registryRoot -ExpectedRegistrySha256 $registryHash `
-        -AdmissionReceiptPath $admissionPath -ReplaceExistingProfile:($registered.Count -eq 1) | Out-Null
+        -AdmissionReceiptPath $admissionPath -ReplaceExistingProfile:($registered.Count -eq 1) `
+        -DeliveryPin $commonPin -MaterializerPath $config.materializerPath | Out-Null
     $admissionHash = Hash $admissionPath
     $status = 'completed'
 }

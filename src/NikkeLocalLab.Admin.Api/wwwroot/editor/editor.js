@@ -12,6 +12,7 @@ const state = {
   candidateSha256: null,
   editDiffSha256: null,
   editOperations: [],
+  synchroEditOperations: [],
   currentProfile: null,
   importDraftUid: null,
   importDraftSha256: null,
@@ -96,6 +97,8 @@ const equipmentSlotLabels = Object.freeze({
   head: "머리", torso: "몸통", arms: "팔", legs: "다리"
 });
 const fieldLabels = Object.freeze({
+  character_owned: "니케 보유",
+  character_catalog: "캐릭터 목록",
   character_level: "레벨", limit_break: "한계돌파", core_level: "코어 강화",
   bond_level: "호감도", skill_1_level: "스킬 1", skill_2_level: "스킬 2",
   burst_level: "버스트 스킬", "cube.level": "하모니 큐브 레벨", account_cube_level: "계정 큐브 레벨",
@@ -105,6 +108,7 @@ const fieldLabels = Object.freeze({
 const pageTitles = Object.freeze({
   home: ["지휘관 관리", "홈"], account: ["계정 정보", "계정 설정"],
   nikkes: ["보유 니케", "니케 관리"], raid: ["보스 선택", "솔로 레이드"],
+  "union-raid": ["유니온 레이드", "유니온 레이드"], "raid-analysis": ["전투 기록 분석", "피해 구성"],
   import: ["새 계정 등록", "계정 가져오기"], advanced: ["문제 해결", "고급 진단"]
 });
 
@@ -192,14 +196,14 @@ function setPage(selected) {
   byId("page-title").textContent = title[1];
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
-async function loadPresentationCatalog() {
+async function loadPresentationCatalog(required = false) {
   try {
     const response = await fetch("/editor/presentation.json", {
       credentials: "same-origin", cache: "no-store"
     });
-    if (!response.ok) return;
+    if (!response.ok) throw new Error("character_catalog_load_failed");
     const catalog = await response.json();
-    if (catalog?.contractId !== "nll/control-center-presentation/v1") return;
+    if (catalog?.contractId !== "nll/control-center-presentation/v1") throw new Error("character_catalog_invalid");
     state.presentation = catalog;
     state.presentationByCharacter = new Map(
       (catalog.characters || []).map((item) => [item.characterUid, item]));
@@ -209,7 +213,7 @@ async function loadPresentationCatalog() {
       (catalog.supportDefinitions || []).map((item) => [item.definitionUid, item]));
     state.presentationByOverload = new Map(
       (catalog.overloadOptions || []).map((item) => [item.definitionUid, item]));
-  } catch { /* Presentation data is optional; the editor remains fail-safe. */ }
+  } catch (error) { if (required) throw error; }
 }
 function newOperationUid() {
   return crypto.randomUUID();
@@ -321,6 +325,7 @@ async function loadAccount() {
   byId("preview-fetched-lobby").disabled = true;
   byId("apply-fetched-lobby").disabled = true;
   state.editOperations = [];
+  state.synchroEditOperations = [];
   invalidateEditPreview();
   invalidateImportPreview();
   invalidateRebasePreview();
@@ -367,7 +372,6 @@ async function loadAccount() {
   renderProgression();
   renderAccounts();
   renderGeneralEditor();
-  synchronizeCharacterLevelsToSynchro();
   renderNikkeEditor();
   byId("add-edit").disabled = false;
   byId("clear-edits").disabled = false;
@@ -397,6 +401,8 @@ function renderAccountSummary() {
   const workspace = state.currentWorkspace;
   const fetched = state.currentFetchedSnapshot?.account || state.currentFetchedSnapshot;
   const lobby = state.accountLobbyByUid.get(state.accountUid);
+  const member = (state.unions || []).flatMap(u => u.members).find(m => m.accountUid === state.accountUid);
+  NllAccountDirectory.renderAvatar(byId("profile-avatar"), member);
   const name = value("display-name") || lobby?.displayName || fetched?.displayName || workspace?.accountLabel || "계정을 선택하세요";
   const commander = value("commander-level") || lobby?.commanderLevel || fetched?.commanderLevel || "-";
   const synchro = value("general-synchro") || fetched?.synchroLevel || "-";
@@ -406,6 +412,7 @@ function renderAccountSummary() {
   byId("profile-account-label").textContent = workspace ? workspace.accountLabel : "저장 슬롯 없음";
   byId("profile-commander-summary").textContent = String(commander);
   byId("profile-synchro-summary").textContent = String(synchro);
+  updateRaidRecordContext(name);
   const readiness = byId("account-readiness");
   const ready = workspace?.validationStatusCode === "ready" &&
     (workspace.validationReasonCodes || []).length === 0;
@@ -482,6 +489,40 @@ async function refreshLaunchPreparation() {
   }
 }
 
+function launchProgressDisplay(projection) {
+  const progress = projection?.progress;
+  if (!progress) return null;
+  const labels = {
+    api_preparation: "실행 구성 확인 중", account_snapshot: "계정 실행 자료 준비 중",
+    coordinator_preparation: "실행 환경 준비 중", fx_stage: "보스 연출 준비 중",
+    runtime_preparation: "실행 환경 준비 중", fx_apply: "보스 연출 적용 중",
+    server_start: "로컬 서버 시작 중", server_created: "로컬 서버 기동 확인 중",
+    resource_check: "실행 리소스 확인 중", game_start: "게임 프로세스 시작 중",
+    game_spawned: "게임 프로세스 생성 확인", health_observation: "게임 기동 상태 관찰 중 (30초)",
+    running: "게임 실행 중", game_exited: "게임 종료 확인 · 정리 준비 중",
+    runtime_stopping: "게임 종료 · 실행 환경 정리 중", fx_restore: "게임 종료 · 보스 연출 복구 중",
+    runtime_restore: "게임 종료 · 실행 환경 복구 중", database_restart: "게임 종료 · 저장 준비 중",
+    progress_save: "게임 종료 · 진행도 저장 중", finalizing: "게임 종료 · 마무리 중",
+    ready: "실행 완료 상태 확인 중", recovery_required: "실행 복구 상태 확인 중",
+    status_unknown: "실행 진행 정보 확인 필요"
+  };
+  const code = progress.stageCode;
+  const title = labels[code] || labels.status_unknown;
+  let description = code === "health_observation" || code === "game_spawned"
+    ? "프로세스 상태를 확인하고 있습니다. 게임 화면 로딩 완료를 뜻하지 않습니다."
+    : code === "running" ? "게임이 종료될 때까지 관리 도구를 닫지 마세요."
+      : "처리가 완료될 때까지 기다려 주세요. 완료 후 게임 시작 버튼이 활성화됩니다.";
+  const events = progress.events || [];
+  const event = [...events].reverse().find(item => item.stageCode === code);
+  if (event) {
+    const elapsed = Math.max(0, Date.now() - Date.parse(event.occurredAtUtc));
+    if (Number.isFinite(elapsed) && Number.isFinite(event.cumulativeMilliseconds)) {
+      description += ` 요청 후 ${((event.cumulativeMilliseconds + elapsed) / 1000).toFixed(1)}초 · 현재 단계 ${(elapsed / 1000).toFixed(1)}초.`;
+    }
+  }
+  return { title, description };
+}
+
 function updateRaidActions() {
   byId("standard-boss-launch").hidden = state.bossValidationOnly;
   if (state.bossValidationOnly) {
@@ -508,11 +549,12 @@ function updateRaidActions() {
   // freeze a transient preparation label, while live recovery keeps priority.
   if (active) {
     const failureCode = executionActive ? projection.failureCode : null;
+    const progress = executionActive ? launchProgressDisplay(projection) : null;
     byId("launch-status-title").textContent = failureCode ? "실행 상태 확인 필요"
-      : state.launchRequestPending ? "게임 실행 요청 중…" : humanStatus(projection.statusCode);
+      : state.launchRequestPending ? "게임 실행 요청 중…" : progress?.title || humanStatus(projection.statusCode);
     byId("launch-status-description").textContent = failureCode ? `확인 필요: ${failureCode}`
       : state.launchRequestPending ? "선택한 계정과 보스의 실행을 준비하고 있습니다."
-        : "게임이 종료될 때까지 관리 도구를 닫지 마세요.";
+        : progress?.description || "게임이 종료될 때까지 관리 도구를 닫지 마세요.";
     return;
   }
   if (!configured) {
@@ -545,7 +587,9 @@ function updateRaidActions() {
 
 function renderLaunch(projection) {
   state.launchProjection = projection || null;
-  showJson("launch-output", projection);
+  const timing = state.launchRequestTiming;
+  showJson("launch-output", timing && timing.launchContextUid === projection?.launchContextUid
+    ? { ...projection, uiRequestTiming: timing } : projection);
   state.launchContextUid = projection?.launchContextUid || null;
   byId("refresh-launch").disabled = !state.launchContextUid;
   const active = ["draft", "validated", "started"].includes(projection?.statusCode);
@@ -566,6 +610,8 @@ async function startLaunch() {
   if (state.launchRequestPending) return;
   if (!hasReadyLaunchPreparation()) throw new Error("phase_d_preparation_not_ready");
   state.launchRequestPending = true;
+  const requestedAtUtc = new Date().toISOString();
+  const requestStarted = performance.now();
   updateRaidActions();
   try {
     const result = await api("/admin-api/v1/executions", {
@@ -578,6 +624,11 @@ async function startLaunch() {
         preparationBindingSha256: state.launchPreparation.bindingSha256
       }
     });
+    state.launchRequestTiming = {
+      launchContextUid: result.payload.launchContextUid, requestedAtUtc,
+      responseReceivedAtUtc: new Date().toISOString(),
+      requestResponseMilliseconds: Math.max(0, performance.now() - requestStarted)
+    };
     renderLaunch(result.payload);
   } finally {
     state.launchRequestPending = false;
@@ -649,45 +700,21 @@ async function loadLaunchHistory() {
   }
 }
 
-function renderAccounts() {
-  const list = byId("account-list");
-  list.replaceChildren();
-  for (const account of state.accounts) {
-    const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.accountUid = account.accountUid;
-    button.setAttribute("aria-current", String(account.accountUid === state.accountUid));
-    const lobby = state.accountLobbyByUid.get(account.accountUid);
-    const avatar = document.createElement("span");
-    avatar.className = "account-avatar";
-    avatar.textContent = (lobby?.displayName || account.accountLabel || "C").slice(0, 1).toUpperCase();
-    const names = document.createElement("span");
-    names.className = "account-name-group";
-    const displayName = document.createElement("strong");
-    displayName.textContent = lobby?.displayName || account.accountLabel;
-    const label = document.createElement("span");
-    label.textContent = lobby?.displayName ? account.accountLabel : "로컬 계정";
-    const meta = document.createElement("small");
-    meta.textContent = `${humanStatus(account.validationStatusCode)} · 저장본 ${account.profileRevision.revisionNumber}`;
-    names.append(displayName, label, meta);
-    const level = document.createElement("span");
-    level.className = "account-level";
-    const levelLabel = document.createElement("span");
-    levelLabel.textContent = "지휘관 Lv.";
-    const levelValue = document.createElement("strong");
-    levelValue.textContent = lobby?.commanderLevel == null ? "-" : String(lobby.commanderLevel);
-    level.append(levelLabel, levelValue);
-    button.append(avatar, names, level);
-    button.addEventListener("click", () => run("Account load", async () => {
-      byId("account-uid").value = account.accountUid;
-      await loadAccount();
-    }));
-    item.appendChild(button);
-    list.appendChild(item);
-  }
+async function selectDirectoryAccount(uid) {
+  if (state.editOperations.length && !await NllAccountDirectory.confirm("저장하지 않은 변경을 버리고 계정을 선택하시겠습니까?")) return;
+  byId("account-uid").value = uid;
+  await loadAccount();
 }
-
+function renderAccounts() {
+  NllAccountDirectory.render({ list: byId("account-list"), unions: state.unions || [],
+    accounts: state.accounts, lobbies: state.accountLobbyByUid, selected: state.accountUid,
+    select: selectDirectoryAccount,
+    profile: async uid => (await api(`/admin-api/v1/accounts/${encodeURIComponent(uid)}/profile`)).payload });
+  const member = (state.unions || []).flatMap(u => u.members).find(m => m.accountUid === state.accountUid);
+  NllAccountDirectory.renderAvatar(byId("profile-avatar"), member);
+  byId("account-sync").disabled = !state.accountUid;
+  byId("account-sync").textContent = member?.imported || state.currentWorkspace?.fetchedSnapshotUid ? "계정 동기화" : "계정 불러오기";
+}
 async function listAccounts() {
   const result = await api("/admin-api/v1/accounts");
   state.accounts = Array.isArray(result.payload) ? result.payload : [];
@@ -698,6 +725,7 @@ async function listAccounts() {
     } catch { return [account.accountUid, null]; }
   }));
   state.accountLobbyByUid = new Map(lobbyPairs);
+  state.unions = (await api("/admin-api/v1/unions")).payload;
   renderAccounts();
 }
 
@@ -797,23 +825,23 @@ async function registerFetchedSnapshot() {
   byId("preview-fetched-lobby").disabled = !state.lobbyRevisionUid;
 }
 
-async function startAdminSession() {
-  await api("/admin-auth/v1/bootstrap", {
-    method: "POST",
-    body: { code: value("bootstrap-code") }
-  });
-  byId("bootstrap-code").value = "";
+// Called directly by the desktop host; no visible code field or button step.
+// A navigation after the first bootstrap reuses the process-local session cookie.
+async function startAdminSession(code = null) {
+  if (code) {
+    await api("/admin-auth/v1/bootstrap", { method: "POST", body: { code } });
+    code = null;
+  }
   const csrf = await api("/admin-api/v1/security/csrf");
   state.csrf = csrf.payload.requestToken;
   byId("load-account").disabled = false;
   byId("load-features").disabled = false;
   byId("load-draft").disabled = false;
   byId("refresh-accounts").disabled = false;
-  byId("fetch-account-by-uid").disabled = false;
   await loadPresentationCatalog();
   await listAccounts();
-  byId("login-screen").hidden = true;
-  byId("app-shell").hidden = false;
+  byId("app-shell").inert = false;
+  byId("app-shell").setAttribute("aria-busy", "false");
   showStatus("관리 도구가 준비되었습니다. 계정을 선택하세요.");
   void refreshLaunchPreparation();
   void bossSeasons.refreshJobs();
@@ -945,10 +973,26 @@ function queueIntegerValue(fieldCode, subjectUid, raw, minimum = 0) {
   });
 }
 
-function synchronizeCharacterLevelsToSynchro() {
+function queueSynchroLevelEdits() {
   if (!state.currentProfile) return;
   const synchroLevel = parseCanonicalInteger(
     value("general-synchro"), "synchro_level_invalid", 1);
+  // Restore only edits still owned by the previous synchro change. Independent
+  // edits made afterwards must survive a change back to the saved level.
+  for (const { operation, previous } of state.synchroEditOperations) {
+    const index = state.editOperations.indexOf(operation);
+    if (index < 0) continue;
+    state.editOperations.splice(index, 1);
+    if (previous) state.editOperations.push(previous);
+  }
+  state.synchroEditOperations = [];
+  const savedLevel = (state.currentProfile.values || []).find((item) =>
+    item.fieldCode === "synchro_level" && !item.subjectUid)?.integerValue;
+  if (synchroLevel === savedLevel) {
+    invalidateEditPreview();
+    renderEditOperations();
+    return;
+  }
   const operations = [...new Set((state.currentProfile.values || [])
     .filter((item) => item.fieldCode === "character_level" && item.subjectUid)
     .map((item) => item.subjectUid))]
@@ -965,7 +1009,18 @@ function synchronizeCharacterLevelsToSynchro() {
       decimalScale: null,
       controlledValue: null
     }));
-  if (operations.length > 0) upsertProfileOperations(operations);
+  operations.push({
+    fieldCode: "synchro_level", subjectUid: null, valueKind: "integer",
+    integerValue: synchroLevel, booleanValue: null, referenceUid: null,
+    unscaledValue: null, decimalScale: null, controlledValue: null
+  });
+  state.synchroEditOperations = operations.map((operation) => ({
+    operation,
+    previous: state.editOperations.find((item) =>
+      item.fieldCode === operation.fieldCode &&
+      (item.subjectUid || null) === (operation.subjectUid || null))
+  }));
+  upsertProfileOperations(operations);
 }
 
 function queueReferenceValue(fieldCode, subjectUid, referenceUid) {
@@ -1288,10 +1343,6 @@ function projectionWireValue(projection) {
 }
 
 function renderNikkeEditor() {
-  const values = state.currentProfile?.values || [];
-  const ownedSubjects = new Set(values
-    .filter((item) => item.fieldCode === "character_level" && item.subjectUid)
-    .map((item) => item.subjectUid));
   const subjects = (state.presentation.characters || [])
     .map((item) => item.characterUid);
   const select = byId("nikke-subject");
@@ -1304,18 +1355,70 @@ function renderNikkeEditor() {
     select.appendChild(option);
   }
   if (subjects.includes(prior)) select.value = prior;
-  renderNikkeCards(subjects, ownedSubjects);
+  renderNikkeCards(subjects);
   renderNikkeFields();
   byId("add-nikke-edit").disabled = subjects.length === 0;
 }
 
-function renderNikkeCards(subjects = null, ownedSubjects = null) {
-  const target = byId("nikke-card-list");
-  const profileOwnedSubjects = ownedSubjects || new Set((state.currentProfile?.values || [])
+function ownedNikkeSubjects() {
+  const owned = new Set((state.currentProfile?.values || [])
     .filter((item) => item.fieldCode === "character_level" && item.subjectUid)
     .map((item) => item.subjectUid));
+  for (const operation of state.editOperations) {
+    if (operation.fieldCode === "character_owned" && operation.booleanValue === true) owned.add(operation.subjectUid);
+  }
+  return owned;
+}
+
+function ownAllNikkes() {
+  if (!state.currentProfile || !state.accountUid || state.workspaceSaveBusy) return;
+  const owned = ownedNikkeSubjects();
+  const missing = [...new Set((state.presentation.characters || []).map(item => item.characterUid))]
+    .filter(uid => !owned.has(uid));
+  if (!missing.length) return;
+  const catalogUid = state.presentation.characterCatalogUid;
+  if (catalogUid && catalogUid !== state.currentProfile.characterCatalog?.catalogSnapshotUid)
+    upsertProfileOperations([{ fieldCode: "character_catalog", subjectUid: null,
+      valueKind: "reference", referenceUid: catalogUid }]);
+  upsertProfileOperations(missing.map(subjectUid => ({
+    fieldCode: "character_owned", subjectUid, valueKind: "boolean", booleanValue: true,
+    integerValue: null, referenceUid: null, unscaledValue: null, decimalScale: null, controlledValue: null
+  })));
+  renderNikkeCards();
+  showStatus(`미보유 니케 ${missing.length}명을 기본 육성 상태로 추가했습니다. Save를 눌러 저장하세요.`);
+}
+
+let characterSyncBusy = false;
+async function syncCharacters() {
+  if (characterSyncBusy || state.workspaceSaveBusy) return;
+  characterSyncBusy = true;
+  const button = byId("sync-characters");
+  button.disabled = true;
+  button.textContent = "동기화 중…";
+  showStatus("캐릭터 목록을 동기화하고 있습니다.");
+  try {
+    const { payload: result } = await api("/admin-api/v1/characters/sync", { method: "POST", body: {} });
+    if (result.statusCode === "busy") { showStatus("캐릭터 목록 동기화가 이미 진행 중입니다."); return; }
+    if (!["updated", "unchanged"].includes(result.statusCode)) throw new Error(result.failureCode || "character_catalog_sync_failed");
+    await loadPresentationCatalog(true);
+    renderNikkeEditor();
+    if (state.selectedNikkeUid && !byId("nikke-detail").hidden)
+      renderNikkeDetail(state.selectedNikkeUid);
+    showStatus(result.addedCharacterCount > 0
+      ? `캐릭터 목록 자동 저장 완료: 신규 니케 ${result.addedCharacterCount}명 추가. 미보유로 표시됩니다.`
+      : "캐릭터 목록 동기화 완료: 최신 목록이 저장되어 있습니다.");
+    if (result.missingPortraitCount > 0) showStatus(`목록 동기화 완료. 이미지 ${result.missingPortraitCount}개는 아직 준비되지 않았습니다. 나중에 다시 동기화하세요.`);
+  } catch { showStatus("캐릭터 목록을 동기화하지 못했습니다. 로그를 확인하거나 다시 시도하세요."); }
+  finally { characterSyncBusy = false; button.disabled = false; button.textContent = "캐릭터 목록 동기화"; }
+}
+
+function renderNikkeCards(subjects = null) {
+  const target = byId("nikke-card-list");
+  const profileOwnedSubjects = ownedNikkeSubjects();
   const allSubjects = subjects || (state.presentation.characters || [])
     .map((item) => item.characterUid);
+  byId("own-all-nikkes").disabled = !state.currentProfile || !state.accountUid ||
+    state.workspaceSaveBusy || allSubjects.every(uid => profileOwnedSubjects.has(uid));
   const query = value("nikke-search").toLocaleLowerCase("ko-KR");
   const burst = value("nikke-filter-burst");
   const manufacturer = value("nikke-filter-manufacturer");
@@ -2196,10 +2299,12 @@ function addNikkeEdit() {
 
 function clearEditOperations() {
   state.editOperations = [];
+  state.synchroEditOperations = [];
   invalidateEditPreview();
   renderEditOperations();
-  synchronizeCharacterLevelsToSynchro();
+  renderGeneralEditor();
   renderNikkeCards();
+  if (state.selectedNikkeUid && !byId("nikke-detail").hidden) renderNikkeDetail(state.selectedNikkeUid);
 }
 
 async function previewEdit() {
@@ -2691,10 +2796,7 @@ async function saveWallet() {
 
 function queueAccountProfileEdits() {
   queueCubeInventory();
-  const synchro = effectiveProfileValue("synchro_level", null)?.integerValue;
-  const synchroInput = parseCanonicalInteger(value("general-synchro"), "integer_value_invalid", 1);
-  if (synchro !== synchroInput) queueIntegerValue("synchro_level", null, String(synchroInput), 1);
-  synchronizeCharacterLevelsToSynchro();
+  queueSynchroLevelEdits();
   const consoleUid = value("general-console") || null;
   if (!consoleUid) return;
   for (const [fieldCode, inputId] of [
@@ -2718,11 +2820,14 @@ async function refreshWorkspaceSaveRecovery() {
 function renderWorkspaceSaveRecovery() {
   const panel = byId("workspace-save-recovery");
   const list = byId("workspace-save-recovery-list");
+  const history = byId("workspace-save-history-list");
   list.replaceChildren();
+  history.replaceChildren();
   const attempt = state.workspaceSaveAttempts.get(state.accountUid);
   const rows = state.workspaceSaveRecovery.get(state.accountUid) || [];
   const pending = rows.filter(item => item.statusCode === "pending");
-  panel.hidden = !state.workspaceSaveBusy && !attempt && pending.length === 0;
+  panel.hidden = state.workspaceSaveBusy || (!attempt && pending.length === 0);
+  byId("workspace-save-history").hidden = !rows.some(item => item.statusCode === "completed");
   byId("workspace-save-recovery-message").textContent = state.workspaceSaveBusy
     ? "저장 처리 중입니다. 응답이 끊겨도 원래 요청으로 복구할 수 있습니다."
     : attempt || pending.length
@@ -2762,7 +2867,8 @@ function renderWorkspaceSaveRecovery() {
       button.addEventListener("click", () => { showJson("account-output", item.completedReceipt); setPage("advanced"); });
       row.appendChild(button);
     }
-    list.appendChild(row);
+    if (item.statusCode === "completed") history.appendChild(row);
+    else list.appendChild(row);
   }
 }
 
@@ -2772,6 +2878,7 @@ async function finishWorkspaceSave(receipt) {
   byId("account-uid").value = receipt.accountUid;
   byId("save-as-label").value = "";
   state.editOperations = [];
+  state.synchroEditOperations = [];
   invalidateEditPreview();
   await listAccounts();
   await loadAccount();
@@ -2875,29 +2982,56 @@ async function saveEverything(saveAs) {
   }
 }
 
-async function importAccountByUid() {
-  const uid = value("account-import-uid");
-  if (!/^\d{4,32}$/.test(uid)) throw new Error("account_import_uid_invalid");
-  const button = byId("fetch-account-by-uid");
-  const status = byId("account-import-status");
-  button.disabled = true;
-  status.className = "import-status running";
-  status.textContent = "브라우저 수집과 계정 가공을 진행 중입니다. 로그인 창이 뜨면 완료해 주세요.";
-  try {
-    const result = await api("/admin-api/v1/account-imports", {
-      method: "POST",
-      body: { uid }
-    });
-    status.className = "import-status complete";
-    status.textContent = `${result.payload.displayName} · 니케 ${result.payload.characterCount}명 가져오기 완료`;
-    byId("account-import-uid").value = "";
-    await listAccounts();
-    byId("account-uid").value = result.payload.accountUid;
-    await loadAccount();
-    setPage("home");
-  } finally {
-    button.disabled = false;
+async function connectSelectedAccount() {
+  if (!state.accountUid || !state.profileRevisionUid) throw new Error("account_not_loaded");
+  if (state.editOperations.length || state.workspaceSaveBusy) {
+    await NllAccountDirectory.confirm("편집 중인 변경을 Save 또는 Save as로 저장한 뒤 다시 시도해 주세요.", { no: null });
+    return;
   }
+  if (!await NllAccountDirectory.confirm("계정 정보가 덮어씌일 수 있으므로 가급적 Save as로 저장하시기 바랍니다.",
+    { preference: "hide-account-import-warning" })) return;
+  const accountUid = state.accountUid, expectedProfileRevisionUid = state.profileRevisionUid;
+  const box = document.createElement("dialog"); box.className = "account-dialog";
+  box.setAttribute("aria-label", "계정 불러오기");
+  const title = document.createElement("h2"); title.textContent = "계정 불러오기";
+  const message = document.createElement("p"); message.setAttribute("role", "status");
+  message.textContent = "열린 블라블라 브라우저에서 로그인해 주세요.";
+  const actions = document.createElement("div"); actions.className = "action-row";
+  const cancel = document.createElement("button"); cancel.textContent = "취소"; cancel.type = "button";
+  const controller = new AbortController();
+  let applying = false;
+  cancel.addEventListener("click", () => { if (!applying) { controller.abort(); box.close(); } });
+  box.addEventListener("cancel", event => { if (applying) event.preventDefault(); else controller.abort(); });
+  box.addEventListener("close", () => box.remove(), { once: true });
+  actions.append(cancel); box.append(title, message, actions); document.body.append(box); box.showModal();
+  byId("account-sync").disabled = true;
+  try {
+    const connected = await api(`/admin-api/v1/accounts/${accountUid}/connection`, { method: "POST", body: {}, signal: controller.signal });
+    if (controller.signal.aborted) return;
+    message.textContent = "가져올 서버를 선택하세요.";
+    const select = document.createElement("select"); select.setAttribute("aria-label", "서버 선택");
+    for (const choice of connected.payload.choices || []) {
+      const option = document.createElement("option"); option.value = choice.area;
+      option.textContent = `${choice.label} · 니케 ${choice.characterCount}명`; select.append(option);
+    }
+    box.insertBefore(select, actions);
+    const confirm = document.createElement("button"); confirm.textContent = "확인"; confirm.type = "button"; confirm.className = "primary";
+    confirm.disabled = !select.options.length; actions.prepend(confirm);
+    confirm.addEventListener("click", async () => {
+      if (applying) return;
+      applying = true; confirm.disabled = cancel.disabled = select.disabled = true;
+      message.textContent = "계정 정보와 대표 사진, 유니온 소속을 가져오고 있습니다.";
+      try {
+        await api(`/admin-api/v1/accounts/${accountUid}/synchronize`, { method: "POST", body: {
+          area: Number(select.value), expectedProfileRevisionUid } });
+        await listAccounts(); byId("account-uid").value = accountUid; await loadAccount(); box.close();
+        showStatus("계정 동기화 완료");
+      } catch (error) { message.textContent = `계정 가져오기 실패: ${error.message}`; }
+      finally { applying = false; cancel.disabled = false; byId("account-sync").disabled = false; }
+    });
+  } catch (error) {
+    if (!controller.signal.aborted) message.textContent = `계정 연결 실패: ${error.message}`;
+  } finally { byId("account-sync").disabled = false; }
 }
 
 async function initializeLocalState() {
@@ -2945,6 +3079,8 @@ async function initializeLocalState() {
   showJson("local-state-output", result.payload);
 }
 
+byId("create-account").addEventListener("click", () => run("계정 만들기", () => NllAccountDirectory.create({ api, reload: listAccounts, select: selectDirectoryAccount })));
+byId("account-sync").addEventListener("click", () => run("계정 불러오기", connectSelectedAccount));
 byId("load-account").addEventListener("click", () => run("Account load", loadAccount));
 byId("refresh-accounts").addEventListener("click", () => run("Account list", listAccounts));
 byId("rename-account").addEventListener("click", () => run("Account rename", renameAccount));
@@ -2959,7 +3095,6 @@ byId("launch-game").addEventListener("click", () => run("Solo Raid launch", star
 byId("refresh-launch").addEventListener("click", () => run("Launch status", refreshLaunch));
 byId("load-launch-history").addEventListener(
   "click", () => run("Launch history", loadLaunchHistory));
-byId("admin-login").addEventListener("click", () => run("Admin session", startAdminSession));
 byId("load-features").addEventListener("click", () => run("Feature load", async () => {
   const result = await api("/admin-api/v1/client-feature-manifest");
   state.featureManifest = result.payload;
@@ -2979,8 +3114,6 @@ byId("nikke-save-as").addEventListener(
   "click", () => run("다른 이름으로 저장", () => saveEverything(true)));
 byId("nikke-save-everything").addEventListener(
   "click", () => run("니케 저장", () => saveEverything(false)));
-byId("fetch-account-by-uid").addEventListener(
-  "click", () => run("계정 정보 가져오기", importAccountByUid));
 byId("general-console").addEventListener("change", renderSelectedConsole);
 byId("account-cube-level").addEventListener("change", () => {
   if (!state.currentProfile || !selectedAccountCubeUid) return;
@@ -2988,8 +3121,7 @@ byId("account-cube-level").addEventListener("change", () => {
 });
 byId("general-synchro").addEventListener("change", () => {
   if (!state.currentProfile) return;
-  queueIntegerValue("synchro_level", null, value("general-synchro"), 1);
-  synchronizeCharacterLevelsToSynchro();
+  queueSynchroLevelEdits();
   renderNikkeCards();
   if (state.selectedNikkeUid && !byId("nikke-detail").hidden) {
     renderNikkeDetail(state.selectedNikkeUid);
@@ -3079,6 +3211,8 @@ for (const id of [
 }
 byId("review-overrides").addEventListener("input", invalidateReviewPreview);
 byId("save-as-label").addEventListener("input", () => clearOperationUids("edit-save-as"));
+byId("own-all-nikkes").addEventListener("click", ownAllNikkes);
+byId("sync-characters").addEventListener("click", syncCharacters);
 for (const button of document.querySelectorAll(".tab-button")) {
   button.addEventListener("click", () => setPage(button.dataset.tab));
 }
@@ -3095,11 +3229,33 @@ for (const button of document.querySelectorAll(".raid-action")) {
 const bossUserValidation = NllUserValidation.create({ document, api, getSelection: () => ({
   seasonNumber: state.selectedBossSeason, weaknessCode: state.selectedWeaknessCode, validationOnly: state.bossValidationOnly
 }) });
+const unionRaid = typeof NllUnionRaid !== "undefined" ? NllUnionRaid.create({ document, api }) : null;
+const raidRecords = typeof NllRaidRecords !== "undefined" ? NllRaidRecords.create({ document,
+  navigate: setPage,
+  loadAnalysis: async (accountUid, battleUid) => {
+    const { payload } = await api(`/admin-api/v1/accounts/${encodeURIComponent(accountUid)}/raid-records/${encodeURIComponent(battleUid)}/composition`);
+    return payload;
+  },
+  presentation: characterUid => state.presentationByCharacter.get(characterUid),
+  loadRecords: async context => {
+    const query = new URLSearchParams({ season: String(context.seasonNumber), kind: context.raidKind || "solo",
+      step: String(context.bossStep || 1), mode: context.mode, weakness: context.weakness });
+    if (context.cursor) query.set("cursor", context.cursor);
+    const { payload } = await api(`/admin-api/v1/accounts/${encodeURIComponent(context.accountUid)}/raid-records?${query}`);
+    return payload;
+  }
+}) : null;
+function updateRaidRecordContext(accountName = byId("top-account-name").textContent) {
+  void raidRecords?.setContext({ accountUid: state.accountUid, accountName,
+    seasonNumber: state.selectedBossSeason, bossName: bossSeasonLabels[state.selectedBossSeason] || "선택 보스" });
+}
+if (unionRaid) document.querySelector('[data-tab="union-raid"]')?.addEventListener("click", () => void unionRaid.refresh());
 const bossSeasons = NllBossSeasons.create({ document, api,
   onSelected: row => {
     state.selectedBossSeason = row.seasonNumber;
     state.bossValidationOnly = row.processingStatusCode === "awaiting_game_validation";
     bossSeasonLabels[row.seasonNumber] = row.displayName || "선택 보스";
+    updateRaidRecordContext();
     const option = document.createElement("option");
     option.value = String(row.seasonNumber);
     option.textContent = `시즌 ${row.seasonNumber} · ${bossSeasonLabels[row.seasonNumber]}`;
@@ -3107,6 +3263,7 @@ const bossSeasons = NllBossSeasons.create({ document, api,
     selectWeaknessCode(row.defaultWeaknessCode);
   },
   onUnavailable: () => {
+    void raidRecords?.setContext({});
     state.bossValidationOnly = false;
     void bossUserValidation.refresh();
     ++state.preparationRequestNumber;
@@ -3150,4 +3307,4 @@ for (const id of ["fetched-lobby-commander", "fetched-lobby-display-name"])
   byId(id).addEventListener("change", invalidateFetchedLobbyPreview);
 }
 
-showStatus("독립 실행 프로그램을 준비하는 중입니다.");
+showStatus("계정 목록을 불러오고 있습니다…");
