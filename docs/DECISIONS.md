@@ -1,8 +1,24 @@
 # Decisions
 
-현재 상태 권위는 [HANDOFF](HANDOFF.md)와 [안정화 계획](STABILIZATION_PLAN.md)다.
-아래 최초 Phase의 150 first-proof/미정 항목은 당시 결정 이력이며, 현재 151 경로를 다시
-미실행 상태로 되돌리거나 이미 완료된 안정화 작업을 재지시하지 않는다.
+현재 상태 권위는 [HANDOFF](HANDOFF.md), 남은 작업은 [NEXT_STEPS](NEXT_STEPS.md)다.
+아래 최초 Phase의 150 first-proof/미정 항목은 당시 결정 이력이며, 현재 실행 경로를 다시
+미실행 상태로 되돌리거나 이미 완료된 안정화 작업을 재지시하지 않는다. 뒤의 결정이 앞의 결정을 대체한 경우
+해당 줄에 `→ 대체` 표시를 남긴다.
+
+## 2026-09-13~20 후속 결정
+
+- 2026-09-13: 게임 실행과 화면·전투 판정은 운영자, 구현·자동 검사·검증용 설치·CI/병합은 에이전트가 맡는다.
+- 2026-09-14: 보스 추가는 UI 요청부터 패턴·속성·QTE/FX 조립과 공통 실행 구성까지 하나의 공통 파이프라인으로
+  처리하고, 시즌·profile 버전별 부팅·음성·종료 예외를 두지 않는다. 속성 제한 패턴에는 속성 실드가 있으며 조건과 FX를
+  함께 처리한다. 새 게시는 `common-boss-runtime-admission/v1`(2026-09-15 V0022)을 쓴다.
+- 2026-09-15: 정상 실행·종료에서는 FX store 전체를 다시 읽지 않고, 전체 검증은 최초 도입·원본 교체·수리로 분리한다.
+- 2026-09-17: 레이드 기록은 계정+시즌+선택 약점으로 이어 쓰고 client build는 revision 출처로만 둔다. 로비 Quit은
+  0~4덱이면 참여 기회만, 5덱이면 완주 1회와 참여 기회를 소모한다.
+- 2026-09-17: 유니온 레이드 **하드**를 범위에 추가한다(원본 속성·QTE·FX 유지, 노멀 전투 없음).
+- 2026-09-17: NLL은 현재 Windows 계정에 두고 공식 게임은 다른 Windows 계정에서 실행한다.
+- 2026-09-18: 관리 PostgreSQL은 게임 실행 중에도 켜 둔다(유니온 API의 실행 중 DB transaction).
+- 2026-09-18: 캐릭터 TAB 딜표는 `Attack.TotalDamage`, 결과창 총 대미지는 딜표 합 + 파츠 파괴 − 투사체 피해로 확정한다.
+- 2026-09-20: 솔로 Challenge 모의전도 기록·BattleLog를 수집하고, 개인딜 기본 표시는 적 투사체 피해를 뺀 값으로 한다.
 
 ## 2026-09-12 안정화 인수 경계
 
@@ -41,8 +57,8 @@
 - 목표 콘텐츠는 원본 시즌제/classic `SoloRaid`다. 결과에 영향을 주는 별도 공식 buff가 있는 `SoloRaidMuseum`은 구현·검증·fallback 대상이 아니다.
 - 첫 live compatibility target은 시즌 26 프로비던스다. manager→preset→Challenge wave→monster/stat→client asset closure가 닫히지 않으면 `runtime_blocked_season_26`으로 기록하고 다른 시즌이나 Museum으로 자동 대체하지 않는다.
 - Phase 3B-0에서 시즌 26 manager→Challenge preset→wave→단일 boss/model/stat→current behavior/asset root closure를 exact하게 닫았다. Focused behavior/timeline artifact는 prior local reference archive에서 생성하고 target pack과의 required-entry/selected-row/skill-row/parts-entry equivalence를 별도로 검증했다. aggregate verdict는 `ready_for_selected_manager_patch_with_timing_analysis_blocker`이며 static/content는 통과, absolute timing 분석만 native scheduler contract 부재로 blocked다. focused artifact는 `promotion_eligible=false`이므로 Phase 1C의 published `static_exact` tier는 유지한다.
-- 보스 admission은 `challenge-boss-support/v1`을 따른다.
-- 현재 지원 시즌은 `7, 13, 26, 29, 34, 40`이다.
+- 보스 admission은 `challenge-boss-support/v1`을 따른다. → 대체(2026-09-14): 새 보스는 공통 파이프라인과 `common-boss-runtime-admission/v1`.
+- 현재 지원 시즌은 `7, 13, 26, 29, 34, 40`이다. → 대체: Phase 1C 당시 목록. 현재 등록은 [보스 파이프라인](features/BOSS_PIPELINE.md).
 - 시즌 14와 39는 전격·철갑 조건을 만족해도 명시적으로 제외한다.
 - 일반 1~7단계는 `lastClearLevel=7` 해금 stub이고 `challengeUnlocked=true`가 기본이며 전투 구현 대상이 아니다.
 - published 지원 시즌은 종료되지 않는 local content다. `SeasonAvailability=permanent`, `seasonEndsAt=null`이고 만료·정산 job을 만들지 않는다.
@@ -51,7 +67,7 @@
 - Challenge daily state는 IANA `Asia/Seoul`의 매일 05:00에 초기화한다.
 - 공식 global ranking, reward mail과 live-service 시즌 정산은 모방하지 않는다. 필요한 경우 자체 local record만 별도 계약으로 표시한다.
 - 첫 시즌 26 수직 proof에서는 custom widget 제거·six-season folder를 요구하지 않는다. proof 뒤 presentation을 별도 평가해, 안전한 client variant가 확인되고 사용자가 채택할 때만 기존 홍보·상점·social widget 제거와 좌측 Solo Raid season folder를 구현한다. 하단 니케·스쿼드·로비·인벤토리·대원모집 유지 및 대원모집 controlled no-op도 같은 후속 presentation 결정에 속한다.
-- Union Raid는 비활성 확장 지점이다.
+- Union Raid는 비활성 확장 지점이다. → 대체(2026-09-17): 유니온 레이드 하드 지원.
 - 공식-current `C:\NIKKE`, 공식 계정과 공식 서비스 경로는 modified-local 실행 대상으로 계속 blocked다. 공식 launcher 업데이트와 운영자가 수행하는 fresh capture는 별도 공식 경로이며, modified-local 연구 lane은 [PHASE3AR.md](contracts/PHASE3AR.md)의 `ready_for_local_compatibility_spike` 판정과 [FEASIBILITY_GATES.md](contracts/FEASIBILITY_GATES.md)의 격리 조건을 따른다.
 - Phase 3A의 `blocked_insufficient_evidence`는 rights-holder-approved route를 전제로 한 역사적 정상 종료로 보존한다. Phase 3A-R은 이를 성공으로 덮어쓰지 않고 operator-authorized modified-local lane을 별도 재기준화한다.
 - Phase 3은 3B-0 시즌 26 closure, 3B-1 classic selected-manager extension, 3B-2 disposable reference run, 3C Local Lab shadow bridge, 3D exact authority correlation의 작은 수직 단계로 진행한다. custom six-season lobby는 첫 classic proof 뒤에 평가한다.
@@ -65,7 +81,7 @@
 - source path, file name, raw ID, decoded payload, exception text는 import ledger schema에 두지 않는다.
 - dataset snapshot은 경로가 없는 canonical source manifest hash로 식별하고, 동일 입력은 기존 snapshot을 재사용한다.
 - PostgreSQL은 loopback 연결만 허용하며 migration history는 embedded SQL checksum으로 잠근다.
-- Windows local 개발·통합 시험의 PostgreSQL 17은 Docker Desktop, WSL2 또는 Hyper-V backend가 아니라 native Windows binary를 on-demand로 실행한다. Windows service 자동 시작은 사용하지 않고 loopback 전용 비표준 port에서 시작하며, 검증 종료와 게임 실행 전에 `postgres.exe`가 0개인지 확인한다. GitHub Actions의 격리 PostgreSQL service는 이 local runtime 결정과 별개로 유지한다. 상세 설치·운영 계약은 [WINDOWS_NATIVE_POSTGRESQL_RUNTIME.md](operations/WINDOWS_NATIVE_POSTGRESQL_RUNTIME.md)를 따른다.
+- Windows local 개발·통합 시험의 PostgreSQL 17은 Docker Desktop, WSL2 또는 Hyper-V backend가 아니라 native Windows binary를 on-demand로 실행한다. Windows service 자동 시작은 사용하지 않고 loopback 전용 비표준 port에서 시작하며, 검증 종료와 게임 실행 전에 `postgres.exe`가 0개인지 확인한다(→ 대체(2026-09-18): 관리 cluster는 게임 중에도 유지하며 이 확인은 폐기 가능한 시험 cluster에만 적용). GitHub Actions의 격리 PostgreSQL service는 이 local runtime 결정과 별개로 유지한다. 상세 설치·운영 계약은 [WINDOWS_NATIVE_POSTGRESQL_RUNTIME.md](operations/WINDOWS_NATIVE_POSTGRESQL_RUNTIME.md)를 따른다.
 - source alias HMAC fingerprint는 entity UID로 재사용하지 않고 private registry에서 무작위 lab UUID에 연결한다.
 - 캐릭터 catalog의 ledger 완료와 snapshot publish는 한 PostgreSQL transaction에서 원자적으로 처리한다.
 - 캐릭터 subtype과 sd.bin runtime cap을 함께 사용해 호감도 최대값을 해소한다.
@@ -104,11 +120,12 @@
 - 각 지원 시즌의 runtime exact 증거 확보 범위
 - pinned EpinelPS의 per-request handler factory와 account-keyed serialization을 기존 JsonDb/dispatch에 가장 작게 넣을 exact 구현 shape
 - 시즌 26 client `150.6.9` native scheduler contract와 미해소 event timing `7`개의 absolute frame/ms mapping
-- disposable environment에서 시즌 26 classic runtime이 실제 battle/result를 반환하는지 여부
+- disposable environment에서 시즌 26 classic runtime이 실제 battle/result를 반환하는지 여부. 운영자는 지정 실험 OS인 Micron에서
+  151/S26 실게임 결과를 확인했다(2026-09-06). Phase 3B-2의 disposable reference run 판정은 계약상 not executed로 남는다.
 - custom client UI variant가 고정 lobby widget 제거, season folder와 영구 시즌 표시를 지원할 수 있는지
 - 권리자 또는 법률 전문가의 별도 검토가 필요한지 여부. 이는 현재 local technical spike의 선행 기술 gate가 아니며 배포·제3자 접속·상업화 시 반드시 다시 결정
 - Challenge 일일 entry 수, 소비 시점과 `per_season`/`shared_directory` counter 범위
 - 05:00을 가로지르는 active run 처리
-- Mock Battle과 local record/ranking 표시 범위
+- Mock Battle과 local record/ranking 표시 범위. 모의전 기록 수집·표시는 2026-09-20에 결정했고, 솔로 local ranking 범위는 미정이다.
 
 미정값은 임의 기본값으로 채우지 않고 contract에서 `unresolved`로 표현합니다.

@@ -33,7 +33,7 @@
 결과는 첫 HTTP 오류(상태 번호 미기록), 두 번째 HTTP 406, 세 번째 HTTP 567이며 입력을 확보하지 못했다.
 **세 번의 승인 범위는 모두 사용 완료됐다.** 다른 API·추가 요청·로그인·TLS 검증 우회나
 runtime outbound를 허용하는 상시 예외가 아니다. 상세는
-[152 호환성 조사](operations/CLIENT_152_COMPATIBILITY_ASSESSMENT.md)를 따른다.
+[152 호환성 조사](archive/client/CLIENT_152_COMPATIBILITY_ASSESSMENT.md)를 따른다.
 
 ## 원본 클라이언트 게이트
 

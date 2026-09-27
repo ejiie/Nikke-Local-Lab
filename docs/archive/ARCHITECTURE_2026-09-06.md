@@ -12,7 +12,7 @@ PostgreSQL을 중지하므로 아래의 미래 loopback bridge 그림과 같은 
 
 운영자가 151/S26 실게임 검증을 완료했다. 이제 정상 동작을 기준으로 실행 생명주기,
 일관된 revision 읽기, 준비 상태, Save 조정과 테스트를 정비한다.
-상세 발견 사항/검토 범위/정비 순서는 [STABILIZATION_PLAN.md](../STABILIZATION_PLAN.md)를 따른다.
+상세 발견 사항/검토 범위/정비 순서는 [STABILIZATION_PLAN.md](stabilization/STABILIZATION_PLAN.md)를 따른다.
 아래 Phase별 설계와 완료 증거는 보존하되 `future/not implemented/150 first proof`를
 현행 운영 전체의 판정으로 사용하지 않는다. 기존 domain/CAS/immutable revision 기반은 유지한다.
 

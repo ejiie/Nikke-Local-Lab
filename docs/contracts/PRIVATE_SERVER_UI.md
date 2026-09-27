@@ -1,6 +1,6 @@
 # Private server and original-client UI contract
 
-2026-09-17 추가 UI 범위: 유니온 탭은 최신순 스크롤 시즌 목록과 `시즌 N 보스를 불러오시겠습니까?` 확인을 제공한다. 예를 눌렀을 때만 원본 행동 트리까지 5보스를 조립한다. 취소는 변경하지 않는다. [유니온 하드 계획](../operations/UNION_RAID_HARD_IMPLEMENTATION.md)이 이번 확장의 권위이며, 아래 과거 Phase의 Union 비지원 표시는 역사적 인수 범위다.
+2026-09-17 추가 UI 범위: 유니온 탭은 최신순 스크롤 시즌 목록과 `시즌 N 보스를 불러오시겠습니까?` 확인을 제공한다. 예를 눌렀을 때만 원본 행동 트리까지 5보스를 조립한다. 취소는 변경하지 않는다. [유니온 레이드](../features/UNION_RAID.md)가 이번 확장의 현행 권위이며, 아래 과거 Phase의 Union 비지원 표시는 역사적 인수 범위다.
 
 ## 제품 정의
 
@@ -129,7 +129,7 @@ Pre-characterization route policy는 `6 selected Challenge + 1 GetLogs gate + 10
 
 - 홍보 banner와 공지 bar
 - Messenger/event/More 등 live-service shortcut
-- 알림, 우편, 친구, Union, Shop, Outpost와 미지원 대형 card
+- 알림, 우편, 친구, Shop, Outpost와 미지원 대형 card (Union은 2026-09-17 이후 유니온 하드 진입에 쓰므로 감춤 대상이 아님)
 
 고정 prefab 재배치나 custom folder가 필요하면 external client presentation patch 범위와 rollback을 별도로 설계합니다. 서버의 빈 응답으로 우연히 숨기지 않습니다.
 

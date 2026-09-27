@@ -23,22 +23,18 @@
 
 ## 로컬 런타임 경계
 
-런타임 데이터는 저장소 밖 `%LOCALAPPDATA%\NikkeLocalLab`에 두는 것을 기본으로 합니다.
+현재 로컬 데이터는 다음 위치에 있습니다(2026-09-27 확인). 모두 Git·Actions·remote 대상이 아닙니다.
 
-    %LOCALAPPDATA%\NikkeLocalLab\
-      data\
-      database\
-      vault\
-      cache\
-      logs\
-      secrets\
-      staging\
-      compatibility\
-        upstream\
-        manifests\
-        backups\
-        disposable-client\
-        evidence\
+| 위치 | 내용 |
+|---|---|
+| `C:\NLL` | 봉인 client 복제본, runtime bundle, 보스·FX runtime 입력, Control Center 앱·PostgreSQL data·DPAPI 비밀, staging·evidence |
+| `C:\ProgramData\NikkeLocalLab` | BattleLog 원문(`BattleLogs`), 분석 캐시(`BattleAnalysis`), 진단(`Diagnostics`). 운영자·SYSTEM·Administrators 전용 ACL |
+| `D:\NikkeLocalLab\Backups` | 보관 client, DB dump, 복구 checkpoint |
+| 저장소 `artifacts/` | Git 제외. 작업별 receipt·백업·private 구성. 활성 보스 pipeline 구성도 이 아래를 가리킵니다 |
+
+정확한 경로 권위는 [MICRON_CURRENT_PATHS.md](MICRON_CURRENT_PATHS.md)입니다. Phase 1A가 기본값으로 정의한
+`%LOCALAPPDATA%\NikkeLocalLab\{data,database,vault,cache,logs,secrets,staging,compatibility}` 구조는 현재 만들어져
+있지 않으며 위 위치가 실제 운영 경로입니다. 원본 내용·계정 raw·비밀을 저장소 추적 경로에 두지 않는 규칙은 같습니다.
 
 Micron `C:\NIKKE`는 공식 launcher가 설치·업데이트하는 mutable official-current source입니다. Local Lab importer는 여기에서 읽을 수 있지만 쓰기 capability를 갖지 않으며, EpinelPS/private-server 실험은 이 경로를 수정하거나 실행 대상으로 삼지 않습니다. 재현성·실험용 client는 저장소 밖의 `C:\NLL\Clients\NIKKE-<build>-*`에 별도 version/hash로 봉인합니다. 현재 실제 경로와 Samsung 배제 규칙은 [MICRON_CURRENT_PATHS.md](MICRON_CURRENT_PATHS.md)를 따릅니다.
 
@@ -56,7 +52,7 @@ EpinelPS는 Local Lab repository에 vendor하지 않고 기본적으로 별도 l
 
 운영자가 승인한 Phase 3B-2 정적 catalog 수집 예외로 얻은 `core`/`dp`/`fd`의 여섯 catalog byte도 원본 game content로 분류합니다. 여섯 catalog를 Epinel 자체 NKDB parser로 해석해 도출한 **native cache materialization closure**의 bundle byte도 같은 분류와 보관 경계를 적용합니다. 이 closure는 catalog의 role host token과 32-hex bundle identity가 정확히 하나의 CDN 상대 경로를 만드는 row만 포함합니다. provider metadata와 `{UnityEngine.AddressableAssets.Addressables.RuntimePath}` 항목은 원격 객체로 취급하지 않습니다.
 
-요청 manifest, raw URL, relative path, catalog와 bundle byte는 Samsung의 Git-external protected root에만 보관하고 Git/Actions/remote로 복사하지 않습니다. 저장소에는 host·method·count·byte limit를 제한하는 범용 수집기, source-free receipt 계약과 비가역 digest만 둘 수 있습니다. Micron 복제본의 `naps`에서 identity와 catalog-declared byte length가 모두 같은 member는 read-only source로 재사용하고, 결손 또는 size mismatch member만 정적 CDN에서 획득합니다. 각 최종 member는 catalog-declared length와 별도 SHA-256 manifest로 봉인합니다. 수집 실패는 resumable `Pending`, 검산 성공은 `Sealed`, rollback은 별도 Git-external `Quarantine`으로 이동하여 복구 가능성을 보존합니다. Micron runtime cache에는 전체 closure를 offline 검증하고 별도 staging gate를 통과하기 전까지 복사하지 않습니다.
+요청 manifest, raw URL, relative path, catalog와 bundle byte는 Git-external protected root에만 보관하고(수집 당시 Samsung, 이관 후 Micron `C:\NLL`) Git/Actions/remote로 복사하지 않습니다. 저장소에는 host·method·count·byte limit를 제한하는 범용 수집기, source-free receipt 계약과 비가역 digest만 둘 수 있습니다. Micron 복제본의 `naps`에서 identity와 catalog-declared byte length가 모두 같은 member는 read-only source로 재사용하고, 결손 또는 size mismatch member만 정적 CDN에서 획득합니다. 각 최종 member는 catalog-declared length와 별도 SHA-256 manifest로 봉인합니다. 수집 실패는 resumable `Pending`, 검산 성공은 `Sealed`, rollback은 별도 Git-external `Quarantine`으로 이동하여 복구 가능성을 보존합니다. Micron runtime cache에는 전체 closure를 offline 검증하고 별도 staging gate를 통과하기 전까지 복사하지 않습니다.
 
 original-client wire/presentation adapter가 client-local content reference를 요구하면 정확한 disposable client build에 결박된 Git 비추적 compatibility binding에서 실행 중에만 변환합니다. 해당 원본 reference, localized asset, icon, prefab 또는 patch output을 public domain/API, receipt, log, fixture와 Git에 복사하지 않습니다. source-free receipt에는 lab UID, controlled role, byte length와 비가역 hash만 남깁니다.
 

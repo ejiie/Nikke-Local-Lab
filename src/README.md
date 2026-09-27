@@ -1,6 +1,6 @@
 # Source layout
 
-현재 운영 구조는 [아키텍처](../docs/ARCHITECTURE.md), 진척은 [인계 요약](../docs/HANDOFF.md)을 따릅니다. 아래는 Phase별 모듈·검증 이력으로, 당시 `blocked/disabled` 설명을 현재 151 실행 전체의 상태로 해석하지 않습니다.
+현재 운영 구조와 소스 경로는 [아키텍처](../docs/ARCHITECTURE.md), 진척은 [인계 요약](../docs/HANDOFF.md)을 따릅니다. 아래는 Phase 2B까지의 모듈 도입·검증 이력으로, 당시 `blocked/disabled` 설명을 현재 실행 상태로 해석하지 않습니다. 이후 관리 API의 보스·유니온·레이드 기록·계정 디렉터리 기능과 migration V0008~V0028이 추가됐습니다.
 
 완료된 Phase 2A1에는 다음 모듈이 포함됩니다. 단위 및 live PostgreSQL gate로 검증했습니다.
 

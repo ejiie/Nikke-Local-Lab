@@ -1,6 +1,6 @@
 # 공통 보스 실행 입력·호환·상태 계약
 
-2026-09-14 P1. [통합 계획](../operations/COMMON_BOSS_EXECUTION_PLAN.md)의 공통 입력 경계다.
+2026-09-14 P1. [통합 계획](../archive/boss-pipeline/COMMON_BOSS_EXECUTION_PLAN.md)의 공통 입력 경계다.
 실행기는 기존 wire와 수명주기를 재사용한다. P2-3에서 Transform 외 크기 입력과 원본 기반
 recipe 결박이 필요해 profile v4를 추가했다. 문서·합성 검사만으로 설치나 실게임 인수를 주장하지 않는다.
 
@@ -140,7 +140,7 @@ R3의 실행별 적용/퇴역 wrapper는 이 결과와 봉인 manifest·기존 J
 
 구현은 `NativeFxRangeTransaction.cs`, `NativeFxRangeJournal.cs`다. 아래 R3에서 신규 공통
 실행 경로에 연결했다. 기존 설치 v8은 v1을 사용하며 변경하지 않았다. 설치 및 실게임
-성능 개선 완료는 [R4~R6](../operations/RUNTIME_FAST_PATH_IMPLEMENTATION_PLAN.md)를 따른다.
+성능 개선 완료는 [R4~R6](../archive/execution/RUNTIME_FAST_PATH_IMPLEMENTATION_PLAN.md)를 따른다.
 
 ### R4 실행 진행 표시 — 2026-09-15
 
@@ -151,7 +151,7 @@ API projection의 선택 필드 `progress`로 전달하며 실행 입장·복구
 게임 생성 시각과 기존 30초 health 관찰은 화면 준비 완료 시각과 구분한다.
 기존 state lock에서 짧게 기다려 원자 게시하며 늦은 시작 기록은 종료 표시를 되돌리지 않는다.
 진행 기록 손상·결손은 기존 입장 상태나 정리를 변경하지 않는다. 필드·측정점·증거 한계는
-[R4 구현 기록](../operations/RUNTIME_FAST_PATH_IMPLEMENTATION_PLAN.md#r4-구현-기록--2026-09-15)을 따른다.
+[R4 구현 기록](../archive/execution/RUNTIME_FAST_PATH_IMPLEMENTATION_PLAN.md#r4-구현-기록--2026-09-15)을 따른다.
 설치 전 소스 변경이며 기존 활성 v8과 실게임 성능 인수를 대신하지 않는다.
 
 ### R3 공통 실행 연결 — 2026-09-15
@@ -187,9 +187,11 @@ cold와 독점 핸들에서 **설치 시 전체 hash 한 번**을 확인한다. 
 정상 실행에서 자동 생성하지 않는다. 운영 설치는 기존 maintenance 잠금과 미완료 실행
 정리 조건을 함께 충족해야 한다. 이번 R3에서는 이 명령을 실제 client에 실행하지 않았다.
 
-현재 등록 권위는 `C:\NLL\RuntimeInputs\CommonBossExecution\native-fx\baseline.private.json`,
-동일 store의 모든 profile/bundle이 공유할 journal은 그 디렉터리의
-`store-state.private.json`이다. 호출자가 다른 journal 경로를 지정하여 소유권을 우회하지
+등록 권위는 client build별 디렉터리의 `baseline.private.json`이고, 동일 store의 모든 profile/bundle이
+공유할 journal은 그 디렉터리의 `store-state.private.json`이다. 디렉터리는
+`CommonNativeFxBaseline.StoreRoot`가 설치 store의 build로 고정한다: 151.8.5는
+`C:\NLL\RuntimeInputs\CommonBossExecution\native-fx`, 그 밖의 build는 `...\native-fx-<build>`이며
+현재 선택은 `native-fx-152.8.11`이다. 호출자가 다른 journal 경로를 지정하여 소유권을 우회하지
 못하도록 실제 adapter에서 고정한다. 등록 pin은 실행 manifest에 봉인하며
 현재 ResourceProbe 이외의 파일을 새로 허용하지 않는다. 원본 교체·수리는 별도 설치 작업이다.
 정상 준비기의 `--require-native-fx-baseline`은 보정 조각이 있을 때만 작은 등록을 확인하고,
@@ -267,6 +269,15 @@ completed를 원본 runtime 인수로 확대하지 않는다. 표시 상태는 �
 증거에서 계산한다. 과거 상태 레코드를 일괄 rewrite하지 않는다.
 
 ## P2 이후 이관해야 하는 확인된 제약
+
+2026-09-27 코드 대조: 아래 목록은 P1 당시의 제약이며 이후 대부분 해소됐다. 일반 준비기
+(`scripts/Nll.PhaseDPreparation.ps1`)는 profile v1/v2/v4를 수락하고 v3은 받지 않는다. 공통 경로는 v4의
+`shieldFxPreparation`(`nll/boss-shield-fx-preparation/v1`, `source_shield_size_candidate/v2`)으로 원본 속성과 보정 대상을
+profile마다 표현하며, 원본이 전격이 아닌 S9(철갑)·S27/S41(작열) 등도 이 형식으로 등록됐다. 152 서버 후보는 profile
+v1~v4를 해석한다. `materialize-nll-shield-fx-candidate.py`의 원본 전격·고정 세 역할과
+`BossRuntimeVariantProfile.ValidateV3QteAndShieldTransform`은 v3 후보 경로(`-CandidateOnly`, schema 3)에만 남아 있다.
+별도 UserValidation 전달·실행 경로는 일반 UI에서 퇴역했고 과거 `awaiting_game_validation` 항목의 표시·복구용으로만 남아 있다.
+현재 동작은 [보스 파이프라인](../features/BOSS_PIPELINE.md)을 따른다.
 
 P2-1에서는 기존 준비기에 순수 해석 함수 `Resolve-PhaseDBossAffinity`를 연결했다.
 내부 `plan.affinity`는 원본 속성/약점과 선택 약점을 구분하며 전체 FX 매핑과 선택한
