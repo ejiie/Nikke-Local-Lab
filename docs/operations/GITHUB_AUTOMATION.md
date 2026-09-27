@@ -49,26 +49,25 @@ PowerShell 5.1의 Utility 모듈 자동 로드가 `Get-FileHash` mock을 덮어�
 
 ## 실행 흐름
 
-    local agent/** branch push
+    local agent/** branch push (owner only)
+              |
+              +-- validate (windows-latest, 15분 제한)
+              |     tested merge with origin/main
+              |     -> repository boundary (-Mode tracked -AllowRemote)
+              |     -> source-only onboarding/FX/merge 검사 (PowerShell 7개 + Python 12개)
+              |     -> Phase 0 -> Phase 3B-1(3B-0 -> 3A -> Phase 2B unit chain) -> Phase 3B-2 contract
+              |     -> boss weakness variant -> Actions contract
+              |
+              +-- postgres (ubuntu-latest + PostgreSQL 17.6 service, 15분 제한)
+              |     tested merge with origin/main
+              |     -> verify-phase2b.ps1 -Integration -> 같은 source-only 검사
               |
               v
-    repository boundary check
-              |
-              v
-    Phase 0 schema/fixture check
-              |
-              v
-    Phase 2B Windows build/unit check
-              |
-              +---- PostgreSQL integration check
-              |
-              v
-    workflow self-contract check
-              |
-              v
-    create or reuse PR -> squash merge -> delete remote branch
+    publish (ubuntu-latest): create or reuse PR -> squash merge (--match-head-commit) -> delete remote branch
 
-검증 job이 실패하거나 취소되면 publish job은 실행되지 않습니다.
+두 검증 job 중 하나라도 실패하거나 취소되면 publish job은 실행되지 않습니다. 정확한 단계는
+`.github/workflows/agent-branch-automerge.yml`이 권위입니다. 2026-09-27 run `36324475337`에서 validate job은 약 12분이
+걸렸으므로 검사를 추가할 때 15분 제한과의 여유를 확인합니다.
 
 현재 workflow는 Windows에서 `scripts/verify-phase3b1.ps1`을 실행합니다. 이 gate는 3B-0→3A→완료된 Phase 2B baseline chain을 먼저 보존한 뒤, source-free selected-manager receipt와 최종 `7/10/2` route policy를 검증합니다. 이어 `scripts/verify-phase3b2.ps1 -ContractOnly`으로 Wave 0 assessment schema와 Wave 1 observation-set schema·합성 fixture를 검증하고, `scripts/verify-automation-boss-weakness-variant.ps1`로 Control Center 약점 선택 5종, 공식 아이콘 매핑, 실행별 파생 StaticData, 부모 runtime·공식 설치본 비변경, server/source manifest 및 receipt 결박을 검사합니다. 외부 EpinelPS checkout이 없는 Actions에서는 source-free manifest 형식과 연결 계약까지만 검사하며, checkout이 있는 로컬 gate에서는 manifest의 25개 source 길이·SHA-256까지 대조합니다. 어느 경우에도 파생 pack이나 원본 게임 asset을 업로드하지 않습니다. 이 단계에는 local assessment path를 전달하지 않으며 disposable environment, measured preflight 또는 actual-client live proof를 재현·주장하지 않습니다. pinned PostgreSQL service에서는 `scripts/verify-phase2b.ps1 -Integration`을 실행합니다. Phase 3A script의 checked-in verdict `blocked_insufficient_evidence`는 **승인 우선 정책의 역사적 계약**으로 계속 유지됩니다. 3B-1의 `ready_for_isolated_season26_reference_run`도 이 fixture를 성공으로 바꾸거나 original-client adapter를 활성화하지 않습니다. Phase 2B script는 완료된 Phase 2A2 gate를 먼저 호출한 뒤 permanent six-season directory, 05:00 KST boundary, Normal/Quick Battle unsupported, policy/profile과 1~5팀 Challenge contract를 추가로 검증합니다. 두 host `Program.cs`가 config policy를 source-free domain policy로 materialize하여 runtime의 initial policy로 전달하는 composition과, `MigrateAsync` integration test가 `lab_private_server` schema를 누락 없이 reset하는지를 static guard로 고정합니다.
 
@@ -123,17 +122,28 @@ locked restore/build/format도 수행합니다. **CI에서는 실제 materialize
 151 bootstrap/desktop 빌드를 실행하지 않습니다.** 배포 후보는 별도
 `scripts/test-nll-materializer-behavior.ps1`에 검토된 bundle 경로·SHA-256을 명시해 로컬
 검증해야 합니다. 합성 입력 21개, negative control과 별도 빌드의 범위·명령은
-[S-06](../STABILIZATION_PLAN.md#s-06--높음--회귀-검사의-일부가-동작-대신-구현-문자열에-결박됨)을 따릅니다.
+[S-06](../archive/stabilization/STABILIZATION_PLAN.md#s-06--높음--회귀-검사의-일부가-동작-대신-구현-문자열에-결박됨)을 따릅니다.
 이 gate의 산출물·외부 DLL·receipt는 ignored artifacts에만 두고 Actions에 업로드하지 않습니다.
+
+AGENTS가 작업 전후로 요구하는 gate는 다음 10개입니다. 모두 exit 0이어야 통과입니다.
 
     pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode working -AllowRemote
     pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
-    pwsh -NoProfile -File scripts/verify-phase3a.ps1
-    pwsh -NoProfile -File scripts/verify-phase3b0.ps1
-    pwsh -NoProfile -File scripts/verify-phase3b1.ps1
+    pwsh -NoProfile -File scripts/verify-phase2a1.ps1
+    pwsh -NoProfile -File scripts/verify-phase2a2.ps1
+    pwsh -NoProfile -File scripts/verify-phase2b.ps1
+    pwsh -NoProfile -File scripts/verify-phase3a.ps1 -ContractOnly
+    pwsh -NoProfile -File scripts/verify-phase3b0.ps1 -ContractOnly
+    pwsh -NoProfile -File scripts/verify-phase3b1.ps1 -ContractOnly
     pwsh -NoProfile -File scripts/verify-phase3b2.ps1 -ContractOnly
-    pwsh -NoProfile -File scripts/verify-automation-boss-weakness-variant.ps1
     pwsh -NoProfile -File scripts/verify-actions-contract.ps1
+
+CI에서 추가로 실행하는 `scripts/verify-automation-boss-weakness-variant.ps1`도 로컬에서 돌릴 수 있습니다.
+
+필요한 도구: PowerShell 7(`pwsh`), Node.js(Phase 2A2의 editor 검사가 `node`를 호출), Python, `global.json`의
+.NET SDK 8.0.407. Phase 2A1 이후 gate는 NuGet restore와 취약성 조회를 하므로 네트워크가 필요하며, 막히면 `NU1900`으로
+실패합니다. repository 검사는 `origin`이 있는 checkout에서 `-AllowRemote` 없이 실행하면 "Remote repositories are not
+allowed in the local-only baseline"으로 실패합니다.
 
 live PostgreSQL까지 같은 gate로 검증할 때는 폐기 가능한 DB의 `NIKKE_LAB_TEST_DB`와 reviewed reset token을 설정한 뒤 다음을 실행합니다.
 

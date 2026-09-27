@@ -1,6 +1,6 @@
 # Phase 1D — 전투 보조 catalog
 
-> 단계별 계약·검증 기준입니다. 이 문서의 과거 실행 판정과 현재 151 운영 상태를 구분합니다. 현행 진척은 [인계 요약](../HANDOFF.md), 작업 우선순위는 [안정화 계획](../STABILIZATION_PLAN.md)을 확인합니다.
+> 단계별 계약·검증 기준입니다. 이 문서의 과거 실행 판정과 현재 운영 상태를 구분합니다. 현행 상태는 [인계 요약](../HANDOFF.md), 남은 작업은 [다음 작업](../NEXT_STEPS.md)을 확인합니다.
 
 Phase 1D는 계정 소유 상태가 아니라 profile editor와 전투 입력이 참조할 정적 정의를 게시합니다. 입력은 사용자가 보관한 `StaticData` archive 하나이며, 원본은 read-only source adapter로만 읽습니다. 원본 ID, 로컬 경로, locale key와 복호 row는 도메인·DB receipt·로그·Git에 남기지 않습니다.
 

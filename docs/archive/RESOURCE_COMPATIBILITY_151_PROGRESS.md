@@ -11,7 +11,7 @@ validation complete and explicitly closed the resource-change response. Keep the
 working 151/Epinel DLL combination unchanged. This is operator-reported acceptance;
 no new automated runtime observation receipt was produced. It does not close the separately
 deferred S29 profile mismatch or certify every voice-pack/weakness combination.
-The current work is [backend stabilization](../STABILIZATION_PLAN.md), not additional
+The current work is [backend stabilization](stabilization/STABILIZATION_PLAN.md), not additional
 resource/DLL experimentation. The following checkpoint records preparation as it
 stood before that operator acceptance.
 

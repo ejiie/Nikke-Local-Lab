@@ -55,7 +55,7 @@ Phase D의 구현 경로는 `C:\NLL\ControlCenter\postgresql\data`, loopback por
 
 2026-09-18부터 공통 실행기는 관리 PostgreSQL을 게임 실행 중에도 유지한다. 유니온 API가 초기 정보 조회·입장·편성·결과를 같은 영속 DB transaction으로 처리하기 때문이다. coordinator는 지정 cluster가 실행 중인지 확인하며, completion/실패 복구는 실행 중이면 그대로 재사용하고 중단 상태일 때만 재기동한다. 모든 시즌/모드에 같은 수명주기를 적용한다. 관리도구 종료 시에도 게임·시작 coordinator·종료 watcher가 DB를 사용 중이면 종료하지 않는다. DB는 기존처럼 loopback에서만 수신한다.
 
-이전 v8 절차는 파생 DB 생성 후 관리 PostgreSQL을 중단하고 게임 종료 후 재기동하여 전투 중 메모리를 줄였다. 해당 절차에 런타임 직접 DB 접근 API를 추가하면서 InitSuccess HTTP 500 회귀가 발생했다. 과거 절차를 현재 실행 요구로 사용하지 않는다. 수정과 검사·설치 상태는 [유니온 하드 기록](UNION_RAID_HARD_IMPLEMENTATION.md)을 따른다.
+이전 v8 절차는 파생 DB 생성 후 관리 PostgreSQL을 중단하고 게임 종료 후 재기동하여 전투 중 메모리를 줄였다. 해당 절차에 런타임 직접 DB 접근 API를 추가하면서 InitSuccess HTTP 500 회귀가 발생했다. 과거 절차를 현재 실행 요구로 사용하지 않는다. 수정과 검사·설치 상태는 [유니온 하드 기록](../archive/union/UNION_RAID_HARD_IMPLEMENTATION.md)을 따른다.
 
 ## 게임 실행 preflight
 
@@ -63,10 +63,12 @@ Phase D의 구현 경로는 `C:\NLL\ControlCenter\postgresql\data`, loopback por
 
 - Docker Desktop backend process와 Docker VM이 실행 중이지 않음
 - WSL2/Hyper-V database backend를 사용하지 않음
-- `postgres.exe`, `pg_ctl.exe`와 port `55432` listener가 없음
+- ephemeral acceptance cluster(port `55432`)의 `postgres.exe`, `pg_ctl.exe`와 listener가 없음
 - 이전 acceptance의 disposable data directory가 active marker를 갖고 있지 않음
 
-하나라도 만족하지 않으면 game launch를 시작하지 않고 정확한 process/port를 보고한다. DB가 내려간 뒤에도 binary와 data file은 디스크에 남을 수 있으며 이는 RAM을 점유하지 않는다.
+하나라도 만족하지 않으면 game launch를 시작하지 않고 정확한 process/port를 보고한다. 관리 cluster(port `55433`)는 위 조건의
+대상이 아니며 2026-09-18부터 게임 실행 중에도 켜 둔다. DB가 내려간 뒤에도 binary와 data file은 디스크에 남을 수 있으며 이는
+RAM을 점유하지 않는다.
 
 ## 제거와 rollback
 

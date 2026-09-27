@@ -6,7 +6,7 @@
 
 운영자가 관리도구 연결 후 151 실게임 검증 완료를 확인했으며 리소스 변화 대응은 종료했다.
 검증된 Epinel DLL/151 설치본을 유지하고 기능 추가보다 코드·DB·문서의 안정화를 우선한다.
-1차 구조 점검, 검증 공백과 단계별 정비 순서는 [STABILIZATION_PLAN.md](../STABILIZATION_PLAN.md)를 따른다.
+1차 구조 점검, 검증 공백과 단계별 정비 순서는 [STABILIZATION_PLAN.md](stabilization/STABILIZATION_PLAN.md)를 따른다.
 S29의 미완료 profile 버전 불일치는 별도 보류다. 150의 D: 이동은 남은 실행 의존성 제거 뒤에만 한다.
 
 ## 이전 단계 계획과 증거 — 아래의 “다음”은 당시 기준
@@ -28,7 +28,7 @@ S29의 미완료 profile 버전 불일치는 별도 보류다. 150의 D: 이동�
 
 현재 actual-play 기반 이후의 제품화 작업은 [FOLLOWUP_AUTOMATION_BOSS_ACCOUNT_ROADMAP.md](FOLLOWUP_AUTOMATION_BOSS_ACCOUNT_ROADMAP.md)에 정리했습니다. 목표는 일반 업데이트와 보스 추가의 반복 작업을 pipeline으로 만드는 것, 시즌 29 Mother Whale 변종과 시즌 34 Altruia를 추가하는 것, 그리고 `getFromBlaLink.py` 및 기존 progression 추출을 연결한 다중 account 관리·Save·Save As·Fetch·Launch 프로그램을 제공하는 것입니다.
 
-2026-08-30 운영자 검수에서 확인한 Control Center 결함은 프런트엔드와 백엔드로 분리해 관리합니다. 블라블라 기준 이미지·도감·상세 화면, 통합 Save의 stale ETag, 전투력 `미확인`을 `0`으로 표시하는 문제와 레이드 상태 UX는 [CONTROL_CENTER_FRONTEND_DEFECTS.md](../features/CONTROL_CENTER_FRONTEND_DEFECTS.md)에 기록했습니다. imported profile의 `draft_profile`, fetched snapshot pointer, 전투력 observation read model, aggregate Save contract와 오버로드 semantic projection은 [CONTROL_CENTER_BACKEND_DEFECTS.md](../features/CONTROL_CENTER_BACKEND_DEFECTS.md)에 기록했습니다.
+2026-08-30 운영자 검수에서 확인한 Control Center 결함은 프런트엔드와 백엔드로 분리해 관리합니다. 블라블라 기준 이미지·도감·상세 화면, 통합 Save의 stale ETag, 전투력 `미확인`을 `0`으로 표시하는 문제와 레이드 상태 UX는 [CONTROL_CENTER_FRONTEND_DEFECTS.md](stabilization/CONTROL_CENTER_FRONTEND_DEFECTS.md)에 기록했습니다. imported profile의 `draft_profile`, fetched snapshot pointer, 전투력 observation read model, aggregate Save contract와 오버로드 semantic projection은 [CONTROL_CENTER_BACKEND_DEFECTS.md](stabilization/CONTROL_CENTER_BACKEND_DEFECTS.md)에 기록했습니다.
 
 2026-08-28에 Phase A baseline을 착수·완료했습니다. 다섯 요구 schema와 공통 pipeline manifest/state machine을 추가했고, D: 시즌 26 v8 detached checkpoint 12개 member를 읽기 전용으로 `inventory → validate → stage plan`까지 재현했습니다. 검증 결과는 `inventoryMatched=true`, `stageReady=true`, `mutationPerformed=false`이며 다음 구현 단위는 account workspace core입니다. 보스 자동화 순서는 시즌 29 Mother Whale 변종을 먼저 처리하고 시즌 34 Altruia로 일반성을 검증합니다.
 
