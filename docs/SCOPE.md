@@ -32,7 +32,7 @@ pinned public EpinelPS 구현을 prior art/reference로 사용하는 modified-lo
 - 결과에 별도 공식 buff가 적용되는 Solo Raid Museum(구현·검증·fallback 모두 제외)
 - 일반 솔로 레이드 1~7단계 전투, 유니온 레이드 노멀 전투·노멀 연습전, Quick Battle
 - 공식 로그인·계정·session·token 사용, live 공식 traffic 가로채기/replay, 게임 프로세스 주입·후킹·memory patch
-  (승인된 Epinel DLL의 내장 동작은 [보안 경계](SECURITY_BOUNDARY.md)의 2026-09-06 예외)
+  (승인된 Epinel DLL의 내장 동작은 [보안 경계](SECURITY_BOUNDARY.md)의 2026-09-06 예외이며, 2026-09-28에 152와 이후 봉인 복제본으로 대상을 넓힘)
 - 사격장 전투, 유니온 채팅 전송·운영 기능, 스테이지·타워·아레나·상점·전초기지·보상 경제
 - 기존 대미지 시뮬레이터를 최종 전투 runtime으로 쓰는 것
 

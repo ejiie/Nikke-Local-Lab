@@ -21,7 +21,8 @@
 3. **내용 비교**: 캐릭터·시즌·보스 행동/속성/QTE/FX 참조의 추가·변경을 기존 해석기로 비교합니다. 목록·이름·이미지
    해석 성공을 전투 실행 가능으로 해석하지 않습니다.
 4. **client 복제·봉인**: `C:\NLL\Clients\NIKKE-<build>-ResourceProbe`로 복사하고 전체 manifest를 대조합니다.
-   승인된 Epinel DLL과 client-local 인증서 overlay는 이 복제본에만 적용합니다.
+   승인된 Epinel DLL과 client-local 인증서 overlay는 이 복제본에만 적용합니다. DLL은 2026-09-28 승인에 따라 새 버전마다
+   재승인하지 않지만, 수정·재빌드하지 않은 같은 hash(`54ee18f5…5662`)일 때만 해당합니다. hash가 다르면 새 승인이 필요합니다.
 5. **서버 후보**: 기존 NLL 변경을 유지한 별도 EpinelPS checkout에 upstream 버전 변경을 적용하고 서버 검사를 돌립니다.
    `resourcehosts2`는 upstream처럼 BaseUrl/Version만 돌려줍니다.
 6. **리소스 안내 공급**: 외부 자동 다운로드를 끈 상태이므로 client가 요청하는 `latest-<n>.txt`와 native catalog·서명
