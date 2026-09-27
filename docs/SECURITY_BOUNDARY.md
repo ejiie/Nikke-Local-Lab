@@ -138,6 +138,23 @@ DLL 로드시 실행되는 내장 GameAssembly 검색/수정 로직도 이 승�
 loopback 서버, 합성 계정, 실행 제한 시간, 사전 backup/pin과 종료 후 원복을
 그대로 유지합니다. 이 승인은 151 호환성 확인이나 실제 실행 성공 증거가 아닙니다.
 
+### 2026-09-28 DLL 승인 대상 확장 — 152와 이후 봉인 복제본
+
+운영자는 위 2026-09-06 승인을 152 복제본과 이후 버전의 봉인 복제본까지 적용하도록 명시했습니다.
+
+- 대상 DLL: 위와 같은 Epinel 제공 `sodium.dll` (358,400 bytes, SHA-256
+  `54ee18f5ee3d16fea8bb6c3407a880727aa3b848f6a55908e6bf90f8635e5662`)입니다. 수정·재빌드하지 않은 동일 byte만
+  해당하며, hash가 다른 DLL은 이 승인에 포함되지 않아 별도 승인이 필요합니다.
+- 대상 client: `C:\NLL\Clients\NIKKE-152.8.11-ResourceProbe`와, 이후 [client 업데이트 순서](operations/CLIENT_UPDATE.md)로
+  만든 version/hash 봉인 복제본 `C:\NLL\Clients\NIKKE-<build>-*`입니다. 새 버전마다 재승인을 요구하지 않습니다.
+  2026-09-17 152 적용 이후 이 DLL을 152 복제본에서 사용해 온 것도 이 범위에 포함합니다.
+- DLL 로드 시 실행되는 내장 GameAssembly 검색/수정 로직을 포함합니다.
+- 변하지 않는 제외: 공식-current `C:\NIKKE`와 150 파일 변경, 공식 계정·서비스 접속, 별도 주입/후킹 도구 추가,
+  보호 로직의 추가 패치, 격리 해제. process-tree 격리, loopback 서버, 합성 계정, 실행 제한 시간, 사전 backup/pin과
+  종료 후 원복을 그대로 유지합니다.
+- 이 승인은 새 client 버전에서 DLL 내장 로직이 동작한다는 증거가 아닙니다. 버전별 호환성과 실행 성공은 해당 버전의
+  설치 검사와 운영자 실게임 확인으로 따로 판정합니다.
+
 공식-current `C:\NIKKE`와 공식 계정 경로는 modified-local 연결 대상이 아닙니다. `C:\NIKKE`는 공식 launcher update와 운영자 fresh capture에는 사용할 수 있지만 Local Lab/EpinelPS server에 연결하지 않습니다. 원본 client compatibility 실험은 [PHASE3AR.md](contracts/PHASE3AR.md)의 승인 lane과 별도 version/hash 봉인 client를 사용합니다. 현재 Micron 경로 권위는 [MICRON_CURRENT_PATHS.md](MICRON_CURRENT_PATHS.md)를 따릅니다. lab-owned test harness는 backend 계약 검사 도구이고 최종 인수 조건을 대체하지 않습니다.
 
 Phase 3A의 `blocked_insufficient_evidence`는 당시 rights-holder-approved route 정책 아래의 유효한 역사적 판정입니다. 공개 EpinelPS prior art와 운영자의 local-only risk 결정은 그 판정을 삭제하거나 `ready_for_phase3b`로 바꾸지 않습니다. 대신 modified-local lane을 별도로 열며, 공개 저장소를 Shift Up의 승인·묵인 증거로 해석하지 않습니다. 권리자 승인은 `not_claimed`, 법적 상태는 `not_determined`입니다.
