@@ -1,11 +1,15 @@
 # Synthetic firewall/SCM boundary; production lifecycle code, no OS mutations.
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+# Windows PowerShell 5.1 otherwise autoloads Utility on the first qualified
+# hash call and replaces our Get-FileHash mock with its exported function.
+Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
 . (Join-Path $PSScriptRoot 'Nll.PhaseDSharedIsolation.ps1')
 $root=Join-Path ([IO.Path]::GetTempPath()) ('nll-isolation-'+[guid]::NewGuid().ToString('N'))
 $null=New-Item -ItemType Directory -Path $root
 $seal='a'*64
 $checks=0
+$script:serviceHashCalls=0
 function Need($Value) { if(-not $Value){throw ('isolation_test_failed_'+$MyInvocation.ScriptLineNumber)}; $script:checks++ }
 function Reject([scriptblock]$Action,[string]$Code) {
     $caught=$false
@@ -17,7 +21,7 @@ function Reset-Test {
         [pscustomobject]@{name='NLL.PhaseD151.Program.0';program='C:\NIKKE\Launcher\nikke_launcher.exe';enabled=$false},
         [pscustomobject]@{name='NLL.PhaseD151.Program.1';program='C:\Program Files\AntiCheatExpert\ACE-Service64.exe';enabled=$false},
         [pscustomobject]@{name='NLL.PhaseD151.Program.2';program='C:\NLL\Clients\synthetic\nikke.exe';enabled=$true})
-    $script:processes=@();$script:services=@();$script:failEnable=$false;$script:failDisable=$false;$script:failStop=$false;$script:stopCalls=0
+    $script:processes=@();$script:services=@();$script:failEnable=$false;$script:failDisable=$false;$script:failStop=$false;$script:stopCalls=0;$script:serviceHashCalls=0
     $script:case=Join-Path $root ([guid]::NewGuid().ToString('N'));$null=New-Item -ItemType Directory $case
     $script:bundle=[pscustomobject]@{clientPrograms=@([pscustomobject]@{path=$rules[2].program});blockOnlyPrograms=@($rules[0].program,$rules[1].program)}
 }
@@ -45,8 +49,16 @@ function Get-CimInstance {
 }
 function Get-FileHash {
     param($LiteralPath)
-    if($LiteralPath -ieq 'C:\Program Files\AntiCheatExpert\ACE-Service64.exe'){[pscustomobject]@{Hash=('b'*64)}}
-    else{Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $LiteralPath}
+    if($LiteralPath -ieq 'C:\Program Files\AntiCheatExpert\ACE-Service64.exe'){
+        $script:serviceHashCalls++
+        [pscustomobject]@{Hash=('b'*64)}
+    } else {
+        $resolved=[IO.Path]::GetFullPath($LiteralPath)
+        if(-not $resolved.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){
+            throw 'unexpected_hash_path'
+        }
+        Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $resolved
+    }
 }
 function Stop-Service { param($Name) $script:stopCalls++;if($script:failStop){throw 'synthetic_stop_failed'};$script:services[0].State='Stopped' }
 function Get-Service {
@@ -57,6 +69,13 @@ function Get-Service {
     $item
 }
 try {
+    # Hash a real synthetic file first: this triggered the 5.1 autoload bug.
+    $probe=Join-Path $root 'hash-probe.txt'
+    [IO.File]::WriteAllText($probe,'synthetic hash probe')
+    Need ((Get-FileHash -LiteralPath $probe).Hash.Length -eq 64)
+    Need ((Get-FileHash -LiteralPath 'C:\Program Files\AntiCheatExpert\ACE-Service64.exe').Hash -ceq ('b'*64))
+    Need ($script:serviceHashCalls -eq 1)
+    Reject {Get-FileHash -LiteralPath (Join-Path $root '../outside-fixture.txt')} 'unexpected_hash_path'
     Reset-Test
     Enter-PhaseDSharedIsolation $case $seal $bundle
     Need (@($rules|Where-Object {-not $_.enabled}).Count -eq 0)
@@ -95,8 +114,10 @@ try {
     Reset-Test
     $script:services=@([pscustomobject]@{Name='AntiCheatExpert Protection';PathName='"C:\Program Files\AntiCheatExpert\ACE-Service64.exe" -autorun';State='Stopped';StartMode='Manual'})
     Enter-PhaseDSharedIsolation $case $seal $bundle
+    Need ((Get-Content -LiteralPath (Join-Path $case 'shared-isolation.before.json') -Raw | ConvertFrom-Json).services[0].sha256 -ceq ('b'*64))
     $services[0].State='Running'
     Restore-PhaseDSharedIsolation $case $seal
+    Need ($script:serviceHashCalls -eq 2)
     Need ($stopCalls -eq 1 -and $services[0].State -ceq 'Stopped' -and -not $rules[1].enabled)
     Reset-Test
     $script:services=@([pscustomobject]@{Name='AntiCheatExpert Protection';PathName='"C:\Program Files\AntiCheatExpert\ACE-Service64.exe" -autorun';State='Running';StartMode='Manual'})
