@@ -58,12 +58,19 @@ internal static class AdminApiProgram
             ConfigureServices = services =>
             {
               services.AddSingleton(profileRuntime.Service);
+              services.AddSingleton(_ => PostgreSqlDataSourceFactory.Create(connectionString));
+              services.AddSingleton<AccountDirectoryStore>();
+              services.AddSingleton<RaidRecordStore>();
+              services.AddSingleton(new RaidCompositionPaths(
+                  Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "NikkeLocalLab", "BattleLogs"),
+                  Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "NikkeLocalLab", "BattleAnalysis")));
+              services.AddSingleton<RaidCompositionStore>();
               var bossCatalogPath = Environment.GetEnvironmentVariable("NLL_BOSS_CATALOG_PATH");
               var bossCatalogSha256 = Environment.GetEnvironmentVariable("NLL_BOSS_CATALOG_SHA256");
               if (!string.IsNullOrWhiteSpace(bossCatalogPath) && !string.IsNullOrWhiteSpace(bossCatalogSha256))
                 services.AddSingleton<IBossSeasonCatalogService>(new FilesystemBossSeasonCatalogService(bossCatalogPath,
                     bossCatalogSha256, Path.Combine(options["repository-root"], "config", "boss-runtime-variants")));
-              BossOnboardingComposition.Configure(services, options["repository-root"]);
+              BossOnboardingComposition.Configure(services, options["repository-root"], connectionString);
               if (privateServerRuntime is not null)
               {
                 services.AddSingleton(privateServerRuntime.Service);
@@ -106,10 +113,7 @@ internal static class AdminApiProgram
                       logger: provider.GetRequiredService<ILogger<FilesystemPhaseDExecutionService>>(),
                       preparation: provider.GetRequiredService<IPhaseDPreparationService>()));
               services.AddHostedService<PhaseDLifecycleWorker>();
-              services.AddSingleton<IAccountImportService>(provider =>
-                  new FilesystemAccountImportService(
-                      provider.GetRequiredService<IProfileManagementService>(),
-                      new AccountImportOptions(
+              services.AddSingleton(new AccountImportOptions(
                           options["repository-root"],
                           options["config"],
                           Path.Combine(
@@ -140,7 +144,15 @@ internal static class AdminApiProgram
                               "raw",
                               "nikke_full_scroll_result.json"),
                           Environment.GetEnvironmentVariable("NIKKE_LAB_HOME") ??
-                              throw new LabConfigurationException("runtime_root_missing"))));
+                              throw new LabConfigurationException("runtime_root_missing")));
+
+              services.AddSingleton<IAccountImportService, FilesystemAccountImportService>();
+              services.AddSingleton<AccountConnectionService>();
+              services.AddSingleton(provider => new AccountFrameArtwork(
+                  provider.GetRequiredService<Npgsql.NpgsqlDataSource>(),
+                  provider.GetRequiredService<AccountImportOptions>(),
+                  configuration.IdentitySecretEnvironmentVariable,
+                  provider.GetRequiredService<ILogger<AccountFrameArtwork>>()));
             }
           });
       await app.RunAsync().ConfigureAwait(false);

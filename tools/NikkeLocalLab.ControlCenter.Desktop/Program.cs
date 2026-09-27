@@ -62,7 +62,7 @@ internal static class Program
     private string? bootstrapCode;
     private bool allowClose;
     private bool stopping;
-    private readonly TaskCompletionSource<bool> navigation = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> editorReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     internal MainForm()
     {
@@ -87,12 +87,13 @@ internal static class Program
       webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
       webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
       webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
-      webView.CoreWebView2.NavigationCompleted += LoginAfterNavigation;
+      webView.CoreWebView2.NavigationCompleted += InitializeAfterNavigation;
+      webView.CoreWebView2.WebMessageReceived += EditorMessageReceived;
       Controls.Remove(loading);
       Controls.Add(webView);
       webView.BringToFront();
       webView.Source = new Uri("http://127.0.0.1:17878/editor/");
-      Require(await navigation.Task.WaitAsync(TimeSpan.FromSeconds(60), closing.Token), "desktop_navigation_failed");
+      Require(await editorReady.Task.WaitAsync(TimeSpan.FromSeconds(60), closing.Token), "desktop_editor_initialization_failed");
     }
 
     private Process StartHost()
@@ -122,20 +123,33 @@ internal static class Program
       return Task.CompletedTask;
     }
 
-    private async void LoginAfterNavigation(object? sender, CoreWebView2NavigationCompletedEventArgs args)
+    private async void InitializeAfterNavigation(object? sender, CoreWebView2NavigationCompletedEventArgs args)
     {
-      navigation.TrySetResult(args.IsSuccess);
-      if (stopping || string.IsNullOrWhiteSpace(bootstrapCode)) return;
+      if (stopping) return;
       var encoded = JsonSerializer.Serialize(bootstrapCode);
       bootstrapCode = null;
-      await DesktopLifecycle.GuardAsync(async () =>
+      try
       {
         Require(args.IsSuccess && webView.Source?.AbsoluteUri == "http://127.0.0.1:17878/editor/",
             "desktop_navigation_failed");
         await webView.ExecuteScriptAsync(
-            $"document.getElementById('bootstrap-code').value={encoded};" +
-            "document.getElementById('admin-login').click();").WaitAsync(TimeSpan.FromSeconds(30), closing.Token);
-      }, StartupFailedAsync);
+            $"startAdminSession({encoded}).then(() => chrome.webview.postMessage('nll-editor-ready'))" +
+            ".catch(() => { showStatus('관리 도구를 준비하지 못했습니다. 프로그램을 다시 실행해 주세요.');" +
+            "chrome.webview.postMessage('nll-editor-failed'); });").WaitAsync(TimeSpan.FromSeconds(30), closing.Token);
+      }
+      catch (Exception) { editorReady.TrySetResult(false); }
+    }
+
+    private void EditorMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
+    {
+      if (stopping || args.Source != "http://127.0.0.1:17878/editor/") return;
+      try
+      {
+        var message = JsonSerializer.Deserialize<string>(args.WebMessageAsJson);
+        if (message == "nll-editor-ready") editorReady.TrySetResult(true);
+        else if (message == "nll-editor-failed") editorReady.TrySetResult(false);
+      }
+      catch (JsonException) { /* Ignore unrelated non-string messages. */ }
     }
 
     private void OnClosing(object? sender, FormClosingEventArgs args)

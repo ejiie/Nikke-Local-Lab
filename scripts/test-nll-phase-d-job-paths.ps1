@@ -2,6 +2,7 @@
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerOperations.ps1')
+. (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 function Check-PathTest([bool]$Value) { if (-not $Value) { throw 'job_path_test_failed' } }
 function Ast-PathTest($Name) {
     $tokens=$null; $errors=$null
@@ -122,7 +123,7 @@ $global:LASTEXITCODE=0
     # Run the actual PG-failure prefix from all three production owners. Stop
     # immediately at their PG boundary after checking durable checkpoint order.
     function Write-PhaseDRollbackCleanupCheckpoint { $script:checkpoint=$true }
-    function Invoke-PhaseDPgCtl { Check-PathTest $script:checkpoint; throw 'synthetic_pg_failure' }
+    function Ensure-PhaseDPostgresRunning { Check-PathTest $script:checkpoint; throw 'synthetic_pg_failure' }
     function Invoke-RecoveryPgCtl { Check-PathTest $script:checkpoint; throw 'synthetic_pg_failure' }
     function Assert-Recovery { }
     $jobAttempted=$true; $jobRequired=$true; $replayOnly=$false; $physicalCleanupCommitted=$false
@@ -131,8 +132,8 @@ $global:LASTEXITCODE=0
     foreach ($file in @('invoke-nll-phase-d-execution.ps1','watch-nll-phase-d-execution.ps1','recover-nll-phase-d-orphaned-execution.ps1')) {
         $ast=Ast-PathTest $file
         $write=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.CommandAst] -and $n.GetCommandName() -ceq 'Write-PhaseDRollbackCleanupCheckpoint'},$true))[0]
-        $pg=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.AssignmentStatementAst] -and $n.Extent.StartOffset -gt $write.Extent.StartOffset -and
-            $n.Right.Extent.Text -match '^Invoke-(PhaseD|Recovery)PgCtl'},$true))[0]
+        $pg=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.CommandAst] -and $n.Extent.StartOffset -gt $write.Extent.StartOffset -and
+            $n.GetCommandName() -cin @('Ensure-PhaseDPostgresRunning','Invoke-RecoveryPgCtl')},$true))[0]
         $start=$write.Parent
         while ($start -isnot [Management.Automation.Language.IfStatementAst]) { $start=$start.Parent }
         $prefix=$ast.Extent.Text.Substring($start.Extent.StartOffset,$pg.Extent.EndOffset-$start.Extent.StartOffset)

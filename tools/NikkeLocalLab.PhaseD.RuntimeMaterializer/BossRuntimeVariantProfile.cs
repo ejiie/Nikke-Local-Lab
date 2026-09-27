@@ -103,6 +103,15 @@ internal sealed record BossRuntimeVariantShieldFxTransformNormalization(
     string[] TargetBossElementCodes,
     BossRuntimeVariantShieldFxTransformVariant[] Variants);
 
+internal sealed record BossRuntimeVariantShieldFxPreparedVariant(
+    string BossElementCode, string SourceFxPrefabSetSha256, string TargetFxPrefabSetSha256,
+    string OperationCode, BossRuntimeVariantAssetBundle SourceBundle,
+    BossRuntimeVariantAssetBundle TargetBundle, BossRuntimeVariantAssetBundle OutputBundle);
+
+internal sealed record BossRuntimeVariantShieldFxPreparation(
+    string ContractId, string PolicyCode, string SourceBossElementCode,
+    string RecipeManifestSha256, BossRuntimeVariantShieldFxPreparedVariant[] Variants);
+
 internal sealed record BossRuntimeVariantTransformation(
     string ModeCode,
     string[] AllowedTableCodes,
@@ -124,12 +133,14 @@ internal sealed record BossRuntimeVariantProfile(
     BossRuntimeVariantElementShield ElementShield,
     BossRuntimeVariantQuickTimeEventAffinity? QuickTimeEventAffinity,
     BossRuntimeVariantShieldFxTransformNormalization? ShieldFxTransformNormalization,
+    BossRuntimeVariantShieldFxPreparation? ShieldFxPreparation,
     BossRuntimeVariantTransformation Transformation,
     string Sha256)
 {
   public const string V1ContractId = "nll/boss-runtime-variant-profile/v1";
   public const string V2ContractId = "nll/boss-runtime-variant-profile/v2";
   public const string V3ContractId = "nll/boss-runtime-variant-profile/v3";
+  public const string V4ContractId = "nll/boss-runtime-variant-profile/v4";
 
   public static async Task<BossRuntimeVariantProfile> LoadAsync(string path)
   {
@@ -163,6 +174,7 @@ internal sealed record BossRuntimeVariantProfile(
               false, string.Empty, []),
           document.QuickTimeEventAffinity,
           document.ShieldFxTransformNormalization,
+          document.ShieldFxPreparation,
           document.Transformation ?? new(string.Empty, [], false, false, true),
           Convert.ToHexStringLower(SHA256.HashData(bytes)));
       profile.Validate();
@@ -182,7 +194,8 @@ internal sealed record BossRuntimeVariantProfile(
   {
     Require((SchemaVersion == 1 && ContractId == V1ContractId) ||
             (SchemaVersion == 2 && ContractId == V2ContractId) ||
-            (SchemaVersion == 3 && ContractId == V3ContractId),
+            (SchemaVersion == 3 && ContractId == V3ContractId) ||
+            (SchemaVersion == 4 && ContractId == V4ContractId),
         "phase_d_boss_variant_profile_invalid");
     Require(IsCode(ProfileCode) && IsCode(DisplayNameCode) && SeasonNumber > 0,
         "phase_d_boss_variant_profile_invalid");
@@ -206,9 +219,11 @@ internal sealed record BossRuntimeVariantProfile(
     Require(IsElement(SourceAffinity.BossElementCode) &&
             IsElement(SourceAffinity.WeaknessCode),
         "phase_d_boss_variant_profile_invalid");
-    Require(SchemaVersion == 3 ||
+    Require(SchemaVersion is 3 or 4 ||
             (QuickTimeEventAffinity is null && ShieldFxTransformNormalization is null),
         "phase_d_boss_variant_profile_invalid");
+    Require((SchemaVersion == 4 || ShieldFxPreparation is null) &&
+            (SchemaVersion == 3 || ShieldFxTransformNormalization is null), "phase_d_boss_variant_profile_invalid");
     if (SchemaVersion == 1)
     {
       Require(ElementShield.ModeCode == "none" &&
@@ -248,6 +263,11 @@ internal sealed record BossRuntimeVariantProfile(
           "phase_d_boss_variant_profile_invalid");
       ValidateV2Shield();
       if (SchemaVersion == 3) ValidateV3QteAndShieldTransform();
+      if (SchemaVersion == 4)
+      {
+        if (QuickTimeEventAffinity is not null) ValidateQte();
+        ValidatePreparedShield();
+      }
     }
     Require(
             Transformation.PreserveElementTable &&
@@ -267,15 +287,15 @@ internal sealed record BossRuntimeVariantProfile(
               !ElementShield.FxVariantRequired &&
               ElementShield.FxVariantStatusCode == "not_required" &&
               ElementShield.FxVariants.Length == 0 &&
-              Transformation.ModeCode == "target_monster_element_reference" &&
-              Transformation.AllowedTableCodes.SequenceEqual(["monster"]),
+              Transformation.ModeCode == (QuickTimeEventAffinity is null ? "target_monster_element_reference" : "target_monster_element_and_qte_element") &&
+              Transformation.AllowedTableCodes.SequenceEqual(QuickTimeEventAffinity is null ? ["monster"] : new[] { "monster", "quick_time_event" }),
           "phase_d_boss_variant_profile_invalid");
       return;
     }
-    var expectedTransformationMode = SchemaVersion == 3
+    var expectedTransformationMode = QuickTimeEventAffinity is not null
         ? "target_monster_element_dynamic_shield_fx_and_qte_element"
         : "target_monster_element_and_dynamic_shield_fx";
-    var expectedAllowedTables = SchemaVersion == 3
+    var expectedAllowedTables = QuickTimeEventAffinity is not null
         ? new[] { "monster", "function", "quick_time_event" }
         : new[] { "monster", "function" };
     Require(ElementShield.ModeCode == "dynamic_affinity_linked" &&
@@ -301,17 +321,7 @@ internal sealed record BossRuntimeVariantProfile(
 
   private void ValidateV3QteAndShieldTransform()
   {
-    Require(QuickTimeEventAffinity is not null &&
-            QuickTimeEventAffinity.ModeCode == "target_monster_linked_element_only" &&
-            QuickTimeEventAffinity.RecordCount > 0 &&
-            QuickTimeEventAffinity.MonsterReferenceCount > 0 &&
-            IsSha256(QuickTimeEventAffinity.RecordSetSha256) &&
-            IsSha256(QuickTimeEventAffinity.ImmutablePayloadSetSha256) &&
-            IsSha256(QuickTimeEventAffinity.SourceElementSetSha256) &&
-            QuickTimeEventAffinity.SourceElementCodes is { Length: 1 } &&
-            QuickTimeEventAffinity.SourceElementCodes[0] ==
-                SourceAffinity.BossElementCode,
-        "phase_d_boss_variant_profile_invalid");
+    ValidateQte();
     Require(ShieldFxTransformNormalization is not null &&
             ShieldFxTransformNormalization.ModeCode ==
                 "per_execution_target_bundle_overlay" &&
@@ -324,6 +334,54 @@ internal sealed record BossRuntimeVariantProfile(
                 value.BossElementCode).SequenceEqual(["fire", "wind", "iron"]) &&
             ShieldFxTransformNormalization.Variants.All(ValidateTransformVariant),
         "phase_d_boss_variant_profile_invalid");
+  }
+
+  private void ValidateQte()
+  {
+    Require(QuickTimeEventAffinity is not null &&
+            QuickTimeEventAffinity.ModeCode == "target_monster_linked_element_only" &&
+            QuickTimeEventAffinity.RecordCount > 0 &&
+            QuickTimeEventAffinity.MonsterReferenceCount > 0 &&
+            IsSha256(QuickTimeEventAffinity.RecordSetSha256) &&
+            IsSha256(QuickTimeEventAffinity.ImmutablePayloadSetSha256) &&
+            IsSha256(QuickTimeEventAffinity.SourceElementSetSha256) &&
+            QuickTimeEventAffinity.SourceElementCodes is { Length: 1 } &&
+            QuickTimeEventAffinity.SourceElementCodes[0] ==
+                SourceAffinity.BossElementCode,
+        "phase_d_boss_variant_profile_invalid");
+  }
+
+  private void ValidatePreparedShield()
+  {
+    if (ElementShield.ModeCode == "none")
+    {
+      Require(ShieldFxPreparation is null, "phase_d_boss_variant_profile_invalid");
+      return;
+    }
+    var plan = ShieldFxPreparation;
+    Require(plan is not null && plan.ContractId == "nll/boss-shield-fx-preparation/v1" &&
+            plan.PolicyCode == "source_shield_size_candidate/v2" &&
+            plan.SourceBossElementCode == SourceAffinity.BossElementCode && IsSha256(plan.RecipeManifestSha256),
+            "phase_d_boss_variant_profile_invalid");
+    var expected = ElementShield.FxVariants.SelectMany(v => v.Mappings.Select(m => (v.BossElementCode, Mapping: m)))
+        .ToDictionary(v => (v.BossElementCode, v.Mapping.SourceFxPrefabSetSha256), v => v.Mapping);
+    Require(plan!.Variants.Length == expected.Count &&
+            plan.Variants.Select(v => (v.BossElementCode, v.SourceFxPrefabSetSha256)).Distinct().Count() == expected.Count,
+            "phase_d_boss_variant_profile_invalid");
+    foreach (var row in plan.Variants)
+    {
+      Require(expected.TryGetValue((row.BossElementCode, row.SourceFxPrefabSetSha256), out var mapping) &&
+              expected.TryGetValue((SourceAffinity.BossElementCode, row.SourceFxPrefabSetSha256), out _),
+              "phase_d_boss_variant_profile_invalid");
+      var source = expected[(SourceAffinity.BossElementCode, row.SourceFxPrefabSetSha256)];
+      Require(mapping!.TargetFxPrefabSetSha256 == row.TargetFxPrefabSetSha256 &&
+              mapping.AssetBundles.SequenceEqual([row.TargetBundle]) && source.AssetBundles.SequenceEqual([row.SourceBundle]) &&
+              row.OutputBundle is not null && IsSha256(row.OutputBundle.Sha256) && row.OutputBundle.ByteLength > 0 &&
+              (row.OperationCode == "reuse" ? row.OutputBundle == row.TargetBundle :
+               row.OperationCode == "adjust_candidate" && row.OutputBundle != row.TargetBundle) &&
+              (row.BossElementCode != SourceAffinity.BossElementCode || row.OperationCode == "reuse"),
+              "phase_d_boss_variant_profile_invalid");
+    }
   }
 
   private bool ValidateTransformVariant(BossRuntimeVariantShieldFxTransformVariant value)
@@ -431,5 +489,6 @@ internal sealed record BossRuntimeVariantProfile(
       BossRuntimeVariantElementShield? ElementShield,
       BossRuntimeVariantQuickTimeEventAffinity? QuickTimeEventAffinity,
       BossRuntimeVariantShieldFxTransformNormalization? ShieldFxTransformNormalization,
+      BossRuntimeVariantShieldFxPreparation? ShieldFxPreparation,
       BossRuntimeVariantTransformation? Transformation);
 }

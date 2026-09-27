@@ -1,16 +1,375 @@
 # 작업 인계
 
-최종 갱신: 2026-09-13. 이 문서는 짧은 현황 요약이며, 상세 기록을 계속 덧붙이는 로그가 아닙니다.
+최종 갱신: 2026-09-18. 이 문서는 짧은 현황 요약이며, 상세 기록을 계속 덧붙이는 로그가 아닙니다.
 작업 전 읽기 순서·불변 규칙은 [AGENTS](../AGENTS.md), 문서 위치는 [색인](README.md)을 따릅니다.
 
 ## 확인된 현재 상태
 
+- **2026-09-22 Windows 종료 후 실행 상태 복구**: 빠른 시작 뒤 Job은 사라졌으나 `started`가 남아 새 실행이 차단됐다. 운영자 종료 확인 후 고정된 부팅 이벤트·봉인·실제 프로세스 종료를 대조하고 백업→진행 저장→임시 설정 복원→실행 종료를 완료했다. 활성 실행·pending·활성 pointer 0, hosts 원복 확인. 제품의 일반 재부팅 자동 복구는 아직 수정하지 않았고 게임 재실행은 사용자 확인이 남아 있다. [원인·복구 근거·남은 작업](operations/SHUTDOWN_RECOVERY_20260922.md).
+
+- **2026-09-19 캐릭터 목록 동기화 도구 교체**: 동기화 전용 Import CLI가 V0022 게시본에 남아 현재 V0027 DB를 거부했다(`migration_history_unknown`). 최신 고정 게시본과 전체 의존 파일 pin, 활성 설정 해시를 갱신·적용했다. 실제 DB 복제본의 전체 동기화는 `updated`, 신규 0명/이미지 누락 0개; 운영 DB와 운영 목록은 변경하지 않았다. 관리도구 재실행 후 사용자 동기화 확인은 별도. [상세](operations/CHARACTER_CATALOG_SYNC.md), `artifacts/character-sync-repair-20260919/installation.receipt.json`.
+
+- **개인 대미지 공식 확정·추가 검증 종료**: 운영자는 다른 보스에서도 이미 확인됐음을 명시하고 문서화를 요청했다. TAB 개인값은 `Attack.TotalDamage`, 결과 총 피해는 개인값 합계 + 파츠 파괴 피해 − 투사체 피해. 크리스탈 체임버 운영 DB에서 덱 결과 1건·동일 BattleUid 관측 부모 1건·개인 피해 5행, 슬롯/캐릭터 UUID 5개 일치 및 SQL FK 존재 확인. [공식 및 저장 구조](operations/RAID_DAMAGE_CAPTURE.md). 아래 실제 수집/공식 미확정 표기는 당시 설치 이력이며 이 확인으로 갱신한다.
+
+- **대미지 수집 설치 후 준비 오류 수정**: 첫 설치 materializer의 self-contained 설정 혼입으로 도구가 `hostpolicy.dll` 결손 종료했다. framework-dependent로 재게시한 동일 코드의 실행 설정과 핀만 복구. 설치 경로 S26/S41 및 Windows PowerShell 준비 ready 확인; 코드·DB 변경 없음. `artifacts/raid-damage-capture-20260918/framework-repair/receipt.json`. [원인/검증](operations/RAID_DAMAGE_CAPTURE.md).
+
+- **2026-09-18 21:38 레이드 개인별 대미지 수집 설치 완료 / 사용자 실전 수집 대기**: 솔로 Challenge·유니온 하드/모의전의 캐릭터별 Attack/Skill/StatFunctionAttack 원값과 몬스터 HP·파츠·투사체 값을 기존 전투 UUID에 연결해 보존한다. V0027의 부모/자식 3개 테이블, 유니온 transaction 및 솔로 receipt 재시도 방식. 서버 180개·전체 PostgreSQL 122개·필수 gate 8개, 별도 동시 재전송/FK/롤백/재시작 검사 통과. 운영 DB 백업 후 schema 27 및 파일 10개 설치; 기존 145개 테이블 행 수/내용 해시 불변. TAB 합산식은 아직 미확정이며 여러 보스 실제 결과 대조가 남았다. [상세](operations/RAID_DAMAGE_CAPTURE.md), `artifacts/raid-damage-capture-20260918/installation.receipt.json`.
+
+- **2026-09-18 유니온 중심 계정 UI 설치 완료**: 계정 가져오기 탭 제거, 홈 계정 생성/NLL 기본 소속, 유니온 카드 및 등록된 계정만 보이는 블라블라 형식 멤버 선택 팝업, 계정 설정의 가져오기/동기화로 이동. 실제 대표 사진 3개 설치. 가져온 소속 우선 및 유니온별 레이드 진행 분리. schema 26, 기존 계정/레이드 행 보존 확인, 파일 18개 적용. 필수 gate 8개·합성 UI·native 24개·유니온 분리/재시작 검사 통과. 전체 PG 120/121 후 실패 항목 수정 및 관련 2개 재검사 통과. 실계정 로그인/가져오기는 사용자 확인 전. [상세](operations/UNION_ACCOUNT_WORKSPACE.md).
+
+- **2026-09-18 01:43 개방 API + 레벨 상한 1200 수정·설치 및 사용자 실게임 정상 작동 확인 완료**: `/user/getcontentsdata.GuildLevel`을 실제 NLL 소속/레벨에 연결했다. `JsonDb.ValidateDb` 상한은 사용자 요청으로 1000→1200, 관리도구/저장값 자동 변경 없음. 서버 177개, 원본 조건표와 최종 DLL의 실제 시작/dispatcher 31회, 전후 필수 gate 8개 통과. 표시/판정 레벨 3 일치·하드 Open, 1200 보존 및 초과 제한, 원본 1200 능력치 확인. 검사/설치 DLL 해시 일치, 파일 6개 백업·교체, S26/S41 준비 ready. 운영 DB·게임 파일 변경 없음. `artifacts/union-unlock-synchro-20260918/installation.receipt.json`. [상세](operations/UNION_RAID_HARD_IMPLEMENTATION.md).
+
+- **2026-09-18 최신 잠금 직접 원인 확인 / 수정 전**: 랭크 예외는 해소됐지만 콘텐츠 개방 API `/user/getcontentsdata`가 `GuildLevel`을 누락하여 0을 전송한다. 길드 표시는 3이며 현재 원본 UnionRaid 조건은 `GuildLevel>=3`이다. 현행 DLL의 실제 dispatcher/protobuf로 표시 3·판정 0·조건 불충족 재현. 이전 29회 검사에 이 API가 빠져 있었다. 사용자는 레벨 3 잠금 문구 유지 확인. `artifacts/union-raid-lock-20260918/diagnosis.receipt.json`, [상세](operations/UNION_RAID_HARD_IMPLEMENTATION.md). 조사만 수행, 설치·DB·서버 소스 변경 없음.
+
+- **2026-09-18 01:18 길드 랭크 결손 수정·설치 완료 / 원본 잠금 해제 확인 대기**: 미랭크 유니온을 현재 원본 표의 유일한 Beginner 행으로 해소하고 길드 상세·간략·공개·랭킹 응답에서 공통 사용한다. 서버 171개, 실제 152 랭크 표를 사용한 게시 DLL의 dispatcher 29회 및 네 응답의 원본 랭크 참조 검사, 전후 필수 gate 8개 통과. 레벨 3·노멀 완료·하드 개방과 사격장 15키 유지, 합성 DB 재전송/재시작 통과. 검사/설치 DLL 해시 일치, 파일 6개 백업·교체, S26/S41 준비 ready. 운영 DB·게임 파일 변경 없음. `artifacts/union-tier-fix-20260918/installation.receipt.json`. 원본 콘텐츠 잠금 해제는 사용자 확인 대기. [상세](operations/UNION_RAID_HARD_IMPLEMENTATION.md).
+
+- **2026-09-18 유니온 진입 사용자 확인 / 콘텐츠 잠금 조사 완료, 수정 전**: 상단 Lv.3이지만 잠금 상태. 최신 실행에서 레벨 3·노멀 완료를 확인했으며, 화면 갱신 중 `(Challenger,0)` 원본 랭크 조회 예외가 발생한다. `LocalUnion.Get`이 길드 랭크 두 필드를 누락해 protobuf 기본값을 전송했다. 일반/간략 응답 모두 게시 DLL과 원본 표로 결손 재현. 잠금 잔존은 갱신 중단의 결과로 추정되며 수정 후 UI 확인 필요. `artifacts/union-content-lock-20260918/diagnosis.receipt.json`, [상세](operations/UNION_RAID_HARD_IMPLEMENTATION.md). 운영 DB·설치·코드 변경 없음.
+
+- **2026-09-18 00:58 유니온 화면 표시 키 중복 수정·설치 완료 / 원본 화면 확인 대기**: 사격장 응답의 일반·고정 육성 30행이 클라이언트의 속성/전투 길이 15키와 충돌했다. 일반 사격장을 각 조합에 하나씩 공급하고 일반 행 결손/중복은 거부하도록 수정했다. 서버 168개, 실제 152 자료를 넣은 최종 DLL의 dispatcher/protobuf 28회, 클라이언트 방식의 15키 사전 구성, 합성 DB 재전송·재시작, 전후 필수 gate 8개 통과. 검사 DLL과 설치 DLL 해시 일치. 파일 6개 백업·교체, S26/S41 준비 ready. DB·보스 조립·게임 파일 변경 없음. `artifacts/union-ranking-fix-20260918/installation.receipt.json`. [상세](operations/UNION_RAID_HARD_IMPLEMENTATION.md).
+
+- **2026-09-18 00:36 InitSuccess DB 수명주기 수정·재설치 완료 / 실게임 재확인 대기**: 신규 유니온 API가 게임 시작 전에 종료된 관리 PostgreSQL에 접속해 HTTP 500을 반환했다. 공통 실행 중 DB를 유지하고 종료/복구에서는 이미 실행 중이면 재기동하지 않도록 수정했다. 관리도구 조기 종료도 실행 중 DB를 끄지 않는다. 실제 공통 DB 인계/종료 코드와 설치 서버의 유니온 API 28회, PostgreSQL 회귀 120개, 필수 gate 8개 통과. 설치된 시작 스크립트와 저장소 공통 실행 코드 적용; 운영 DB·서버 DLL·게임 파일 변경 없음. `artifacts/union-db-lifecycle-20260918/installation.receipt.json`. 게임은 실행하지 않았으며 사용자 InitSuccess/유니온 하드 재확인이 남아 있다. [상세](operations/UNION_RAID_HARD_IMPLEMENTATION.md).
+
+- **2026-09-18 00:01 유니온 하드 전 구간 API 설치 완료**. `/shootingrange/v2/get` 조회 누락과 하드 입장·결과·기록·랭킹·연습전을 연결했다. schema 25는 유니온/시즌의 공유 진행도와 계정별 참여·논리 캐릭터 편성을 저장한다. 서버 166개, 전체 PostgreSQL 120개, 최종 DLL의 실제 dispatcher/protobuf 왕복 28회, 필수 gate 8개 통과. 파일 8개 교체, 기존 100개 테이블 불변, migration 재실행 0건, S26/S41 준비 ready. 관리도구 재개, 원본 게임 전 구간은 사용자 실행 대기. [상세](operations/UNION_RAID_HARD_IMPLEMENTATION.md), `artifacts/union-api-20260917/installation.receipt.json`. 사용자 로비 진입은 이전에 확인됐으며 아래 InitSuccess 미해결 표기는 과거 이력이다.
+
+- **유니온 InitSuccess 정지 미해결 인수 상태**: 사용자 재실행에서 엠블럼 수정 후에도 `NKUserGuild.UpdateFrom` 예외 유지. 멤버 응답을 기존 공통 계정 변환에 연결하고 서버 번호·칭호·시간 및 null 메시지 참조 누락을 보완했다. 합성 SQLite에서 공통 변환을 거쳐 protobuf 왕복 포함 159개 검사 통과. `artifacts/union-member-fix-20260917`; 실제 클라이언트 재검증 전이며 원인을 모두 해결했다고 단정하지 않는다.
+
+- 유니온 초기화 재실행에서 첫 경로 수정 적용은 확인됐으나 `NKUserGuild.UpdateFrom` 예외가 남았다. 응답의 엠블럼 0은 원본 테이블에 존재하지 않는 결손 참조였다. 현재 pack의 실제 엠블럼을 레벨에 맞게 선택하는 추가 수정 및 서버 156개 검사 통과. `artifacts/union-emblem-fix-20260917` 참조. 로비 통과는 사용자 재검증 전이다.
+
+- 2026-09-17 **유니온 선택 후 InitSuccess 정지 원인 수정·설치**. 실제 `/guild/unionraid/get` 요청에 등록 경로의 `/guild`가 빠져 빈 응답과 클라이언트 null 예외가 발생했다. 경로 수정 및 실제 dispatcher 회귀 검사 포함 서버 155개 통과. 파일 6개 교체, DB 변경 없음, S26/S41 준비 ready. `artifacts/union-startup-fix-20260917/installation.receipt.json`; 사용자 로비 재진입 확인 대기.
+
+- 2026-09-17 **유니온 하드 보스 불러오기·접근 조건 준비 설치 완료**. 최신순 스크롤 시즌 선택과 확인 후 5보스 원본 행동 트리 조립; 속성/QTE/FX 변환 없음. 로컬 152의 하드 시즌 24~45를 해석하며 S24/S45의 실제 행동 번들 조립을 확인했다. schema 24에서 NLL Lv.3 소속을 버전과 무관하게 저장하며 기존 계정 3개를 가입시켰다. 사용자가 시즌 가져오기를 확인하면 노멀 완료 상태로 선택한다. 기존 97개 테이블 보존 및 S26/S41 준비 ready. [상세·검사·설치 기록](operations/UNION_RAID_HARD_IMPLEMENTATION.md). 원본 유니온 UI와 하드 전투 시작/결과 API는 다음 실게임 연결 범위이며 전체 프로필·스킨 영속성 확장은 사용자 지정 후순위로 남아 있다.
+
+- 2026-09-17 **버전 독립 DB 영속성과 로비 Quit 수정·설치 완료**.
+  account/season/weakness의 논리 head를 이어 쓰고, 저장 당시 snapshot/build/exe는 revision 출처로 보존한다.
+  편성 등 설정도 계정 기준으로 이어 쓴다. 0~4덱 로비 Quit은 완주 미인정·참여 기회 소모,
+  5덱 완료는 완주 1회·참여 기회 소모이며 중복 Quit은 추가 소모하지 않는다.
+  PG 118개+추가 집중 10개, 암호화 왕복 74개, 외부 서버 153개, 필수 8개 gate 통과.
+  schema 22→23 설치에서 기존 93개 테이블 불변 및 migration 재실행 0건을 확인했다.
+  수정본 사용자 실게임 인수는 남아 있다. [정비 기록](operations/VERSION_INDEPENDENT_RUNTIME_PERSISTENCE.md) 참조.
+- 2026-09-17 **152 실제 사용자 실행은 4/7 리소스 패치 초기화에서 실패**했다.
+  `ResGetResourceHosts2` 성공 후 `latest-655.txt` 조회가 404, 이어 `DownloadPatch - Initialize failed`.
+  NLL은 외부 자동 다운로드를 끈 상태인데 해당 리소스 안내 파일의 로컬 공급이 누락됐다.
+  앞선 “안내 파일 404는 설치를 막지 않는다”는 판단을 정정했다. 보스 등록/5속성 준비 통과는
+  이 게임 내 HTTP 경로 검증이 아니다. 후속 승인된 **1~3단계는 별도 후보에서 완료**했다.
+  실제 `latest-655.txt`와 native catalog/서명 14개를 확보했고 CDN·공식 설치본·NLL 복제본의
+  카탈로그/서명 해시가 모두 일치한다. 동일 Epinel 핸들러로 전체 GET 30회·Range 15회가 통과했다.
+  `artifacts/apply-152-20260917/resource-delivery-fix/delivery-candidate.private.json`에
+  15개 파일과 후보 설정을 봉인했고, 후속 운영자 승인으로 **운영 설치까지 완료**했다.
+  runtime bundle·설정·활성 포인터를 함께 갱신했고 S41 수냉/철갑 및 S26 수냉 준비 검사는
+  `ready`다. `resource-delivery-fix/installation.receipt.json` 참조. **운영자가 후속 실행 통과를 확인했다.**
+  [152 호환성 조사](operations/CLIENT_152_COMPATIBILITY_ASSESSMENT.md)의 4/7 실패 절 참조.
+- 2026-09-17 S41 리버렐리오 바디 불러오기 실패를 수정·설치했다. 152 배치에 보존된
+  구버전 행동 번들에서 S41이 0개 일치한 것이 원인이었다. 현재 native catalog에 연결된
+  행동 번들을 공통 취득·캐시·후보 seal 경로로 공급한다. 현재 번들에서 S41 1개를 확인했고
+  관리도구 백엔드 불러오기·DB 등록·5속성 준비·수냉/철갑 `ValidateOnly`가 통과했다.
+  S26 동일 경로 및 캐시 재사용, 카탈로그 281개와 필수 8개 source gate도 통과했다.
+  계정/육성/진행도 digest는 전후 동일하다. 관리도구는 닫혀 있으며 실게임 검증은 남아 있다.
+  활성 설정·근거: `artifacts/apply-152-20260917/behavior-fix/installation.receipt.json` 및
+  [152 호환성 조사](operations/CLIENT_152_COMPATIBILITY_ASSESSMENT.md).
+- 2026-09-17 공식 설치본 **152.8.11**과 NLL **151.8.5**를 읽기 비교했다.
+  최초 151 설정으로는 실패했으나 12:32 KST 공개된 upstream 152 커밋의 설정으로
+  **로컬 pack 복호화·서명·전체 ZIP CRC 검증을 완료**했다. 항목 9,580개,
+  도감 대상 니케 200→202명, 시즌 40→42개를 기존 목록 해석기로 확인했다.
+  신규 니케는 길티 : 마이티 바니 / 신 : 스위프트 바니이며, 새 시즌 41·42의 이미지도 로컬 추출했다.
+  후속 적용 요청으로 152 클라이언트 사본·서버·materializer·bootstrap·목록 후보를 준비했다.
+  운영 DB에는 기존 importer로 새 불변 캐릭터 catalog snapshot을 추가했으며 사전 dump를 보관했다.
+  **14:53 KST 152 설치 완료**: `PhaseD152-v1`을 선택했고 니케 202명·시즌 42개 목록을 적용했다.
+  기존 계정 revision/육성/진행도 테이블은 설치 전후 내용 digest가 동일하다.
+  최초 리소스 안내 URL GET은 HTTP 404였지만 **이를 필수 입력으로 본 판단은 철회**했다.
+  Epinel의 현재 `resourcehosts2`는 BaseUrl/Version만 반환한다. 과거 NLL의 추가 map 응답을
+  152 후보에서 제거했고 공통 profile v4 지원도 현재 설치본과 맞췄다. 서버 147개 검사 통과.
+  기존 보스 8개를 공통 조립기로 생성하여 각 5속성 전달을 검증했다.
+  target observation과 별개로 S10 QTE 참조도 변했다. S10·26·34는 이전 기록을 유지하되
+  새 snapshot에 자동 상속하지 않는다. 동일 근거가 있는 나머지 5개는 불변 binding으로 연결한다.
+  151→152 저장/복원 58개와 PostgreSQL 통합 117개, DB 재시작/종료/정리 검증을 통과했다.
+  설치된 8개 보스 × 5속성 준비 40건, 실제 계정 입력 S26·S34 `ValidateOnly`가 통과했다.
+  **실게임은 아직 실행하지 않았다.** 신규 니케 portrait 2개는 미확보다.
+  151 클라이언트는 D: `client-151-archive-20260917-01`에 1,244파일 / 약 19 GiB를
+  전체 hash 대조 후 보관했고 C: 사본을 제거했다. 151 runtime/cache/복구 자료는 유지했다.
+  근거: `artifacts/apply-152-20260917/archive-151.receipt.json`.
+  운영자는 업데이트용 익명 metadata 2개 경로에 반복 승인을 부여했다. 문서에 반영했으며
+  후속 resourcehosts2 요청은 HTTP 567로 실패했다. 현재 실행 방식에서는 더 요청할 이유가 없다.
+  [152 호환성 조사](operations/CLIENT_152_COMPATIBILITY_ASSESSMENT.md)와
+  `artifacts/decode-152-20260917/`, `artifacts/apply-152-20260917/` 참조.
+- 2026-09-17 공식/NLL의 동일 Windows 사용자 및 LocalLow/HKCU 공유를 확인하고
+  [사용자 저장소 격리 계획](operations/USER_STORAGE_ISOLATION_PLAN.md)을 작성했다.
+  운영자가 현재 프로필은 프로젝트 전용임을 확인하여 **NLL은 현 계정에 유지하고 공식 게임을 다른 Windows 계정에서 실행**하기로 했다.
+  앞선 NLL 계정 신설·DB/DPAPI 이전안은 대체됐다. 머신 공용 방화벽/hosts/서비스의 종료 복구는 계속 필요하다.
+  Global 표시의 정확한 원인과 별도 계정에서의 실행 결과는 미확인이다. 계정 생성·데이터 이전은 하지 않았다.
+- 2026-09-17 공식 런처 차단을 일으킨 공유 프로그램 상시 방화벽 정책을 실행 수명주기로 변경했다.
+  공식 경로 15개와 공유 ACE 규칙은 로컬 게임 시작 직전에 활성화하고, 종료/실패/중단 복구가
+  실제 프로세스·서비스 종료를 확인한 뒤 이전 상태로 돌린다. 로컬 복제본 차단은 유지한다.
+  구현·검증·설치 근거와 제한은 [공유 프로그램 격리](operations/SHARED_PROGRAM_ISOLATION.md) 및
+  `artifacts/shared-isolation-20260917/`을 따른다. 게임 실행 검증은 운영자 확인으로 구분한다.
+- 관리도구의 시작 코드 입력 화면/시작 버튼을 제거하고 실행 즉시 메인 UI에서 자동 초기화하도록
+  수정·설치했다. desktop은 DOM 입력/클릭 대신 세션 초기화를 직접 호출하고 실제 완료 신호를 기다린다.
+  로컬 세션·CSRF는 내부 처리하며, 초기화 전 편집은 차단한다. 새로고침은 기존 세션을 재사용한다.
+  자동 진입/재진입/실패 브라우저 검사, desktop 빌드와 필수 gate 8개를 통과했다.
+  실제 설치본에서도 메인 계정 선택·메뉴 표시와 시작 화면/초기화 오류 없음까지 확인했다.
+  근거: `artifacts/direct-main-ui-20260916/`. 계정 데이터와 게임 실행 설정은 변경하지 않았다.
+- 보스 목록/선택 카드의 이미지 영역을 1:1로 맞추고 `object-fit: contain`으로 전체 이미지가
+  보이도록 CSS 두 규칙을 수정·설치했다. 실제 로컬 이미지로 1280/390px 화면의 정사각 비율을
+  확인했다. 실행 중인 화면은 다음 새로고침/재실행 때 반영된다. 근거: `artifacts/boss-square-images-20260916/`.
+- 시즌 19의 manager 2개는 ID 외 내용이 동일했다. 목록/가져오기 공통 경로에서 동등 중복을
+  합치도록 수정하고, 기존 미확인 시즌의 동기화 갱신을 허용했다. 베히모스 [P.S.I.D.]·전격 약점·
+  로컬 이미지가 해소된 40개 목록으로 설치했다. 다른 시즌 및 전투용 StaticData는 유지했다.
+  근거는 `artifacts/season19-fix-20260916/`이며, 시즌 19 실게임 검증은 별도다.
+- 보스 이미지 공급원을 enikk.app에서 로컬 게임 `dp` 리소스 추출로 전환했다.
+  설치된 HD→SD 순으로 정확한 이미지 참조를 해소하고, 결손이면 이전 PNG를 유지한다.
+  실제 시즌 이미지 39개 추출·기존 이름/약점 보존·반복 unchanged·새 시즌 추가·결손 보존을 확인했다.
+  상세 연결과 근거는 [시즌 동기화 계획](operations/BOSS_SEASON_SYNC_PLAN.md)의 로컬 이미지 절을 따른다.
+- 동기화 직후 신규 니케 상세가 Save 전까지 이름/이미지 미확인으로 표시되던 UI 결함을 수정했다.
+  동기화 결과는 이미 자동 저장됐지만 상세 선택용 select options가 갱신되지 않아 새 UID가 빈 값이 됐다.
+  동기화 성공 시 전체 니케 편집기와 열린 상세를 갱신한다. 계정의 대기 편집을 자동 저장하지 않는다.
+  실제 select 동작 회귀(수정 전 실패/후 통과), 관련 UI 17개와 브라우저에서 Save 없이 새 상세 진입을 확인했다.
+  UI 파일 하나만 백업 후 교체하고 설치 파일 해시를 대조했다. 앱이 종료되어 HTTP 확인은 생략했고 다음 실행부터 적용된다.
+  `artifacts/character-sync-detail-fix-20260916/` 참조. 사용자 요청에 따라 이전 정상 시작 검증은 반복하지 않았다.
+
+- 캐릭터 동기화 설치 후 발생한 관리도구 `desktop_start_failed`를 2026-09-16 수정했다.
+  `characterSync` 설정 8개 중 C# options가 3개만 선언하여 시작 시 엄격한 JSON 해석이
+  `materializerPath`를 거부한 결함이었다. 기존 worker 리허설은 다른 JSON 옵션을 써서 놓쳤다.
+  8개 필드를 정식 선언하고 실제 시작과 같은 JSON 옵션으로 회귀 검사를 추가했다(수정 전 실패, 후 통과).
+  API DLL/PDB만 백업 후 교체했다. 실제 설치된 관리도구 재시작, HTTP 200, 계정 설정·니케 관리·
+  솔로 레이드 메뉴 표시, 초기화 오류/로딩 안내 없음과 필수 gate 8개 통과를 확인했다.
+  `artifacts/character-sync-startup-fix-20260916/` 참조. 활성 설정·계정은 변경하지 않았다.
+
+- 2026-09-16 니케 도감의 `모두 보유로 설정` 옆 `캐릭터 목록 동기화`를 구현·설치했다.
+  클릭하면 시즌 동기화와 같은 로컬 pack과 읽기 전용 공식 설정·이름 자료로 도감을 갱신한다.
+  신규는 미보유이며 보유 추가 Save 시 선택한 불변 catalog에 연결한다. 기존 육성값·과거 revision은 유지한다.
+  실제 자료 리허설에서 199 → 200명(드레이크 : 그레이트 빌런 추가), 이미지 결손 0과 반복 no-op을 확인했다.
+  UI 16개·새 catalog 보유/저장 DB 2개·HTTP 인증/CSRF·실제 worker 반복·실패 시 목록 보존·
+  브라우저 배치·필수 gate 8개·설치/복구 리허설이 통과했다. 운영 계정은 수정하지 않았다.
+  운영자가 관리도구를 닫은 뒤 설치했으며 다시 열어 동기화한다. 신규 니케 실게임은 미검증이다.
+  [동작·검증 기록](operations/CHARACTER_CATALOG_SYNC.md), `artifacts/character-sync-20260916/` 참조.
+
+- 2026-09-16 운영자 요청으로 솔로 레이드와 계정 가져오기 사이에 유니온 레이드 탭을
+  추가·설치했다. 현재 요청 범위는 탭과 준비 중 화면이며 전투 세션이나 실행 기능은 없다.
+  브라우저에서 탭 순서·화면 전환·모바일 동작과 실제 HTTP 제공 파일을 확인했다. 필수 회귀 gate 8개도 통과했다.
+  `artifacts/union-raid-tab-20260916/` 참조.
+- 2026-09-16 일반 저장 중 큰 저장 상태 패널을 숨기고, 완료 기록은 고급 진단의 기본 접힘
+  `저장 이력`으로 옮겼다. 진행·완료는 기존 하단 상태줄을 사용한다. 응답 유실 등 실제 복구가
+  필요할 때의 안내와 동일 요청 재시도·중복 편집 차단은 유지한다. UI 파일 두 개를 백업 후
+  설치했으며 관련 UI 검사 14개·필수 회귀 gate 8개와 실제 HTTP 제공 파일 해시 확인이 통과했다.
+  `artifacts/save-status-ui-20260916/` 참조.
+- 2026-09-16 니케 도감의 보유/전체 아래에 `모두 보유로 설정`을 추가·설치했다.
+  검색·필터와 무관하게 미보유 니케만 편집 대기 목록에 추가하며 Save / Save As로 저장한다.
+  운영자가 선택한 기본 육성(레벨·스킬 1, 돌파·코어 0, 적용 가능한 호감도 1, 미착용)으로
+  새 빌드를 만들고 기존 빌드는 보존한다. catalog 적용 여부와 결손은 기존 snapshot을 따른다.
+  UI 검사 23개, 실제 브라우저 클릭·데스크톱/모바일 배치, 격리 DB의 추가·반복 저장·Save As·
+  저장 복구 검사 22개와 필수 회귀 gate 8개가 통과했다. 설치 파일 해시를 확인했으며 운영 계정은 변경하지 않았다.
+  관리도구를 다시 열어 사용한다. 근거: `artifacts/own-all-nikkes-20260916/`.
+- 2026-09-16 시즌 목록 동기화를 구현·설치했다. 클릭 시 임시 캐시의 `StaticData.pack`을
+  읽고 새 시즌과 해당 가져오기 입력을 함께 선택한다. 기존 카드·게시 보스·대기 작업 입력을
+  보존한다. API 22개·JS 9개, 필수 gate 8개, 실제 자료 추가 분기 및 설치 서비스의 반복
+  동기화 검사가 통과했다. 현재 자료는 최대 시즌 40이다. 관리도구 시작은 UAC에서 완료되지
+  않아 파일 설치와 분리했으며, 다시 열면 적용된다. 설치 화면 클릭·새 시즌 실게임은 미검증이다.
+  [시즌 동기화 기록](operations/BOSS_SEASON_SYNC_PLAN.md) 참조.
+  후속 UI 클릭 실패는 빈 POST가 JSON·CSRF 헤더 없이 전송된 결함이었다. 빈 JSON 객체를
+  보내도록 UI 한 파일을 수정·설치했고, 실제 통신 함수의 수정 전 실패/수정 후 통과 및
+  HTTP 보안 미들웨어 통과를 확인했다. `artifacts/season-sync-20260916/http-fix/` 참조.
+- 2026-09-16 시즌 선택 화면의 로컬 자료 안내 문구를 제거하고 기본 약점·불러오기 여부 필터와
+  오래된 순/최신 순 정렬을 추가했다. 시즌 상한은 로컬 목록의 최대 시즌 번호이며 온라인 최신
+  시즌 조회값이 아니다. 목록 갱신 시 필터를 유지한다. 기존 JS 검사 7개와 실제 브라우저의
+  조합 필터·숫자 정렬·빈 결과·선택 보존·모바일 배치 검사를 통과했다. UI 파일 3개를 백업 후
+  교체하고 HTTP 제공 파일의 해시 일치를 확인했다. 관리도구 화면 새로고침으로 반영된다.
+  근거: `artifacts/season-picker-ui-20260916/`의 브라우저·설치·HTTP 제공 receipt.
+- 2026-09-16 S9 불러오기의 `boss_pipeline_failed`는 DB 단계 이전의
+  `boss_onboarding_shield_preparation_review_required`였다. 원본 FX에 없는 중간 Transform을
+  공용 크기 대응기가 처리하지 못했다. 단위 좌표 프레임으로 대응하는 수정과 안전한 오류 코드
+  전달을 구현했다. S9 실제 5속성 FX 준비, 기존 15개 FX 출력 동일성, 집중 검사와 필수 gate
+  8개가 통과했다. 운영자가 UAC를 다시 승인한 뒤 앱 교체·pipeline 재봉인·관리도구 시작을
+  완료했다. 실제 UI backend queue에서 S9 재요청이 `completed`, DB 연결은 `registered`였다.
+  설치 후 S9의 다섯 약점 준비 상태도 모두 `ready`였다.
+  기존 실패 이력과 기존 게시 보스의 실행 설정은 보존했다. 게임은 실행하지 않았으며,
+  S9 실게임 전투/FX·종료 후 기록 복원은 운영자 확인 대기다.
+  근거는 `artifacts/s9-pipeline-failure-20260916/installation.receipt.json`과
+  `ui-queue-retry.receipt.json`이다.
+  [S9 조사](operations/COMMON_BOSS_EXECUTION_PLAN.md#s9-실드-좌표-프레임-대응-누락-2026-09-16) 참조.
+- 2026-09-15 S25/작열 준비 실패의 실제 원인은 `phase_d_raid_state_operational_binding_missing`이었다.
+  공통 DB 등록·profile별 조회·실행 전 확인을 구현하고 V0022와 v10 실행 구성을 설치했다.
+  기존 snapshot 식별자와 계정·진행도를 유지하며 새 보스도 같은 경로로 연결한다.
+  운영 DB 전후 기존 테이블 지문과 반복 등록 결과가 같았다. PostgreSQL 통합 115개,
+  S25/S7/S26 × 5속성 실제 조립 15개, 설치 후 5개 시즌의 준비 25개가 통과했다.
+  실제 공통 작업자의 DB 연결 실패 주입→파일 미게시→정상 재시도 완료와 식별자 보존도 확인했다.
+  S25 실게임 실행·종료 후 기록 복원은 운영자 확인 대기다.
+  [S25 조사·후속 작업](operations/COMMON_BOSS_EXECUTION_PLAN.md#s25-실행-준비-실패와-db-등록-연결-누락-2026-09-15) 참조.
+- 2026-09-15 S7 재실행의 2,002.98MB 요구는 음성 다운로드 화면으로 확인됐다.
+  음성 선택이 21:15:57 `ko/minimal`에서 21:27:36 리허설 기록의 `en/minimal`로 바뀌었다.
+  에이전트가 리허설의 변경값을 놓쳤으며 최초 writer는 미확정이다. 운영자 승인 후 언어 한 값만
+  `ko`로 복구했다. S7 5약점 준비·관리도구/PG 재시작에서 `ko/minimal`이 유지됐고,
+  관측된 음성 SetValue는 승인된 복구 1건뿐이었다. 운영자가 후속 S7 정상 실행을 확인했다.
+  실게임 종료 후 상태와 전체 실행 멱등성은 아직 입증하지 않았으며, 제품 코드는 이번 조사에서 변경하지 않았다.
+  [음성 다운로드 조사](operations/COMMON_BOSS_EXECUTION_PLAN.md#s7-재실행의-음성-다운로드-조사-2026-09-15) 참조.
+- 2026-09-15 S7 실행은 보스 조립 이후 DB 종료 확인에서 중단됐다. 시스템 전체 PostgreSQL
+  이름 검사와 실행 전 실패에도 실행 후 pointer를 요구한 복구 결함을 수정했다.
+  남은 hosts·DB·실행 상태를 복원했으며 게임/계정 데이터와 기존 runner 봉인은 보존했다.
+  상세 원인·검증은 [공통 실행 계획의 S7 기록](operations/COMMON_BOSS_EXECUTION_PLAN.md#s7-db-종료-확인과-실행-전-복구-2026-09-15)을 따른다.
+- 2026-09-15 S34의 행동 노드 오거절(1번), 원본 FX 자동 확보(2번), 크기 대응(3번)을
+  수정·설치했다. 실제 설치 backend queue에서 S34 자동 등록이 완료됐다.
+  전격 원본 재사용·나머지 네 속성 공용 FX 보정과 S26/S29 회귀, 세 보스의 공통 준비
+  5속성 검사를 통과했다. 이후 실제 실행에서 발견한 등록 FX→coordinator cache 검사 연결
+  누락도 수정하고 S26/S29/S34 × 5약점의 실제 coordinator 실행 전 리허설 15건을 통과했다.
+  불러오기 이력은 기본 접힘으로 바꿨다. v9 실행 구성은 보존했고 S34 실게임은 확인 대기다.
+  다음 작업과 설치/복구 근거는 [S34 실험 기록](operations/S34_COMMON_PIPELINE_EXPERIMENT.md)을 따른다.
+- 2026-09-15 운영자 정리 지시로 미사용 FxProbe·UserValidation client 두 폴더를 삭제했다.
+  C: 여유는 약 18.99→56.48GiB로 증가했다. 현재 ResourceProbe/v8/v6와 과거 조사 기록은
+  보존했다. 퇴역 경로와 완료 근거는 [용량 감사](operations/PROJECT_STORAGE_AUDIT_20260914.md) 참조.
 - 운영자가 관리도구 → **151 / S26 실게임 검증 완료**를 확인했습니다. 리소스 대응은 종료했습니다.
 - 기존 진행도를 유지합니다. 과거 약점 없는 최고 기록은 삭제하지 않고 `unresolved`에 보존하며,
   새 약점별 기록에 추정 병합하지 않습니다.
 - 검증된 Epinel DLL·실행 조합을 불필요하게 다시 변경하지 않습니다.
 - 활성 OS는 Micron입니다. 저장소·client·bundle·백업의 정확한 위치는 [현재 경로](MICRON_CURRENT_PATHS.md)만 기준으로 합니다.
 - 위 완료는 운영자의 실게임 확인이며, 새 자동 관측 receipt나 모든 보스·음성·약점 조합의 검증을 뜻하지 않습니다.
+
+## 2026-09-14 실행 전 검사 정비 진행
+
+**2026-09-15 공통 경로 도입:** v8 런타임·관리도구·private registry를 활성화했다. 이후 R6에서
+아래와 같이 v9로 갱신했다.
+S26과 S29는 같은 일반 준비/시작/종료 경로를 사용한다. 전격·수냉은 원본 FX를 재사용하고
+작열·풍압·철갑은 원본 크기 recipe로 보정한 native FX를 조건부 전달한다.
+세 보정 FX의 실제 복제본 적용/복구/반복 복구, 공통 coordinator 준비, 필수 회귀 검사를 통과했다.
+이전 v6·설치 파일·선택 포인터의 백업과 명시적 원복 명령을 보존했다. 게임 실행·음성 설정 쓰기·
+운영 계정 DB 변경은 하지 않았다. **운영자는 2026-09-15 속성 쉴드 처리가 정상임을 확인했다.**
+현재 과제는 시작·종료 처리 단축이다. [성능 조사·개선안](operations/P2_3_RUNTIME_FX_BINDING.md)에
+운영자의 최신 검증 범위 재설정을 반영했다. 정상 실행/종료는 전체 CDB 읽기 0회로 설계하고,
+최초 도입/원본 교체/수리의 전체 검증과 작은 FX 변경의 멱등성을 분리했다. 작은 변경
+트랜잭션·중단/재시도 검사를 거쳐 설치했다. 지속 핸들/ETW 완료를 필수 선행 조건으로 두지 않는다.
+구체적인 수정 파일·상태 전이·byte 예산·회귀/설치 기준은
+[R1~R6 구현 계획](operations/RUNTIME_FAST_PATH_IMPLEMENTATION_PLAN.md)에 기록했다.
+R1/R2의 신규 v2 범위 트랜잭션·영속 상태 코어를 구현했고 집중 검사 87개와 기존 v1 69개가
+통과했다. 24,153B 변경의 적용/복구 각각 읽기 48,306B·쓰기 24,153B를 가상 큰 파일에서도
+확인했다. 필수 계약·단위 회귀, 합성 PostgreSQL 통합 114개와 정리, .NET 10 materializer 빌드도
+통과했다. 후속 R3에서 Stage·적용·종료·checkpoint 소비자에 v2를 연결했다. 신규 전달 43개를
+포함한 집중 검사 199개, Windows Job 검사 55개, 필수 회귀 및 PostgreSQL 통합 114개와
+DB 재시작/정리까지 통과했다. R1~R3의 구현·자동 검사를 완료했다.
+Stage는 CDB를 열지 않고, v2 적용/복구는 선택 조각만 읽고 쓰며 FileStream 선행 읽기도 껐다.
+별도 설치 기준 등록 명령을 추가했고 R6에서 최초 등록했다. 후속 R4의 UI/구간 계측도 구현·자동
+검사를 완료했다. 실행 입장 상태와 진행 표시를 분리해 종료 확인 후 다음 조회에서 정리·FX 복구·
+진행도 저장을 표시한다. 버튼은 기존 실제 완료 조건을 유지한다. API 562개, UI 상태 9개,
+WinPS5/PS7 동시 기록·잠금·종료 관측 및 필수 회귀, PostgreSQL 통합 114개와 재시작/정리가
+통과했다. 세부 측정점·기록 필드·증거 한계는 같은 계획의 R4 구현 기록을 따른다.
+R5 오프라인 회귀·계측도 완료했다. 새 process 중단/복구 52개와 합성 profile/약점 15개,
+각 30회 시간 측정이 통과했다. process 포함 p95는 Stage 0.222초/적용 0.313초/복구 0.312초다.
+64KiB 합성 파일의 소스 연결 검사이며 물리 identity/Job은 합성 adapter다. 실제 전체 준비
+경로의 시간으로 해석하지 않는다. 필수 회귀 및 별도 PostgreSQL 114개·재시작/정리도 통과했다.
+**R6 v9·UI 설치 완료:** 정상 v8을 보존하고 새 공통 materializer와 UI/API를 설치했다.
+최초 6.6GB 원본 확인/등록은 47.34초, CDB 쓰기 0이었다. 새 pwsh와 실제 전체 ready 준비
+경로를 조합별 20회, 총 120회 측정했으며 p95는 S26 1.37초/S29 1.80~1.81초다.
+계정 snapshot·coordinator Stage·게임 로딩은 이 측정 밖이다. 실제 coordinator 여섯 조합,
+세 보정 FX의 실제 v2 적용·원복·반복 원복, 설치 후 S26/S29 열 개 준비 조합도 통과했다.
+설치 후 필수 회귀와 합성 PostgreSQL 통합 114개, v9 capture·persist·restore 41개,
+DB 재시작·정리까지 통과했다. 운영자 시작/종료·진행도·재실행 확인을 기다린다.
+30초 관찰은 게임 기동 필수가 아니며 watcher 인계를 지연시킨다. 이번 설치에서는 유지했고,
+후속으로 공통 시작 receipt 정비와 함께 정상 경로에서 제거할 방향을 같은 계획에 기록했다.
+추가 [집중 조사](operations/RUNTIME_FAST_PATH_OBSERVATION.md)에서 ETW 접근 권한 필드 부재,
+실패 open·매핑 구독·늦은 이름 연결·System 쓰기 필터의 결손을 합성 확인했다.
+준비 함수는 S26 0.80초/S29 1.25~1.29초 단일 측정이며, 보정 종료의 pg_ctl 시작→최종
+완료는 1.01초였다. 해당 조사 사실은 보존하되, 전체 파일 불변 증명을 매 실행의 요구로 삼지 않는다.
+현재 v9의 Stage/적용/복구는 v2다. v8은 바로 이전 복구 대상으로 보존하며 새 설치의 실제
+게임 시간은 아직 측정하지 않았다. 정확한 설치·원복 명령과 증거는 R1~R6 계획의 R6 기록을 따른다.
+포크한 [HTTP 별도 조사](operations/HTTP_FX_DELIVERY_INVESTIGATION.md)는 기존 미설치 Epinel
+HTTP 후보와 원본 로더를 대조했다. loader의 stream/로컬 파일 분기를 정적 확인했으며,
+서버만 바꾸는 직접 HTTP 전달의 채택 근거는 없다. 작은 로컬 파일 분기는 별도 후보다.
+설치 hash·출처·실패 수정과 원복은 [공통 실행 전달 기록](operations/P2_3_RUNTIME_FX_BINDING.md)의
+2026-09-15 절과 `artifacts/common-boss-execution-20260914/install/installation.receipt.json`을 따른다.
+추가 보스의 전체 준비/실행 인수 및 P6 전체 완료를 이번 S29 설치로 대신하지 않는다.
+아래는 설치 전 단계별 조사 이력이다.
+
+현재 후속 작업은 [공통 실행 경로 통합](operations/COMMON_BOSS_EXECUTION_PLAN.md)이다.
+운영자는 전투 입력 외 시즌별 부팅/음성 정책을 없애고 UI 보스 추가의 자동 조립 결과를
+공통 실행기로 연결하도록 재확인했다. P0 대조와 P1 공통 입력/호환 계약을 완료했다.
+공통 생성기의 v3 구성과 교차 profile FX 거절을 정비했으며 다음은 P2 준비/전달 통합이다.
+P2 상세 계획은 원본 속성과 속성별 FX 출처를 함께 사용하도록 갱신했다. S29의 전격·수냉
+전용 FX를 반영하고, 속성 제한 body·parts·QTE는 조건과 실드 FX를 함께 처리한다.
+'QTE만 조정'의 독립 완료 구분은 철회했다. P2-1 공통 속성/FX 해석을 준비기와 coordinator에
+연결했고 PS7/WinPS5의 새 합성 35개 및 S29 다섯 약점별 매핑 검사를 통과했다. 다음은
+P2-2 특수 패턴 조건·FX 조립이다. [원본 읽기 조사](operations/P2_2_ELEMENT_SHIELD_INVESTIGATION.md)에서
+FX 없는 짧은 면역 함수, 동일 모델 공유 참조, 수냉 전용 FX의 하위 회전 차이를 확인했다.
+[행동 트리 대조](operations/S29_BEHAVIOR_PATTERN_TRACE.md)에서 직접 QTE 5개의 대안 구조와
+짧은 쉴드 함수의 종료 경로를 확인했다. [조건·표시 추가 조사](operations/P2_2_SHIELD_CONDITION_FX_MAP.md)에서
+일반 BreakCol 대상 여섯 개가 Body collider에 연결되고, 특수 QTE의 각 22개 preset index가
+실제 prefab에 결박됨을 확인했다. 후속 조사에서 두 일반 저지의 effectLists는 비어 있고,
+QTE 속성은 전격 행→약점 철갑/아이콘으로 연결됨을 확인했다. Body 상속과 QTE 조건·표시의
+실제 소비는 미해결이다. 공용 FX에는 전용과 다른 UseScaleHelper/입자 스케일 설정이 있고
+풍압에는 기존 검사 밖의 root 직속 활성 입자가 있어 Transform 복사만으로 적합 판정할 수 없다.
+수냉은 전용 원본 재사용 후보이며 필요한 보정만 정하도록 상세 계획을 갱신했다.
+후속 1차 구현으로 공통 탐색의 경로별 조건/FX 근거와 변형 전 적합성 보고서를 연결했다.
+실제 S26 프로필 생성/검증은 통과했고 첫 구현의 S29는 변형 전 판정에서 중단했다.
+S34도 같은 탐색기로 조건 1개·일반 저지 1개·QTE 2개를 확인했다. 세부 범위와 근거는 대응표
+9~10절을 따른다. 당시 공통 recipe는 전격/수냉 원본 재사용과 작열/철갑 공간·크기 보정 후보를
+전달했으며 풍압은 전체 계층 미대응으로 보정하지 못했다. 이 제한은 아래 크기 보정 정책으로
+해소했다. Body/QTE 실제 소비와 P2-3 실행 wire 결박은 남아 있다.
+P2-2 전체 완료나 S29 실행 허용·설치로 승격하지 않았다.
+후속 1·2번 정적 조사는 대응표 11절에 기록했다. 풍압 별도 입자는 현재 Timeline 제어 밖의
+단발 burst 설정이며 원본 파괴 입자의 대체로 연결하지 않는다. 공용 초기 활성화는 Timeline 제어와
+함께 보존하고 작열 회전·철갑 수명도 연출 값으로 보존한다. 작열/풍압의 선택된 재생 경로는
+전격/수냉/철갑과 구간 길이·animation binding도 다름을 기록했다. 이후 운영자는 이 내부 차이를
+추가 요구사항으로 삼지 않고 **전용 기준 크기 재현과 우월 코드 피해 제한**에 집중하도록 정정했다.
+[기준 크기](operations/P2_2_SHIELD_SIZE_REFERENCE.md)는 전격·수냉 공통 anchor 배율 7.25,
+높이 오프셋 1.25와 비활성 크기 helper 및 하위 배율/입자 크기 입력이다. 원본/도구 hash와
+함수→prefab→부착점→node 연결을 읽기 전용 참조 생성기로 기록했다.
+후속 `source_shield_size_candidate/v2`는 쉴드 본체/부모의 7개 노드를 기준으로 작열/철갑 3개 필드,
+풍압 4개 필드를 보정하고, 독립 RuntimeInputs 폴더의 실제 bundle 3개를 재로딩·재생성 검산했다.
+전격/수냉은 원본을 재사용하고 파괴 연출·독립 입자·색상·회전·재생 데이터는 보존한다.
+P2-3 [공통 실행 형식·전달 연결](operations/P2_3_RUNTIME_FX_BINDING.md)은 v4 recipe 결박과
+입력 기반 QTE 해석으로 완료했다. S26/S29 모두 5속성 후보 봉인을 통과했고 S29는 실행별
+보정 전달 3개/원본 재사용 2개를 검산했다. 이후 P2-4/P2-5 연결과 native 적용/복구·설치를
+완료했다. 현재 사용자 실게임 확인은 대기 중이며 자동 검사로 인수를 주장하지 않는다.
+GitHub 반영은 운영자 지시로 보류한다. 저장소 정리·최적화는
+운영자 지시대로 P2~P6 완료 후 수행한다.
+프로젝트 용량 후보도 조사했지만 파일 삭제·통합 설치는 하지 않았다. 아래는 기존
+검사 정비의 구현/설치 이력이며 새 공통 경로의 완료 증거가 아니다.
+
+[조사·정비 계획](operations/VALIDATION_PREFLIGHT_PLAN.md)의 A/B를 구현했다. 두 음성 설정을
+한 snapshot에서 의미 비교하고 진단하며, 작은 조건 → 전체 해시 → 변경 직전 재확인으로
+순서를 옮겼다. UI는 부모 실행과 실제 게임 실행을 구분하고 bootstrap 검사도 별도 표시한다.
+관리자 읽기 진단에서도 신·구 비교가 모두 일치했다. 과거 실패의 직접 원인은 여전히 미확정이다.
+
+같은 exclusive CDB transaction의 중복 Prepare 한 번을 제거했으며 전체 hash와 원복 검사는
+유지한다. ACE-BASE는 준비 시 관측한 안정 상태(Stopped/Running)를 그대로 결박하고 모든
+단계에서 동일성을 검사한다. 실제 서비스·드라이버 시작/중지는 수행하지 않았다.
+
+새 다섯 assessment는 기존 client 한 개를 재사용해 Inspect와 compiled-plan 검사를 통과했다.
+새 delivery SHA는 `04f947017747db1ab166652f167bb8245cd921556241e0433c6f34a9e3b103e8`이다.
+앱 설치와 설치 파일 353개, 새 다섯 entry의 실제 설치 API 읽기 검사를 완료했다.
+근거는 `artifacts/validation-preflight-20260914/installation.receipt.json`이며 API SHA는
+`b79a8deda1493e8a9f779136c60044d33039133ce35b6b6a6e8f9c9248e09b0d`이다.
+기존 entry/실패 기록은 보존하며 새 S29 실게임 인수는 아직 하지 않았다.
+
+설정 합성 61개, 진단 69개, 드라이버 104개, UserValidation 단위 252개, 격리 PG 114개가
+통과했다. repository/Phase 0/2A1/2A2/2B/3A/3B0/3B1/3B2/Actions 최종 로컬 gate도
+통과했으며 같은 artifact의 `final-verify-*.log`가 권위다. 원격 Actions 결과와 구분한다.
+C는 NTFS 합성 prototype까지 진행했다. 재부팅·journal 공백 무효화와 동일 크기 변조·시간
+복원·교체·하드링크 거절을 검증했지만 프로세스 사이 lease 인계/부분 원복 세대 결박과 전체
+시작 성능은 아직 증명하지 않았다. **빠른 경로 및 계획 전체 완료를 주장하지 않는다.**
+
+## 2026-09-13 사용자 실행 초기 오류 기록 보강 — 당시 기록
+
+후속 사용자 실행에서 `resource_native_uv_preferences_before_drift`와 원래 실패 위치를
+확인했다. 현재 동일 비교는 20/20 통과하며 당시 관리자 관측 값은 없어 직접 원인은 미확정이다.
+테스트 정밀 검사/실사용 빠른 검사 분리와 추가 반복 읽기 병목을 포함한
+[조사·정비 계획](operations/VALIDATION_PREFLIGHT_PLAN.md)을 작성했다. 당시에는 미구현이었다.
+
+운영자의 첫 S29/수냉 실행은 상위 PowerShell이 종료되면서
+`boss_validation_controller_failed`가 됐다. `execution.started.json` 이전에 실패했고,
+당시 숨김 실행의 원본 예외는 보존되지 않아 직접 원인을 확정하지 못했다.
+아래 오프라인 마감은 이 실제 사용자 시작 경로의 성공을 보장하지 않는다.
+
+API에 내장한 `UserValidationDiagnostics.ps1`을 새 UI action 폴더에만 기록하고,
+기존 봉인 controller를 별도 script scope로 호출한다. 실행기/5속성 entry/전달 manifest,
+client 복제본과 기존 실패 증거는 수정하지 않는다. 최초 로그 쓰기에 실패하면
+controller를 호출하지 않는다. 첫 marker·제어된 오류 코드·예외/내부 예외 종류·
+HResult/Win32 코드·프로젝트 script/행·최근 오류 이력(최대 256개)·프로세스 종료 코드를
+남긴다. raw 메시지·source line·인자·target/게임 ID는 기록하지 않고 메시지는 hash만 남긴다.
+처리된 오류 이력을 모두 실패 원인으로 단정하지 않는다. 프로세스 강제 종료/파서 시작
+이전 실패는 최종 controller 로그가 없을 수 있어 API가 그 결손과 종료 코드를 별도 기록한다.
+
+검증 명령은 `scripts/test-nll-user-validation-diagnostics.ps1`과 Admin API 단위 검사다.
+실제 게임은 에이전트가 호출하지 않는다. 2026-09-14 운영자 지시로 UAC 제한은 제거했다.
+설치 반영 여부는 새 app-only delivery의
+receipt로 확인하며, 이전 배포 receipt를 새 수정의 설치 증거로 사용하지 않는다.
+사용자가 다시 실행한 뒤 새 로그로 원인을 식별한다. 이번 변경 자체가 원인 수정이나
+S29 실게임 인수 완료를 뜻하지 않는다.
 
 ## 2026-09-13 재계획 1~5 마감 현황
 

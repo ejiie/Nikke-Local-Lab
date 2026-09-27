@@ -140,7 +140,7 @@ public sealed class FilesystemBossOnboardingService : IBossOnboardingService
           job.OperationUid == Guid.Empty || job.SeasonNumber is < 1 or > 1000 || !FilesystemBossSeasonCatalogService.IsHash(job.CatalogSha256) ||
           job.StatusCode is not ("queued" or "running" or "failed" or "blocked" or "completed" or "awaiting_runtime_delivery" or "awaiting_game_validation") ||
           job.CreatedAtUtc == default || job.UpdatedAtUtc < job.CreatedAtUtc ||
-          (job.FailureCode is not null && !System.Text.RegularExpressions.Regex.IsMatch(job.FailureCode, "\\Aboss_[a-z0-9_]{1,100}\\z")) ||
+          (job.FailureCode is not null && !BossPipelineException.IsFailureCode(job.FailureCode)) ||
           (job.CandidateReceiptSha256 is not null && !FilesystemBossSeasonCatalogService.IsHash(job.CandidateReceiptSha256)) ||
           (job.AdmissionReceiptSha256 is not null && !FilesystemBossSeasonCatalogService.IsHash(job.AdmissionReceiptSha256)) ||
           (job.StatusCode == "completed" && (job.FailureCode is not null || job.CandidateReceiptSha256 is null || job.AdmissionReceiptSha256 is null)))
@@ -191,7 +191,7 @@ public sealed class FilesystemBossOnboardingService : IBossOnboardingService
     }
     var next = jobs.Where(job => job.StatusCode == "queued").OrderBy(job => job.CreatedAtUtc).FirstOrDefault();
     if (next is null) return false;
-    var snapshot = catalog.Get();
+    var snapshot = catalog.GetRevision(next.CatalogSha256);
     if (snapshot.StatusCode != "ready" || snapshot.CatalogSha256 != next.CatalogSha256 ||
         snapshot.Seasons.SingleOrDefault(row => row.SeasonNumber == next.SeasonNumber)?.ProcessingStatusCode is null or "unresolved")
     {
@@ -206,7 +206,7 @@ public sealed class FilesystemBossOnboardingService : IBossOnboardingService
       if (result.StatusCode is not ("completed" or "awaiting_runtime_delivery" or "awaiting_game_validation") ||
           !FilesystemBossSeasonCatalogService.IsHash(result.CandidateReceiptSha256) ||
           (result.AdmissionReceiptSha256 is not null && !FilesystemBossSeasonCatalogService.IsHash(result.AdmissionReceiptSha256)) ||
-          (result.FailureCode is not null && !System.Text.RegularExpressions.Regex.IsMatch(result.FailureCode, "\\Aboss_[a-z0-9_]{1,100}\\z")) ||
+          (result.FailureCode is not null && !BossPipelineException.IsFailureCode(result.FailureCode)) ||
           (result.StatusCode == "completed" && (!FilesystemBossSeasonCatalogService.IsHash(result.AdmissionReceiptSha256) || result.FailureCode is not null)))
         throw new InvalidOperationException("boss_pipeline_result_invalid");
       Write(running with
@@ -218,12 +218,17 @@ public sealed class FilesystemBossOnboardingService : IBossOnboardingService
         UpdatedAtUtc = time.GetUtcNow()
       });
     }
-    catch
+    catch (Exception error)
     {
       // Runner must prove its owned tool tree is cold before allowing another job.
       // If recovery fails, leave 'running' for the next worker recovery pass.
       if (await runner.RecoverAsync(running, CancellationToken.None).ConfigureAwait(false))
-        Write(running with { StatusCode = "failed", FailureCode = "boss_pipeline_failed", UpdatedAtUtc = time.GetUtcNow() });
+        Write(running with
+        {
+          StatusCode = "failed",
+          FailureCode = error is BossPipelineException pipeline ? pipeline.FailureCode : "boss_pipeline_failed",
+          UpdatedAtUtc = time.GetUtcNow()
+        });
     }
     return true;
   }

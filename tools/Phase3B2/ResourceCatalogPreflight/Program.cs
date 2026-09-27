@@ -9,6 +9,17 @@ var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolic
 string? currentRole = null;
 try
 {
+  if (args is ["export-native-behavior", var behaviorPlan, var behaviorPlanHash, var behaviorDestination])
+  {
+    Console.WriteLine(JsonSerializer.Serialize(NativeBehaviorExport.Export(behaviorPlan, behaviorPlanHash, behaviorDestination), options));
+    return 0;
+  }
+  if (args is ["export-boss-image-bundles", var bossImageSource, var bossImageHints, var bossImageHintsHash, var bossImageDestination])
+  {
+    Console.WriteLine(JsonSerializer.Serialize(BossImageExport.Export(bossImageSource, bossImageHints,
+        bossImageHintsHash, bossImageDestination), options));
+    return 0;
+  }
   if (args is ["inspect-boss-image-references", var imageCatalog, var imageSignature, var imageCatalogHash,
       var imageSignatureHash, var imageHints, var imageHintsHash])
   {

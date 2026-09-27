@@ -6,29 +6,18 @@
   <title>NLL 지휘관 관리 도구</title>
   <link rel="stylesheet" href="/editor/editor.css">
   <script src="/editor/boss-seasons.js" defer></script>
+  <script src="/editor/raid-analysis.js" defer></script>
+  <script src="/editor/raid-records.js" defer></script>
+  <script src="/editor/union-raid.js" defer></script>
   <script src="/editor/user-validation.js" defer></script>
+  <script src="/editor/account-directory.js" defer></script>
   <script src="/editor/editor.js" defer></script>
 </head>
 <body>
-  <div id="login-screen" class="login-screen">
-    <div class="login-card">
-      <div class="brand-mark" aria-hidden="true">N</div>
-      <p class="eyebrow">로컬 지휘관 관리</p>
-      <h1>지휘관 관리 도구</h1>
-      <p class="login-copy">이 컴퓨터에서만 실행되는 로컬 관리 환경입니다.</p>
-      <label class="login-field">일회용 시작 코드
-        <input id="bootstrap-code" type="password" autocomplete="off" spellcheck="false"
-               placeholder="실행 프로그램이 자동으로 입력합니다">
-      </label>
-      <button id="admin-login" class="primary wide" type="button">관리 도구 시작</button>
-      <p class="microcopy">독립 실행 프로그램에서는 이 과정이 자동으로 완료됩니다.</p>
-    </div>
-  </div>
-
-  <div id="app-shell" class="app-shell" hidden>
+  <div id="app-shell" class="app-shell" inert aria-busy="true">
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <div class="brand-mark small" aria-hidden="true">N</div>
+        <img class="brand-icon" src="/editor/assets/ui/app-icon.ico" width="36" height="36" alt="" aria-hidden="true">
         <div><strong>NLL</strong><span>지휘관 관리 도구</span></div>
       </div>
       <nav class="main-nav" aria-label="주요 기능">
@@ -36,7 +25,7 @@
         <button class="tab-button" type="button" data-tab="account" aria-selected="false"><span class="nav-icon">●</span><span>계정 설정</span></button>
         <button class="tab-button" type="button" data-tab="nikkes" aria-selected="false"><span class="nav-icon">◆</span><span>니케 관리</span></button>
         <button class="tab-button" type="button" data-tab="raid" aria-selected="false"><span class="nav-icon">⚔</span><span>솔로 레이드</span></button>
-        <button class="tab-button" type="button" data-tab="import" aria-selected="false"><span class="nav-icon">↧</span><span>계정 가져오기</span></button>
+        <button class="tab-button" type="button" data-tab="union-raid" aria-label="유니온 레이드" aria-selected="false"><span class="nav-icon" aria-hidden="true">⚑</span><span>유니온 레이드</span></button>
       </nav>
       <div class="topbar-account"><span class="presence-dot" aria-hidden="true"></span><div><strong id="top-account-name">계정을 선택하세요</strong><span id="top-account-detail">로컬 전용</span></div></div>
       <button class="tab-button nav-bottom" type="button" data-tab="advanced" aria-selected="false"><span class="nav-icon">⚙</span><span>고급 진단</span></button>
@@ -55,10 +44,10 @@
       <main>
         <section class="tab-panel page" data-tab-panel="home">
           <div class="hero-panel commander-picker">
-            <div><p class="eyebrow">내 계정</p><h2>플레이할 계정을 선택하세요</h2><p>계정을 고른 뒤 설정을 편집하거나 솔로 레이드를 실행할 수 있습니다.</p></div>
-            <button id="refresh-accounts" class="ghost" type="button" disabled>목록 새로고침</button>
+            <div><p class="eyebrow">내 유니온</p><h2>유니온을 선택하세요</h2><p>유니온의 멤버 목록에서 플레이할 계정을 선택할 수 있습니다.</p></div>
+            <div class="action-row"><button id="create-account" class="primary" type="button">계정 만들기</button><button id="refresh-accounts" class="ghost" type="button" disabled>목록 새로고침</button></div>
           </div>
-          <ul id="account-list" class="account-list" aria-label="로컬 계정"></ul>
+          <ul id="account-list" class="account-list" aria-label="유니온 목록"></ul>
           <div class="quick-grid">
             <button class="quick-card jump-button" type="button" data-jump="account"><span class="quick-icon cyan">●</span><strong>계정 설정</strong><span>닉네임·지휘관 레벨·콘솔</span></button>
             <button class="quick-card jump-button" type="button" data-jump="nikkes"><span class="quick-icon violet">◆</span><strong>니케 관리</strong><span>돌파·스킬·장비·소장품</span></button>
@@ -69,8 +58,9 @@
         <section class="tab-panel page" data-tab-panel="account" hidden>
           <div class="section-heading"><div><p class="eyebrow">계정 정보</p><h2>계정 설정</h2><p>게임에서 보이는 이름과 성장 수치를 편집합니다.</p></div><span id="account-readiness" class="status-pill neutral">계정 미선택</span></div>
           <div class="surface profile-summary">
-            <div class="commander-avatar" aria-hidden="true">C</div>
+            <div id="profile-avatar" class="commander-avatar"><img class="member-portrait" src="/editor/assets/ui/default-account.png" alt="대표 사진"></div>
             <div class="profile-name-block"><span>현재 계정</span><strong id="profile-display-title">계정을 선택하세요</strong><small id="profile-account-label">저장 슬롯 없음</small></div>
+            <button id="account-sync" class="secondary" type="button" disabled>계정 불러오기</button>
             <div class="profile-stat"><span>지휘관 레벨</span><strong id="profile-commander-summary">-</strong></div>
             <div class="profile-stat"><span>싱크로 레벨</span><strong id="profile-synchro-summary">-</strong></div>
           </div>
@@ -117,7 +107,7 @@
 
         <section class="tab-panel page" data-tab-panel="nikkes" hidden>
           <div id="nikke-browser">
-            <div class="section-heading nikke-list-heading"><div><p class="eyebrow">전체 니케</p><h2>니케 도감</h2><p>보유 니케는 전투력순으로, 미보유 니케는 그 뒤에 표시됩니다.</p></div><span id="nikke-count" class="status-pill neutral">보유 0 / 전체 0</span></div>
+            <div class="section-heading nikke-list-heading"><div><p class="eyebrow">전체 니케</p><h2>니케 도감</h2><p>보유 니케는 전투력순으로, 미보유 니케는 그 뒤에 표시됩니다.</p></div><div class="nikke-ownership-actions"><span id="nikke-count" class="status-pill neutral">보유 0 / 전체 0</span><div class="nikke-catalog-buttons"><button id="own-all-nikkes" class="secondary" type="button" disabled>모두 보유로 설정</button><button id="sync-characters" class="secondary" type="button">캐릭터 목록 동기화</button></div></div></div>
             <div class="nikke-filter-shell surface">
               <label class="search-field"><span class="visually-hidden">니케 검색</span><input id="nikke-search" type="search" placeholder="니케 이름 검색"></label>
               <div class="compact-filters">
@@ -166,13 +156,43 @@
           <div class="section-heading"><div><p class="eyebrow">보스 선택</p><h2>솔로 레이드</h2><p>보스를 선택하면 원본 게임 안에서 실전과 모의전을 모두 이용할 수 있습니다.</p></div><button id="load-launch-history" class="ghost" type="button" disabled>최근 실행</button></div>
           <input id="launch-account" class="compatibility-control" readonly aria-readonly="true" value="계정을 먼저 선택하세요"><select id="launch-season" class="compatibility-control" aria-label="선택 시즌"></select><select id="launch-kind" class="compatibility-control"><option value="challenge">Challenge 메뉴</option></select><button id="launch-game" class="compatibility-control" type="button" disabled>실행</button>
           <div class="action-row"><button id="select-boss-season" class="primary" type="button">시즌 선택</button><button id="boss-jobs-refresh" class="ghost" type="button">불러오기 상태 새로고침</button></div>
-          <p id="boss-job-status" role="status" aria-live="polite">시즌을 선택해 보스 정보를 확인하세요.</p><ul id="boss-jobs" class="boss-job-list"></ul>
+          <p id="boss-job-status" role="status" aria-live="polite">시즌을 선택해 보스 정보를 확인하세요.</p>
+          <details class="boss-job-history"><summary>불러오기 이력</summary><ul id="boss-jobs" class="boss-job-list"></ul></details>
           <section id="boss-season-picker" hidden aria-labelledby="boss-season-picker-title">
-            <div class="section-heading"><div><h3 id="boss-season-picker-title">시즌 선택</h3><p id="boss-catalog-status">로컬 시즌 자료를 확인하고 있습니다.</p></div><button id="boss-season-back" class="ghost" type="button">돌아가기</button></div>
+            <div class="section-heading"><div><h3 id="boss-season-picker-title">시즌 선택</h3><p id="boss-catalog-status">로컬 시즌 자료를 확인하고 있습니다.</p></div><div class="action-row"><button id="boss-season-sync" class="ghost" type="button">시즌 목록 동기화</button><button id="boss-season-back" class="ghost" type="button">돌아가기</button></div></div>
+            <p id="boss-season-sync-status" role="status" aria-live="polite" hidden></p>
+            <div class="boss-season-toolbar">
+              <div class="boss-season-filters">
+                <label for="boss-season-weakness-filter">기본 약점
+                  <select id="boss-season-weakness-filter"><option value="all">전체 속성</option><option value="fire">작열</option><option value="water">수냉</option><option value="wind">풍압</option><option value="electric">전격</option><option value="iron">철갑</option></select>
+                </label>
+                <label for="boss-season-import-filter">불러오기
+                  <select id="boss-season-import-filter"><option value="all">전체</option><option value="imported">가져온 보스</option><option value="not-imported">안 가져온 보스</option></select>
+                </label>
+              </div>
+              <label class="boss-season-sort" for="boss-season-order">정렬
+                <select id="boss-season-order"><option value="newest">최신 순</option><option value="oldest">오래된 순</option></select>
+              </label>
+            </div>
+            <p id="boss-season-empty" class="boss-season-empty" role="status" hidden>조건에 맞는 보스가 없습니다.</p>
             <div id="boss-season-grid" class="boss-grid boss-season-grid"></div>
           </section>
           <div id="boss-detail" hidden>
+          <div class="raid-boss-overview">
           <div id="selected-boss-card" class="selected-boss-card"></div>
+          <section id="raid-records" class="surface raid-records" aria-labelledby="raid-records-title">
+            <div class="raid-records-heading"><div><p class="eyebrow">전투 기록</p><h3 id="raid-records-title">보스별 기록</h3><p id="raid-records-context">계정을 선택해 주세요.</p></div><div class="raid-record-controls"><select id="raid-records-order" aria-label="전투 기록 정렬"><option value="newest">최신순</option></select></div></div>
+            <div class="raid-record-modes" role="group" aria-label="기록 종류">
+              <button id="raid-records-practice" type="button" aria-pressed="true">모의전 기록 보기</button>
+              <button id="raid-records-live" type="button" aria-pressed="false">실전 기록 보기</button>
+            </div>
+            <div id="raid-records-elements" class="raid-record-elements" role="group" aria-label="기록 당시 보스 약점 속성"></div>
+            <div class="raid-records-list-heading"><strong id="raid-records-list-title">모의전 기록</strong><span id="raid-records-count">—</span></div>
+            <div id="raid-records-empty" class="raid-records-empty" role="status" aria-live="polite"><span class="raid-records-empty-mark" aria-hidden="true">▤</span><strong id="raid-records-empty-title">계정을 선택해 주세요</strong><p id="raid-records-empty-text">선택한 계정의 보스별 전투 기록을 확인할 수 있습니다.</p></div>
+            <ol id="raid-records-list" class="raid-records-list" aria-label="전투 기록 목록" hidden></ol>
+            <p class="raid-records-footnote">기록 당시의 보스 약점을 기준으로 표시합니다.</p>
+          </section>
+          </div>
           <section class="surface weakness-selector" aria-labelledby="weakness-selector-title">
             <div class="weakness-selector-heading"><div><span class="eyebrow">보스 설정</span><strong id="weakness-selector-title">약점 코드 선택</strong><p>선택한 보스에 적용할 약점 속성을 실행 전에 선택합니다.</p></div><div class="selected-weakness"><span>현재 선택</span><strong><img id="selected-weakness-icon" src="/editor/assets/ui/code-iron.png" alt=""><span id="selected-weakness-label">철갑</span></strong></div></div>
             <div class="weakness-options" role="radiogroup" aria-label="약점 코드">
@@ -194,21 +214,48 @@
           </div>
           <dialog id="boss-import-dialog" class="boss-dialog" aria-labelledby="boss-import-title"><h3 id="boss-import-title">보스 불러오기</h3><p id="boss-import-question" class="boss-dialog-message"></p><div class="action-row"><button id="boss-import-yes" class="primary" type="button">예</button><button id="boss-import-no" type="button" autofocus>아니오</button></div></dialog>
           <dialog id="boss-message-dialog" class="boss-dialog" aria-labelledby="boss-message-title"><h3 id="boss-message-title"></h3><p id="boss-message-text" class="boss-dialog-message"></p><button id="boss-message-close" class="primary" type="button" autofocus>확인</button></dialog>
+          <dialog id="raid-record-dialog" class="raid-record-dialog" aria-labelledby="raid-record-dialog-title">
+            <div class="raid-records-heading"><div><p class="eyebrow">전투 기록 상세</p><h3 id="raid-record-dialog-title">덱 기록</h3><p id="raid-record-dialog-context"></p></div><button id="raid-record-dialog-close" class="ghost" type="button" aria-label="기록 상세 닫기" autofocus>닫기</button></div>
+            <dl class="raid-record-metrics"><div><dt>Damage</dt><dd id="raid-record-total"></dd></div></dl>
+            <ol id="raid-record-characters" class="raid-record-characters"></ol>
+            <div class="raid-record-analysis-actions"><button id="raid-record-analysis-open" type="button" class="primary">상세 분석 보기</button></div>
+          </dialog>
         </section>
 
-        <section class="tab-panel page" data-tab-panel="import" hidden>
-          <div class="section-heading"><div><p class="eyebrow">새 계정 등록</p><h2>계정 가져오기</h2><p>NIKKE UID 하나로 계정 정보 수집과 로컬 계정 생성을 완료합니다.</p></div></div>
-          <article class="surface uid-import-card">
-            <div class="uid-import-copy"><span class="import-symbol">↧</span><div><h3>새 계정 가져오기</h3><p>UID를 입력하면 브라우저 수집·안전한 가공·DB 등록이 순서대로 실행됩니다.</p></div></div>
-            <label class="uid-field">NIKKE UID<input id="account-import-uid" inputmode="numeric" autocomplete="off" placeholder="숫자 UID 입력"></label>
-            <button id="fetch-account-by-uid" class="primary wide" type="button" disabled>계정 정보 가져오기</button>
-            <div id="account-import-status" class="import-status">UID는 실행 중에만 사용되며 관리 도구에 저장되지 않습니다.</div>
+        <section class="tab-panel page" data-tab-panel="raid-analysis" hidden>
+          <div class="section-heading raid-analysis-page-heading"><div><p class="eyebrow">전투 기록 분석</p><h2 id="raid-analysis-page-title">피해 구성</h2><p id="raid-analysis-context"></p></div><button id="raid-analysis-back" type="button" class="ghost">← 딜표로 돌아가기</button><div class="raid-analysis-views" role="group" aria-label="분석 화면"><button id="raid-analysis-view-composition" type="button" aria-pressed="true" aria-controls="raid-analysis-composition">피해 구성</button><button id="raid-analysis-view-timeline" type="button" aria-pressed="false" aria-controls="raid-analysis-timeline">타임라인</button></div></div>
+          <div id="raid-analysis-members" class="raid-analysis-members" role="group" aria-label="분석할 캐릭터"></div>
+          <section id="raid-analysis-composition" class="surface raid-analysis-body">
+            <div class="raid-analysis-heading"><div><h3 id="raid-analysis-name"></h3><p>Damage <strong id="raid-analysis-damage"></strong></p></div><div class="raid-analysis-actions"><button id="raid-analysis-refresh" type="button" class="ghost">새로고침</button><label class="raid-analysis-toggle"><input id="raid-analysis-split" type="checkbox"> 효과별로 보기</label></div></div>
+            <p id="raid-analysis-status" class="raid-analysis-muted" role="status"></p>
+            <div id="raid-analysis-content"></div>
+          </section>
+          <section id="raid-analysis-timeline" class="surface raid-analysis-body" hidden>
+            <h3>타임라인</h3><p class="raid-analysis-muted">타임라인 준비 중입니다.</p>
+          </section>
+        </section>
+
+        <section class="tab-panel page" data-tab-panel="union-raid" hidden>
+          <div class="section-heading"><div><p class="eyebrow">NLL · 유니온 레이드</p><h2>하드 모드</h2></div><button id="union-refresh" type="button">목록 새로고침</button></div>
+          <article class="surface union-season-picker">
+            <label for="union-season">시즌 선택 · 최신순</label>
+            <select id="union-season" size="8" aria-label="유니온 레이드 시즌 · 최신순"></select>
+            <p id="union-status" role="status" aria-live="polite">시즌 목록을 불러오세요.</p>
+            <ol id="union-bosses" class="union-bosses"></ol>
           </article>
+          <dialog id="union-confirm" class="boss-dialog" aria-labelledby="union-confirm-title">
+            <h3 id="union-confirm-title"></h3><p>이 시즌의 하드 모드 보스 5개를 불러옵니다.</p>
+            <div class="action-row"><button id="union-yes" class="primary" type="button">예</button><button id="union-no" type="button" autofocus>아니오</button></div>
+          </dialog>
+        </section>
+
+        <section class="compatibility-control" hidden>
           <div class="compatibility-control"><input id="fetched-snapshot-file" type="file"><input id="fetched-draft-file" type="file"><input id="fetched-progression-file" type="file"><button id="register-fetched-snapshot" type="button" disabled>이전 파일 등록</button><div id="progression-output"></div></div>
         </section>
 
         <section class="tab-panel page" data-tab-panel="advanced" hidden>
           <div class="section-heading"><div><p class="eyebrow">문제 해결</p><h2>고급 진단</h2><p>UID, 계약 원문과 JSON은 문제 분석이 필요할 때만 사용합니다.</p></div></div>
+          <details id="workspace-save-history" class="surface" hidden><summary>저장 이력</summary><div id="workspace-save-history-list"></div></details>
           <details class="surface" open><summary>계정 식별 및 진단</summary><div class="form-grid two"><label>로컬 계정 UID <input id="account-uid" autocomplete="off" spellcheck="false"></label><div class="action-row"><button id="load-account" type="button" disabled>UID로 불러오기</button><button id="load-bootstrap" type="button" disabled>Bootstrap 원문</button><button id="load-features" type="button" disabled>기능 manifest</button></div></div><pre id="account-output" tabindex="0"></pre></details>
           <details class="surface"><summary>실행 응답 원문</summary><pre id="launch-output" tabindex="0">아직 실행 기록이 없습니다.</pre></details>
           <details class="surface"><summary>편집 작업 원문·다른 이름으로 저장</summary><div class="form-grid"><label>필드 코드 <input id="edit-field" value="character_level" autocomplete="off"></label><label>대상 UID <input id="edit-subject" autocomplete="off"></label><label>값 종류 <select id="edit-kind"><option value="integer">정수</option><option value="boolean">참/거짓</option><option value="reference">참조</option><option value="exact_decimal">정확한 소수</option><option value="controlled">제어 문자열</option></select></label><label>값 <input id="edit-value" autocomplete="off"></label><label>소수 자릿수 <input id="edit-scale" type="number" min="0" max="12" value="0"></label></div><div class="action-row"><button id="add-edit" type="button" disabled>작업 추가</button><button id="clear-edits" type="button" disabled>작업 비우기</button><label>새 계정 이름 <input id="save-as-label" maxlength="64" autocomplete="off"></label><button id="save-as-profile" type="button" disabled>새 계정으로 저장</button></div><pre id="operation-output" tabindex="0">[]</pre><pre id="profile-output" tabindex="0"></pre></details>

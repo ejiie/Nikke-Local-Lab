@@ -8,7 +8,7 @@ using NikkeLocalLab.Import.Sources;
 using NikkeLocalLab.Persistence.PostgreSql;
 using NikkeLocalLab.Provenance;
 
-internal static class CharacterCatalogCli
+internal static partial class CharacterCatalogCli
 {
   private const string DefaultGameConfigRelativePath =
       "NIKKE/game/nikke_Data/StreamingAssets/sd.bin";
@@ -96,6 +96,8 @@ internal static class CharacterCatalogCli
       await new PostgreSqlMigrationRunner().MigrateAsync(dataSource).ConfigureAwait(false);
       var store = new PostgreSqlCharacterCatalogImportStore(dataSource, uidGenerator);
       var receipt = await store.RecordCompletedAndPublishAsync(attempt, publication).ConfigureAwait(false);
+      if (options.ContainsKey("presentation-output"))
+        await WriteSynchronizedPresentationAsync(options, result.Extraction, receipt, dataSource).ConfigureAwait(false);
       Console.WriteLine("character_catalog_imported");
       Console.WriteLine($"status={receipt.Import.Status.ToString().ToLowerInvariant()}");
       Console.WriteLine($"character_catalog_snapshot_uid={receipt.CharacterCatalogSnapshotUid}");

@@ -1388,7 +1388,8 @@ public sealed class PostgreSqlPrivateServerTests
             "PublishCatalogFixtureAsync",
             BindingFlags.NonPublic | BindingFlags.Static)!,
         dataSource,
-        5);
+        5,
+        "profile-character");
     var characterUids = Property<IReadOnlyList<EntityUid>>(sourceFixture, "CharacterUids");
     var profile = (LocalAccountProfileWrite)typeof(PostgreSqlLocalGameStateTests).GetMethod(
         "CreateSyntheticProfile",

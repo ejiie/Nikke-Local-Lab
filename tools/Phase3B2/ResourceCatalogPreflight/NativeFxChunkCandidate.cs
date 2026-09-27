@@ -61,7 +61,7 @@ internal static class NativeFxChunkCandidate
     long previousEnd = 256;
     foreach (var patch in patches.OrderBy(item => item.Offset))
     {
-      Require(patch.Role is "fire" or "wind" or "iron" && patch.Ordinal >= 0 && seen.Add((patch.Role, patch.Ordinal)),
+      Require(patch.Role is "fire" or "water" or "wind" or "electric" or "iron" && patch.Ordinal >= 0 && seen.Add((patch.Role, patch.Ordinal)),
           "patch_identity_invalid");
       Require(patch.Before.Length is > 0 and <= 16 * 1024 * 1024 && patch.Before.Length == patch.After.Length &&
           !patch.Before.AsSpan().SequenceEqual(patch.After), "patch_payload_invalid");
@@ -145,13 +145,14 @@ internal static class NativeFxChunkCandidate
     var patches = new List<Patch>();
     try
     {
-      Require(rows.Length == 3, "roles_invalid");
+      Require(rows.Length is > 0 and <= 5, "roles_invalid");
       foreach (var row in rows)
       {
         var role = row.GetProperty("roleCode").GetString()!;
-        Require(role is "fire" or "wind" or "iron" && roles.Add(role) &&
+        Require(role is "fire" or "water" or "wind" or "electric" or "iron" && roles.Add(role) &&
             row.GetProperty("objectPayloadsMatchVerifiedOverlay").GetBoolean() &&
-            row.GetProperty("directoryAndOffsetsUnchanged").GetBoolean() && row.GetProperty("changedTransformCount").GetInt32() > 0,
+            row.GetProperty("directoryAndOffsetsUnchanged").GetBoolean() &&
+            (row.TryGetProperty("changedObjectCount", out var changed) ? changed.GetInt32() : row.GetProperty("changedTransformCount").GetInt32()) > 0,
             "roles_invalid");
         var sourceRow = source.GetProperty("entries").EnumerateArray().Single(item => item.GetProperty("roleCode").GetString() == role);
         foreach (var (layoutPin, sourcePin) in new[] { ("original", "original"), ("verifiedOverlay", "overlay") })

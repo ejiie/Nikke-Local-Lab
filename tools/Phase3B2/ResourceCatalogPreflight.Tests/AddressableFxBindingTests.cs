@@ -43,6 +43,28 @@ public sealed class AddressableFxBindingTests : IDisposable
       new AddressableFxBinding.Dependency("synthetic-local.bundle", true) }, binding.Dependencies);
   }
 
+  [Fact]
+  public void PrefabAliasResolvesCurrentInternalKeyWithoutGuessingBundleNames()
+  {
+    Sql("INSERT INTO keys VALUES('assets/synthetic_shield'); INSERT INTO key_entries VALUES(3,1)");
+    var key = AddressableFxBinding.ResolvePrefabName(db, "synthetic_shield");
+    Assert.Equal("synthetic/shield.prefab", key);
+    Assert.Equal("synthetic-current.bundle", AddressableFxBinding.Resolve(db, key).Dependencies[0].Key);
+    Assert.Throws<PreflightException>(() => AddressableFxBinding.ResolvePrefabName(db, "shield"));
+  }
+
+  [Fact]
+  public void ConflictingPrefabAliasesRejectInsteadOfPickingFirst()
+  {
+    Sql("""
+        INSERT INTO keys VALUES('assets/synthetic_shield'),('other/synthetic_shield');
+        INSERT INTO key_entries VALUES(3,1),(4,4);
+        INSERT INTO internal_ids VALUES('other/shield.prefab');
+        INSERT INTO entries VALUES(4,1,2,NULL);
+        """);
+    Assert.Throws<PreflightException>(() => AddressableFxBinding.ResolvePrefabName(db, "synthetic_shield"));
+  }
+
   [Theory]
   [InlineData("Synthetic/shield.prefab")]
   [InlineData("synthetic/other.prefab")]

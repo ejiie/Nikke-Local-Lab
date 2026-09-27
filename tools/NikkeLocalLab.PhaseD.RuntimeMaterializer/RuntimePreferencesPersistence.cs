@@ -19,7 +19,8 @@ internal static class RuntimePreferencesPersistence
     RuntimePreferencesPayload? payload = null;
     if (head is not null)
     {
-      var clear = ClassicSoloRaidRuntimeState.Unprotect(head.ProtectedPayload, secret, AssociatedData(key));
+      var clear = ClassicSoloRaidRuntimeState.Unprotect(head.ProtectedPayload, secret, AssociatedData(
+          key with { ClientBuildCode = head.ClientBuildCode, ClientExecutableSha256 = head.ClientExecutableSha256 }));
       try
       {
         Require(SHA256.HashData(clear).AsSpan().SequenceEqual(head.ContentSha256), "phase_d_preferences_content_mismatch");

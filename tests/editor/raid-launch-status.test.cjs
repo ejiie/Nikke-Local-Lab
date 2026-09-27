@@ -7,7 +7,7 @@ const test = require("node:test");
 const source = fs.readFileSync(path.join(__dirname,
   "../../src/NikkeLocalLab.Admin.Api/wwwroot/editor/editor.js"), "utf8");
 const bodies = ["humanStatus", "hasReadyLaunchPreparation", "refreshLaunchPreparation",
-  "updateRaidActions", "renderLaunch", "loadLaunchHistory"].map(name => {
+  "launchProgressDisplay", "updateRaidActions", "renderLaunch", "loadLaunchHistory", "startLaunch"].map(name => {
   const match = new RegExp(`^(?:async )?function ${name}\\(`, "m").exec(source);
   assert.ok(match, name);
   const rest = source.slice(match.index);
@@ -15,6 +15,51 @@ const bodies = ["humanStatus", "hasReadyLaunchPreparation", "refreshLaunchPrepar
   return next ? rest.slice(0, next.index) : rest;
 });
 const elements = { fire: "작열", water: "수냉", wind: "풍압", electric: "전격", iron: "철갑" };
+test("exit and cleanup progress replace running on the next render while admission stays locked", () => {
+  const h = setup();
+  for (const [stageCode, label] of Object.entries({ game_exited: "게임 종료 확인", fx_restore: "연출 복구",
+    runtime_restore: "환경 복구", database_restart: "저장 준비", progress_save: "진행도 저장",
+    finalizing: "마무리", ready: "완료 상태 확인", recovery_required: "복구 상태 확인", status_unknown: "진행 정보 확인 필요" })) {
+    h.ctx.renderLaunch({ statusCode: "started", launchContextUid: "synthetic-active",
+      progress: { stageCode, events: [] } });
+    assert.ok(h.title().includes(label), h.title());
+    assert.equal(h.timers.size, 1);
+    h.buttons(true);
+  }
+  h.ctx.renderLaunch({ statusCode: "completed", launchContextUid: "synthetic-active",
+    progress: { stageCode: "running", events: [] } });
+  assert.match(h.title(), /실행 준비 완료/);
+  h.buttons(false);
+  assert.equal(h.timers.size, 0);
+});
+
+test("health observation is labelled separately from frame readiness and includes timing", () => {
+  const h = setup();
+  h.ctx.renderLaunch({ statusCode: "started", launchContextUid: "synthetic-active", progress: {
+    stageCode: "health_observation", events: [{ stageCode: "health_observation",
+      occurredAtUtc: new Date(Date.now() - 2000).toISOString(), cumulativeMilliseconds: 10000 }] } });
+  assert.match(h.title(), /관찰 중 \(30초\)/);
+  assert.match(h.description(), /화면 로딩 완료를 뜻하지 않습니다/);
+  assert.match(h.description(), /요청 후 .*초 · 현재 단계 .*초/);
+  h.buttons(true);
+});
+
+test("double click produces one request and UI request timing survives status polling", async () => {
+  const h = setup();
+  let finish, calls = 0;
+  h.ctx.api = () => { calls++; return new Promise(resolve => { finish = resolve; }); };
+  const first = h.ctx.startLaunch();
+  await h.ctx.startLaunch();
+  assert.equal(calls, 1);
+  h.buttons(true);
+  finish({ payload: { statusCode: "draft", launchContextUid: "synthetic-active" } });
+  await first;
+  h.ctx.renderLaunch({ statusCode: "started", launchContextUid: "synthetic-active" });
+  const timing = h.output.get("launch-output").uiRequestTiming;
+  assert.ok(timing.requestResponseMilliseconds >= 0);
+  assert.ok(Date.parse(timing.responseReceivedAtUtc) >= Date.parse(timing.requestedAtUtc));
+  h.buttons(true);
+});
 function ready(weaknessCode = "water") {
   return { schemaVersion: 1, contractId: "nll/phase-d-preparation/v1", statusCode: "ready",
     seasonNumber: 26, weaknessCode, bindingSha256: "a".repeat(64) };
@@ -27,7 +72,7 @@ function setup() {
     launchProjection: null, launchRequestPending: false, launchPollTimer: null,
     launchPreparation: ready(), preparationRequestNumber: 0 };
   let timerId = 0;
-  const ctx = vm.createContext({ state, byId, AbortController, elementLabels: elements,
+  const ctx = vm.createContext({ state, byId, AbortController, performance, value: () => "practice", elementLabels: elements,
     bossSeasonLabels: { 26: "프로비던스" },
     bossUserValidation: { refresh: async () => {} },
     document: { querySelector: () => ({ disabled: false, querySelector: () => badge }) },

@@ -103,5 +103,61 @@ foreach ($invalidWeakness in @('unresolved','IRON','', $null)) {
     try { Assert-PhaseDRunnerSpecification $scoped } catch { $rejected = $_.Exception.Message -ceq 'phase_d_runner_input_invalid' }
     Assert-Test $rejected; $count++
 }
+# The same constructor must carry each season through the same wire contract.
+# These are synthetic selections, not proof of real boss assets or game admission.
+$p1Checks = 0
+foreach ($p1Season in @(26,29,34)) {
+    foreach ($p1Weakness in @('iron','water','fire','wind','electric')) {
+        foreach ($p1WireVersion in @(1,2,3)) {
+            foreach ($p1HasFx in @($false,$true)) {
+                if ($p1HasFx -and $p1WireVersion -ne 3) { continue }
+                $p1Input=[ordered]@{};foreach($p1Key in $launchInput.Keys){$p1Input[$p1Key]=$launchInput[$p1Key]}
+                $p1Input.SeasonNumber=$p1Season
+                if ($p1WireVersion -ge 2) {$p1Input.weaknessCode=$p1Weakness}
+                if ($p1WireVersion -eq 3) {
+                    $p1Input.jobNonce='7'*32
+                    $p1Input.executionFx=if($p1HasFx){[ordered]@{
+                        manifestSha256='8'*64;candidateSealSha256='9'*64
+                        profileSha256=$spec.bossRuntimeVariantProfileSha256;weaknessCode=$p1Weakness
+                    }}else{$null}
+                }
+                $p1Mapped=New-PhaseDRunnerSpecification $p1Input $spec.preparationBindingSha256 `
+                    $spec.bossRuntimeVariantProfileSha256 $spec.derivedSourceManifestSha256 $spec.runIntentCode
+                Assert-Test ($p1Mapped.contractId -ceq ('nll/phase-d-runner-input/v'+$p1WireVersion) -and
+                    $p1Mapped.seasonNumber -eq $p1Season -and $p1Mapped.engineCode -ceq 'parameterized/v1' -and
+                    $p1Mapped.bootstrapRoot -ceq $launchInput.runtimeBundle.bootstrapRoot)
+                if($p1WireVersion -eq 3){
+                    Assert-Test ($p1Mapped.jobNonce -ceq $p1Input.jobNonce -and
+                        (($p1Mapped.executionFx|ConvertTo-Json -Compress) -ceq ($p1Input.executionFx|ConvertTo-Json -Compress)))
+                }
+                Assert-PhaseDRunnerSpecification ($p1Mapped|ConvertTo-Json -Depth 8|ConvertFrom-Json)
+                $p1Checks++
+            }
+        }
+    }
+}
+foreach($p1Missing in @('jobNonce','executionFx','weaknessCode')) {
+    $p1Bad=[ordered]@{};foreach($p1Key in $p1Input.Keys){if($p1Key -cne $p1Missing){$p1Bad[$p1Key]=$p1Input[$p1Key]}}
+    $p1Rejected=$false
+    try{$null=New-PhaseDRunnerSpecification $p1Bad $spec.preparationBindingSha256 `
+        $spec.bossRuntimeVariantProfileSha256 $spec.derivedSourceManifestSha256 $spec.runIntentCode}
+    catch{$p1Rejected=$_.Exception.Message -ceq 'phase_d_runner_input_invalid'}
+    Assert-Test $p1Rejected;$p1Checks++
+}
+foreach($p1Change in @('profile','weakness','missing-manifest','extra-field','invalid-seal','invalid-nonce')) {
+    $p1Bad=$p1Mapped|ConvertTo-Json -Depth 8|ConvertFrom-Json
+    switch($p1Change){
+        'profile' {$p1Bad.executionFx.profileSha256='a'*64}
+        'weakness' {$p1Bad.executionFx.weaknessCode='iron'}
+        'missing-manifest' {$p1Bad.executionFx.PSObject.Properties.Remove('manifestSha256')}
+        'extra-field' {$p1Bad.executionFx|Add-Member extra 'not-a-contract-field'}
+        'invalid-seal' {$p1Bad.executionFx.candidateSealSha256='invalid'}
+        'invalid-nonce' {$p1Bad.jobNonce='invalid'}
+    }
+    $p1Rejected=$false
+    try{Assert-PhaseDRunnerSpecification $p1Bad}catch{$p1Rejected=$_.Exception.Message -ceq 'phase_d_runner_input_invalid'}
+    Assert-Test $p1Rejected;$p1Checks++
+}
 Assert-Test (-not (Test-Path -LiteralPath $root))
 Write-Output "Runner input: $count data-only, version/variant, round-trip, missing/extra field and invalid-input checks passed; no I/O."
+Write-Output "Common execution input: $p1Checks season-independent mapping and incomplete/cross-profile FX binding checks passed; no I/O."

@@ -9,6 +9,7 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.NativeFxManagedDriver.ps1')
 . (Join-Path $PSScriptRoot 'Nll.UserValidationController.ps1')
+. (Join-Path $PSScriptRoot 'Nll.UserValidationPreflight.ps1')
 $inputPlan=Read-RnJson $InputPlanPath $InputPlanSha256
 Assert-Rn ($inputPlan.contractId -ceq 'nll/user-validation-controller-input/v1') 'uv_prepare_input_invalid'
 foreach($pin in @($inputPlan.stagingReceipt,$inputPlan.storePlan,$inputPlan.clientManifest,$inputPlan.storeTool)+@($inputPlan.childFiles)+@($inputPlan.protectedFiles)){Assert-RnPin $pin}
@@ -49,11 +50,12 @@ Assert-FxManagedServiceNoDependents
 $driver=New-FxValidationDriverPolicy (Get-FxValidationDriverSnapshot)
 $blocked=@(Get-RnBlockOnlyProgramPaths)+@(Get-ChildItem -LiteralPath 'C:\Program Files\AntiCheatExpert' -Recurse -File -Filter '*.exe'|ForEach-Object FullName)
 $blockedPins=@($blocked|Sort-Object -Unique|ForEach-Object {Get-RnPin $_})
-$preferences=@(Get-RnVoicePreferences)
+$preferences=Get-UvVoicePreferences
+Assert-Rn (Compare-UvVoicePreferences $preferences $preferences).equal 'uv_prepare_preferences_invalid'
 foreach($target in @($childRoot,$controller,$rollback)){New-RnPrivateDirectory $target}
 foreach($pin in $inputPlan.childFiles){Copy-RnNew $pin.path (Join-Path $childRoot (Split-Path -Leaf $pin.path))}
 $helperNames=@('Nll.ResourceNative.ps1','Nll.NativeFxManagedService.ps1','Nll.NativeFxManagedDriver.ps1',
-    'Nll.UserValidationController.ps1','Nll.PhaseDJob.cs','Nll.FxProcessIdentity.cs')
+    'Nll.UserValidationController.ps1','Nll.UserValidationPreflight.ps1','Nll.PhaseDJob.cs','Nll.FxProcessIdentity.cs')
 foreach($name in $helperNames+@('invoke-nll-user-validation.ps1')){Copy-RnNew (Join-Path $PSScriptRoot $name) (Join-Path $controller $name)}
 Copy-RnNew $inputPlan.storeTool.path (Join-Path $controller 'NikkeLocalLab.NativeFxUserValidationStore.dll')
 $hostsPath='C:\Windows\System32\drivers\etc\hosts';$before=Join-Path $rollback 'hosts.before';$after=Join-Path $rollback 'hosts.after'
@@ -87,7 +89,7 @@ $boot=[ordered]@{contractId='nll/native-fx-user-validation-bootstrap/v1';assessm
     clientFiles=@(foreach($pin in $pins){if($pin.path -ceq $candidateStore.path){$candidateStore}else{$pin}})}
 Assert-UvBinding $plan $boot $staging $store
 $bootPath=Join-Path $staging.bootstrapRoot 'bootstrap.private.json';Write-RnNewJson $bootPath $boot
-$entry=[ordered]@{contractId='nll/user-validation-entry/v1';controller=(Get-RnPin (Join-Path $controller 'invoke-nll-user-validation.ps1'));
+$entry=[ordered]@{contractId='nll/user-validation-entry/v1';preflightContractId='nll/user-validation-preflight/v1';preflightMode='deep';controller=(Get-RnPin (Join-Path $controller 'invoke-nll-user-validation.ps1'));
     tools=@($helperNames+@('NikkeLocalLab.NativeFxUserValidationStore.dll')|ForEach-Object {Get-RnPin (Join-Path $controller $_)});
     parentPlan=(Get-RnPin $planPath);bootstrapPlan=(Get-RnPin $bootPath);stagingReceipt=$inputPlan.stagingReceipt;storePlan=$inputPlan.storePlan}
 $entryPath=Join-Path $run 'entry.private.json';Write-RnNewJson $entryPath $entry

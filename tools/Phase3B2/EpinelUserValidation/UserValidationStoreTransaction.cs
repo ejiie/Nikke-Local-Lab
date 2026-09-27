@@ -22,11 +22,15 @@ internal static class UserValidationStoreTransaction
     return new(stream.Length, originalSha256, result.Candidate);
   }
 
-  internal static void Apply(Stream stream, IReadOnlyList<UserValidationStoreRange> ranges, UserValidationStoreSeal seal)
+  internal static void Apply(Stream stream, IReadOnlyList<UserValidationStoreRange> ranges, UserValidationStoreSeal seal,
+      Action? persistRollbackIdentity = null)
   {
     ValidateSeal(stream, ranges, seal);
     // Verify every original byte and every range BEFORE the first write.
     Require(Prepare(stream, ranges, seal.OriginalSha256) == seal);
+    // The caller retains the SAME exclusive handle. A failed durable marker
+    // prevents all writes; the callback cannot be replaced by a cached permit.
+    persistRollbackIdentity?.Invoke();
     Write(stream, ranges, restore: false);
     Require(Hash(stream) == seal.CandidateSha256);
   }
@@ -115,4 +119,25 @@ internal static class UserValidationStoreTransaction
   {
     if (!value) throw new InvalidOperationException("user_validation_store_transaction_rejected");
   }
+}
+
+internal sealed class UserValidationReadMeter(Stream inner) : Stream
+{
+  internal long BytesRead { get; private set; }
+  public override bool CanRead => inner.CanRead;
+  public override bool CanWrite => inner.CanWrite;
+  public override bool CanSeek => inner.CanSeek;
+  public override long Length => inner.Length;
+  public override long Position { get => inner.Position; set => inner.Position = value; }
+  public override int Read(byte[] buffer, int offset, int count)
+  { var read = inner.Read(buffer, offset, count); BytesRead += read; return read; }
+  public override int Read(Span<byte> buffer)
+  { var read = inner.Read(buffer); BytesRead += read; return read; }
+  public override int ReadByte()
+  { var value = inner.ReadByte(); if (value >= 0) BytesRead++; return value; }
+  public override long Seek(long offset, SeekOrigin origin) => inner.Seek(offset, origin);
+  public override void SetLength(long value) => inner.SetLength(value);
+  public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
+  public override void Write(ReadOnlySpan<byte> buffer) => inner.Write(buffer);
+  public override void Flush() { if (inner is FileStream file) file.Flush(true); else inner.Flush(); }
 }

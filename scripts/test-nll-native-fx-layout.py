@@ -67,6 +67,19 @@ class LayoutTests(unittest.TestCase):
         with self.assertRaisesRegex(layout.fx.CandidateError, "change_not_allowed"):
             layout.materialize(bundle(), bundle(b"BBBBxxxx"), SyntheticUnity(), no_decompress)
 
+    def test_rederived_object_allowlist_is_exact_and_does_not_relax_legacy(self):
+        original, target = bundle(), bundle(b"BBBBxxxx")
+        allowed = {("Transform", 1): layout.fx.digest(b"BBBB"), ("Texture2D", 2): layout.fx.digest(b"xxxx")}
+        # This low-level layout routine consumes an exact output allowlist; the
+        # stage caller can obtain it only after full recipe re-derivation.
+        output, count = layout.materialize(original, target, SyntheticUnity(), no_decompress, allowed)
+        self.assertEqual(output, target)
+        self.assertEqual(count, 2)
+        for bad in ({("Transform", 1): layout.fx.digest(b"BBBB")},
+                    {**allowed, ("Texture2D", 2): "0" * 64}):
+            with self.assertRaisesRegex(layout.fx.CandidateError, "change_not_allowed"):
+                layout.materialize(original, target, SyntheticUnity(), no_decompress, bad)
+
     def test_native_uncompressed_block_flag_is_preserved(self):
         original, target = bundle(block_flags=64), bundle(b"BBBBzzzz", block_flags=64)
         result, count = layout.materialize(original, target, SyntheticUnity(), no_decompress)

@@ -22,6 +22,26 @@ public sealed class BossSeasonCatalogTests : IDisposable
   }
   private FilesystemBossSeasonCatalogService Service() => new(CatalogPath, Hash(CatalogPath), RegistryRoot);
   [Fact]
+  public void CommonDeliveryUsesNormalCardAndRetractsOnBindingDrift()
+  {
+    Register(4);
+    Assert.Equal("awaiting_runtime_delivery", Service().Get().Seasons[0].ProcessingStatusCode);
+    var profileHash = Hash(Path.Combine(RegistryRoot, "synthetic.json"));
+    var deliveryPath = Path.Combine(root, "delivery.json");
+    Write(deliveryPath, new { contractId = "nll/common-boss-delivery/v1", profileSha256 = profileHash });
+    Write(RegistryPath, new
+    {
+      schemaVersion = 1,
+      contractId = "nll/boss-runtime-variant-registry/v1",
+      profiles = new[] {
+      new { seasonNumber = 1, profileCode = "synthetic-boss", profileRelativePath = "synthetic.json", profileSha256 = profileHash,
+        operationalStatusCode = "enabled", delivery = new { path = deliveryPath, length = new FileInfo(deliveryPath).Length, sha256 = Hash(deliveryPath) } } }
+    });
+    Assert.Equal("processed", Service().Get().Seasons[0].ProcessingStatusCode);
+    File.AppendAllText(deliveryPath, " ");
+    Assert.Equal("unprocessed", Service().Get().Seasons[0].ProcessingStatusCode);
+  }
+  [Fact]
   public void VerifiedUserDeliveryPreservesAdmittedSeasonAndRetractsOnDrift()
   {
     Register(1);

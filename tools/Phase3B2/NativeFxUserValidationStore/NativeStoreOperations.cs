@@ -16,6 +16,12 @@ public static class NativeStoreOperations
     Require(OperatingSystem.IsWindows());
     UserValidationPinnedFiles.AssertNoReparse(path);
     using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+    AssertPhysicalFile(file);
+  }
+  public static void AssertPhysicalFile(FileStream file)
+  {
+    Require(OperatingSystem.IsWindows());
+    UserValidationPinnedFiles.AssertNoReparse(file.Name);
     Require(GetFileInformationByHandle(file.SafeFileHandle, out var info) && info.NumberOfLinks == 1 &&
         (info.FileAttributes & (uint)FileAttributes.ReparsePoint) == 0);
   }
@@ -76,6 +82,7 @@ public static class NativeStoreOperations
     Require(plan.PlanPath == planPath);
     UserValidationPinnedFiles.AssertNoReparse(plan.RunRoot);
     var leases = new List<FileStream>();
+    UserValidationReadMeter? meter = null;
     try
     {
       var ranges = new List<UserValidationStoreRange>();
@@ -94,20 +101,21 @@ public static class NativeStoreOperations
       Require(GetFileInformationByHandle(store.SafeFileHandle, out var info) && info.NumberOfLinks == 1 &&
           (info.FileAttributes & (uint)FileAttributes.ReparsePoint) == 0 && store.Length == plan.OriginalStore.Length);
       var seal = new UserValidationStoreSeal(store.Length, plan.OriginalStore.Sha256, plan.CandidateStoreSha256);
+      using var measured = new UserValidationReadMeter(store);
+      meter = measured;
       var marker = plan.RunRoot + @"\native-store.started.json";
       var changed = false;
       string digest;
       if (operation == "inspect" || ranges.Count == 0)
       {
-        digest = Hash(store);
+        digest = Hash(measured);
         Require(digest == plan.OriginalStore.Sha256 || digest == plan.CandidateStoreSha256);
       }
       else if (operation == "apply")
       {
         // Flush durable rollback identity BEFORE the first possible CDB write.
         // The before/after chunk leases remain locked throughout the operation.
-        Require(UserValidationStoreTransaction.Prepare(store, ranges, seal.OriginalSha256) == seal);
-        Save(marker, new
+        UserValidationStoreTransaction.Apply(measured, ranges, seal, () => Save(marker, new
         {
           contractId = "nll/native-fx-user-validation-store-started/v1",
           planSha256,
@@ -115,14 +123,14 @@ public static class NativeStoreOperations
           plan.AssessmentUid,
           rollbackInputsVerified = true,
           mutationComplete = false
-        });
-        UserValidationStoreTransaction.Apply(store, ranges, seal); changed = true; digest = seal.CandidateSha256;
+        }));
+        changed = true; digest = seal.CandidateSha256;
       }
       else
       {
         if (!File.Exists(marker))
         {
-          digest = Hash(store); Require(digest == seal.OriginalSha256);
+          digest = Hash(measured); Require(digest == seal.OriginalSha256);
         }
         else
         {
@@ -134,7 +142,7 @@ public static class NativeStoreOperations
               root.GetProperty("planSha256").GetString() == planSha256 &&
               root.GetProperty("trialUid").GetString() == plan.TrialUid && root.GetProperty("assessmentUid").GetString() == plan.AssessmentUid &&
               root.GetProperty("rollbackInputsVerified").GetBoolean());
-          changed = UserValidationStoreTransaction.Restore(store, ranges, seal); digest = seal.OriginalSha256;
+          changed = UserValidationStoreTransaction.Restore(measured, ranges, seal); digest = seal.OriginalSha256;
         }
       }
       var receipt = new
@@ -147,6 +155,7 @@ public static class NativeStoreOperations
         plan.CaseCode,
         operation,
         storeSha256 = digest,
+        storeBytesRead = measured.BytesRead,
         bytesChanged = changed,
         scopeZeroVerifiedByCaller = scopeZeroVerified,
         gameStarted = false,
@@ -155,6 +164,11 @@ public static class NativeStoreOperations
       };
       if (operation != "inspect") Save(plan.RunRoot + @"\native-store-" + operation + "-" + Guid.NewGuid().ToString("N") + ".receipt.json", receipt);
       return JsonSerializer.Serialize(receipt, Json);
+    }
+    catch (Exception error)
+    {
+      error.Data["userValidationStoreBytesRead"] = meter?.BytesRead ?? 0L;
+      throw;
     }
     finally { foreach (var lease in leases) lease.Dispose(); }
   }

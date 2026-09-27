@@ -77,10 +77,8 @@ def main() -> int:
             current_step = "editor_load"
             page.goto(f"{args.base_url}/editor/", wait_until="networkidle")
 
-            current_step = "admin_login"
-            page.locator("#bootstrap-code").fill(args.bootstrap_code)
-            page.locator("#admin-login").click()
-            wait_status(page, "Admin session 완료")
+            current_step = "admin_initialization"
+            page.evaluate("code => startAdminSession(code)", args.bootstrap_code)
 
             current_step = "account_load"
             page.locator("#account-uid").fill(args.account_uid)

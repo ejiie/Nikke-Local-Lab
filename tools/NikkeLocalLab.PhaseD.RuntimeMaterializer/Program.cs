@@ -44,8 +44,10 @@ static async Task<int> RunAsync(string[] arguments)
         chain.Add(new { type = cursor.GetType().FullName, method = cursor.TargetSite?.DeclaringType?.FullName });
       Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { catalogExceptionChain = chain }));
     }
-    var failureCode = IsSafeFailureCode(exception.Message)
-        ? exception.Message
+    var message = exception.Message.StartsWith("native_fx_range_", StringComparison.Ordinal)
+        ? "phase_d_" + exception.Message : exception.Message;
+    var failureCode = IsSafeFailureCode(message)
+        ? message
         : "phase_d_materializer_uncontrolled_failure";
     Console.Error.WriteLine(failureCode);
     return 1;
@@ -61,10 +63,98 @@ static bool IsSafeFailureCode(string value) =>
 static async Task ExecuteAsync(string[] args)
 {
 var options = ParseArguments(args);
+if (options.ContainsKey("export-local-character-source"))
+{
+  var output = Required(options, "export-local-character-source");
+  Require(!Directory.Exists(output), "phase_d_character_sync_output_exists");
+  var secret = Convert.FromBase64String(Environment.GetEnvironmentVariable(
+      RequiredText(options, "identity-secret-env")) ?? "");
+  try
+  {
+    var locales = BossSeasonCatalog.ReadLocales(Required(options, "locale-root"));
+    BossSeasonCatalog.ReadLocalArchive(Required(options, "static-pack"), Required(options, "game-config"), archive =>
+    {
+      var rows = BossContentDiscovery.DeserializeEntry<CharacterRecord>(archive, "CharacterTable.mpk")
+          .Where(row => row.IsVisible && !row.IsDetailClose).GroupBy(row => row.NameCode)
+          .Select(group => group.OrderBy(row => row.GradeCoreId).First()).ToArray();
+      var metadata = rows.Select(row => new {
+        aliasFingerprint = Fingerprint(secret, "character-resource", row.NameCode),
+        displayName = BossSeasonCatalog.Resolve(locales.Values, row.NameLocalkey),
+        burstStep = (int)row.UseBurstSkill
+      }).ToArray();
+      Require(metadata.Length > 0 && metadata.All(row => !string.IsNullOrWhiteSpace(row.displayName)),
+          "phase_d_character_sync_locale_missing");
+      Require(locales.Pins.All(pair => Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(pair.Key))) == pair.Value),
+          "phase_d_character_sync_locale_changed");
+      Directory.CreateDirectory(output);
+      File.WriteAllBytes(Path.Combine(output, "StaticData.zip"), archive);
+      File.WriteAllText(Path.Combine(output, "metadata.private.json"), System.Text.Json.JsonSerializer.Serialize(metadata));
+    });
+  }
+  finally { CryptographicOperations.ZeroMemory(secret); }
+  return;
+}
+if (options.ContainsKey("register-common-boss-database") || options.ContainsKey("adopt-legacy-boss-database"))
+{
+  var environment = RequiredText(options, "connection-string-env");
+  var connection = Environment.GetEnvironmentVariable(environment);
+  Require(!string.IsNullOrWhiteSpace(connection), "phase_d_database_environment_missing");
+  var binding = options.ContainsKey("adopt-legacy-boss-database")
+      ? await CommonBossDatabase.AdoptLegacy(Required(options, "boss-variant-profile"), connection!)
+      : await CommonBossDatabase.Register(Required(options, "delivery-path"), RequiredText(options, "delivery-sha256"),
+            Required(options, "boss-variant-profile"), connection!,
+            options.TryGetValue("previous-boss-variant-profile", out var previousProfile) ? previousProfile : null);
+  Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { statusCode = "registered", seasonNumber = binding.SeasonNumber,
+      raidSnapshotUid = binding.RaidSnapshotUid, raidSnapshotSha256 = Convert.ToHexString(binding.RaidSnapshotSha256).ToLowerInvariant() }));
+  return;
+}
+if (options.ContainsKey("verify-common-boss-database"))
+{
+  var connection = Environment.GetEnvironmentVariable(RequiredText(options, "connection-string-env"));
+  Require(!string.IsNullOrWhiteSpace(connection), "phase_d_database_environment_missing");
+  await CommonBossDatabase.Verify(await BossRuntimeVariantProfile.LoadAsync(Required(options, "boss-variant-profile")), connection!);
+  Console.WriteLine("{\"statusCode\":\"registered\"}"); return;
+}
+if (options.ContainsKey("register-common-native-fx-baseline"))
+{
+  var pin = CommonNativeFxBaseline.Register(new CommonFilePin(Required(options, "store-path"),
+      long.Parse(RequiredText(options, "store-length"), CultureInfo.InvariantCulture),
+      RequiredText(options, "store-sha256")), RequiredText(options, "installation-id"), RequiredText(options, "client-version"));
+  Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(pin, CommonDeliveryFiles.Json)); return;
+}
+if (options.ContainsKey("validate-common-boss-delivery") || options.ContainsKey("stage-common-boss-delivery"))
+{
+  var descriptor = Required(options, "delivery-path");
+  var hash = RequiredText(options, "delivery-sha256");
+  var profilePath = Required(options, "boss-variant-profile");
+  var weakness = RequiredText(options, "weakness-code");
+  object? result;
+  if (options.ContainsKey("stage-common-boss-delivery"))
+    result = await CommonBossDelivery.Stage(descriptor, hash, profilePath, weakness, Required(options, "launch-root"));
+  else
+  {
+    var prepared = await CommonBossDelivery.Validate(descriptor, hash, profilePath, weakness);
+    if (options.ContainsKey("require-native-fx-baseline") && prepared.Patches.Length > 0)
+      _ = CommonNativeFxBaseline.Load(prepared.Plan.NativeStore!);
+    result = new { statusCode = "prepared", profileSha256 = prepared.Profile.Sha256, nativePatchCount = prepared.Patches.Length };
+  }
+  Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(result)); return;
+}
+if (options.ContainsKey("apply-common-native-fx"))
+{
+  NikkeLocalLab.Automation.ExecutionAssetRetirement.Retire(Required(options, "launch-root"),
+      RequiredText(options, "expected-bundle-sha256"), "", CommonNativeFx.Apply, applying: true);
+  Console.WriteLine("{\"statusCode\":\"native_fx_applied\"}"); return;
+}
+if (options.ContainsKey("verify-boss-shield-patterns"))
+{
+  BossShieldPatternChecks.Run();
+  return;
+}
 if (options.ContainsKey("retire-execution-fx"))
 {
   NikkeLocalLab.Automation.ExecutionAssetRetirement.Retire(Required(options, "launch-root"),
-      RequiredText(options, "expected-bundle-sha256"), RequiredText(options, "expected-termination-sha256"));
+      RequiredText(options, "expected-bundle-sha256"), RequiredText(options, "expected-termination-sha256"), CommonNativeFx.Restore);
   Console.WriteLine("{\"contractId\":\"nll/execution-fx-cleanup/v1\",\"statusCode\":\"private_delivery_retired\"}");
   return;
 }
@@ -216,6 +306,25 @@ if (options.ContainsKey("inspect-cube-catalog"))
 if (options.ContainsKey("verify-boss-season-catalog"))
 {
   Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(BossSeasonCatalogChecks.Verify()));
+  return;
+}
+if (options.ContainsKey("export-local-boss-season-catalog"))
+{
+  AssetDownloadUtil.ConfigureOfficialOutbound(false);
+  BossSeasonCatalog.ExportLocal(Required(options, "static-pack"), Required(options, "game-config"),
+      Required(options, "locale-root"), Required(options, "export-local-boss-season-catalog"));
+  return;
+}
+if (options.ContainsKey("verify-union-raid-catalog"))
+{
+  Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(UnionRaidCatalogChecks.Verify()));
+  return;
+}
+if (options.ContainsKey("export-union-raid-catalog"))
+{
+  AssetDownloadUtil.ConfigureOfficialOutbound(false);
+  UnionRaidCatalog.Export(Required(options, "static-pack"), Required(options, "game-config"),
+      Required(options, "locale-root"), Required(options, "export-union-raid-catalog"));
   return;
 }
 if (options.ContainsKey("export-boss-season-catalog"))
@@ -405,6 +514,7 @@ try
   var user = core.Users[0];
   var sourceProgression = RuntimeProgressionSnapshot.Capture(user);
   Materialize(user, candidate, lobby, mappings);
+  await LocalUnionProjection.RestoreAsync(user, dataSource, accountUid, Required(options, "source-static-pack"), connectionEnvironmentVariable);
   var preferenceCharacterUids = new Dictionary<long, string>();
   foreach (var character in user.Characters)
   {
@@ -416,6 +526,11 @@ try
       new NikkeLocalLab.Persistence.PostgreSql.RuntimePreferencesKey(accountUid,
           RequiredText(options, "client-build-code"), Convert.FromHexString(RequiredText(options, "client-executable-sha256"))),
       candidate.BaseRevisions.RevisionSetSha256, RequiredText(options, "weakness-code"), preferenceCharacterUids);
+  user.LocalPersistenceBinding!.DamageCaptureConnectionEnvironmentVariable = connectionEnvironmentVariable;
+  user.LocalPersistenceBinding.DamageCaptureSoloSeason = int.Parse(RequiredText(options, "season-number"), CultureInfo.InvariantCulture);
+  user.LocalPersistenceBinding.DamageCaptureClientBuild = RequiredText(options, "client-build-code");
+  if (user.LocalUnionRaid is { SeasonNumber: > 0, NormalCleared: true })
+    EpinelPS.LobbyServer.Guild.LocalUnionTeams.Restore(user);
   var operationalSoloRaidBinding =
       await ClassicSoloRaidRuntimeState.ResolveOperationalBindingAsync(
           dataSource,

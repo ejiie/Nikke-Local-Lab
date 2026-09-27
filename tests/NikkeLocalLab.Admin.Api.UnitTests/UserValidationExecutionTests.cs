@@ -6,6 +6,39 @@ namespace NikkeLocalLab.Admin.Api.UnitTests;
 public sealed class UserValidationExecutionTests
 {
   [Theory]
+  [InlineData("quick_check", "quick_check")]
+  [InlineData("deep_check", "deep_check")]
+  [InlineData("bootstrap_check", "bootstrap_check")]
+  [InlineData("native_store_apply", "deep_check")]
+  [InlineData("shared_state_recheck", "quick_check")]
+  [InlineData("game_start", "game_start")]
+  [InlineData("running", "running")]
+  [InlineData("cleanup", "cleanup")]
+  [InlineData("complete", "status_unknown")]
+  public async Task ProgressDoesNotPromoteParentLivenessOrTerminalMarkersToAcceptance(string stage, string status)
+  {
+    using var fixture = new ExecutionFixture(); var request = fixture.Request();
+    await fixture.Service.BeginAsync(request, default);
+    await fixture.Launcher.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    var root = fixture.Run + @"\ui-actions\" + request.OperationUid;
+    fixture.Save(root + @"\owner.json", new { state = "running", executablePath = fixture.Launcher.Info!.FileName });
+    Assert.Equal("status_unknown", fixture.Service.Get(29, "water").StatusCode);
+    var progress = new UserValidationProgress("nll/user-validation-preflight-progress/v1", request.EntrySha256, "Start", stage,
+        1, "started", DateTimeOffset.UtcNow.AddSeconds(-1), DateTimeOffset.UtcNow, 1000, 2048, 1024,
+        "instrumented_parent_hashes_and_store", false);
+    fixture.Save(root + @"\preflight-progress.json", progress);
+    var view = fixture.Service.Get(29, "water");
+    Assert.Equal(status, view.StatusCode); Assert.False(view.ActualGameAcceptanceClaimed);
+    Assert.Equal(1024, view.Progress!.CompletedReadBytes);
+    fixture.Save(root + @"\preflight-progress.json", progress with { EntrySha256 = new string('0', 64) });
+    Assert.ThrowsAny<Exception>(() => fixture.Service.Get(29, "water"));
+    fixture.Save(root + @"\preflight-progress.json", progress with { ActualGameAcceptanceClaimed = true });
+    Assert.ThrowsAny<Exception>(() => fixture.Service.Get(29, "water"));
+    fixture.Save(root + @"\preflight-progress.json", progress);
+    await fixture.Finish();
+  }
+
+  [Theory]
   [InlineData("Start", "invalid")]
   [InlineData("unknown", "water")]
   public async Task InvalidActionsNeverLaunchAProcess(string mode, string weakness)
@@ -28,9 +61,16 @@ public sealed class UserValidationExecutionTests
     Assert.True(info.UseShellExecute); Assert.Equal("runas", info.Verb); Assert.Equal(ProcessWindowStyle.Hidden, info.WindowStyle);
     Assert.Contains("Start", info.ArgumentList); Assert.Contains(request.EntrySha256, info.ArgumentList);
     Assert.False(info.RedirectStandardOutput); Assert.DoesNotContain("-Command", info.ArgumentList);
+    var runner = info.ArgumentList[info.ArgumentList.IndexOf("-File") + 1];
+    Assert.Equal("diagnostic-runner.ps1", Path.GetFileName(runner));
+    Assert.Contains("controller-diagnostic.json", await File.ReadAllTextAsync(runner));
+    Assert.Contains("-ControllerPath", info.ArgumentList);
     var other = request with { OperationUid = Guid.NewGuid(), WeaknessCode = "fire", EntrySha256 = fixture.Delivery.Service.Get(29).Selections.Single(s => s.WeaknessCode == "fire").EntrySha256 };
     await Assert.ThrowsAsync<ApiRequestException>(() => fixture.Service.BeginAsync(other, default));
     await fixture.Finish(); Assert.Equal("failed", fixture.Service.Get(29, "water").StatusCode);
+    using var diagnostic = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(Path.GetDirectoryName(runner)!, "process-exit.json")));
+    Assert.Equal(1, diagnostic.RootElement.GetProperty("exitCode").GetInt32());
+    Assert.False(diagnostic.RootElement.GetProperty("controllerDiagnosticPresent").GetBoolean());
   }
   [Fact]
   public async Task UacCancellationIsKnownNoStartAndAllowsANewExplicitAttempt()
@@ -85,6 +125,27 @@ public sealed class UserValidationExecutionTests
     await Assert.ThrowsAsync<JsonException>(() => new UserValidationProcessLauncher().RunAsync(new() { FileName = "not-an-executable", UseShellExecute = false }, path));
     Assert.False(File.Exists(path));
   }
+  [Fact]
+  public void LaunchDiagnosticPreservesSystemCodeWithoutExceptionMessageOrTarget()
+  {
+    var error = new System.ComponentModel.Win32Exception(5, "SYNTHETIC_SECRET_MUST_NOT_APPEAR");
+    var text = JsonSerializer.Serialize(UserValidationExecution.ErrorDiagnostic("process_start", error));
+    Assert.DoesNotContain("SYNTHETIC_SECRET_MUST_NOT_APPEAR", text);
+    using var value = JsonDocument.Parse(text);
+    Assert.Equal(5, value.RootElement.GetProperty("nativeErrorCode").GetInt32());
+    Assert.Equal(error.HResult, value.RootElement.GetProperty("hResult").GetInt32());
+  }
+  [Fact]
+  public async Task UnexpectedCompletionErrorIsPersistedWithoutRawMessage()
+  {
+    using var fixture = new ExecutionFixture(); fixture.Launcher.Unexpected = true;
+    var request = fixture.Request();
+    await fixture.Service.BeginAsync(request, default); await fixture.Finish();
+    Assert.Equal("status_unknown", fixture.Service.Get(29, "water").StatusCode);
+    var path = fixture.Map(fixture.Run + @"\ui-actions\" + request.OperationUid.ToString("D") + @"\action-error.json");
+    var text = await File.ReadAllTextAsync(path);
+    Assert.Contains("System.IO.IOException", text); Assert.DoesNotContain("SYNTHETIC_SECRET_MUST_NOT_APPEAR", text);
+  }
   private sealed class ExecutionFixture : IDisposable
   {
     private readonly string root = Path.Combine(Path.GetTempPath(), "nll-validation-actions-" + Guid.NewGuid().ToString("N"));
@@ -110,7 +171,8 @@ public sealed class UserValidationExecutionTests
     }
     internal void Save(string path, object value)
     {
-      path = Map(path); Directory.CreateDirectory(Path.GetDirectoryName(path)!); File.WriteAllBytes(path, JsonSerializer.SerializeToUtf8Bytes(value));
+      path = Map(path); Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+      File.WriteAllBytes(path, JsonSerializer.SerializeToUtf8Bytes(value, FilesystemBossSeasonCatalogService.JsonOptions));
     }
     internal async Task Finish()
     {
@@ -119,7 +181,17 @@ public sealed class UserValidationExecutionTests
       while (deadline.Elapsed < TimeSpan.FromSeconds(5))
       {
         if (Service.Get(29, "water").StatusCode is not ("running" or "awaiting_user_approval") &&
-            Directory.GetFiles(root, "result.json", SearchOption.AllDirectories).Length == Launcher.Starts) return;
+            Directory.GetFiles(root, "result.json", SearchOption.AllDirectories).Length == Launcher.Starts)
+        {
+          // The result is durable before the worker finally releases its lease.
+          // Observe that release before fixture disposal or a follow-up request.
+          try
+          {
+            using var settled = new FileStream(Path.Combine(root, ".ui-action.lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            return;
+          }
+          catch (IOException) { }
+        }
         await Task.Delay(20);
       }
       throw new TimeoutException("synthetic_action_did_not_settle");
@@ -134,7 +206,7 @@ public sealed class UserValidationExecutionTests
   }
   private sealed class FakeLauncher : IUserValidationProcessLauncher
   {
-    internal int Starts; internal bool Cancel;
+    internal int Starts; internal bool Cancel; internal bool Unexpected;
     internal ProcessStartInfo? Info;
     internal TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskCompletionSource Done = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -144,6 +216,7 @@ public sealed class UserValidationExecutionTests
       Starts++; Info = info; Entered.TrySetResult(); await Done.Task;
       await PhaseDAtomicFile.WriteAsync(ownerPath, new UserValidationOwner("exited", info.FileName), FilesystemBossSeasonCatalogService.JsonOptions);
       if (Cancel) throw new PhaseDExecutionException("boss_validation_uac_cancelled");
+      if (Unexpected) throw new IOException("SYNTHETIC_SECRET_MUST_NOT_APPEAR");
       return 1;
     }
     public bool IsUnsettled(string ownerPath, string executablePath)

@@ -1,23 +1,27 @@
-"""Cache operator-approved enikk.app boss presentation PNGs; never game resources.
+"""Cache exact Enikk boss PNGs, falling back to installed official bundles.
 
-Exact MonsterImage names from a sealed season snapshot select the public images.
-There are no credentials, official endpoints, redirects, live-client requests,
-runtime installation, guessed same-boss mappings or native admission claims.
+Exact MonsterImage references select images; source files are read-only.
+No client launch, runtime installation or guessed boss mappings.
 """
 import argparse
 import copy
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
 import re
 import struct
 import sys
-import urllib.error
-import urllib.request
+import io
+import subprocess
+import tempfile
+import time
 import zlib
 
 LIMIT = 20 * 1024 * 1024
+PROVIDER = "enikk_then_local_game_dp/v1"
 
 
 def require(value, code):
@@ -86,31 +90,118 @@ def png(data):
     require(False, "png_invalid")
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, request, fp, code, msg, headers, newurl):
-        return None
+class LocalImages:
+    def __init__(self, root, hints_pin, loader):
+        self.root, self.loader, self.environments = plain(root), loader, {}
+        manifest = json.loads((self.root / "images.private.json").read_bytes())
+        require(manifest.get("contractId") == "nll/local-boss-image-bundles/v1" and
+                manifest.get("hintsSha256") == hints_pin, "local_binding_invalid")
+        self.rows = {}
+        for row in manifest["images"]:
+            name = row["name"]
+            require(re.fullmatch(r"full_[A-Za-z0-9_]{1,128}", name) and name not in self.rows, "local_binding_invalid")
+            self.rows[name] = row
+
+    def __call__(self, name):
+        row = self.rows.get(name)
+        require(row is not None and row.get("statusCode") == "resolved", "not_installed")
+        pin, leaf = row.get("sha256", ""), row.get("bundle", "")
+        require(re.fullmatch(r"[a-f0-9]{64}", pin) and leaf == pin + ".bundle", "local_binding_invalid")
+        if pin not in self.environments:
+            path = plain(self.root / leaf)
+            require(path.is_file() and 0 < path.stat().st_size <= 64 * 1024 * 1024, "bundle_invalid")
+            data = path.read_bytes()
+            require(digest(data) == pin, "bundle_changed")
+            self.environments[pin] = self.loader(data)
+        matches = []
+        for obj in self.environments[pin].objects:
+            if obj.type.name == "Texture2D":
+                texture = obj.read()
+                if texture.m_Name == name:
+                    matches.append(texture)
+        require(len(matches) == 1, "texture_unresolved")
+        # The full texture retains the game's transparent canvas. A cropped
+        # Sprite would change framing across bosses in the existing UI cards.
+        image = matches[0].image
+        require(0 < image.width <= 8192 and 0 < image.height <= 8192 and
+                image.width * image.height <= 33554432, "png_dimensions_invalid")
+        output = io.BytesIO()
+        image.save(output, format="PNG")
+        return output.getvalue()
 
 
-def fetch(name):
+def fetch_enikk(name):
     require(re.fullmatch(r"full_[A-Za-z0-9_]{1,128}", name), "name_invalid")
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
-    request = urllib.request.Request("https://enikk.app/bosses/" + name + ".png",
-                                     headers={"User-Agent": "NLL-Boss-Presentation/1.0", "Accept": "image/png"})
+    # Fixed public image host only: no credentials, cookies, proxies or redirects.
+    connection = http.client.HTTPSConnection("enikk.app", timeout=5)
     try:
-        with opener.open(request, timeout=30) as response:
-            require(response.status == 200, "http_failed")
-            length = response.headers.get("Content-Length")
-            require(length is None or (length.isdecimal() and int(length) <= LIMIT), "response_too_large")
-            data = response.read(LIMIT + 1)
-            png(data)
-            return data
-    except urllib.error.HTTPError as error:
-        raise ValueError("boss_image_not_found" if error.code == 404 else "boss_image_http_failed") from None
-    except (urllib.error.URLError, TimeoutError, OSError):
-        raise ValueError("boss_image_transport_failed") from None
+        deadline = time.monotonic() + 10
+        connection.request("GET", "/bosses/" + name + ".png", headers={"Accept": "image/png"})
+        response = connection.getresponse()
+        require(response.status == 200, "enikk_missing" if response.status == 404 else "enikk_unavailable")
+        content = bytearray()
+        while len(content) <= LIMIT:
+            remaining = deadline - time.monotonic()
+            require(remaining > 0, "enikk_unavailable")
+            if connection.sock:
+                connection.sock.settimeout(min(5, remaining))
+            part = response.read1(min(65536, LIMIT + 1 - len(content)))
+            if not part:
+                break
+            content.extend(part)
+            require(len(content) <= LIMIT, "png_invalid")
+        data = bytes(content)
+        png(data)
+        return data
+    except (OSError, http.client.HTTPException):
+        raise ValueError("boss_image_enikk_unavailable") from None
+    finally:
+        connection.close()
 
 
-def materialize(catalog_path, catalog_pin, hints_path, hints_pin, output, download=fetch):
+class EnikkFirstImages:
+    provider_code = PROVIDER
+
+    def __init__(self, local_factory, remote=fetch_enikk):
+        self.local_factory, self.remote = local_factory, remote
+        self.cached, self.sources, self.remote_failures = {}, {}, {}
+        self.local = None
+
+    def prepare(self, names):
+        def attempt(name):
+            try:
+                data = self.remote(name)
+                png(data)
+                return name, data, None
+            except ValueError as error:
+                require(re.fullmatch(r"boss_image_[a-z_]+", str(error)), "provider_failed")
+                return name, None, str(error)
+        missing = []
+        # A unavailable host must not consume the entire five-minute sync window
+        # before local extraction. Bound concurrent public GETs to four.
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for name, data, failure in pool.map(attempt, sorted(set(names))):
+                if data is not None:
+                    self.cached[name] = data
+                    self.sources[name] = "enikk"
+                else:
+                    self.remote_failures[name] = failure
+                    missing.append(name)
+        # Export/decode local bundles only for exact names not obtained remotely.
+        if missing:
+            self.local = self.local_factory(missing)
+
+    def __call__(self, name):
+        if name in self.cached:
+            return self.cached[name]
+        require(self.local is not None, "not_prepared")
+        data = self.local(name)
+        png(data)
+        self.sources[name] = "local_game_dp"
+        return data
+
+
+def materialize(catalog_path, catalog_pin, hints_path, hints_pin, output, extract):
     catalog_path, hints_path, output = plain(catalog_path), plain(hints_path), plain(output)
     require(not os.path.lexists(output) and output.parent.is_dir() and
             all(source.parent != output and source.parent not in output.parents and output not in source.parents
@@ -135,10 +226,12 @@ def materialize(catalog_path, catalog_pin, hints_path, hints_pin, output, downlo
     output.mkdir()
     image_root = output / "images"
     image_root.mkdir()
+    if hasattr(extract, "prepare"):
+        extract.prepare(names.values())
     resolved, failures, payloads, observations = {}, {}, {}, []
     for name in sorted(set(names.values())):
         try:
-            data = download(name)
+            data = extract(name)
             png(data)
             pin = digest(data)
             if pin not in payloads:
@@ -146,7 +239,7 @@ def materialize(catalog_path, catalog_pin, hints_path, hints_pin, output, downlo
                 payloads[pin] = len(data)
             resolved[name] = pin
         except ValueError as error:
-            require(re.fullmatch(r"boss_image_[a-z_]+", str(error)), "download_failed")
+            require(re.fullmatch(r"boss_image_[a-z_]+", str(error)), "extraction_failed")
             failures[name] = str(error)
     result = copy.deepcopy(catalog)
     for row in result["seasons"]:
@@ -156,7 +249,9 @@ def materialize(catalog_path, catalog_pin, hints_path, hints_pin, output, downlo
         if pin:
             row.update(imageStatusCode="resolved", imageSha256=pin)
         observations.append({"seasonNumber": season, "statusCode": "resolved" if pin else "unresolved",
-                             "failureCode": failures.get(name) if name else "boss_image_reference_unresolved"})
+                             "failureCode": failures.get(name) if name else "boss_image_reference_unresolved",
+                             "providerCode": getattr(extract, "sources", {}).get(name, "local_game_dp" if pin else None),
+                             "primaryFailureCode": getattr(extract, "remote_failures", {}).get(name)})
     read(catalog_path, catalog_pin)
     read(hints_path, hints_pin)
     for pin, length in payloads.items():
@@ -164,12 +259,14 @@ def materialize(catalog_path, catalog_pin, hints_path, hints_pin, output, downlo
         require(len(data) == length and digest(data) == pin, "output_drifted")
     raw = encode(result)
     new_file(output / "catalog.json", raw)
-    # Private provenance only; no original key or remote URL in the public view.
+    # Private provenance only; no original key in the public view.
     new_file(output / "bindings.private.json", encode({"contractId": "nll/private-boss-presentation-bindings/v1",
-             "hintsSha256": hints_pin, "providerCode": "enikk_app", "bindings": [
-                 {"seasonNumber": season, "imageName": name, "imageSha256": resolved.get(name)} for season, name in names.items()]}))
+             "hintsSha256": hints_pin, "providerCode": getattr(extract, "provider_code", "local_game_dp"), "bindings": [
+                 {"seasonNumber": season, "imageName": name, "imageSha256": resolved.get(name),
+                  "providerCode": getattr(extract, "sources", {}).get(name, "local_game_dp" if name in resolved else None)}
+                 for season, name in names.items()]}))
     receipt = {"contractId": "nll/boss-catalog-images/v1", "sourceCatalogSha256": catalog_pin,
-               "sourceHintsSha256": hints_pin, "catalogSha256": digest(raw), "providerCode": "enikk_app",
+               "sourceHintsSha256": hints_pin, "catalogSha256": digest(raw), "providerCode": getattr(extract, "provider_code", "local_game_dp"),
                "resolvedSeasonCount": sum(row["statusCode"] == "resolved" for row in observations),
                "requestedObjectCount": len(set(names.values())), "uniqueImageCount": len(payloads),
                "images": observations, "officialServiceRequested": False, "nativeClientExecuted": False,
@@ -180,14 +277,43 @@ def materialize(catalog_path, catalog_pin, hints_path, hints_pin, output, downlo
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("catalog", "catalog-sha256", "hints", "hints-sha256", "output-root"):
+    for name in ("catalog", "catalog-sha256", "hints", "hints-sha256", "output-root",
+                 "local-source", "catalog-tool", "catalog-tool-sha256", "dotnet", "unitypy-root"):
         parser.add_argument("--" + name, required=True)
     args = parser.parse_args()
     try:
         output = plain(args.output_root)
         artifacts = plain(Path(__file__).parent.parent / "artifacts")
         require(artifacts in output.parents, "output_scope_invalid")
-        receipt = materialize(args.catalog, args.catalog_sha256, args.hints, args.hints_sha256, output)
+        tool = plain(args.catalog_tool)
+        require(digest(tool.read_bytes()) == args.catalog_tool_sha256, "tool_changed")
+        sys.path.insert(0, str(plain(args.unitypy_root)))
+        import UnityPy
+        # Temporary native bundles are deleted after PNG creation, including
+        # failed extraction. Only UI images and source-free receipts persist.
+        with tempfile.TemporaryDirectory(prefix="boss-images-", dir=output.parent) as temporary:
+            def local_factory(missing):
+                hints = read(args.hints, args.hints_sha256)
+                hints["images"] = [row for row in hints["images"] if row["monsterImage"] in missing]
+                subset = encode(hints)
+                subset_path = Path(temporary) / "hints.private.json"
+                new_file(subset_path, subset)
+                bundles = Path(temporary) / "bundles"
+                try:
+                    result = subprocess.run([args.dotnet, str(tool), "export-boss-image-bundles", args.local_source,
+                                             str(subset_path), digest(subset), str(bundles)],
+                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
+                    if result.returncode == 0:
+                        return LocalImages(bundles, digest(subset), UnityPy.load)
+                except subprocess.TimeoutExpired:
+                    pass
+                # Missing/incomplete install must not discard the old UI image.
+                # The caller merges unresolved rows with its previous catalog.
+                def unavailable(_):
+                    raise ValueError("boss_image_local_source_unavailable")
+                return unavailable
+            extract = EnikkFirstImages(local_factory)
+            receipt = materialize(args.catalog, args.catalog_sha256, args.hints, args.hints_sha256, output, extract)
         print(json.dumps({key: value for key, value in receipt.items() if key != "images"}))
         return 0
     except Exception as error:

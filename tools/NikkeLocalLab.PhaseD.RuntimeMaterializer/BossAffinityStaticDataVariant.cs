@@ -304,7 +304,9 @@ internal static class BossAffinityStaticDataVariant
       shieldFxVariantApplied = shieldFxVariantRequired,
       // StaticData prefab selection is not an installed/verified client bundle overlay.
       shieldFxTransformStatusCode = profile.ShieldFxTransformNormalization?.TargetBossElementCodes
-          .Contains(targetBossElementCode, StringComparer.Ordinal) == true
+          .Contains(targetBossElementCode, StringComparer.Ordinal) == true ||
+          profile.ShieldFxPreparation?.Variants.Any(row => row.BossElementCode == targetBossElementCode &&
+              row.OperationCode == "adjust_candidate") == true
           ? "pending_isolated_asset_overlay" : "not_required",
       runtimeAdmissionStatusCode = "not_assessed",
       shieldFxMappingSetSha256 = targetShieldFxVariant?.MappingSetSha256,

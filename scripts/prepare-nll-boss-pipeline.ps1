@@ -68,7 +68,8 @@ $seed = Join-Path $repository 'tests\fixtures\synthetic\boss-variant-discovery-s
 foreach ($path in @($BundlePath, $CatalogPath, $staticPack, $configPath, $PythonPath, $shell, $worker, $seed, $PSCommandPath)) { Add-Pin $path }
 foreach ($name in @('invoke-nll-boss-onboarding.ps1', 'Nll.BossPublication.ps1', 'inspect-nll-boss-behavior-assets.py',
         'materialize-nll-boss-runtime-profile.py', 'materialize-nll-shield-fx-candidate.py',
-        'materialize-nll-shield-fx-transform-variant.py', 'verify-nll-boss-onboarding-candidate.py')) {
+        'materialize-nll-shield-fx-transform-variant.py', 'verify-nll-boss-onboarding-candidate.py',
+        'nll-shield-fx-assessment.py', 'nll-shield-fx-recipes.py', 'Nll.CommonBossDelivery.ps1')) {
     Add-Pin (Join-Path $PSScriptRoot $name)
 }
 $native = $null
@@ -79,7 +80,8 @@ if ($NativeInputPlanPath -or $ExpectedNativeInputPlanSha256 -or $CatalogToolPath
     Require ((Hash $NativeInputPlanPath) -ceq $ExpectedNativeInputPlanSha256) 'native_plan_drifted'
     $dotnet = Plain ((Get-Command dotnet -CommandType Application).Source)
     foreach ($path in @($NativeInputPlanPath, $CatalogToolPath, $dotnet)) { Add-Pin $path }
-    foreach ($name in @('Nll.BossNativeCandidate.ps1', 'stage-nll-native-fx.py', 'materialize-nll-native-fx-layout.py')) {
+    foreach ($name in @('Nll.BossNativeCandidate.ps1', 'stage-nll-native-fx.py', 'materialize-nll-native-fx-layout.py',
+            'acquire-nll-boss-fx.py', 'acquire-nll-boss-behavior.py')) {
         Add-Pin (Join-Path $PSScriptRoot $name)
     }
     $inventoryRoots += Split-Path -Parent $CatalogToolPath
@@ -106,6 +108,12 @@ $configuration = [ordered]@{
     unityPyRoot = $UnityPyRoot; allowLegacyPublication = [bool]$AllowLegacyPublication
     nativePipeline = $native
     inputPins = @($pins.Keys | Sort-Object | ForEach-Object { [ordered]@{ path = $_; sha256 = $pins[$_] } })
+}
+if ($bundle.PSObject.Properties.Name -contains 'commonBossRegistryRoot') {
+    Require ($bundle.commonBossRegistryRoot -ceq 'C:\NLL\RuntimeInputs\CommonBossExecution\profiles') 'common_registry_invalid'
+    $configuration.registryRoot = $bundle.commonBossRegistryRoot
+    $configuration.commonDelivery = [ordered]@{ nativeStore = $bundle.commonNativeStore }
+    $configuration.databaseConnectionStringEnvironmentVariable = 'NIKKE_LAB_DB'
 }
 $bytes = [Text.UTF8Encoding]::new($false).GetBytes(($configuration | ConvertTo-Json -Depth 8) + "`n")
 Require ($bytes.Length -le 1048576) 'configuration_too_large'

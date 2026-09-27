@@ -1,0 +1,57 @@
+--- a/EpinelPS/EpinelPS.csproj
++++ b/EpinelPS/EpinelPS.csproj
+@@ -85,6 +85,7 @@
+ 	  <Compile Include="..\..\..\tools\Phase3B2\EpinelResourceProbe\ResourceProbeExecution.cs" Link="Execution\ResourceProbeExecution.cs" />
+ 		<Compile Include="..\..\..\tools\Phase3B2\EpinelUserValidation\UserValidationProfileVersion.cs" Link="SoloRaidSelection\UserValidationProfileVersion.cs" />
+ 		<Compile Include="..\..\..\tools\Phase3B2\EpinelBattleStatistics\*.cs" Link="BattleStatistics\%(Filename)%(Extension)" />
++		<Compile Include="..\..\..\tools\Phase3B2\BattleLogAnalysis\*.cs" Link="BattleLog\%(Filename)%(Extension)" />
+ 	</ItemGroup>
+ 
+ 	<ItemGroup>
+--- a/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs
++++ b/EpinelPS/LobbyServer/Soloraid/SoloRaidHelper.cs
+@@ -478,6 +478,14 @@
+ 
+         if (levelData is null) return false;
+ 
++        var requestHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Google.Protobuf.MessageExtensions.ToByteArray(req)));
++        var receipt = user.SoloRaidData[raidId].BattleHistory.LastOrDefault(entry =>
++            entry.Type == SoloRaidType.Practice && entry.RunUid == levelData.LocalRunUid && entry.Log.AcceptedRequestSha256 == requestHash);
++        if (receipt is not null && receipt.DamageStatistics is null && user.LocalPersistenceBinding is { DamageCaptureSoloSeason: > 0 } binding)
++            receipt.DamageStatistics = RaidDamageObservation.Capture(user, req.AntiCheatBattleData, receipt.BattleUid,
++                "solo_challenge_practice", binding.DamageCaptureSoloSeason, req.RaidLevel, 1, receipt.Ordinal,
++                req.Damage, receipt.Log.Damage, receipt.AcceptedAtUtc!.Value, receipt.RunUid);
++
+         response.Info = new NetPracticeSoloRaid
+         {
+             Level = req.RaidLevel,
+--- a/tests/EpinelPS.SelectedManager.Tests/RaidDamageCaptureTests.cs
++++ b/tests/EpinelPS.SelectedManager.Tests/RaidDamageCaptureTests.cs
+@@ -10,6 +10,27 @@
+ 
+ public sealed class RaidDamageCaptureTests
+ {
++    [Fact]
++    public void PracticeCapturesAcceptedReportOnceAndPreservesItsKeyAcrossSerialization()
++    {
++        var user = ClassicRouteTestFixture.ActiveUser();
++        user.LocalPersistenceBinding = new() { AccountUid = Guid.NewGuid(), DamageCaptureSoloSeason = 2 };
++        var raid = user.SoloRaidData[ClassicRouteTestFixture.TargetManager];
++        foreach (var level in raid.SoloRaidLevels) level.Type = SoloRaidType.Practice;
++        var trial = ClassicRouteTestFixture.DamageRequest(44);
++        var req = new ReqSetSoloRaidPracticeDamage { RaidLevel = 8, Damage = trial.Damage, AntiCheatBattleData = trial.AntiCheatBattleData };
++        req.AntiCheatBattleData.Characters.Add(new NetAntiCheatCharacter { Csn = 1, Slot = 1, CharacterSpec = new() { Level = 1 }, Attack = new() { TotalDamage = 900 } });
++        var response = new ResSetSoloRaidPracticeDamage();
++        Assert.True(SoloRaidHelper.SetDamagePractice(user, ref response, req, ClassicRouteTestFixture.TargetManager));
++        Assert.True(SoloRaidHelper.SetDamagePractice(user, ref response, req, ClassicRouteTestFixture.TargetManager));
++        var receipt = Assert.Single(raid.BattleHistory);
++        Assert.Equal("solo_challenge_practice", receipt.DamageStatistics!.Mode);
++        Assert.Equal(receipt.BattleUid, receipt.DamageStatistics.BattleUid);
++        Assert.Equal(900, receipt.DamageStatistics.Characters[0].Attack!.TotalDamage);
++        var restored = JsonConvert.DeserializeObject<RaidDamageObservation>(JsonConvert.SerializeObject(receipt.DamageStatistics))!;
++        Assert.Equal("missing", restored.ProjectileAnalysis!.Status);
++        Assert.Equal(receipt.BattleUid, restored.BattleUid);
++    }
+     [Fact]
+     public void NumericProjectionPreservesInt64NullAndZeroWithoutSourceIdentifiers()
+     {

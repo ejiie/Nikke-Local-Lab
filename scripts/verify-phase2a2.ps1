@@ -51,6 +51,8 @@ Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/workspa
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/raid-launch-status.test.cjs"))
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/boss-seasons.test.cjs"))
 Invoke-Checked node @("--test", (Join-Path $RepositoryRoot "tests/editor/user-validation.test.cjs"))
+Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-user-validation-diagnostics.ps1'))
+Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-user-validation-preflight.ps1'))
 $BossPipelineChecks = Join-Path $RepositoryRoot 'tools/NikkeLocalLab.BossPipeline.Checks/NikkeLocalLab.BossPipeline.Checks.csproj'
 Invoke-Checked dotnet @('restore', $BossPipelineChecks, '--locked-mode')
 Invoke-Checked dotnet @('build', $BossPipelineChecks, '-c', 'Release', '--no-restore')
@@ -61,6 +63,11 @@ Invoke-Checked dotnet @('restore', $ValidationChecker, '--locked-mode')
 Invoke-Checked dotnet @('build', $ValidationChecker, '-c', 'Release', '--no-restore')
 Invoke-Checked dotnet @('format', $ValidationChecker, '--verify-no-changes', '--no-restore')
 Write-Output 'User validation compiled-plan checker source built; no game, UAC or private inputs used in CI.'
+$GenerationProbe = Join-Path $RepositoryRoot 'tools/Phase3B2/UserValidationGenerationProbe/NikkeLocalLab.UserValidationGenerationProbe.csproj'
+Invoke-Checked dotnet @('restore', $GenerationProbe, '--locked-mode')
+Invoke-Checked dotnet @('build', $GenerationProbe, '-c', 'Release', '--no-restore')
+Invoke-Checked dotnet @('format', $GenerationProbe, '--verify-no-changes', '--no-restore')
+Write-Output 'Generation feasibility probe source built; elevated NTFS experiments are a separate synthetic local gate.'
 Invoke-Checked node @((Join-Path $ScriptDirectory "test-nll-phase-d-lifecycle-ui.cjs"))
 $MaterializerChecks = Join-Path $RepositoryRoot 'tests/NikkeLocalLab.Materializer.BehaviorChecks/NikkeLocalLab.Materializer.BehaviorChecks.csproj'
 # Source-only CI compiles the checker without Epinel/SDK/client inputs. Actual
@@ -68,6 +75,8 @@ $MaterializerChecks = Join-Path $RepositoryRoot 'tests/NikkeLocalLab.Materialize
 Invoke-Checked dotnet @('restore', $MaterializerChecks, '--locked-mode')
 Invoke-Checked dotnet @('build', $MaterializerChecks, '-c', 'Release', '--no-restore')
 Invoke-Checked dotnet @('format', $MaterializerChecks, '--verify-no-changes', '--no-restore')
+$NativeFxEvidence = Join-Path $RepositoryRoot ('artifacts/native-fx-process-checks/' + [guid]::NewGuid().ToString('N'))
+Invoke-Checked dotnet @((Join-Path $RepositoryRoot 'tests/NikkeLocalLab.Materializer.BehaviorChecks/bin/Release/net8.0/NikkeLocalLab.Materializer.BehaviorChecks.dll'), '--native-fx', $NativeFxEvidence, '5')
 Write-Output 'Materializer checker source build passed; pinned output checks/bootstrap151/desktop local gate NOT executed by CI.'
 # The source-linked HTTP bridge is tested with synthetic bytes on loopback only.
 Invoke-Checked dotnet @('test', (Join-Path $RepositoryRoot 'tests/NikkeLocalLab.Automation.UnitTests'), '-c', 'Release', '--no-build', '--no-restore')
@@ -93,7 +102,9 @@ if ($env:OS -eq 'Windows_NT') {
         'test-nll-phase-d-runner-contract.ps1', 'test-nll-phase-d-runner-seal.ps1', 'test-nll-phase-d-job.ps1', 'test-nll-phase-d-job-paths.ps1',
         'test-nll-phase-d-runner-behavior.ps1', 'test-nll-phase-d-runner-differential.ps1',
         'test-nll-phase-d-runner-routing.ps1', 'test-nll-phase-d-runner-dependencies.ps1',
-        'test-nll-phase-d-shared-state.ps1', 'test-nll-stabilization-release.ps1')) {
+        'test-nll-phase-d-shared-state.ps1', 'test-nll-phase-d-shared-isolation.ps1', 'test-nll-phase-d-progress.ps1', 'test-nll-phase-d-prestart-recovery.ps1',
+        'test-nll-phase-d-database-lifecycle.ps1',
+        'test-nll-phase-d-materializer-errors.ps1', 'test-nll-stabilization-release.ps1')) {
         Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory $test))
     }
     Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory 'test-nll-phase-d-runner-behavior.ps1'), '-JobContract')

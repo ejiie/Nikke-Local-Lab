@@ -96,6 +96,40 @@ function Invoke-PhaseDPgCtl {
     finally { $process.Dispose() }
 }
 
+function Assert-PhaseDPostgresRunning {
+    param([string]$PgCtlPath, [string]$DataPath, [string]$OwnershipPath)
+    $status = Invoke-PhaseDPgCtl -PgCtlPath $PgCtlPath -Arguments @('status', '-D', $DataPath) `
+        -OwnershipPath $OwnershipPath
+    if ($status -ne 0) { throw 'phase_d_control_center_database_not_running' }
+}
+
+function Ensure-PhaseDPostgresRunning {
+    param([string]$PgCtlPath, [string]$DataPath, [string]$LogPath, [string]$OwnershipPath)
+    # Runtime APIs commit to this cluster. Never stop/restart a healthy cluster.
+    # Status 3 is the only stopped state; other failures must not trigger start.
+    $status = Invoke-PhaseDPgCtl -PgCtlPath $PgCtlPath -Arguments @('status', '-D', $DataPath) `
+        -OwnershipPath $OwnershipPath
+    if ($status -eq 0) { return }
+    if ($status -ne 3) { throw 'phase_d_control_center_database_status_failed' }
+    $started = Invoke-PhaseDPgCtl -PgCtlPath $PgCtlPath `
+        -Arguments @('start', '-D', $DataPath, '-l', $LogPath, '-w', '-t', '60') `
+        -OwnershipPath $OwnershipPath
+    if ($started -ne 0) { throw 'phase_d_control_center_database_restart_failed' }
+    Assert-PhaseDPostgresRunning -PgCtlPath $PgCtlPath -DataPath $DataPath -OwnershipPath $OwnershipPath
+}
+
+function Assert-PhaseDPostgresStopped {
+    param([string]$PgCtlPath, [string]$DataPath, [string]$OwnershipPath)
+    # pg_ctl -w has finished stopping this cluster. Check its status, not the
+    # system-wide process-name list, which can retain exited Windows objects or
+    # include a different PostgreSQL installation.
+    $status = Invoke-PhaseDPgCtl -PgCtlPath $PgCtlPath -Arguments @('status', '-D', $DataPath) `
+        -OwnershipPath $OwnershipPath
+    if ($status -ne 3 -or (Test-Path -LiteralPath (Join-Path $DataPath 'postmaster.pid'))) {
+        throw 'phase_d_postgresql_not_cold'
+    }
+}
+
 function ConvertTo-PhaseDPowerShellLiteral {
     param([string]$Value)
     "'" + $Value.Replace("'", "''") + "'"

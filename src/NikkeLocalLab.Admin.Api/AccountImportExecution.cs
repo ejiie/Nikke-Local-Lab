@@ -6,7 +6,7 @@ using NikkeLocalLab.Identity;
 
 namespace NikkeLocalLab.Admin.Api;
 
-public sealed record AccountImportRequest(string Uid);
+public sealed record AccountImportRequest(string Uid, EntityUid? TargetAccountUid = null, EntityUid? ExpectedProfileRevisionUid = null);
 
 public sealed record AccountImportProjection(
     int SchemaVersion,
@@ -67,12 +67,19 @@ public sealed class FilesystemAccountImportService : IAccountImportService
     _options = options;
   }
 
-  public async Task<AccountImportProjection> ImportAsync(
+  public Task<AccountImportProjection> ImportAsync(AccountImportRequest request, CancellationToken cancellationToken = default) =>
+      ImportCoreAsync(request, false, cancellationToken);
+
+  internal Task<AccountImportProjection> ImportPreparedAsync(AccountImportRequest request, CancellationToken cancellationToken = default) =>
+      ImportCoreAsync(request, true, cancellationToken);
+
+  private async Task<AccountImportProjection> ImportCoreAsync(
       AccountImportRequest request,
+      bool prepared,
       CancellationToken cancellationToken = default)
   {
-    if (request is null || string.IsNullOrWhiteSpace(request.Uid) ||
-        request.Uid.Length is < 4 or > 32 || request.Uid.Any(static value => !char.IsAsciiDigit(value)))
+    if (request is null || (!prepared && (string.IsNullOrWhiteSpace(request.Uid) ||
+        request.Uid.Length is < 4 or > 32 || request.Uid.Any(static value => !char.IsAsciiDigit(value)))))
     {
       throw new AccountImportException("account_import_uid_invalid");
     }
@@ -91,7 +98,7 @@ public sealed class FilesystemAccountImportService : IAccountImportService
       (_options.PowerShellPath, "account_import_powershell_missing")
     })
     {
-      RequireFile(path, code);
+      if (!prepared || (path != _options.FetchScriptPath && path != _options.PowerShellPath)) RequireFile(path, code);
     }
 
     await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -106,7 +113,7 @@ public sealed class FilesystemAccountImportService : IAccountImportService
           ? File.GetLastWriteTimeUtc(_options.RawFetchPath)
           : DateTime.MinValue;
 
-      await RunAsync(
+      if (!prepared) await RunAsync(
           _options.PowerShellPath,
           [
             "-NoLogo",
@@ -122,7 +129,7 @@ public sealed class FilesystemAccountImportService : IAccountImportService
           "account_import_fetch_failed").ConfigureAwait(false);
 
       if (!File.Exists(_options.RawFetchPath) ||
-          File.GetLastWriteTimeUtc(_options.RawFetchPath) <= rawBefore)
+          (!prepared && File.GetLastWriteTimeUtc(_options.RawFetchPath) <= rawBefore))
       {
         throw new AccountImportException("account_import_fresh_raw_missing");
       }
@@ -185,28 +192,25 @@ public sealed class FilesystemAccountImportService : IAccountImportService
           .ConfigureAwait(false) ??
           throw new AccountImportException("account_import_draft_not_registered");
       var previewOperationUid = EntityUid.New();
-      var preview = await _profiles.PreviewCreateFromImportAsync(
-          new CreateImportDiffCommand(
-              previewOperationUid,
-              draft.DraftUid,
-              draft.DraftSha256,
-              "roster_observation/v1",
-              FullProfileScope),
-          CancellationToken.None).ConfigureAwait(false);
-      if (preview.Issues.Any(static issue => issue.Severity == "error"))
+      ProfileWriteReceipt created;
+      if (request.TargetAccountUid is { } target && request.ExpectedProfileRevisionUid is { } expected)
       {
-        throw new AccountImportException("account_import_profile_not_materializable");
+        var preview = await _profiles.PreviewImportDiffAsync(new(previewOperationUid, draft.DraftUid,
+            draft.DraftSha256, target, expected, "roster_observation/v1", FullProfileScope), CancellationToken.None).ConfigureAwait(false);
+        if (preview.Issues.Any(issue => issue.Severity == "error"))
+          throw new AccountImportException("account_import_profile_not_materializable");
+        created = await _profiles.ApplyImportAsync(new(previewOperationUid, draft.DraftUid, draft.DraftSha256,
+            target, expected, preview.DiffSha256, "roster_observation/v1", FullProfileScope), CancellationToken.None).ConfigureAwait(false);
       }
-
-      var created = await _profiles.CreateFromImportAsync(
-          new CreateFromImportCommand(
-              previewOperationUid,
-              draft.DraftUid,
-              draft.DraftSha256,
-              preview.DiffSha256,
-              "roster_observation/v1",
-              FullProfileScope),
-          CancellationToken.None).ConfigureAwait(false);
+      else
+      {
+        var preview = await _profiles.PreviewCreateFromImportAsync(new(previewOperationUid, draft.DraftUid,
+            draft.DraftSha256, "roster_observation/v1", FullProfileScope), CancellationToken.None).ConfigureAwait(false);
+        if (preview.Issues.Any(issue => issue.Severity == "error"))
+          throw new AccountImportException("account_import_profile_not_materializable");
+        created = await _profiles.CreateFromImportAsync(new(previewOperationUid, draft.DraftUid,
+            draft.DraftSha256, preview.DiffSha256, "roster_observation/v1", FullProfileScope), CancellationToken.None).ConfigureAwait(false);
+      }
       var registered = await _profiles.RegisterFetchedAccountSnapshotAsync(
           new RegisterFetchedAccountSnapshotCommand(
               created.AccountUid,
@@ -221,7 +225,7 @@ public sealed class FilesystemAccountImportService : IAccountImportService
       var accounts = await _profiles.ListAccountsAsync(CancellationToken.None).ConfigureAwait(false);
       var createdSummary = accounts.Single(item => item.AccountUid == created.AccountUid);
       var accountLabel = UniqueAccountLabel(displayName, accounts, created.AccountUid);
-      if (!string.Equals(createdSummary.AccountLabel, accountLabel, StringComparison.Ordinal))
+      if (request.TargetAccountUid is null && !string.Equals(createdSummary.AccountLabel, accountLabel, StringComparison.Ordinal))
       {
         createdSummary = await _profiles.RenameAccountAsync(
             new RenameAccountCommand(
@@ -231,23 +235,35 @@ public sealed class FilesystemAccountImportService : IAccountImportService
             CancellationToken.None).ConfigureAwait(false);
       }
 
-      var featureManifest = await _profiles.GetFeatureManifestAsync(CancellationToken.None)
-          .ConfigureAwait(false);
-      await _profiles.InitializeLocalStateAsync(
-          new InitializeLocalStateCommand(
-              EntityUid.New(),
-              created.AccountUid,
-              created.ProfileRevision.RevisionUid,
-              featureManifest.ManifestUid,
-              featureManifest.ContentSha256,
-              displayName,
-              registered.CommanderLevel ?? 1,
-              null,
-              null,
-              null,
-              null,
-              [new WalletBalanceProjection("jewel", 0), new WalletBalanceProjection("credit", 0)]),
-          CancellationToken.None).ConfigureAwait(false);
+      var previousLobby = await _profiles.GetLobbyPresentationAsync(created.AccountUid, CancellationToken.None).ConfigureAwait(false);
+      if (previousLobby is not null)
+      {
+        await _profiles.SaveLobbyPresentationAsync(new(EntityUid.New(), created.AccountUid, previousLobby.Revision.RevisionUid,
+            displayName, registered.CommanderLevel ?? previousLobby.CommanderLevel, previousLobby.ProfileIconSelectionUid,
+            previousLobby.ProfileFrameSelectionUid, previousLobby.LobbyCharacterSelectionUid, previousLobby.LobbyBackgroundSelectionUid),
+            CancellationToken.None).ConfigureAwait(false);
+      }
+      else
+      {
+        var featureManifest = await _profiles.GetFeatureManifestAsync(CancellationToken.None)
+            .ConfigureAwait(false);
+        await _profiles.InitializeLocalStateAsync(
+            new InitializeLocalStateCommand(
+                EntityUid.New(),
+                created.AccountUid,
+                created.ProfileRevision.RevisionUid,
+                featureManifest.ManifestUid,
+                featureManifest.ContentSha256,
+                displayName,
+                registered.CommanderLevel ?? 1,
+                null,
+                null,
+                null,
+                null,
+                [new WalletBalanceProjection("jewel", 0), new WalletBalanceProjection("credit", 0)]),
+            CancellationToken.None).ConfigureAwait(false);
+
+      }
 
       return new AccountImportProjection(
           1,
@@ -326,9 +342,18 @@ public sealed class FilesystemAccountImportService : IAccountImportService
     var stderrTask = process.StandardError.ReadToEndAsync();
     await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
     var stdout = await stdoutTask.ConfigureAwait(false);
-    _ = await stderrTask.ConfigureAwait(false);
-    if (process.ExitCode != 0) throw new AccountImportException(failureCode);
+    var stderr = await stderrTask.ConfigureAwait(false);
+    if (process.ExitCode != 0) throw new AccountImportException(ResolveProcessFailure(stderr, failureCode));
     return stdout;
+  }
+
+  internal static string ResolveProcessFailure(string stderr, string fallback)
+  {
+    // Only known, source-free diagnostics may leave the collector process boundary.
+    var codes = stderr.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+    return codes.Any(line => line is "error:migration_checksum_mismatch" or
+        "error:migration_history_unknown" or "error:migration_name_mismatch" or "error:migration_history_gap")
+        ? "account_import_schema_mismatch" : fallback;
   }
 
   private static void RequireFile(string path, string code)

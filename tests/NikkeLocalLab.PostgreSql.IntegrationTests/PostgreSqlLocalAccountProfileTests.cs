@@ -11,6 +11,12 @@ public sealed partial class PostgreSqlLocalAccountProfileTests
 {
   private const string ResetToken = "allow-phase1a-disposable-schema-reset";
 
+  private static async Task ResetProfileTestDatabaseAsync(NpgsqlDataSource dataSource)
+  {
+    await ResetSchemasAsync(dataSource);
+    Assert.Equal(MigrationBaseline.Count, await new PostgreSqlMigrationRunner().MigrateAsync(dataSource));
+  }
+
   [Fact]
   public async Task AccountCubeInventoryPersistsCopiesAndPreservesImmutableHistory()
   {
@@ -835,7 +841,8 @@ public sealed partial class PostgreSqlLocalAccountProfileTests
       int characterCount,
       bool unresolvedFirstSkill = false,
       bool unresolvedFirstCombatRole = false,
-      bool unresolvedCubeApplicability = false)
+      bool unresolvedCubeApplicability = false,
+      string characterSnapshotTag = "profile-character")
   {
     var characterTestType = typeof(PostgreSqlCharacterCatalogTests);
     var characterSecret = (byte[])characterTestType
@@ -899,7 +906,7 @@ public sealed partial class PostgreSqlLocalAccountProfileTests
         BindingFlags.NonPublic | BindingFlags.Static)!;
     var characterAttempt = (CompletedImportAttempt)createCharacterAttempt.Invoke(
         null,
-        ["profile-character-source", "profile-character-output", Array.Empty<SafeDiagnostic>()])!;
+        [characterSnapshotTag + "-source", characterSnapshotTag + "-output", Array.Empty<SafeDiagnostic>()])!;
     var characterReceipt = await new PostgreSqlCharacterCatalogImportStore(
         dataSource,
         new RandomEntityUidGenerator()).RecordCompletedAndPublishAsync(
@@ -1886,6 +1893,9 @@ public sealed partial class PostgreSqlLocalAccountProfileTests
           -- V0018's immutable bounded canonical command is checked by the codec,
           -- FK/checksum guards and recovery tests, not an opaque source dump.
           AND (table_name, column_name, data_type) NOT IN (
+              -- V0026 paths are CHECK-constrained local account-art URLs with opaque local IDs/hashes.
+              ('account_directory_presentation', 'portrait_path', 'text'),
+              ('account_directory_presentation', 'frame_path', 'text'),
               ('fetched_account_snapshot', 'source_artifact_byte_length', 'integer'),
               ('fetched_account_snapshot', 'source_artifact_sha256', 'bytea'),
               ('account_workspace_save_operation', 'source_account_uid', 'uuid'),

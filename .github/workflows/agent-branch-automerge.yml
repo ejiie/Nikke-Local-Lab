@@ -79,6 +79,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Boss presentation checks failed.' }
           python -B scripts/test-nll-boss-profile-qte.py
           if ($LASTEXITCODE -ne 0) { throw 'QTE profile checks failed.' }
+          python -B scripts/test-nll-shield-fx-recipes.py
+          if ($LASTEXITCODE -ne 0) { throw 'Shield FX recipe checks failed.' }
+          python -B scripts/test-nll-boss-fx-acquisition.py
+          if ($LASTEXITCODE -ne 0) { throw 'FX acquisition checks failed.' }
+          python -B scripts/test-nll-boss-behavior-acquisition.py
+          if ($LASTEXITCODE -ne 0) { throw 'Behavior acquisition checks failed.' }
           python -B scripts/test-nll-boss-onboarding-candidate.py
           if ($LASTEXITCODE -ne 0) { throw 'Common candidate checks failed.' }
           python -B scripts/test-nll-shield-fx-candidate.py
@@ -192,6 +198,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Boss presentation checks failed.' }
           python -B scripts/test-nll-boss-profile-qte.py
           if ($LASTEXITCODE -ne 0) { throw 'QTE profile checks failed.' }
+          python -B scripts/test-nll-shield-fx-recipes.py
+          if ($LASTEXITCODE -ne 0) { throw 'Shield FX recipe checks failed.' }
+          python -B scripts/test-nll-boss-fx-acquisition.py
+          if ($LASTEXITCODE -ne 0) { throw 'FX acquisition checks failed.' }
+          python -B scripts/test-nll-boss-behavior-acquisition.py
+          if ($LASTEXITCODE -ne 0) { throw 'Behavior acquisition checks failed.' }
           python -B scripts/test-nll-boss-onboarding-candidate.py
           if ($LASTEXITCODE -ne 0) { throw 'Common candidate checks failed.' }
           python -B scripts/test-nll-shield-fx-candidate.py

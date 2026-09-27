@@ -11,7 +11,11 @@ internal static class RuntimeMigrationChecks
     const string current = "36fa20306d010087cdb336bbbb8a6718013d4a16838178045b1270af631b1732";
     Check(RuntimeVersionBinding.ExpectedArchive("build_150.6.9", previous).Length == 64);
     Check(RuntimeVersionBinding.ExpectedArchive("build_151.8.5", current).Length == 64);
-    foreach (var pair in new[] { ("build_150.6.9", current), ("build_151.8.5", previous), ("build_unknown", current) })
+    const string updated = "9c50d1e5e2312783b7ae908237081ff2976e06dcb0d90ae1d59f563afc5c73ef";
+    Check(RuntimeVersionBinding.ExpectedArchive("build_152.8.11", updated) ==
+        "42611495f81734528e8d9f3b4286ed2f8531ad0d75be087a1fb8ef39f9c32367");
+    foreach (var pair in new[] { ("build_150.6.9", current), ("build_151.8.5", previous),
+        ("build_152.8.11", current), ("build_151.8.5", updated), ("build_unknown", current) })
     {
       var rejected = false;
       try { RuntimeVersionBinding.ExpectedArchive(pair.Item1, pair.Item2); }
@@ -26,15 +30,6 @@ internal static class RuntimeMigrationChecks
     Check(RuntimeProgressionSnapshot.Capture(roundTrip) == before);
     roundTrip.CompletedScenarios.Clear();
     Check(RuntimeProgressionSnapshot.Capture(roundTrip) != before);
-    var source = new SoloRaidInfo { TrialCount = 2, RaidOpenCount = 1, LastDateDay = 123 };
-    source.SoloRaidLevels.Add(new SoloRaidLevelData { IsOpen = false, IsClear = true, RaidJoinCount = 5, TotalDamage = 400 });
-    source.SoloRaidLevels.Add(new SoloRaidLevelData { IsOpen = true, RaidJoinCount = 3, TotalDamage = 300 });
-    var copy = JsonConvert.DeserializeObject<SoloRaidInfo>(JsonConvert.SerializeObject(source))!;
-    RuntimeCompletedRaidMigration.KeepCompletedOnly(copy);
-    Check(copy.SoloRaidLevels.Count == 1);
-    Check(copy.SoloRaidLevels[0].TotalDamage == 400 && copy.SoloRaidLevels[0].RaidJoinCount == 5);
-    Check(copy.TrialCount == 0 && copy.RaidOpenCount == 0 && copy.LastDateDay == 0);
-    Check(source.SoloRaidLevels.Count == 2 && source.TrialCount == 2);
     Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "passed", checks, syntheticOnly = true, databaseChanged = false }));
   }
 }

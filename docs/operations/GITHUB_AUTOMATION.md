@@ -31,6 +31,18 @@ Windows 전체 검증, Linux S-08 12개 subprocess 사례, PostgreSQL **114/114*
 
 ## 목적과 실행 경계
 
+2026-09-27 게시에서 PR #31의 squash 결과와 동일한 파일 트리를 가진 원래 커밋의
+후속 브랜치를 그대로 push해 `main` 결합 시 25개 파일이 충돌했다. 원격 `main`의
+트리가 로컬 조상 `f7de7f6`과 정확히 같음을 확인하고, 파일 변경 없이 두 이력을
+연결했다. 이후 CI는 병합 준비를 통과했다. 앞으로 push 전 현재 브랜치뿐 아니라
+최신 `origin/main`과 결합한 결과도 확인한다.
+
+후속 Windows CI는 합성 격리 검사에서 실제 ACE 파일을 읽으려다 실패했다.
+PowerShell 5.1의 Utility 모듈 자동 로드가 `Get-FileHash` mock을 덮어쓴 것이
+원인이다. 테스트에서 모듈을 먼저 로드하고, 실제 해시는 생성한 임시 fixture에만
+허용한다. 임시 파일 해시 후에도 서비스 해시 mock이 유지되는지와 기록된 합성
+해시·호출 횟수를 검사한다. 제품의 서비스/파일 처리 코드는 변경하지 않는다.
+
 소스 코드와 계약만 비공개 GitHub 저장소에 보관하고, 소유자가 `agent/**` 브랜치를 push하면 검증부터 PR 생성과 squash merge까지 GitHub Actions가 처리합니다.
 
 게임 파일, 복호물, compatibility map, 런타임 DB, 계정 데이터는 이 자동화의 입력이나 artifact가 아닙니다. 3A-R이 고정한 외부 EpinelPS checkout/build, generated protocol source, certificate, native compatibility shim과 disposable client 환경도 Actions에서 내려받거나 실행·보관하지 않습니다.

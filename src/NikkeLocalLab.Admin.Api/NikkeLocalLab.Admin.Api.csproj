@@ -1,5 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
+    <!-- Reuse the desktop app's optional local artwork in the web header. -->
+    <Content Include="..\..\tools\NikkeLocalLab.ControlCenter.Desktop\Assets\kamibot.ico"
+             Condition="Exists('..\..\tools\NikkeLocalLab.ControlCenter.Desktop\Assets\kamibot.ico')"
+             Link="wwwroot\editor\assets\ui\app-icon.ico"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <EmbeddedResource Include="UserValidationDiagnostics.ps1" />
     <InternalsVisibleTo Include="NikkeLocalLab.Admin.Api.UnitTests" />
     <Compile Include="..\..\scripts\Nll.PhaseDJob.cs" Link="OfflinePipeline\ExecutionJob.cs" />
     <ProjectReference Include="..\NikkeLocalLab.Application.PrivateServer\NikkeLocalLab.Application.PrivateServer.csproj" />

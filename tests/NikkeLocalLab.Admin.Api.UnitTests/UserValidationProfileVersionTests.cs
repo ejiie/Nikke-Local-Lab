@@ -8,9 +8,9 @@ public sealed class UserValidationProfileVersionTests
   [Fact]
   public void AcceptsOnlyExactVersionPairs()
   {
-    foreach (var schema in new[] { -1, 0, 1, 2, 3, 4, int.MaxValue })
-      foreach (var version in new[] { -1, 0, 1, 2, 3, 4 })
-        Assert.Equal(schema == version && schema is >= 1 and <= 3,
+    foreach (var schema in new[] { -1, 0, 1, 2, 3, 4, 5, int.MaxValue })
+      foreach (var version in new[] { -1, 0, 1, 2, 3, 4, 5 })
+        Assert.Equal(schema == version && schema is >= 1 and <= 4,
             UserValidationProfileVersion.IsSupported(schema, "nll/boss-runtime-variant-profile/v" + version));
   }
 

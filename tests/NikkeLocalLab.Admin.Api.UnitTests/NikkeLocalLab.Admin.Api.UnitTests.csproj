@@ -18,6 +18,11 @@
     <Compile Include="..\..\tools\Phase3B2\EpinelUserValidation\UserValidationServerEnvironment.cs" Link="UserValidationServerEnvironment.cs" />
     <Compile Include="..\..\tools\Phase3B2\EpinelUserValidation\UserValidationProcessInputs.cs" Link="UserValidationProcessInputs.cs" />
     <Compile Include="..\..\tools\Phase3B2\EpinelUserValidation\UserValidationStoreTransaction.cs" Link="UserValidationStoreTransaction.cs" />
+    <Compile Include="..\..\tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\NativeFxRangeTransaction.cs" Link="NativeFxRangeTransaction.cs" />
+    <Compile Include="..\..\tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\NativeFxRangeJournal.cs" Link="NativeFxRangeJournal.cs" />
+    <Compile Include="..\..\tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\CommonDeliveryFiles.cs" Link="CommonDeliveryFiles.cs" />
+    <Compile Include="..\..\tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\NativeFxExecutionDelivery.cs" Link="NativeFxExecutionDelivery.cs" />
+    <Compile Include="..\..\tools\Phase3B2\EpinelUserValidation\UserValidationGenerationPrototype.cs" Link="UserValidationGenerationPrototype.cs" />
     <Compile Include="..\..\tools\Phase3B2\NativeFxUserValidationStore\UserValidationStorePlan.cs" Link="UserValidationStorePlan.cs" />
     <Compile Include="..\..\tools\Phase3B2\NativeFxUserValidationStore\NativeStoreOperations.cs" Link="NativeStoreOperations.cs" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

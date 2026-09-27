@@ -68,3 +68,15 @@ test("unknown state never enables start and an invalid action mode never posts",
   f.action.statusCode = "prepared"; await f.controller.refresh(); await f.controller.begin("invalid");
   assert.equal(f.calls.filter(c => c.options?.method === "POST").length, 0);
 });
+test("each preflight and recovery stage remains read-only and never offers a second start", async () => {
+  for (const status of ["quick_check", "deep_check", "bootstrap_check", "preparing", "game_start", "running", "cleanup", "status_unknown"]) {
+    const f = fixture(); f.action.statusCode = status;
+    f.action.progress = { elapsedMilliseconds: 1234, completedReadBytes: 1024, plannedReadBytes: 2048 };
+    await f.controller.refresh(); await f.controller.begin("Start"); await f.controller.begin("Recover");
+    assert.equal(f.byId("user-validation-start").disabled, true);
+    assert.equal(f.byId("user-validation-recover").disabled, true);
+    assert.equal(f.tasks.size, 1); assert.equal(f.calls.filter(c => c.options?.method === "POST").length, 0);
+    assert.match(f.byId("user-validation-status").textContent, /1.2초/);
+    if (status !== "running") assert.doesNotMatch(f.byId("user-validation-status").textContent, /게임 프로세스 실행 중/);
+  }
+});

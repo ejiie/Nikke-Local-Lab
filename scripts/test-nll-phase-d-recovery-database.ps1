@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $jobRequired = $false
 $replayOnly = $false
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 $tokens = $null; $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'recover-nll-phase-d-orphaned-execution.ps1'),[ref]$tokens,[ref]$errors)
 if ($errors.Count -gt 0) { throw 'recovery_parse_failed' }
@@ -11,6 +12,7 @@ if ($null -eq $block) { throw 'database_restart_still_depends_only_on_pending' }
 $action = [scriptblock]::Create($block.Extent.Text)
 $root = Join-Path ([IO.Path]::GetTempPath()) ('nll-recovery-db-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $root
+$launchRoot = $root
 $names = @('NLL_CONTROL_CENTER_PG_CTL','NLL_CONTROL_CENTER_PG_DATA','NLL_CONTROL_CENTER_PG_LOG')
 $before = @{}
 foreach ($name in $names) { $before[$name] = [Environment]::GetEnvironmentVariable($name) }

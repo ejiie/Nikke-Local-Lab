@@ -11,8 +11,12 @@ public sealed record UserValidationActionRequest(Guid OperationUid, int SeasonNu
     string BindingSha256, string EntrySha256, string Mode);
 public sealed record UserValidationActionView(int SchemaVersion, string ContractId, Guid? OperationUid,
     int SeasonNumber, string WeaknessCode, string StatusCode, string? FailureCode,
-    bool ActualGameAcceptanceClaimed = false);
-internal sealed record UserValidationOwner(string State, string ExecutablePath, int? ProcessId = null, long? CreatedFileTime = null);
+    bool ActualGameAcceptanceClaimed = false, UserValidationProgress? Progress = null);
+public sealed record UserValidationProgress(string ContractId, string EntrySha256, string Mode, string Stage,
+    int Sequence, string State, DateTimeOffset StartedAtUtc, DateTimeOffset ObservedAtUtc,
+    double ElapsedMilliseconds, long PlannedReadBytes, long CompletedReadBytes, string ReadAccountingScope,
+    bool ActualGameAcceptanceClaimed);
+internal sealed record UserValidationOwner(string State, string ExecutablePath, int? ProcessId = null, long? CreatedFileTime = null, int? ExitCode = null);
 public interface IUserValidationProcessLauncher
 {
   Task<int> RunAsync(ProcessStartInfo info, string ownerPath);
@@ -31,6 +35,8 @@ public sealed class UserValidationProcessLauncher : IUserValidationProcessLaunch
     try { if (!process.Start()) throw new InvalidOperationException(); }
     catch (Exception error) when (error is Win32Exception or InvalidOperationException)
     {
+      await PhaseDAtomicFile.WriteAsync(Path.Combine(Path.GetDirectoryName(ownerPath)!, "launch-error.json"),
+          UserValidationExecution.ErrorDiagnostic("process_start", error), JsonOptions).ConfigureAwait(false);
       await PhaseDAtomicFile.WriteAsync(ownerPath, owner with { State = "exited" }, JsonOptions).ConfigureAwait(false);
       throw new PhaseDExecutionException(error is Win32Exception { NativeErrorCode: 1223 } ? "boss_validation_uac_cancelled" : "boss_validation_start_failed");
     }
@@ -39,7 +45,7 @@ public sealed class UserValidationProcessLauncher : IUserValidationProcessLaunch
     owner = owner with { State = "running", ProcessId = process.Id, CreatedFileTime = process.StartTime.ToUniversalTime().ToFileTimeUtc() };
     await PhaseDAtomicFile.WriteAsync(ownerPath, owner, JsonOptions).ConfigureAwait(false);
     await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-    await PhaseDAtomicFile.WriteAsync(ownerPath, owner with { State = "exited" }, JsonOptions).ConfigureAwait(false);
+    await PhaseDAtomicFile.WriteAsync(ownerPath, owner with { State = "exited", ExitCode = process.ExitCode }, JsonOptions).ConfigureAwait(false);
     return process.ExitCode;
   }
   public bool IsUnsettled(string ownerPath, string executablePath)
@@ -73,6 +79,24 @@ public sealed class UserValidationExecution(UserValidationDelivery delivery, IUs
   // Injectable storage adapter for source-only synthetic tests. Production uses
   // the same absolute, no-reparse policy as the other local admin services.
   internal Func<string, string> StorePath { get; init; } = Plain;
+  internal static object ErrorDiagnostic(string stage, Exception error) => new
+  {
+    contractId = "nll/user-validation-process-diagnostic/v1",
+    stage,
+    observedAtUtc = DateTimeOffset.UtcNow,
+    exceptionType = error.GetType().FullName,
+    hResult = error.HResult,
+    nativeErrorCode = (error as Win32Exception)?.NativeErrorCode,
+    actualGameAcceptanceClaimed = false
+  };
+  internal static async Task WriteDiagnosticRunner(string path)
+  {
+    using var source = typeof(UserValidationExecution).Assembly.GetManifestResourceStream(
+        "NikkeLocalLab.Admin.Api.UserValidationDiagnostics.ps1") ?? throw new InvalidOperationException("boss_validation_logger_missing");
+    await using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+    await source.CopyToAsync(file).ConfigureAwait(false);
+    file.Flush(flushToDisk: true);
+  }
   private static UserValidationActionView View(UserValidationActionRequest request, string status, string? failure = null) =>
       new(1, "nll/user-validation-action/v1", request.OperationUid, request.SeasonNumber, request.WeaknessCode, status, failure);
   public async Task<UserValidationActionView> BeginAsync(UserValidationActionRequest request, CancellationToken cancellationToken)
@@ -119,6 +143,8 @@ public sealed class UserValidationExecution(UserValidationDelivery delivery, IUs
         throw new ApiRequestException(409, "boss_validation_recovery_not_required");
       Directory.CreateDirectory(actionRoot);
       await PhaseDAtomicFile.WriteAsync(Path.Combine(actionRoot, "request.json"), request, JsonOptions, overwrite: false).ConfigureAwait(false);
+      var diagnosticRunner = Path.Combine(actionRoot, "diagnostic-runner.ps1");
+      await WriteDiagnosticRunner(diagnosticRunner).ConfigureAwait(false);
       await PhaseDAtomicFile.WriteAsync(Path.Combine(actionRoot, "owner.json"), new UserValidationOwner("starting", bound.PowerShellPath), JsonOptions,
           overwrite: false).ConfigureAwait(false);
       var info = new ProcessStartInfo
@@ -129,7 +155,8 @@ public sealed class UserValidationExecution(UserValidationDelivery delivery, IUs
         WindowStyle = ProcessWindowStyle.Hidden,
         WorkingDirectory = run
       };
-      foreach (var argument in new[] { "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", bound.Entries[request.WeaknessCode].ControllerPath,
+      foreach (var argument in new[] { "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", diagnosticRunner,
+          "-ControllerPath", bound.Entries[request.WeaknessCode].ControllerPath,
           "-EntryPath", run + @"\entry.private.json", "-EntrySha256", request.EntrySha256, "-Mode", request.Mode }) info.ArgumentList.Add(argument);
       var ownedLease = lease; lease = null;
       var task = Task.Run(async () =>
@@ -140,13 +167,27 @@ public sealed class UserValidationExecution(UserValidationDelivery delivery, IUs
           try
           {
             var code = await processes.RunAsync(info, Path.Combine(actionRoot, "owner.json")).ConfigureAwait(false);
+            await PhaseDAtomicFile.WriteAsync(Path.Combine(actionRoot, "process-exit.json"), new
+            {
+              contractId = "nll/user-validation-process-diagnostic/v1",
+              stage = "process_exit",
+              observedAtUtc = DateTimeOffset.UtcNow,
+              exitCode = code,
+              controllerDiagnosticPresent = File.Exists(Path.Combine(actionRoot, "controller-diagnostic.json")),
+              actualGameAcceptanceClaimed = false
+            }, JsonOptions).ConfigureAwait(false);
             var restored = CleanupVerified(run, request.EntrySha256);
             result = View(request, restored ? "finished" : File.Exists(StorePath(run + @"\execution.started.json")) ? "cleanup_required" : "failed",
                 code == 0 && restored ? null : "boss_validation_controller_failed");
           }
           catch (PhaseDExecutionException error) when (error.Message is "boss_validation_uac_cancelled" or "boss_validation_start_failed")
           { result = View(request, error.Message == "boss_validation_uac_cancelled" ? "uac_cancelled" : "failed", error.Message); }
-          catch { result = View(request, "status_unknown", "boss_validation_owner_unsettled"); }
+          catch (Exception error)
+          {
+            await PhaseDAtomicFile.WriteAsync(Path.Combine(actionRoot, "action-error.json"),
+                ErrorDiagnostic("action_completion", error), JsonOptions).ConfigureAwait(false);
+            result = View(request, "status_unknown", "boss_validation_owner_unsettled");
+          }
           await PhaseDAtomicFile.WriteAsync(Path.Combine(actionRoot, "result.json"), result, JsonOptions).ConfigureAwait(false);
         }
         finally { ownedLease.Dispose(); }
@@ -190,7 +231,37 @@ public sealed class UserValidationExecution(UserValidationDelivery delivery, IUs
       // A later successful explicit recovery supersedes this earlier failure.
       return CleanupVerified(run, request.EntrySha256) ? result with { StatusCode = "finished" } : result;
     }
-    if (processes.IsUnsettled(StorePath(Path.Combine(path, "owner.json")), shell)) return View(request, "running");
+    if (processes.IsUnsettled(StorePath(Path.Combine(path, "owner.json")), shell))
+    {
+      var progressPath = StorePath(Path.Combine(path, "preflight-progress.json"));
+      if (File.Exists(progressPath))
+      {
+        var progress = JsonSerializer.Deserialize<UserValidationProgress>(ReadFile(progressPath, 16384), JsonOptions);
+        Require(progress is not null && progress.ContractId == "nll/user-validation-preflight-progress/v1" &&
+            progress.EntrySha256 == request.EntrySha256 && progress.Mode == request.Mode &&
+            progress.Sequence is > 0 and <= 64 && progress.State is "started" or "running" or "ended" &&
+            progress.StartedAtUtc <= progress.ObservedAtUtc && progress.ObservedAtUtc <= DateTimeOffset.UtcNow.AddSeconds(5) &&
+            double.IsFinite(progress.ElapsedMilliseconds) && progress.ElapsedMilliseconds >= 0 &&
+            progress.PlannedReadBytes >= 0 && progress.CompletedReadBytes >= 0 &&
+            progress.ReadAccountingScope == "instrumented_parent_hashes_and_store" && !progress.ActualGameAcceptanceClaimed);
+        var status = progress.Stage switch
+        {
+          "quick_check" or "shared_state_recheck" => "quick_check",
+          "deep_check" or "native_store_apply" => "deep_check",
+          "bootstrap_check" => "bootstrap_check",
+          "isolation" or "system_apply" => "preparing",
+          "game_start" => "game_start",
+          "running" => "running",
+          "cleanup" => "cleanup",
+          "complete" or "failed" => "status_unknown", // Terminal authority is the durable execution/cleanup receipt.
+          _ => throw new InvalidOperationException("boss_validation_progress_invalid")
+        };
+        return View(request, status) with { Progress = progress };
+      }
+      var owner = JsonSerializer.Deserialize<UserValidationOwner>(ReadFile(StorePath(Path.Combine(path, "owner.json")), 16384), JsonOptions);
+      // A live parent proves no game state; old sealed controllers have no stages.
+      return View(request, owner?.State == "starting" ? "awaiting_user_approval" : "status_unknown");
+    }
     return View(request, CleanupVerified(run, request.EntrySha256) ? "finished" : File.Exists(StorePath(run + @"\execution.started.json")) ? "cleanup_required" : "failed",
         "boss_validation_controller_status_required");
   }

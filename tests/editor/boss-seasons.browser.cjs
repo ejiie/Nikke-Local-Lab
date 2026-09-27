@@ -77,7 +77,7 @@ async function main() {
       await route.fulfill({ status: 200, json: body });
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/editor/index.html`);
-    await page.evaluate(() => { document.getElementById("login-screen").hidden = true; document.getElementById("app-shell").hidden = false; setPage("raid"); });
+    await page.evaluate(() => { document.getElementById("app-shell").inert = false; setPage("raid"); });
     await page.locator("#select-boss-season").click();
     await page.waitForFunction(() => document.querySelectorAll(".boss-season-option").length === 40);
     if (imagePayloads.size) {

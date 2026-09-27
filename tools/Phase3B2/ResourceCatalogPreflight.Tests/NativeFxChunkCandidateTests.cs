@@ -91,14 +91,23 @@ public sealed class NativeFxChunkCandidateTests
   }
 
   [Theory]
-  [InlineData("water", 0)]
+  [InlineData("Water", 0)]
   [InlineData("../fire", 0)]
-  [InlineData("electric", 0)]
+  [InlineData("electric/", 0)]
   [InlineData("fire", -1)]
   public void NonNormalizedRolesAndBadOrdinalsCannotBecomeOutputPaths(string role, int ordinal)
   {
     Assert.Throws<PreflightException>(() => NativeFxChunkCandidate.ValidatePatches([Patch(role, ordinal)], 1000));
   }
+
+  [Theory]
+  [InlineData("fire")]
+  [InlineData("water")]
+  [InlineData("wind")]
+  [InlineData("electric")]
+  [InlineData("iron")]
+  public void AnyBossElementCanSupplyAnAdjustedChunk(string role)
+    => NativeFxChunkCandidate.ValidatePatches([Patch(role)], 1000);
 
   [Fact]
   public void EmptyEqualResizedAndExcessivePatchesAreRejected()

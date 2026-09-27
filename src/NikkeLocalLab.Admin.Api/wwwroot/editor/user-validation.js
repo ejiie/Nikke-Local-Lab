@@ -2,10 +2,13 @@
 // This panel launches only on an explicit user click. Reads/selection/polling
 // never trigger UAC, imports, recovery or an original-client process.
 const NllUserValidation = (() => {
-  const labels = { prepared: "사용자 실게임 검증 준비 완료", awaiting_user_approval: "관리자 권한 승인 대기",
-    running: "검증 실행·원복 진행 중", finished: "검증 실행 종료 · 원복 완료", cleanup_required: "원복 필요 · 다음 실행 차단",
+  const labels = { prepared: "정밀 검사 경로 준비 완료", awaiting_user_approval: "관리자 권한 승인 대기",
+    quick_check: "빠른 실행 조건 확인 중", deep_check: "파일·저장소 정밀 검사 중", preparing: "격리·실행 환경 준비 중",
+    bootstrap_check: "서버·부트스트랩 정밀 검사 중",
+    game_start: "게임 시작 준비 중", running: "게임 프로세스 실행 중", cleanup: "실행 종료·원복 중",
+    finished: "검증 실행 종료 · 원복 완료", cleanup_required: "원복 필요 · 다음 실행 차단",
     failed: "검증 실행 실패", uac_cancelled: "관리자 권한 요청 취소", status_unknown: "실행 상태 확인 필요", blocked: "검증 준비 확인 필요" };
-  const active = status => ["awaiting_user_approval", "running", "status_unknown"].includes(status);
+  const active = status => ["awaiting_user_approval", "quick_check", "deep_check", "bootstrap_check", "preparing", "game_start", "running", "cleanup", "status_unknown"].includes(status);
   function create({ document, api, getSelection, uid = () => crypto.randomUUID(),
     schedule = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id) }) {
     const byId = id => document.getElementById(id);
@@ -20,6 +23,17 @@ const NllUserValidation = (() => {
         action?.seasonNumber === selection.seasonNumber && action.weaknessCode === selection.weaknessCode;
       const status = valid ? action.statusCode : "blocked";
       byId("user-validation-status").textContent = pending ? "사용자 실행 요청 중…" : labels[status] || labels.blocked;
+      if (!pending && valid && action.progress) {
+        const p = action.progress;
+        if (Number.isFinite(p.elapsedMilliseconds) && p.elapsedMilliseconds >= 0 &&
+            Number.isSafeInteger(p.completedReadBytes) && p.completedReadBytes >= 0 && Number.isSafeInteger(p.plannedReadBytes) && p.plannedReadBytes >= 0) {
+          const start = Date.parse(p.startedAtUtc), elapsed = p.state !== "ended" && Number.isFinite(start)
+            ? Math.max(p.elapsedMilliseconds, Date.now() - start) : p.elapsedMilliseconds;
+          byId("user-validation-status").textContent += ` · 이 단계 ${(elapsed / 1000).toFixed(1)}초`;
+          if (p.plannedReadBytes > 0) byId("user-validation-status").textContent +=
+            ` · 확인된 읽기 ${(p.completedReadBytes / 1073741824).toFixed(2)} / 계획 ${(p.plannedReadBytes / 1073741824).toFixed(2)} GiB`;
+        }
+      }
       byId("user-validation-failure").textContent = action?.failureCode || "";
       byId("user-validation-start").disabled = pending || !valid || !["prepared", "uac_cancelled", "failed"].includes(status);
       byId("user-validation-recover").disabled = pending || !valid || status !== "cleanup_required";

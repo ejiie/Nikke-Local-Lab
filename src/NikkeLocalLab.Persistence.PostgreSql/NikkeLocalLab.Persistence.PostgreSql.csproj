@@ -16,5 +16,7 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Migrations\V*.sql" />
+    <InternalsVisibleTo Include="NikkeLocalLab.Admin.Api.UnitTests" />
+    <Compile Include="..\..\tools\Phase3B2\BattleLogAnalysis\*.cs" Link="BattleLog\%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

@@ -53,7 +53,7 @@ async function main() {
     page.on("pageerror", error => errors.push(error.message));
     await page.goto("http://127.0.0.1:18788/editor/");
     await page.evaluate(({ catalog, values }) => {
-      byId("login-screen").hidden = true; byId("app-shell").hidden = false;
+      byId("app-shell").inert = false;
       state.currentProfile = { values: [...values].reverse() };
       state.presentationByConsole = new Map([...catalog].reverse().map(item => [item.definitionUid, item]));
       renderGeneralEditor(); setPage("account");

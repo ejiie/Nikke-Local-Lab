@@ -7,7 +7,8 @@ function New-NllBossNativeCandidate {
         [Parameter(Mandatory)][string]$CandidateRoot,
         [Parameter(Mandatory)][string]$CandidateReceiptSha256,
         [Parameter(Mandatory)][string]$PythonPath,
-        [Parameter(Mandatory)][string]$UnityPyRoot)
+        [Parameter(Mandatory)][string]$UnityPyRoot,
+        [string]$CacheRoot)
     $ErrorActionPreference = 'Stop'
     Set-StrictMode -Version Latest
     function Check([bool]$Value, [string]$Code) { if (-not $Value) { throw ('boss_native_' + $Code) } }
@@ -19,7 +20,20 @@ function New-NllBossNativeCandidate {
         $seal.affinityVariantCount -eq 5 -and $seal.fiveAffinityVariantStatusCode -ceq 'passed' -and
         $seal.runtimeAdmissionStatusCode -ceq 'not_assessed' -and $seal.clientStarted -eq $false) 'candidate_invalid'
     $fxRoot = Join-Path $CandidateRoot 'shield-fx-candidate'
-    Check ((Digest (Join-Path $fxRoot 'manifest.json')) -ceq $seal.shieldFxCandidateManifestSha256) 'fx_binding_invalid'
+    $profilePath = Join-Path $CandidateRoot 'boss-runtime-variant.profile.json'
+    Check ((Digest $profilePath) -ceq $seal.profileSha256) 'profile_drifted'
+    $profile = Get-Content -LiteralPath $profilePath -Raw | ConvertFrom-Json
+    $extra = @()
+    $fxHash = $seal.shieldFxCandidateManifestSha256
+    if ($profile.schemaVersion -eq 4) {
+        $fxRoot = Join-Path $CandidateRoot 'shield-fx-preparation'
+        $fxHash = $seal.shieldFxPreparationManifestSha256
+        Check ((Digest (Join-Path $fxRoot 'recipes.receipt.json')) -ceq $fxHash -and
+            -not [string]::IsNullOrEmpty($CacheRoot)) 'fx_binding_invalid'
+        $extra = @('--profile-path', $profilePath, '--profile-sha256', $seal.profileSha256, '--cache-root', $CacheRoot)
+    } else {
+        Check ((Digest (Join-Path $fxRoot 'manifest.json')) -ceq $fxHash) 'fx_binding_invalid'
+    }
     Check ((Digest $Configuration.inputPlanPath) -ceq $Configuration.inputPlanSha256 -and
         (Digest $Configuration.catalogToolPath) -ceq $Configuration.catalogToolSha256 -and
         (Digest $Configuration.dotnetPath) -ceq $Configuration.dotnetSha256) 'tool_drifted'
@@ -34,8 +48,8 @@ function New-NllBossNativeCandidate {
         & $PythonPath -B (Join-Path $PSScriptRoot 'stage-nll-native-fx.py') `
             --input-plan $Configuration.inputPlanPath --input-plan-sha256 $Configuration.inputPlanSha256 `
             --catalog-tool $Configuration.catalogToolPath --catalog-tool-sha256 $Configuration.catalogToolSha256 `
-            --fx-candidate-root $fxRoot --fx-manifest-sha256 $seal.shieldFxCandidateManifestSha256 `
-            --output-root $nativeRoot --unitypy-root $UnityPyRoot | Out-Null
+            --fx-candidate-root $fxRoot --fx-manifest-sha256 $fxHash `
+            --output-root $nativeRoot --unitypy-root $UnityPyRoot @extra | Out-Null
         Check ($LASTEXITCODE -eq 0) 'export_failed'
         & $PythonPath -B (Join-Path $PSScriptRoot 'materialize-nll-native-fx-layout.py') `
             --source-root $nativeRoot --source-sha256 (Digest (Join-Path $nativeRoot 'receipt.json')) `

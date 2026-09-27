@@ -16,6 +16,7 @@ def module(filename):
 
 
 fx = module("materialize-nll-shield-fx-candidate.py")
+recipes = module("nll-shield-fx-recipes.py")
 TARGETS = {"fire": "wind", "water": "fire", "wind": "iron", "electric": "water", "iron": "electric"}
 
 
@@ -39,8 +40,11 @@ def read(path):
 def validate_variant(profile, profile_sha, source_sha, weakness, receipt, pack):
     changed = weakness != profile["sourceAffinity"]["weaknessCode"]
     dynamic = profile["elementShield"]["modeCode"] == "dynamic_affinity_linked"
-    v3 = profile["schemaVersion"] == 3
-    qte_count = profile["quickTimeEventAffinity"]["recordCount"] if v3 and changed else 0
+    has_qte = profile.get("quickTimeEventAffinity") is not None
+    qte_count = profile["quickTimeEventAffinity"]["recordCount"] if has_qte and changed else 0
+    adjusted = (TARGETS[weakness] in fx.ROLES if profile["schemaVersion"] == 3 else
+                any(r["bossElementCode"] == TARGETS[weakness] and r["operationCode"] == "adjust_candidate"
+                    for r in (profile.get("shieldFxPreparation") or {}).get("variants", [])))
     # The closed shield set also contains FX-free functions. The materializer's
     # round-trip boundary proves their preservation; only FX-bearing rows change.
     function_count = receipt.get("modifiedFunctionRecordCount")
@@ -59,13 +63,13 @@ def validate_variant(profile, profile_sha, source_sha, weakness, receipt, pack):
         "targetBossElementCode": TARGETS[weakness], "sourceStaticDataSha256": source_sha,
         "variantRequired": changed, "modifiedMonsterRecordCount": int(changed),
         "modifiedFunctionRecordCount": function_count, "modifiedQuickTimeEventRecordCount": qte_count,
-        "quickTimeEventAffinityContractVerified": v3, "modifiedElementRecordCount": 0,
+        "quickTimeEventAffinityContractVerified": has_qte, "modifiedElementRecordCount": 0,
         "modifiedTableCount": len(codes), "modifiedTableCodes": codes,
         "elementTablePreserved": True, "clientElementIndexInvariantVerified": True,
         "serverStaticDataModified": False, "officialInstallModified": False,
         "rawSourceIdentifierPersisted": False, "runtimeAdmissionStatusCode": "not_assessed",
         "shieldFxTransformStatusCode": "pending_isolated_asset_overlay"
-            if v3 and TARGETS[weakness] in fx.ROLES else "not_required",
+            if adjusted else "not_required",
         "elementShieldModeCode": profile["elementShield"]["modeCode"],
     }
     for key, value in expected.items():
@@ -92,7 +96,7 @@ def build_receipt(root, source_pack, season, profile_code, input_set_sha, cache)
     profile_path = root / "boss-runtime-variant.profile.json"
     profile = read(profile_path)
     profile_sha = digest(profile_path)
-    require(profile["schemaVersion"] in (2, 3)
+    require(profile["schemaVersion"] in (2, 3, 4)
             and profile["contractId"] == f'nll/boss-runtime-variant-profile/v{profile["schemaVersion"]}'
             and profile["seasonNumber"] == season and profile["profileCode"] == profile_code)
     candidate = read(root / "onboarding-candidate.receipt.json")
@@ -111,13 +115,32 @@ def build_receipt(root, source_pack, season, profile_code, input_set_sha, cache)
     # transformed roles. Inputs may have drifted while five packs were generated.
     bundles = [bundle for row in profile["elementShield"]["fxVariants"]
                for mapping in row["mappings"] for bundle in mapping["assetBundles"]]
-    bundles.append({"sha256": profile["behaviorAssembly"]["bundleSha256"],
-                    "byteLength": profile["behaviorAssembly"]["bundleByteLength"]})
-    fx.resolve_inputs(fx.plain_path(cache), [
+    fx_cache = root / 'acquired-fx' if (root / 'acquired-fx').is_dir() else cache
+    fx.resolve_inputs(fx.plain_path(fx_cache), [
         {prefix + suffix: bundle[key] for prefix in ("sourceBundle", "targetBundle")
          for suffix, key in (("Sha256", "sha256"), ("ByteLength", "byteLength"))} for bundle in bundles])
+    behavior_pin = profile['behaviorAssembly']
+    behavior_cache = root / 'acquired-behavior' if (root / 'acquired-behavior').is_dir() else cache
+    fx.resolve_inputs(fx.plain_path(behavior_cache), [{prefix + suffix: behavior_pin[key]
+        for prefix in ('sourceBundle', 'targetBundle')
+        for suffix, key in (('Sha256', 'bundleSha256'), ('ByteLength', 'bundleByteLength'))}])
     artifact_names = ["boss-runtime-variant.profile.json", "onboarding-candidate.receipt.json",
                       "behavior-assembly.receipt.json", "content-discovery.receipt.json"]
+    if behavior_cache != cache:
+        acquisition = read(root / 'behavior-acquisition.receipt.json')
+        require(acquisition['contractId'] == 'nll/boss-behavior-acquisition/v1'
+                and acquisition['statusCode'] == 'acquired'
+                and acquisition['asset'] == {'sha256': behavior_pin['bundleSha256'],
+                                              'byteLength': behavior_pin['bundleByteLength']})
+        artifact_names.append('behavior-acquisition.receipt.json')
+        artifact_names.extend(sorted('acquired-behavior/' + p.name for p in behavior_cache.iterdir()))
+    if fx_cache != cache:
+        acquisition = read(root / 'fx-acquisition.receipt.json')
+        require(acquisition['contractId'] == 'nll/boss-fx-acquisition/v1' and acquisition['statusCode'] == 'acquired'
+                and {(b['sha256'], b['byteLength']) for b in acquisition['assets']} ==
+                    {(b['sha256'], b['byteLength']) for b in bundles})
+        artifact_names.append('fx-acquisition.receipt.json')
+        artifact_names.extend(sorted('acquired-fx/' + p.name for p in fx_cache.iterdir()))
     for weakness in TARGETS:
         receipt_name = f"five-affinity-variants/{weakness}.receipt.json"
         pack_name = f"five-affinity-variants/{weakness}.pack"
@@ -134,6 +157,14 @@ def build_receipt(root, source_pack, season, profile_code, input_set_sha, cache)
         artifact_names.append("shield-fx-candidate/manifest.json")
     else:
         require(not (root / "shield-fx-candidate").exists())
+    preparation_sha = None
+    if profile["schemaVersion"] == 4 and profile["elementShield"]["modeCode"] != "none":
+        recipe_root = root / "shield-fx-preparation"
+        rows = recipes.verify_profile_binding(profile, recipe_root)
+        preparation_sha = profile["shieldFxPreparation"]["recipeManifestSha256"]
+        artifact_names.append("shield-fx-preparation/recipes.receipt.json")
+        artifact_names.extend(sorted({"shield-fx-preparation/" + row["outputBundle"]["sha256"] + ".bundle"
+                                     for row in rows if row["operationCode"] == "adjust_candidate"}))
     result = {"schemaVersion": 1, "contractId": "nll/boss-onboarding-verified-candidate/v1",
               "seasonNumber": season, "profileCode": profile_code, "profileSha256": profile_sha,
               "sourceStaticDataSha256": source_sha, "inputSetSha256": input_set_sha,
@@ -144,6 +175,8 @@ def build_receipt(root, source_pack, season, profile_code, input_set_sha, cache)
               "sharedCacheModified": False, "clientStarted": False, "officialInstallModified": False,
               "rawSourceIdentifiersPersisted": False,
               "artifacts": [{"relativePath": name, "sha256": digest(root / name)} for name in artifact_names]}
+    if profile["schemaVersion"] == 4:
+        result["shieldFxPreparationManifestSha256"] = preparation_sha
     return result
 
 

@@ -47,12 +47,11 @@ function Invoke-PhaseDChildScript {
     [pscustomobject]@{ ExitCode = 0; StandardOutput = '{}' }
 }
 function Restore-ControlCenterHosts { $script:hostsRestored = $true }
-function Invoke-PhaseDPgCtl {
-    param($PgCtlPath, $Arguments)
+function Ensure-PhaseDPostgresRunning {
+    param($PgCtlPath, $DataPath, $LogPath, $OwnershipPath)
     Assert-Watcher $script:hostsRestored 'database_start_before_hosts_restore'
-    if ($case -eq 'pg-failure') { return 1 }
+    if ($case -eq 'pg-failure') { throw 'phase_d_control_center_database_restart_failed' }
     $script:databaseReady = $true
-    return 0
 }
 function Invoke-SoloRaidPersistence {
     param($LaunchContextUid)

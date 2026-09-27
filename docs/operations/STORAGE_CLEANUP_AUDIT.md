@@ -1,5 +1,8 @@
 # Local storage cleanup audit
 
+> Current inventory: [2026-09-14 project-wide storage audit](PROJECT_STORAGE_AUDIT_20260914.md).
+> The following September 1 sizes and paths are historical; do not apply them as a current deletion list.
+
 ## Status
 
 This document records deferred cleanup candidates measured on 2026-09-01.

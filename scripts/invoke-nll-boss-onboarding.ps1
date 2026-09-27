@@ -42,7 +42,9 @@ param(
 
     [switch]$ReplaceExistingProfile,
 
-    [switch]$CandidateOnly
+    [switch]$CandidateOnly,
+    [object]$NativeConfiguration = $null,
+    [string]$FxSourceCacheRoot = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -94,6 +96,7 @@ else {
     @($MaterializerPath)
 }
 $AssetCacheRoot = [IO.Path]::GetFullPath($AssetCacheRoot)
+$originalAssetCacheRoot = $AssetCacheRoot
 $UnityPyRoot = [IO.Path]::GetFullPath($UnityPyRoot)
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 $RegistryRoot = [IO.Path]::GetFullPath($RegistryRoot)
@@ -137,8 +140,16 @@ if ($CandidateOnly) {
     }
     $pinPaths = @($MaterializerPath, $StaticDataPackPath, $GameConfigPath, $SourceDatabasePath,
         $PythonPath, $PSCommandPath, $behaviorInspector, $profileAssembler, $fxCandidateTool,
-        $candidateVerifier, $publisherPath, (Join-Path $PSScriptRoot 'materialize-nll-shield-fx-transform-variant.py'))
+        $candidateVerifier, $publisherPath, (Join-Path $PSScriptRoot 'materialize-nll-shield-fx-transform-variant.py'),
+        (Join-Path $PSScriptRoot 'nll-shield-fx-assessment.py'),
+        (Join-Path $PSScriptRoot 'nll-shield-fx-recipes.py'))
     if ($MaterializerHostPath) { $pinPaths += $MaterializerHostPath }
+    if ($null -ne $NativeConfiguration) {
+        $pinPaths += @((Join-Path $PSScriptRoot 'acquire-nll-boss-fx.py'),
+            (Join-Path $PSScriptRoot 'acquire-nll-boss-behavior.py'),
+            (Join-Path $PSScriptRoot 'stage-nll-native-fx.py'),
+            $NativeConfiguration.inputPlanPath, $NativeConfiguration.catalogToolPath, $NativeConfiguration.dotnetPath)
+    }
     $pinPaths += @(Get-ChildItem -LiteralPath $RegistryRoot -File | ForEach-Object { $_.FullName })
     foreach ($path in $pinPaths) {
         Assert-PlainPath $path
@@ -154,17 +165,20 @@ $discoveryPath = Join-Path $OutputRoot 'content-discovery.receipt.json'
 $behaviorReceiptPath = Join-Path $OutputRoot 'behavior-assembly.receipt.json'
 $candidateProfilePath = Join-Path $OutputRoot 'boss-runtime-variant.profile.json'
 $candidateReceiptPath = Join-Path $OutputRoot 'onboarding-candidate.receipt.json'
+$shieldAssessmentPath = Join-Path $OutputRoot 'shield-pattern-fx-assessment.receipt.json'
 $admissionReceiptPath = Join-Path $OutputRoot 'onboarding-admission.receipt.json'
 $variantRoot = Join-Path $OutputRoot 'five-affinity-variants'
 $privateDiscoveryPath = Join-Path ([IO.Path]::GetTempPath()) `
     ('nll-boss-private-' + [guid]::NewGuid().ToString('N') + '.json')
 foreach ($path in @(
         $discoveryPath, $behaviorReceiptPath, $candidateProfilePath,
-        $candidateReceiptPath, $admissionReceiptPath, $privateDiscoveryPath)) {
+        $candidateReceiptPath, $shieldAssessmentPath, $admissionReceiptPath, $privateDiscoveryPath)) {
     Assert-Onboarding (-not (Test-Path -LiteralPath $path)) `
         'boss_onboarding_output_exists'
 }
 Assert-Onboarding (-not (Test-Path -LiteralPath $variantRoot)) `
+    'boss_onboarding_output_exists'
+Assert-Onboarding (-not (Test-Path -LiteralPath (Join-Path $OutputRoot 'shield-fx-preparation'))) `
     'boss_onboarding_output_exists'
 
 try {
@@ -178,7 +192,21 @@ try {
         --display-name-code $DisplayNameCode | Out-Null
     Assert-Onboarding ($LASTEXITCODE -eq 0) 'boss_onboarding_static_discovery_failed'
 
-    $behaviorBundles = @(Get-ChildItem -LiteralPath $AssetCacheRoot -File -Recurse |
+    $behaviorCache = $AssetCacheRoot
+    if ($null -ne $NativeConfiguration) {
+        Assert-Onboarding (-not [string]::IsNullOrWhiteSpace($FxSourceCacheRoot)) 'boss_onboarding_fx_cache_missing'
+        Assert-Onboarding ((Get-Sha256Lower $NativeConfiguration.dotnetPath) -ceq $NativeConfiguration.dotnetSha256) `
+            'boss_onboarding_native_host_drifted'
+        $behaviorCache = Join-Path $OutputRoot 'acquired-behavior'
+        & $PythonPath -B (Join-Path $PSScriptRoot 'acquire-nll-boss-behavior.py') `
+            --input-plan $NativeConfiguration.inputPlanPath --input-plan-sha256 $NativeConfiguration.inputPlanSha256 `
+            --catalog-tool $NativeConfiguration.catalogToolPath --catalog-tool-sha256 $NativeConfiguration.catalogToolSha256 `
+            --dotnet-path $NativeConfiguration.dotnetPath `
+            --cache-root (Join-Path (Split-Path -Parent $FxSourceCacheRoot) 'behavior-source-cache') `
+            --output-root $behaviorCache | Out-Null
+        Assert-Onboarding ($LASTEXITCODE -eq 0) 'boss_onboarding_behavior_acquisition_failed'
+    }
+    $behaviorBundles = @(Get-ChildItem -LiteralPath $behaviorCache -File -Recurse |
         Where-Object { $_.Name -cmatch '^externalbehavior_assets_all_[0-9a-f]+\.bundle$' })
     $behaviorIdentities = @($behaviorBundles | Group-Object {
         ([string]$_.Length) + ':' + (Get-Sha256Lower $_.FullName)
@@ -186,37 +214,89 @@ try {
     Assert-Onboarding ($behaviorIdentities.Count -gt 0) `
         'boss_onboarding_behavior_bundle_missing'
     $resolvedBehaviorReceipts = [Collections.Generic.List[string]]::new()
+    $behaviorFailureCodes = [Collections.Generic.List[string]]::new()
     foreach ($identity in $behaviorIdentities) {
         $probeReceipt = Join-Path $OutputRoot `
             ('.behavior-probe-' + [guid]::NewGuid().ToString('N') + '.json')
-        & $PythonPath $behaviorInspector `
+        $probeDiagnostic = @(& $PythonPath -B $behaviorInspector `
             --source-discovery $discoveryPath `
             --private-discovery $privateDiscoveryPath `
             --behavior-bundle $identity.Group[0].FullName `
             --unitypy-root $UnityPyRoot `
-            --output $probeReceipt 2>$null
+            --output $probeReceipt 2>&1)
         if ($LASTEXITCODE -eq 0 -and
             (Test-Path -LiteralPath $probeReceipt -PathType Leaf)) {
             $resolvedBehaviorReceipts.Add($probeReceipt)
         }
-        elseif (Test-Path -LiteralPath $probeReceipt -PathType Leaf) {
-            Remove-Item -LiteralPath $probeReceipt -Force
+        else {
+            foreach ($line in $probeDiagnostic) {
+                $code = ([string]$line).Trim()
+                if ($code -cmatch '^boss_behavior_[a-z_]+$') { $behaviorFailureCodes.Add($code) }
+            }
+            if (Test-Path -LiteralPath $probeReceipt -PathType Leaf) {
+                Remove-Item -LiteralPath $probeReceipt -Force
+            }
         }
+    }
+    if ($resolvedBehaviorReceipts.Count -eq 0) {
+        $failureCodes = @($behaviorFailureCodes | Sort-Object -Unique)
+        if ($failureCodes.Count -eq 1) { throw $failureCodes[0] }
+        throw 'boss_onboarding_behavior_closure_unresolved'
     }
     Assert-Onboarding ($resolvedBehaviorReceipts.Count -eq 1) `
         'boss_onboarding_behavior_closure_not_unique'
     Move-Item -LiteralPath $resolvedBehaviorReceipts[0] `
         -Destination $behaviorReceiptPath
 
-    $assemblyOptions = if ($CandidateOnly) { @('--allow-v3-candidate', '--unitypy-root', $UnityPyRoot) } else { @() }
+    if ($null -ne $NativeConfiguration) {
+        Assert-Onboarding (-not [string]::IsNullOrWhiteSpace($FxSourceCacheRoot)) 'boss_onboarding_fx_cache_missing'
+        Assert-Onboarding ((Get-Sha256Lower $NativeConfiguration.dotnetPath) -ceq $NativeConfiguration.dotnetSha256) `
+            'boss_onboarding_native_host_drifted'
+        $acquiredCache = Join-Path $OutputRoot 'acquired-fx'
+        & $PythonPath -B (Join-Path $PSScriptRoot 'acquire-nll-boss-fx.py') `
+            --source-discovery $discoveryPath --private-discovery $privateDiscoveryPath `
+            --input-plan $NativeConfiguration.inputPlanPath --input-plan-sha256 $NativeConfiguration.inputPlanSha256 `
+            --catalog-tool $NativeConfiguration.catalogToolPath --catalog-tool-sha256 $NativeConfiguration.catalogToolSha256 `
+            --dotnet-path $NativeConfiguration.dotnetPath --cache-root $FxSourceCacheRoot `
+            --output-root $acquiredCache --unitypy-root $UnityPyRoot --existing-cache-root $originalAssetCacheRoot | Out-Null
+        Assert-Onboarding ($LASTEXITCODE -eq 0) 'boss_onboarding_fx_acquisition_failed'
+        if (Test-Path -LiteralPath $acquiredCache -PathType Container) { $AssetCacheRoot = $acquiredCache }
+    }
+
+    $assemblyOptions = @('--unitypy-root', $UnityPyRoot)
+    if ($CandidateOnly) { $assemblyOptions += '--allow-v3-candidate' }
     & $PythonPath -B $profileAssembler @assemblyOptions `
         --source-discovery $discoveryPath `
         --private-discovery $privateDiscoveryPath `
         --behavior-receipt $behaviorReceiptPath `
         --asset-cache-root $AssetCacheRoot `
         --profile-output $candidateProfilePath `
-        --receipt-output $candidateReceiptPath
-    Assert-Onboarding ($LASTEXITCODE -eq 0) 'boss_onboarding_profile_assembly_failed'
+        --receipt-output $candidateReceiptPath `
+        --shield-assessment-output $shieldAssessmentPath
+    $assemblyExitCode = $LASTEXITCODE
+    if ($assemblyExitCode -eq 0 -or (Test-Path -LiteralPath $shieldAssessmentPath -PathType Leaf)) {
+        try {
+            $shieldAssessment = Get-Content -LiteralPath $shieldAssessmentPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $assessmentBound = $shieldAssessment.contractId -ceq 'nll/boss-shield-preparation-assessment/v1' -and
+                $shieldAssessment.sourceDiscoverySha256 -ceq (Get-Sha256Lower $discoveryPath) -and
+                $shieldAssessment.behaviorAssemblySha256 -ceq (Get-Sha256Lower $behaviorReceiptPath) -and
+                $shieldAssessment.runtimeAdmissionStatusCode -ceq 'not_assessed'
+        } catch { throw 'boss_onboarding_shield_assessment_invalid' }
+        Assert-Onboarding $assessmentBound 'boss_onboarding_shield_assessment_invalid'
+        if ($shieldAssessment.PSObject.Properties.Name -contains 'fx') {
+            $recipeReceiptPath = Join-Path $OutputRoot 'shield-fx-preparation/recipes.receipt.json'
+            Assert-Onboarding (($shieldAssessment.PSObject.Properties.Name -contains 'shieldFxRecipesSha256') -and
+                (Test-Path -LiteralPath $recipeReceiptPath -PathType Leaf) -and
+                $shieldAssessment.shieldFxRecipesSha256 -ceq (Get-Sha256Lower $recipeReceiptPath) -and
+                $shieldAssessment.shieldFxRecipeDeliveryStatusCode -ceq 'verified_preparation_candidates') `
+                'boss_onboarding_shield_recipe_delivery_invalid'
+        }
+        Assert-Onboarding ($shieldAssessment.preparationStatusCode -cne 'review_required') `
+            'boss_onboarding_shield_preparation_review_required'
+        Assert-Onboarding ($shieldAssessment.preparationStatusCode -cin @('not_required', 'prepared')) `
+            'boss_onboarding_shield_assessment_invalid'
+    }
+    Assert-Onboarding ($assemblyExitCode -eq 0) 'boss_onboarding_profile_assembly_failed'
 
     $validationOutput = @(& $materializerCommand @materializerPrefix `
         --validate-boss-variant-profile $candidateProfilePath)
@@ -352,7 +432,7 @@ try {
             [Text.Encoding]::UTF8.GetBytes($inputText))).ToLowerInvariant()
         & $PythonPath -B $candidateVerifier --output-root $OutputRoot `
             --source-static-pack $StaticDataPackPath --season-number $SeasonNumber `
-            --profile-code $ProfileCode --input-set-sha256 $inputSetSha --asset-cache-root $AssetCacheRoot
+            --profile-code $ProfileCode --input-set-sha256 $inputSetSha --asset-cache-root $originalAssetCacheRoot
         Assert-Onboarding ($LASTEXITCODE -eq 0) 'boss_onboarding_candidate_verification_failed'
         Write-Output (Join-Path $OutputRoot 'onboarding-verified-candidate.receipt.json')
         return

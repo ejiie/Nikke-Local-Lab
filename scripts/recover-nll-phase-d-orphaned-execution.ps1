@@ -361,6 +361,7 @@ if ($priorStatusCode -ceq 'failed' -and $null -eq $pointer -and
         ConvertTo-Json -Compress
     exit 0
 }
+Write-PhaseDProgress $launchRoot 'runtime_restore'
 $runtimeRolledBack = $replayOnly # Historical completed cleanup, not a new absent-Job observation.
 $soloRaidCaptureAttempted = $false
 if ($null -ne $pointer) {
@@ -438,6 +439,7 @@ $hasPersistenceReceipt = Test-Path -LiteralPath $soloRaidPersistenceReceiptPath 
 # A cold, proven runtime needs its management DB even when no raid data changed.
 # Restart is not conditional on the presence of a pending payload.
 if ($runtimeRolledBack -or $hasPendingPayload) {
+    Write-PhaseDProgress $launchRoot 'database_restart'
     if ($jobRequired -and -not $replayOnly) { Write-PhaseDRollbackCleanupCheckpoint $launchRoot $recoveryBundle.sha256 }
     $controlCenterPgCtl =
         [Environment]::GetEnvironmentVariable('NLL_CONTROL_CENTER_PG_CTL')
@@ -471,6 +473,7 @@ if ($runtimeRolledBack -or $hasPendingPayload) {
         'phase_d_orphan_recovery_database_not_ready'
 }
 if ($hasPendingPayload) {
+    Write-PhaseDProgress $launchRoot 'progress_save'
     $persistence = Invoke-SoloRaidPendingReplay
     $raidStatePersisted = $true
     $persistenceReceiptSha256 = Get-Sha256Lower $soloRaidPersistenceReceiptPath
@@ -485,6 +488,7 @@ Assert-Recovery `
      $priorStatusCode -in @('draft','failed')) `
     'phase_d_orphan_recovery_rollback_unproven'
 
+Write-PhaseDProgress $launchRoot 'finalizing'
 $state.statusCode = if ($raidStatePersisted) { 'completed' } else { 'rolled_back' }
 $state.clientProcessId = $null
 if ($state.PSObject.Properties.Name -contains 'watcherProcessId') {
@@ -547,5 +551,6 @@ $receipt = [ordered]@{
     }
 }
 Write-AtomicJson (Join-Path $launchRoot 'orphan-recovery.receipt.json') $receipt
+if ($pendingCleanupSucceeded) { Write-PhaseDProgress $launchRoot 'ready' }
 $receipt | ConvertTo-Json -Compress
 } finally { if ($null -ne $executionJob) { $executionJob.Dispose() } }

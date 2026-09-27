@@ -68,7 +68,7 @@ function New-PhaseDLaunchToolText {
     }
     Assert-PhaseD ($parentStartText -is [string] -and $parentCompletionText -is [string] -and
         $staticDataVariantRequired -is [bool] -and $SeasonNumber -gt 0 -and
-        $clientBuildCode -cin @('build_150.6.9', 'build_151.8.5')) 'phase_d_launch_tools_input_invalid'
+        $clientBuildCode -cin @('build_150.6.9', 'build_151.8.5', 'build_152.8.11')) 'phase_d_launch_tools_input_invalid'
     $expectedParentDbPattern = [regex]::Escape($expectedParentDbSha256)
     Assert-PhaseD `
         (([regex]::Matches($parentStartText, $expectedParentDbPattern)).Count -eq 1 -and

@@ -45,6 +45,13 @@ internal static class BossSeasonCatalogChecks
     Check(Run().Seasons[0].FailureCode == "phase_d_boss_catalog_challenge_preset_unresolved");
     presets[0].WaveOrder = 8;
     managers = [managers[0], managers[0], managers[1]];
+    Check(Run().Seasons[0].DiscoveryStatusCode == "resolved");
+    managers = [new() { Id = 20, RankingGroupId = 1, MonsterPreset = 100 },
+      new() { Id = 10, RankingGroupId = 1, MonsterPreset = 100 }, managers[2]];
+    Check(Run().Seasons[0].DiscoveryStatusCode == "resolved");
+    Check(SoloRaidManagerSelection.ForSeason(managers, 1).Single().Id == 10);
+    Check(SoloRaidManagerSelection.ForSeason(managers.Reverse(), 1).Single().Id == 10);
+    managers[1].MonsterPreset = 200;
     Check(Run().Seasons[0].FailureCode == "phase_d_boss_catalog_manager_unresolved");
     managers = [new SoloRaidManagerRecord { RankingGroupId = 1001 }];
     var rejected = false;

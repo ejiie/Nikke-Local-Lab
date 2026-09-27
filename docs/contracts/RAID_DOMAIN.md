@@ -1,5 +1,7 @@
 # Solo Raid Challenge domain contract
 
+2026-09-17 운영자 요청으로 별도 [유니온 레이드 하드 계약](../operations/UNION_RAID_HARD_IMPLEMENTATION.md)을 추가한다. 이 문서의 Solo 전용 세션/정책과 과거 Phase 검사는 유지한다. 유니온 하드의 5보스 조립과 NLL 소속·노멀 완료 준비는 별도 명시된 범위이며 Solo Challenge 정책을 재사용해 유니온을 가장하지 않는다.
+
 ## 지원 범위
 
 `SoloRaidChallenge`만 지원합니다. 일반 솔로 레이드 1~7단계는 전투 콘텐츠로 구현하지 않으며 Union Raid는 비활성 확장 지점입니다. published 지원 시즌은 만료되지 않는 local content이며 사용자는 lobby season directory에서 언제든 선택할 수 있습니다.
@@ -82,6 +84,12 @@ published snapshot은 `readiness.status=ready`이고 non-null `compatibility_map
 ## 일일 Challenge 상태
 
 Challenge attempt state는 시즌 수명과 분리합니다.
+
+2026-09-17 운영자 확정: 원본 클라이언트의 레이드 **로비 Quit**에서 0~4덱 완료는
+완주 0회·참여 기회 1회 소모이고, 5덱 완료는 완주 1회·참여 기회 1회 소모다.
+전투 중 Quit/재시도와 구분한다. Open에서 예약한 참여 기회를 로비 Quit으로 환급하지 않는다.
+클라이언트 버전 전환으로 기록·일일 횟수를 초기화하지 않는다.
+구현·검증 범위는 [버전 독립 영속성 정비](../operations/VERSION_INDEPENDENT_RUNTIME_PERSISTENCE.md)를 따른다.
 
 - 권위 timezone: `Asia/Seoul`
 - reset local time: 매일 `05:00:00`

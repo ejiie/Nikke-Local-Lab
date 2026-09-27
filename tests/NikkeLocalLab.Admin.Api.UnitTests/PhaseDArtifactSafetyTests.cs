@@ -151,13 +151,13 @@ public sealed class PhaseDArtifactSafetyTests
     Assert.Contains("/XJ", coordinator, StringComparison.Ordinal);
     Assert.Contains("New-Item -ItemType Junction", coordinator, StringComparison.Ordinal);
     Assert.Contains("NLL_CONTROL_CENTER_PG_CTL", coordinator, StringComparison.Ordinal);
-    Assert.Contains("@('stop', '-D', $controlCenterPgData, '-m', 'fast'", coordinator,
+    Assert.DoesNotContain("@('stop', '-D', $controlCenterPgData, '-m', 'fast'", coordinator,
         StringComparison.Ordinal);
     Assert.Contains("$BootstrapEvidenceLane = 'p2-client-start-v2'", coordinator, StringComparison.Ordinal);
     Assert.DoesNotContain("'phase-d-client-start-' + $LaunchContextUid", coordinator,
         StringComparison.Ordinal);
-    Assert.Contains("Invoke-PhaseDPgCtl", coordinator, StringComparison.Ordinal);
-    Assert.Contains("Invoke-PhaseDPgCtl", watcher, StringComparison.Ordinal);
+    Assert.Contains("Assert-PhaseDPostgresRunning", coordinator, StringComparison.Ordinal);
+    Assert.Contains("Ensure-PhaseDPostgresRunning", watcher, StringComparison.Ordinal);
     Assert.DoesNotContain("'-t' '60' |", coordinator + watcher, StringComparison.Ordinal);
     Assert.DoesNotContain("Start-Process -FilePath $PgCtlPath", coordinator + watcher,
         StringComparison.Ordinal);
@@ -203,7 +203,7 @@ public sealed class PhaseDArtifactSafetyTests
     // Failure-state publication versus PG restart is covered by the actual
     // coordinator failure-block behavior tests, not a fixed source ordering.
     Assert.Contains("ControlCenterPgCtlPath", watcher, StringComparison.Ordinal);
-    Assert.Contains("'start', '-D', $ControlCenterPgDataPath", watcher,
+    Assert.Contains("-DataPath $ControlCenterPgDataPath -LogPath $ControlCenterPgLogPath", watcher,
         StringComparison.Ordinal);
     Assert.Contains("ProtectedData]::Protect", installer, StringComparison.Ordinal);
     Assert.Contains("ProtectedData]::Unprotect", start, StringComparison.Ordinal);
@@ -436,7 +436,7 @@ public sealed class PhaseDArtifactSafetyTests
   }
 
   [Fact]
-  public void ProfileRevisionChangeDiscardsOnlyTheOpenChallengeRun()
+  public void ProfileRevisionChangeClosesOpenChallengeWithoutRefundingAttempt()
   {
     var root = FindRepositoryRoot();
     var source = File.ReadAllText(Path.Combine(
@@ -449,7 +449,7 @@ public sealed class PhaseDArtifactSafetyTests
         StringComparison.Ordinal);
     Assert.Contains("removedOpenRuns == 1 && payload.Raid.TrialCount >= 0", source,
         StringComparison.Ordinal);
-    Assert.Contains("if (payload.Raid.TrialCount > 0) payload.Raid.TrialCount--;", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("payload.Raid.TrialCount--", source, StringComparison.Ordinal);
     Assert.Contains("openRunDiscardedForProfileRevisionMismatch = true;", source,
         StringComparison.Ordinal);
     Assert.DoesNotContain(
@@ -504,7 +504,7 @@ public sealed class PhaseDArtifactSafetyTests
         "$persistence = Invoke-SoloRaidPersistence -LaunchContextUid $launchContextUid",
         persistenceFunction);
     var databaseRestart = watcher.LastIndexOf(
-        "$pgStartExitCode = Invoke-PhaseDPgCtl",
+        "Ensure-PhaseDPostgresRunning",
         persistenceInvocation,
         StringComparison.Ordinal);
     var receiptValidation = RequiredIndex(

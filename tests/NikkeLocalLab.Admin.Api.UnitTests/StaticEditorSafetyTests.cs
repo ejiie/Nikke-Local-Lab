@@ -79,7 +79,10 @@ public sealed class StaticEditorSafetyTests
     Assert.Contains("data-tab=\"account\"", html, StringComparison.Ordinal);
     Assert.Contains("data-tab=\"nikkes\"", html, StringComparison.Ordinal);
     Assert.Contains("data-tab=\"raid\"", html, StringComparison.Ordinal);
-    Assert.Contains("data-tab=\"import\"", html, StringComparison.Ordinal);
+    Assert.DoesNotContain("data-tab=\"import\"", html, StringComparison.Ordinal);
+    Assert.Contains("id=\"create-account\"", html, StringComparison.Ordinal);
+    Assert.Contains("id=\"account-sync\"", html, StringComparison.Ordinal);
+    Assert.Contains("src=\"/editor/account-directory.js\"", html, StringComparison.Ordinal);
     Assert.Contains("data-tab=\"advanced\"", html, StringComparison.Ordinal);
     Assert.Contains("id=\"nikke-filter-burst\"", html, StringComparison.Ordinal);
     Assert.Contains("id=\"nikke-filter-manufacturer\"", html, StringComparison.Ordinal);
@@ -127,9 +130,9 @@ public sealed class StaticEditorSafetyTests
     Assert.Contains("data-detail-tab=\"skill\"", html, StringComparison.Ordinal);
     Assert.Contains("data-detail-tab=\"collection\"", html, StringComparison.Ordinal);
     Assert.DoesNotContain("data-detail-tab=\"cube\"", html, StringComparison.Ordinal);
-    Assert.Contains("id=\"account-import-uid\"", html, StringComparison.Ordinal);
-    Assert.Contains("id=\"fetch-account-by-uid\"", html, StringComparison.Ordinal);
-    Assert.Contains("/admin-api/v1/account-imports", script, StringComparison.Ordinal);
+    Assert.DoesNotContain("id=\"account-import-uid\"", html, StringComparison.Ordinal);
+    Assert.DoesNotContain("id=\"fetch-account-by-uid\"", html, StringComparison.Ordinal);
+    Assert.Contains("/synchronize", script, StringComparison.Ordinal);
     Assert.Contains("detail_combat_power_observation", script, StringComparison.Ordinal);
     Assert.Contains("state.combatPowerByCharacter.get(right)", script, StringComparison.Ordinal);
     Assert.Contains("state.combatPowerByCharacter.has(left)", script, StringComparison.Ordinal);

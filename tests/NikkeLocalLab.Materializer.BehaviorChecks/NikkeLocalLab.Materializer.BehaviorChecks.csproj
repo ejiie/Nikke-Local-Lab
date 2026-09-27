@@ -4,5 +4,9 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="../../tools/NikkeLocalLab.PhaseD.RuntimeMaterializer/NativeFxRangeTransaction.cs" Link="NativeFxRangeTransaction.cs" />
+    <Compile Include="../../tools/NikkeLocalLab.PhaseD.RuntimeMaterializer/NativeFxRangeJournal.cs" Link="NativeFxRangeJournal.cs" />
+    <Compile Include="../../tools/NikkeLocalLab.PhaseD.RuntimeMaterializer/CommonDeliveryFiles.cs" Link="CommonDeliveryFiles.cs" />
+    <Compile Include="../../tools/NikkeLocalLab.PhaseD.RuntimeMaterializer/NativeFxExecutionDelivery.cs" Link="NativeFxExecutionDelivery.cs" />
   </ItemGroup>
 </Project>

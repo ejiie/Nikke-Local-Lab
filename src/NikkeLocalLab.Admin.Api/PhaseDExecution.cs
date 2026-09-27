@@ -32,7 +32,8 @@ public sealed record PhaseDLaunchProjection(
     string? StartReceiptSha256,
     string? CompletionReceiptSha256,
     string? FailureCode,
-    DateTimeOffset UpdatedAtUtc);
+    DateTimeOffset UpdatedAtUtc,
+    PhaseDProgress? Progress = null);
 
 public interface IPhaseDExecutionService
 {
@@ -130,6 +131,7 @@ public sealed class FilesystemPhaseDExecutionService : IPhaseDExecutionService
       PhaseDLaunchRequest request,
       CancellationToken cancellationToken = default)
   {
+    var requestReceivedAtUtc = DateTimeOffset.UtcNow;
     var weaknessCode = NormalizeWeaknessCode(request.WeaknessCode);
     if (request.AccountUid.Value == Guid.Empty ||
         request.SeasonNumber <= 0 ||
@@ -149,12 +151,14 @@ public sealed class FilesystemPhaseDExecutionService : IPhaseDExecutionService
         throw new PhaseDExecutionException("phase_d_runtime_not_cold");
       }
 
+      var preparationStartedAtUtc = DateTimeOffset.UtcNow;
       var preparation = await _preparation.PrepareAsync(request.SeasonNumber, weaknessCode, operationToken).ConfigureAwait(false);
       if (preparation.StatusCode != "ready")
         throw new PhaseDExecutionException(preparation.FailureCode ?? "phase_d_preparation_unavailable");
       if (request.PreparationBindingSha256 is not null && request.PreparationBindingSha256 != preparation.BindingSha256)
         throw new PhaseDExecutionException("phase_d_preparation_changed");
 
+      var snapshotStartedAtUtc = DateTimeOffset.UtcNow;
       var snapshot = await _profiles.GetRuntimeProjectionSnapshotAsync(
           request.AccountUid,
           operationToken).ConfigureAwait(false) ??
@@ -171,6 +175,7 @@ public sealed class FilesystemPhaseDExecutionService : IPhaseDExecutionService
       }
 
       var launchUid = EntityUid.New();
+      var snapshotCompletedAtUtc = DateTimeOffset.UtcNow;
       var launchRoot = Path.Combine(_options.ExecutionRoot, launchUid.ToString());
       Directory.CreateDirectory(launchRoot);
       var candidatePath = Path.Combine(launchRoot, "runtime-candidate.json");
@@ -193,9 +198,13 @@ public sealed class FilesystemPhaseDExecutionService : IPhaseDExecutionService
           launchUid.ToString(), now, request.AccountUid.ToString(), candidate.AccountLabel,
           candidate.BaseRevisions.RevisionSetSha256.ToString(), request.SeasonNumber,
           request.ValidationKind, weaknessCode, "draft", null, null, null, null, null, null, now);
+      var progress = PhaseDExecutionProgress.Initial(launchUid.ToString(), requestReceivedAtUtc,
+          preparationStartedAtUtc, snapshotStartedAtUtc, snapshotCompletedAtUtc);
+      await WriteJsonAsync(Path.Combine(launchRoot, "execution-progress.json"), progress,
+          JsonOptions, operationToken).ConfigureAwait(false);
       await WriteJsonAsync(Path.Combine(launchRoot, "execution-state.json"), initialState,
           JsonOptions, operationToken).ConfigureAwait(false);
-      accepted.TrySetResult(initialState.ToProjection());
+      accepted.TrySetResult(initialState.ToProjection() with { Progress = progress });
 
       var startInfo = new ProcessStartInfo
       {
@@ -475,7 +484,7 @@ public sealed class FilesystemPhaseDExecutionService : IPhaseDExecutionService
     var projection = document.ToProjection();
     if (projection.LaunchContextUid.ToString() != Path.GetFileName(launchRoot))
       throw new PhaseDExecutionException("phase_d_execution_state_invalid");
-    return projection;
+    return projection with { Progress = await PhaseDExecutionProgress.ReadAsync(launchRoot, cancellationToken).ConfigureAwait(false) };
   }
 
   private static Task WriteJsonAsync<T>(

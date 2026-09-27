@@ -16,6 +16,50 @@ internal static class BossSeasonCatalog
   internal sealed record Snapshot(int MaximumKnownSeason, Card[] Seasons, ImageHint[] Images);
 
   public static void Export(GameData data, string staticPack, string localeRoot, string outputRoot, string expectedPackSha256)
+    => ExportArchive(BossContentDiscovery.GetDecodedArchive(data), staticPack, localeRoot, outputRoot, expectedPackSha256, false);
+
+  // The operator explicitly selects the local cache for catalog discovery. It
+  // can contain a local variant; this reader makes no signature/admission claim.
+  public static void ExportLocal(string staticPack, string gameConfig, string localeRoot, string outputRoot)
+    => ReadLocalArchive(staticPack, gameConfig, archive =>
+        ExportArchive(archive, staticPack, localeRoot, outputRoot, Hash(staticPack), true));
+
+  internal static void ReadLocalArchive(string staticPack, string gameConfig, Action<byte[]> consume)
+  {
+    Require(new FileInfo(staticPack).Length is > 0 and <= 67108864, "pack_size_invalid");
+    using var config = JsonDocument.Parse(File.ReadAllBytes(gameConfig));
+    var entry = config.RootElement.GetProperty("StaticDataMpk");
+    var shared = (byte[])typeof(GameData).GetField("PresharedValue",
+        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
+    byte[] Key(string name) => Rfc2898DeriveBytes.Pbkdf2(shared,
+        Convert.FromBase64String(entry.GetProperty(name).GetString()!), 10000, HashAlgorithmName.SHA256, 32);
+    var pin = Hash(staticPack);
+    var outerKey = Key("Salt2");
+    var innerKey = Key("Salt1");
+    try
+    {
+      using var aes = Aes.Create();
+      aes.Key = outerKey[..16]; aes.IV = outerKey[16..32];
+      using var source = File.OpenRead(staticPack);
+      using var decrypted = new CryptoStream(source, aes.CreateDecryptor(), CryptoStreamMode.Read);
+      using var outer = new MemoryStream();
+      decrypted.CopyTo(outer);
+      outer.Position = 0;
+      using var zip = new System.IO.Compression.ZipArchive(outer, System.IO.Compression.ZipArchiveMode.Read);
+      var data = zip.GetEntry("data");
+      Require(data is not null && data.Length is > 0 and <= 268435456, "archive_invalid");
+      using var encrypted = data!.Open();
+      using var decoded = new MemoryStream();
+      GameData.DoTransformation(innerKey[..16], innerKey[16..32], encrypted, decoded);
+      var archive = decoded.ToArray();
+      try { Require(Hash(staticPack) == pin, "input_drifted"); consume(archive); }
+      finally { CryptographicOperations.ZeroMemory(archive); }
+    }
+    finally { CryptographicOperations.ZeroMemory(outerKey); CryptographicOperations.ZeroMemory(innerKey); }
+  }
+
+  private static void ExportArchive(byte[] archive, string staticPack, string localeRoot, string outputRoot,
+      string expectedPackSha256, bool allowEmptyLocales)
   {
     outputRoot = Path.GetFullPath(outputRoot);
     Require(!Directory.Exists(outputRoot) && !File.Exists(outputRoot), "output_exists");
@@ -23,8 +67,7 @@ internal static class BossSeasonCatalog
     Require(!outputRoot.StartsWith(@"C:\NIKKE", StringComparison.OrdinalIgnoreCase), "official_path_forbidden");
     var packHash = Hash(staticPack);
     Require(packHash == expectedPackSha256, "input_drifted");
-    var locales = ReadLocales(localeRoot);
-    var archive = BossContentDiscovery.GetDecodedArchive(data);
+    var locales = ReadLocales(localeRoot, allowEmptyLocales);
     try
     {
       var managers = BossContentDiscovery.DeserializeEntry<SoloRaidManagerRecord>(archive, "SoloRaidManagerTable.mpk");
@@ -56,7 +99,7 @@ internal static class BossSeasonCatalog
         string? name = null, weakness = null, failure = null;
         try
         {
-          var manager = One(managers.Where(row => row.RankingGroupId == season), "manager_unresolved");
+          var manager = One(SoloRaidManagerSelection.ForSeason(managers, season), "manager_unresolved");
           var preset = One(presets.Where(row => row.PresetGroupId == manager.MonsterPreset &&
               (int)row.DifficultyType == 2 && row.WaveOrder == 8), "challenge_preset_unresolved");
           var wave = One(waves.Where(row => row.StageId == preset.Wave), "wave_unresolved");
@@ -82,12 +125,12 @@ internal static class BossSeasonCatalog
       return new(seasons.Max(), cards.ToArray(), privateImages.ToArray());
   }
 
-  private sealed record Locales(Dictionary<string, string> Values, Dictionary<string, string> Pins);
-  private static Locales ReadLocales(string root)
+  internal sealed record Locales(Dictionary<string, string> Values, Dictionary<string, string> Pins);
+  internal static Locales ReadLocales(string root, bool allowEmpty = false)
   {
     Require(Directory.Exists(root), "locale_missing");
     var files = Directory.GetFiles(root, "Locale_*.lsc").Order(StringComparer.Ordinal).ToArray();
-    Require(files.Length is > 0 and <= 64, "locale_missing");
+    Require(files.Length <= 64 && (files.Length > 0 || allowEmpty), "locale_missing");
     var values = new Dictionary<string, string>(StringComparer.Ordinal);
     var pins = new Dictionary<string, string>(StringComparer.Ordinal);
     foreach (var file in files)
@@ -132,7 +175,7 @@ internal static class BossSeasonCatalog
     return new(values, pins);
   }
 
-  private static string? Resolve(Dictionary<string, string> values, string? key)
+  internal static string? Resolve(Dictionary<string, string> values, string? key)
   {
     if (string.IsNullOrWhiteSpace(key)) return null;
     if (!key.Contains(':', StringComparison.Ordinal)) key = "Locale_System:" + key;
@@ -145,7 +188,7 @@ internal static class BossSeasonCatalog
     Require(matches.Length == 1, code);
     return matches[0];
   }
-  private static void Plain(string path)
+  internal static void Plain(string path)
   {
     Require(Path.IsPathFullyQualified(path) && !path.StartsWith(@"\\", StringComparison.Ordinal), "path_invalid");
     for (var cursor = Path.GetFullPath(path); !string.IsNullOrEmpty(cursor); cursor = Path.GetDirectoryName(cursor))

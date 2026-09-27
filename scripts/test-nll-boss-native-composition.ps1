@@ -16,9 +16,11 @@ function Case-Test([string]$Mode) {
     $fx = Join-Path $candidate 'shield-fx-candidate'
     $null = New-Item -ItemType Directory -Path $fx
     Write-Test (Join-Path $fx 'manifest.json') @{ synthetic = $true }
+    $profilePath = Join-Path $candidate 'boss-runtime-variant.profile.json'
+    Write-Test $profilePath @{ schemaVersion = 3; synthetic = $true }
     $seal = @{ contractId = 'nll/boss-onboarding-verified-candidate/v1'; affinityVariantCount = 5
         fiveAffinityVariantStatusCode = 'passed'; runtimeAdmissionStatusCode = 'not_assessed'; clientStarted = $false
-        shieldFxCandidateManifestSha256 = Hash-Test (Join-Path $fx 'manifest.json') }
+        shieldFxCandidateManifestSha256 = Hash-Test (Join-Path $fx 'manifest.json'); profileSha256 = Hash-Test $profilePath }
     switch ($Mode) {
         'count' { $seal.affinityVariantCount = 4 }
         'variant' { $seal.fiveAffinityVariantStatusCode = 'failed' }

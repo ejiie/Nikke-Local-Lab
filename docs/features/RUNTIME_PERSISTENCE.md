@@ -14,13 +14,16 @@
 
 ## 저장 계약
 
-- 기록 범위는 account + exact raid snapshot + client build/executable + 선택 약점이다.
+- 2026-09-17 정정: 기록 범위는 account + 시즌 + 선택 약점이다.
+  snapshot/build/executable은 각 저장 revision의 출처이며 기록을 분리하는 키가 아니다.
   실전과 모의전은 그 안에서 분리한다. 최고점은 실전 5덱 완주의 strict improvement만 인정한다.
+- 로비 Quit은 0~4덱이면 완주로 인정하지 않지만 참여 기회는 소모한다.
+  5덱 완료는 완주 1회와 참여 기회 1회다. Open에서 소모한 횟수를 Quit에서 환급하거나 재차 소모하지 않는다.
 - 덱 결과는 정상 접수 transaction에서 run UID/ordinal/시각과 구성 snapshot을 내구성 있게
   기록한다. Quit·하위 완주·일일 초기화는 이력을 삭제하지 않는다. 동일 요청 재전송은 중복 생성하지 않는다.
 - 기존 약점 없는 기록은 `unresolved`에 그대로 남긴다. 현재 선택이나 기본 약점을 소급 대입하지 않는다.
   근거 있는 이관만 별도 provenance와 새 revision으로 허용한다. 현재 약점 조회는 unresolved를 숨기지만
-  삭제하지 않는다. 기존 150→151 허용을 다른 build나 약점으로 확장하지 않는다.
+  삭제하지 않는다. 클라이언트 버전 전환은 같은 논리 head를 이어 쓰며 약점은 계속 분리한다.
 - 편성은 계정+원본 SoloRaid 팀 타입(실전/모의전 공용)이며 보스·약점 사이에서 재사용한다. 명시적 빈 슬롯도 값이다.
   캐릭터는 local UID로 보존하고 materialize 때 현재 Csn으로 해소한다. 진행 run의 사용 제한과 별개다.
 - 착용/로비/BGM/프로필/알림은 계정별 별도 설정 revision이다. 게임의 빌드 수정은 회수하지 않는다.
@@ -49,6 +52,9 @@ CI의 기존 Linux S-08 self-test 실패는 별도 후속 작업에서 수정하
 
 ## 구현과 검증 근거
 
+- V0023과 버전 독립 저장·로비 Quit 수정의 진행 및 근거는
+  [2026-09-17 정비 기록](../operations/VERSION_INDEPENDENT_RUNTIME_PERSISTENCE.md)을 따른다.
+  아래 V0019~V0021과 2026-09-12 배포 기록은 당시 이력이다.
 - V0019: 선택 약점 5종 + legacy `unresolved`를 저장 키에 추가한다. 기존 암호문/AAD/operation
   replay는 v1 경로로 유지한다. 기존 무약점 기록을 현재 선택에 붙이는 자동 이관은 하지 않는다.
 - V0020: 계정+client build/hash별 설정 head/revision/terminal operation. 설정 CAS 충돌은

@@ -42,8 +42,51 @@ function Assert-PhaseDCacheArtifactIdentity {
         [string]$CacheRoot,
         [long]$ByteLength,
         [string]$Sha256,
-        [string]$FailureCode
+        [string]$FailureCode,
+        [object]$CommonDelivery = $null,
+        [string]$ProfileSha256,
+        [ValidateSet('fx', 'behavior')][string]$AssetRole = 'fx'
     )
+    # Onboarding may acquire FX from the native client without adding it to the
+    # server cache. Follow the published delivery seal to those exact originals.
+    # Derived FX delivery is still checked/staged separately by the materializer.
+    if ($null -ne $CommonDelivery) {
+        try {
+            $descriptor = Read-PhaseDPreparationJson $CommonDelivery.path $FailureCode
+            Assert-PhaseD ($descriptor.sha256 -ceq $CommonDelivery.sha256 -and
+                $descriptor.length -eq $CommonDelivery.length -and
+                $descriptor.value.contractId -ceq 'nll/common-boss-delivery/v1' -and
+                $descriptor.value.profileSha256 -ceq $ProfileSha256) $FailureCode
+            $sealPin = $descriptor.value.candidateSeal
+            $seal = Read-PhaseDPreparationJson $sealPin.path $FailureCode
+            Assert-PhaseD ($seal.sha256 -ceq $sealPin.sha256 -and $seal.length -eq $sealPin.length -and
+                $seal.value.contractId -ceq 'nll/boss-onboarding-verified-candidate/v1' -and
+                $seal.value.profileSha256 -ceq $ProfileSha256) $FailureCode
+            $artifacts = @($seal.value.artifacts)
+            if (@($artifacts | Where-Object relativePath -CEQ ($AssetRole + '-acquisition.receipt.json')).Count -gt 0) {
+                $sealedAssets = @($artifacts | Where-Object {
+                    $_.relativePath.StartsWith(('acquired-' + $AssetRole + '/'), [StringComparison]::Ordinal) -and
+                    $_.sha256 -ceq $Sha256
+                })
+                Assert-PhaseD ($ByteLength -gt 0 -and $Sha256 -cmatch '^[0-9a-f]{64}$' -and $sealedAssets.Count -gt 0) $FailureCode
+                $root = [IO.Path]::GetFullPath((Split-Path -Parent $sealPin.path)).TrimEnd('\') + '\'
+                foreach ($row in $sealedAssets) {
+                    $relative = [string]$row.relativePath
+                    Assert-PhaseD (-not [IO.Path]::IsPathRooted($relative) -and -not $relative.Contains(':') -and
+                        @($relative.Replace('\', '/').Split('/') | Where-Object { $_ -cin @('', '.', '..') }).Count -eq 0) $FailureCode
+                    $path = [IO.Path]::GetFullPath((Join-Path $root $relative))
+                    Assert-PhaseD ($path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) $FailureCode
+                    for ($cursor = $path; $cursor; $cursor = [IO.Path]::GetDirectoryName($cursor)) {
+                        Assert-PhaseD (((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) $FailureCode
+                    }
+                    Assert-PhaseD ((Get-Item -LiteralPath $path).Length -eq $ByteLength -and
+                        (Get-Sha256Lower $path) -ceq $Sha256) $FailureCode
+                }
+                return $sealedAssets.Count
+            }
+        }
+        catch { throw $FailureCode }
+    }
     Assert-PhaseD `
         ((Test-Path -LiteralPath $CacheRoot -PathType Container) -and
          $ByteLength -gt 0 -and $Sha256 -cmatch '^[0-9a-f]{64}$') `
@@ -65,6 +108,16 @@ function Assert-PhaseDCacheArtifactIdentity {
 function Invoke-PhaseDEmergencyRollback {
     param([string]$EvidencePath, [string]$RuntimePath)
     $pointerPath = Join-Path $EvidencePath 'active-run.pointer.json'
+    if (-not $jobAttempted) {
+        # Stopping the management DB precedes any runtime Job. A failure in
+        # between has no run pointer or runtime baseline to restore.
+        Assert-PhaseD (-not (Test-Path -LiteralPath $pointerPath) -and
+            -not (Test-Path -LiteralPath (Join-Path $launchRoot 'job-reservation.json')) -and
+            -not (Test-Path -LiteralPath (Join-Path $launchRoot 'phase-d-child-start.identity.json')) -and
+            (Get-Sha256Lower (Join-Path $RuntimePath 'db.json')) -ceq $runtimeDbSha256) `
+            'phase_d_prestart_runtime_drifted'
+        return $true
+    }
     if ($jobAttempted -and -not (Test-Path -LiteralPath $pointerPath -PathType Leaf)) {
         # New start publishes its baseline before any mutation. No pointer means
         # no mutable start phase, but still require live same-job zero proof.
@@ -293,7 +346,7 @@ $createdAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
 $controlCenterPgCtl = [Environment]::GetEnvironmentVariable('NLL_CONTROL_CENTER_PG_CTL')
 $controlCenterPgData = [Environment]::GetEnvironmentVariable('NLL_CONTROL_CENTER_PG_DATA')
 $controlCenterPgLog = [Environment]::GetEnvironmentVariable('NLL_CONTROL_CENTER_PG_LOG')
-$controlCenterDatabaseStopped = $false
+$runtimeLifecycleEntered = $false
 $runtimeProcessIdentities = $null
 $coordinatorStage = 'preparation'
 $controlCenterHostsPrepared = $false
@@ -329,15 +382,17 @@ try {
     $preparation = Get-PhaseDPreparation -RepositoryRoot $RepositoryRoot `
         -SeasonNumber $SeasonNumber -WeaknessCode $WeaknessCode -RuntimeSelectionPath $RuntimeSelectionPath
     Assert-PhaseD ($preparation.statusCode -ceq 'ready') ([string]$preparation.failureCode)
+    Assert-PhaseDDatabaseBinding $preparation
     Assert-PhaseD ([string]::IsNullOrEmpty($ExpectedPreparationBindingSha256) -or
         $ExpectedPreparationBindingSha256 -ceq $preparation.bindingSha256) 'phase_d_preparation_changed'
     $bossRuntimeVariantRegistrySha256 = $preparation.plan.registry.sha256
+    $bossRuntimeVariantRegistry = $preparation.plan.registry.path
     $bossRuntimeVariantProfile = $preparation.plan.profile.path
     $bossRuntimeVariantProfileSha256 = $preparation.plan.profile.sha256
     $bossRuntimeVariantProfileByteLength = $preparation.plan.profile.length
     $bossVariantProfile = $preparation.plan.profile.value
-    $sourceBossElementCode = [string]$bossVariantProfile.sourceAffinity.bossElementCode
-    $sourceBossWeaknessCode = [string]$bossVariantProfile.sourceAffinity.weaknessCode
+    $sourceBossElementCode = [string]$preparation.plan.affinity.sourceBossElementCode
+    $sourceBossWeaknessCode = [string]$preparation.plan.affinity.sourceWeaknessCode
     $targetBossElementCode = $preparation.plan.targetElementCode
     $targetShieldFxVariants = @($preparation.plan.shieldFxVariants)
     # The old seed/account/persistence pipeline remains authoritative. A selected
@@ -581,6 +636,8 @@ try {
             -CacheRoot $runtimeCacheRoot `
             -ByteLength $behaviorAssetBundleByteLength `
             -Sha256 $behaviorAssetBundleSha256 `
+            -CommonDelivery $preparation.plan.commonDelivery -AssetRole behavior `
+            -ProfileSha256 $bossRuntimeVariantProfileSha256 `
             -FailureCode 'phase_d_boss_behavior_asset_closure_invalid'
     }
     if ($targetShieldFxVariants.Count -eq 1) {
@@ -600,6 +657,8 @@ try {
                 -CacheRoot $runtimeCacheRoot `
                 -ByteLength ([long]$bundle.byteLength) `
                 -Sha256 ([string]$bundle.sha256) `
+                -CommonDelivery $preparation.plan.commonDelivery `
+                -ProfileSha256 $bossRuntimeVariantProfileSha256 `
                 -FailureCode 'phase_d_boss_shield_fx_asset_closure_invalid'
         }
     }
@@ -608,7 +667,14 @@ try {
     $variantStaticDataPack = Join-Path $variantStaticDataRoot 'StaticData.pack'
     $variantStaticDataReceiptPath = Join-Path $launchRoot `
         'static-data-variant.receipt.json'
-    $materializerOutput = @(& $runtimeMaterializer `
+    $materializerInvocation = & {
+      # Windows PowerShell 5.1 turns redirected stderr into ErrorRecords.
+      # Capture all diagnostics before classifying the exit code; keep these
+      # preferences local so coordinator/rollback errors still stop normally.
+      $ErrorActionPreference = 'Continue'
+      $PSNativeCommandUseErrorActionPreference = $false
+      $global:LASTEXITCODE = $null
+      $output = @(& $runtimeMaterializer `
         --candidate $RuntimeCandidatePath `
         --lobby $LobbyProjectionPath `
         --source-db (Join-Path $parentRoot 'db.json') `
@@ -624,7 +690,11 @@ try {
         --variant-static-data-receipt $variantStaticDataReceiptPath `
         --client-build-code $clientBuildCode `
         --client-executable-sha256 $clientExecutableSha256 2>&1)
-    $materializerExitCode = $LASTEXITCODE
+      if ($null -eq $global:LASTEXITCODE) { throw 'phase_d_materializer_start_failed' }
+      [pscustomobject]@{ Output = $output; ExitCode = $global:LASTEXITCODE }
+    }
+    $materializerOutput = @($materializerInvocation.Output)
+    $materializerExitCode = $materializerInvocation.ExitCode
     if ($materializerExitCode -ne 0) {
         $safePreparationDiagnostics = @($materializerOutput | ForEach-Object { [string]$_ } |
             Where-Object { $_ -cmatch '^\{"preparationExceptionType":' })
@@ -832,8 +902,21 @@ try {
             'none'
         }
         else { [string]$materialization.soloRaidStateHeadRevisionUid }
+    $executionFx = $null
+    Write-PhaseDProgress $launchRoot 'fx_stage'
+    if ($null -ne $preparation.plan.commonDelivery) {
+        $delivery = $preparation.plan.commonDelivery
+        $fxOutput = @(& $runtimeMaterializer --stage-common-boss-delivery true --delivery-path $delivery.path `
+            --delivery-sha256 $delivery.sha256 --boss-variant-profile $bossRuntimeVariantProfile `
+            --weakness-code $WeaknessCode --launch-root $launchRoot 2>&1)
+        Assert-PhaseD ($LASTEXITCODE -eq 0) 'phase_d_boss_runtime_delivery_stage_failed'
+        $executionFx = ($fxOutput -join "`n") | ConvertFrom-Json
+    }
+    Write-PhaseDProgress $launchRoot 'runtime_preparation'
     $runnerLaunchInput = [ordered]@{
         weaknessCode = $WeaknessCode
+        jobNonce = [guid]::NewGuid().ToString('N')
+        executionFx = $executionFx
         runtimeDbSha256 = $runtimeDbSha256
         expectedWeaknessVariantServerDllSha256 = $expectedWeaknessVariantServerDllSha256
         runtimeBundle = $runtimeBundle
@@ -865,9 +948,6 @@ try {
     $runnerSpec = New-PhaseDRunnerSpecification -LaunchInput $runnerLaunchInput `
         -PreparationBindingSha256 $preparation.bindingSha256 -ProfileSha256 $bossRuntimeVariantProfileSha256 `
         -SourceManifestSha256 $sourceManifestSha256 -RunIntentCode $ValidationKind
-    $runnerSpec.contractId = 'nll/phase-d-runner-input/v3'
-    $runnerSpec.jobNonce = [guid]::NewGuid().ToString('N')
-    $runnerSpec.executionFx = $null # Native 151 delivery is not admitted by this lifecycle change.
     $runnerBundle = New-PhaseDRunnerBundle -Specification $runnerSpec -ScriptsRoot $PSScriptRoot
     $derivedStart = Join-Path $runnerBundle.root 'invoke-nll-phase-d-runner.ps1'
     $derivedCompletion = $derivedStart
@@ -1029,24 +1109,20 @@ try {
          (Test-Path -LiteralPath $controlCenterPgCtl -PathType Leaf) -and
          (Test-Path -LiteralPath $controlCenterPgData -PathType Container)) `
         'phase_d_control_center_database_binding_missing'
-    $pgStopExitCode = Invoke-PhaseDPgCtl `
-        -OwnershipPath (Join-Path $launchRoot 'phase-d-child-pg.identity.json') `
-        -PgCtlPath $controlCenterPgCtl `
-        -Arguments @('stop', '-D', $controlCenterPgData, '-m', 'fast', '-w', '-t', '60')
-    Assert-PhaseD ($pgStopExitCode -eq 0) `
-        'phase_d_control_center_database_stop_failed'
-    $controlCenterDatabaseStopped = $true
-    Assert-PhaseD `
-        (@(Get-Process -Name postgres, pg_ctl -ErrorAction SilentlyContinue).Count -eq 0) `
-        'phase_d_postgresql_not_cold'
+    # The common runtime uses PostgreSQL for transactional API persistence.
+    # Keep it alive for all seasons/modes, including startup information reads.
+    Assert-PhaseDPostgresRunning -PgCtlPath $controlCenterPgCtl -DataPath $controlCenterPgData `
+        -OwnershipPath (Join-Path $launchRoot 'phase-d-child-pg.identity.json')
 
     # The sealed runner owns the bootstrap lane and per-run assessment UID.
+    $runtimeLifecycleEntered = $true
     $coordinatorStage = 'derived_start'
     $null = Read-PhaseDRunnerBundle -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
     $startArguments = [ordered]@{ Phase='start'; LaunchRoot=$launchRoot; ExpectedBundleSha256=$runnerBundle.sha256 }
     . (Join-Path $runnerBundle.root 'Nll.PhaseDJob.ps1')
     $jobAttempted = $true
     $executionJob = New-PhaseDExecutionJob -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
+    Enter-PhaseDSharedIsolation -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256 -RuntimeBundle $runtimeBundle
     $startToolResult = Invoke-PhaseDChildScript `
         -ExecutionJob $executionJob `
         -TimeoutSeconds 300 -OwnershipPath (Join-Path $launchRoot 'phase-d-child-start.identity.json') `
@@ -1161,6 +1237,7 @@ try {
 }
 catch {
     $primaryFailure = $_
+    Write-PhaseDProgress $launchRoot 'recovery_required'
     try { Write-PhaseDFirstFailure -LaunchRoot $launchRoot -Owner coordinator -Stage $coordinatorStage -Failure $primaryFailure } catch { }
     $failureCode = if ($primaryFailure.Exception.Message -cmatch '^[a-z0-9._-]{3,128}$') {
         $primaryFailure.Exception.Message
@@ -1196,8 +1273,8 @@ catch {
         # identity handoff. Preserve its state/evidence and fail this request only.
         throw $failureCode
     }
-    $coordinatorRollbackProven = -not $controlCenterDatabaseStopped
-    if ($controlCenterDatabaseStopped) {
+    $coordinatorRollbackProven = -not $runtimeLifecycleEntered
+    if ($runtimeLifecycleEntered) {
         if (Test-PhaseDDerivedStartRollbackProof `
                 -EvidencePath $evidenceRoot `
                 -RuntimeDatabasePath $runtimeDbPath `
@@ -1258,17 +1335,13 @@ catch {
     # An unproven rollback remains reconcilable and therefore blocks admission.
     # Only a proven rollback or a pre-runtime failure may become terminal failed.
     $failureStatusCode = if ($coordinatorRollbackProven) { 'failed' } else { 'started' }
-    if ($coordinatorRollbackProven -and $controlCenterDatabaseStopped) {
+    if ($coordinatorRollbackProven -and $runtimeLifecycleEntered) {
         try {
             if ($jobAttempted) { Write-PhaseDRollbackCleanupCheckpoint $launchRoot $runnerBundle.sha256 }
-            $pgStartExitCode = Invoke-PhaseDPgCtl `
+            Ensure-PhaseDPostgresRunning `
                 -OwnershipPath (Join-Path $launchRoot 'phase-d-child-pg.identity.json') `
                 -PgCtlPath $controlCenterPgCtl `
-                -Arguments @(
-                    'start', '-D', $controlCenterPgData,
-                    '-l', $controlCenterPgLog, '-w', '-t', '60')
-            if ($pgStartExitCode -ne 0) { throw 'restart_failed' }
-            $controlCenterDatabaseStopped = $false
+                -DataPath $controlCenterPgData -LogPath $controlCenterPgLog
         }
         catch {
             try { Write-PhaseDFirstFailure -LaunchRoot $launchRoot -Owner coordinator -Stage database_restart -CleanupStage database_restart -Failure $_ } catch { }

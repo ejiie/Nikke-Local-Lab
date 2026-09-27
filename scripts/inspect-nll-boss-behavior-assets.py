@@ -77,6 +77,19 @@ def aggregate_hash(values: list[str]) -> str:
     return sha256_bytes("\n".join(sorted(values)).encode("utf-8"))
 
 
+def validate_graph(graph: Any) -> None:
+    # Disabled children and detached editor tasks belong to the original asset.
+    # Preserve them in the canonical hash; they do not invalidate an enabled root.
+    root = graph.get("RootTask") if isinstance(graph, dict) else None
+    require(
+        isinstance(root, dict)
+        and isinstance(root.get("Type"), str)
+        and bool(root["Type"].strip())
+        and root.get("Disabled", False) is False,
+        "boss_behavior_graph_invalid",
+    )
+
+
 def write_atomic(path: Path, value: dict[str, Any]) -> None:
     require(path.is_absolute() and not path.exists(), "boss_behavior_output_exists")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -141,6 +154,7 @@ def run(args: argparse.Namespace) -> None:
         tree = obj.read_typetree()
         serialized = tree["mBehaviorSource"]["mTaskData"]["JSONSerialization"]
         graph = json.loads(serialized)
+        validate_graph(graph)
         state: dict[str, Any] = {
             "node_count": 0,
             "disabled_node_count": 0,
@@ -170,7 +184,7 @@ def run(args: argparse.Namespace) -> None:
     )
     graphs = [matches[key][0] for key in keys]
     require(
-        all(graph["nodeCount"] > 0 and graph["disabledNodeCount"] == 0 for graph in graphs),
+        all(graph["nodeCount"] > 0 for graph in graphs),
         "boss_behavior_graph_invalid",
     )
     receipt = {

@@ -11,6 +11,27 @@ internal static class AddressableFxBinding
   internal sealed record Dependency(string Key, bool IsLocal);
   internal sealed record Binding(string AssetKey, Dependency[] Dependencies);
 
+  internal static string ResolvePrefabName(SqliteConnection db, string name)
+  {
+    Require(Regex.IsMatch(name, @"\A[a-zA-Z0-9_-]{1,256}\z"), "prefab_name_invalid");
+    using var command = db.CreateCommand();
+    command.CommandText = """
+        SELECT DISTINCT i.internal_id
+        FROM keys k JOIN key_entries ke ON ke.key_rowid=k.rowid
+        JOIN entries e ON e.rowid=ke.entry_rowid
+        JOIN internal_ids i ON i.rowid=e.internal_id_rowid
+        JOIN provider_ids p ON p.rowid=e.provider_id_rowid
+        WHERE (lower(k.key)=lower($name) OR substr(lower(k.key),-length($name)-1)='/'||lower($name))
+          AND p.provider_id='UnityEngine.ResourceManagement.ResourceProviders.BundledAssetProvider'
+        """;
+    command.Parameters.AddWithValue("$name", name);
+    using var reader = command.ExecuteReader();
+    Require(reader.Read(), "asset_missing");
+    var key = reader.GetString(0);
+    Require(!reader.Read(), "asset_ambiguous");
+    return key;
+  }
+
   internal static Binding Resolve(SqliteConnection db, string assetKey)
   {
     Require(assetKey.Length is > 0 and <= 2048 && (assetKey.EndsWith(".prefab", StringComparison.Ordinal) ||

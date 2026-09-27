@@ -10,8 +10,9 @@ const NllBossSeasons = (() => {
   function create({ document, api, onSelected, onUnavailable = () => {}, uid = () => crypto.randomUUID(),
     schedule = (fn, ms) => setTimeout(fn, ms), cancel = timer => clearTimeout(timer) }) {
     const byId = id => document.getElementById(id);
-    let catalog = null, loadNumber = 0, selected = null, pending = null, timer = null, polling = false;
+    let catalog = null, loadNumber = 0, selected = null, pending = null, timer = null, polling = false, syncing = false;
     const operations = new Map(), inflight = new Set(), observed = new Set(), notified = new Set();
+    const view = { weakness: "all", imported: "all", order: "newest" };
     function node(tag, className, text) {
       const value = document.createElement(tag);
       if (className) value.className = className;
@@ -62,8 +63,17 @@ const NllBossSeasons = (() => {
       if (!detail) button.addEventListener("click", () => selectSeason(row.seasonNumber));
       return button;
     }
+    function renderSeasonGrid() {
+      const rows = (catalog?.seasons || []).filter(row => {
+        const imported = ["processed", "awaiting_game_validation"].includes(row.processingStatusCode);
+        return (view.weakness === "all" || row.defaultWeaknessCode === view.weakness) &&
+          (view.imported === "all" || (view.imported === "imported" ? imported : !imported));
+      }).sort((a, b) => view.order === "newest" ? b.seasonNumber - a.seasonNumber : a.seasonNumber - b.seasonNumber);
+      byId("boss-season-grid").replaceChildren(...rows.map(row => card(row)));
+      byId("boss-season-empty").hidden = !catalog || rows.length !== 0;
+    }
     function render() {
-      byId("boss-season-grid").replaceChildren(...(catalog?.seasons || []).map(row => card(row)));
+      renderSeasonGrid();
       if (!selected) byId("selected-boss-card").replaceChildren();
       if (selected) {
         const row = catalog?.seasons.find(item => item.seasonNumber === selected);
@@ -76,7 +86,7 @@ const NllBossSeasons = (() => {
       byId("boss-message-text").textContent = message;
       if (!byId("boss-message-dialog").open) byId("boss-message-dialog").showModal();
     }
-    async function refreshCatalog() {
+    async function refreshCatalog(preserveOnError = false) {
       const number = ++loadNumber;
       try {
         const { payload } = await api("/admin-api/v1/boss-seasons");
@@ -89,15 +99,39 @@ const NllBossSeasons = (() => {
               (row.processingStatusCode !== "unresolved" && !Object.hasOwn(elements, row.defaultWeaknessCode || "")) ||
               (row.defaultWeaknessCode !== null && !Object.hasOwn(elements, row.defaultWeaknessCode)))) throw new Error("boss_catalog_invalid");
         catalog = payload;
-        byId("boss-catalog-status").textContent = `시즌 1–${payload.maximumKnownSeason} · 로컬 자료 기준 (현재 시즌 여부 미확인)`;
+        byId("boss-catalog-status").textContent = `시즌 1–${payload.maximumKnownSeason}`;
         render();
+        return true;
       } catch {
         if (number !== loadNumber) return;
+        if (preserveOnError && catalog) return false;
         catalog = null; selected = null;
         byId("boss-catalog-status").textContent = "시즌 목록을 확인할 수 없습니다. 로컬 자료 구성을 확인한 뒤 다시 시도하세요.";
         byId("boss-detail").hidden = true;
         render(); onUnavailable();
       }
+    }
+    async function syncCatalog() {
+      if (syncing) return;
+      syncing = true;
+      const button = byId("boss-season-sync"), status = byId("boss-season-sync-status");
+      button.disabled = true; status.hidden = false;
+      status.textContent = "시즌 목록을 동기화하고 있습니다…";
+      try {
+        const { payload } = await api("/admin-api/v1/boss-seasons/sync", { method: "POST", body: {} });
+        if (!["updated", "unchanged", "busy", "failed"].includes(payload?.statusCode)) throw new Error("boss_catalog_sync_invalid");
+        if (payload.statusCode === "updated") {
+          if (!await refreshCatalog(true)) throw new Error("boss_catalog_refresh_failed");
+          status.textContent = `동기화 완료 · 새 시즌 ${payload.addedSeasonCount}개 추가`;
+        } else if (payload.statusCode === "unchanged") status.textContent = "동기화 완료 · 추가된 시즌이 없습니다.";
+        else if (payload.statusCode === "busy") status.textContent = "이미 시즌 목록을 동기화하고 있습니다. 잠시 후 다시 확인하세요.";
+        else {
+          const messages = { boss_catalog_sync_source_missing: "게임 데이터 파일이 없습니다. 업데이트 후 다시 시도하세요.",
+            boss_catalog_sync_source_unreadable: "게임 데이터 파일을 읽을 수 없습니다. 업데이트 상태를 확인하세요." };
+          status.textContent = (messages[payload.failureCode] || "동기화하지 못했습니다. 다시 시도하세요.") + " 기존 목록은 유지됩니다.";
+        }
+      } catch { status.textContent = "동기화 결과를 확인하지 못했습니다. 다시 시도하세요."; }
+      finally { syncing = false; button.disabled = false; }
     }
     function selectSeason(season) {
       const row = catalog?.seasons.find(item => item.seasonNumber === season);
@@ -163,6 +197,9 @@ const NllBossSeasons = (() => {
         if (observed.size) timer = schedule(() => { void refreshJobs(); }, 5000);
       } finally { polling = false; }
     }
+    for (const [id, key] of [["boss-season-weakness-filter", "weakness"], ["boss-season-import-filter", "imported"], ["boss-season-order", "order"]]) {
+      byId(id).addEventListener("change", () => { view[key] = byId(id).value; renderSeasonGrid(); });
+    }
     byId("select-boss-season").addEventListener("click", () => {
       byId("boss-season-picker").hidden = false; byId("boss-detail").hidden = true;
       void refreshCatalog(); void refreshJobs();
@@ -170,12 +207,13 @@ const NllBossSeasons = (() => {
     byId("boss-season-back").addEventListener("click", () => {
       byId("boss-season-picker").hidden = true; byId("boss-detail").hidden = selected === null;
     });
+    byId("boss-season-sync").addEventListener("click", () => { void syncCatalog(); });
     byId("boss-import-no").addEventListener("click", () => { pending = null; byId("boss-import-dialog").close(); });
     byId("boss-import-dialog").addEventListener("cancel", () => { pending = null; });
     byId("boss-import-yes").addEventListener("click", () => { void confirmImport(); });
     byId("boss-message-close").addEventListener("click", () => byId("boss-message-dialog").close());
     byId("boss-jobs-refresh").addEventListener("click", () => { void refreshJobs(); void refreshCatalog(); });
-    return { refreshCatalog, refreshJobs, selectSeason, confirmImport };
+    return { refreshCatalog, refreshJobs, selectSeason, confirmImport, syncCatalog };
   }
   return { create };
 })();

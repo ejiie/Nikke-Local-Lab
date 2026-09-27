@@ -35,7 +35,13 @@ public sealed record ClassicSoloRaidRuntimeStateHead(
     int CompletedBestTeamCount,
     int OpenTeamCount,
     int? RaidDateDay,
-    DateTimeOffset CapturedAtUtc);
+    DateTimeOffset CapturedAtUtc)
+{
+  public Guid RaidSnapshotUid { get; init; }
+  public byte[] RaidSnapshotSha256 { get; init; } = [];
+  public string ClientBuildCode { get; init; } = "";
+  public byte[] ClientExecutableSha256 { get; init; } = [];
+}
 
 public sealed record ClassicSoloRaidRuntimeStateCapture(
     ClassicSoloRaidRuntimeStateKey Key,
@@ -75,12 +81,21 @@ public sealed class ClassicSoloRaidRuntimeStateStore
       Guid localAccountUid,
       int seasonNumber,
       DateTimeOffset? observedAtUtc = null,
-      CancellationToken cancellationToken = default)
+      CancellationToken cancellationToken = default,
+      byte[]? profileSha256 = null)
   {
     Require(localAccountUid != Guid.Empty && seasonNumber > 0,
         "phase_d_raid_state_operational_binding_invalid");
     await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
     await using var command = connection.CreateCommand();
+    if (profileSha256 is not null)
+    {
+      command.CommandText = "SELECT EXISTS (SELECT 1 FROM lab_profile.local_account WHERE local_account_uid=$1)";
+      command.Parameters.AddWithValue(localAccountUid);
+      Require((bool)(await command.ExecuteScalarAsync(cancellationToken))!, "phase_d_raid_state_operational_binding_missing");
+      var bound = await new CommonBossRuntimeBindingStore(_dataSource).FindAsync(seasonNumber, profileSha256, cancellationToken);
+      return new(localAccountUid, seasonNumber, bound.RaidSnapshotUid, bound.RaidSnapshotSha256);
+    }
     var observedAt = observedAtUtc ?? DateTimeOffset.UtcNow;
     command.CommandText = """
         WITH effective_boot AS MATERIALIZED (
@@ -197,29 +212,27 @@ public sealed class ClassicSoloRaidRuntimeStateStore
                revision.completed_best_team_count,
                revision.open_team_count,
                revision.raid_date_day,
-               revision.captured_at_utc
+               revision.captured_at_utc,
+               context.raid_snapshot_uid, context.raid_snapshot_sha256,
+               context.client_build_code, context.client_executable_sha256
           FROM lab_private_server.classic_solo_raid_runtime_state state
+          JOIN lab_private_server.classic_raid_persistence_scope scope
+            ON scope.state_id = state.classic_solo_raid_runtime_state_id
           JOIN lab_profile.local_account account
             ON account.local_account_id = state.local_account_id
-          JOIN lab_raid.raid_snapshot snapshot
+          JOIN lab_private_server.runtime_raid_snapshot snapshot
             ON snapshot.raid_snapshot_id = state.raid_snapshot_id
           JOIN lab_private_server.classic_solo_raid_runtime_state_revision revision
             ON revision.classic_solo_raid_runtime_state_revision_id =
                state.current_classic_solo_raid_runtime_state_revision_id
+          JOIN lab_private_server.classic_raid_revision_context context
+            ON context.revision_uid = revision.classic_solo_raid_runtime_state_revision_uid
          WHERE account.local_account_uid = $1
            AND snapshot.season_number = $2
-           AND snapshot.raid_snapshot_uid = $3
-           AND snapshot.content_sha256 = $4
-           AND state.client_build_code = $5
-           AND state.client_executable_sha256 = $6
-           AND state.selected_weakness_code = $7;
+           AND state.selected_weakness_code = $3;
         """;
     command.Parameters.AddWithValue(key.LocalAccountUid);
     command.Parameters.AddWithValue(key.SeasonNumber);
-    command.Parameters.AddWithValue(key.RaidSnapshotUid);
-    command.Parameters.AddWithValue(key.RaidSnapshotSha256);
-    command.Parameters.AddWithValue(key.ClientBuildCode);
-    command.Parameters.AddWithValue(key.ClientExecutableSha256);
     command.Parameters.AddWithValue(key.SelectedWeaknessCode);
     await using var reader = await command.ExecuteReaderAsync(cancellationToken);
     if (!await reader.ReadAsync(cancellationToken)) return null;
@@ -411,7 +424,7 @@ public sealed class ClassicSoloRaidRuntimeStateStore
     command.CommandText = """
         SELECT account.local_account_id, snapshot.raid_snapshot_id
           FROM lab_profile.local_account account
-          CROSS JOIN lab_raid.raid_snapshot snapshot
+          CROSS JOIN lab_private_server.runtime_raid_snapshot snapshot
          WHERE account.local_account_uid = $1
            AND snapshot.season_number = $2
            AND snapshot.raid_snapshot_uid = $3
@@ -447,22 +460,17 @@ public sealed class ClassicSoloRaidRuntimeStateStore
       await using var read = connection.CreateCommand();
       read.Transaction = transaction;
       read.CommandText = """
-          SELECT classic_solo_raid_runtime_state_id,
-                 classic_solo_raid_runtime_state_uid
-            FROM lab_private_server.classic_solo_raid_runtime_state
-           WHERE local_account_id = $1
-             AND raid_snapshot_id = $2
-             AND season_number = $3
-             AND client_build_code = $4
-             AND client_executable_sha256 = $5
-             AND selected_weakness_code = $6
-           FOR UPDATE;
+          SELECT state.classic_solo_raid_runtime_state_id,
+                 state.classic_solo_raid_runtime_state_uid
+            FROM lab_private_server.classic_raid_persistence_scope scope
+            JOIN lab_private_server.classic_solo_raid_runtime_state state
+              ON state.classic_solo_raid_runtime_state_id = scope.state_id
+           WHERE scope.local_account_id = $1 AND scope.season_number = $2
+             AND scope.selected_weakness_code = $3
+           FOR UPDATE OF state;
           """;
       read.Parameters.AddWithValue(localAccountId);
-      read.Parameters.AddWithValue(raidSnapshotId);
       read.Parameters.AddWithValue(key.SeasonNumber);
-      read.Parameters.AddWithValue(key.ClientBuildCode);
-      read.Parameters.AddWithValue(key.ClientExecutableSha256);
       read.Parameters.AddWithValue(key.SelectedWeaknessCode);
       await using var reader = await read.ExecuteReaderAsync(cancellationToken);
       return await reader.ReadAsync(cancellationToken)
@@ -506,6 +514,26 @@ public sealed class ClassicSoloRaidRuntimeStateStore
       insert.Parameters.AddWithValue(key.SelectedWeaknessCode);
       await insert.ExecuteNonQueryAsync(cancellationToken);
     }
+    await using (var designate = connection.CreateCommand())
+    {
+      designate.Transaction = transaction;
+      designate.CommandText = """
+          INSERT INTO lab_private_server.classic_raid_persistence_scope
+              (local_account_id, season_number, selected_weakness_code, state_id)
+          SELECT local_account_id, season_number, selected_weakness_code, classic_solo_raid_runtime_state_id
+            FROM lab_private_server.classic_solo_raid_runtime_state
+           WHERE local_account_id = $1 AND raid_snapshot_id = $2 AND season_number = $3
+             AND client_build_code = $4 AND client_executable_sha256 = $5 AND selected_weakness_code = $6
+          ON CONFLICT (local_account_id, season_number, selected_weakness_code) DO NOTHING;
+          """;
+      designate.Parameters.AddWithValue(localAccountId);
+      designate.Parameters.AddWithValue(raidSnapshotId);
+      designate.Parameters.AddWithValue(key.SeasonNumber);
+      designate.Parameters.AddWithValue(key.ClientBuildCode);
+      designate.Parameters.AddWithValue(key.ClientExecutableSha256);
+      designate.Parameters.AddWithValue(key.SelectedWeaknessCode);
+      await designate.ExecuteNonQueryAsync(cancellationToken);
+    }
     return await ReadAsync() ??
         throw new InvalidOperationException("phase_d_raid_state_aggregate_create_failed");
   }
@@ -531,11 +559,15 @@ public sealed class ClassicSoloRaidRuntimeStateStore
                revision.completed_best_team_count,
                revision.open_team_count,
                revision.raid_date_day,
-               revision.captured_at_utc
+               revision.captured_at_utc,
+               context.raid_snapshot_uid, context.raid_snapshot_sha256,
+               context.client_build_code, context.client_executable_sha256
           FROM lab_private_server.classic_solo_raid_runtime_state state
           LEFT JOIN lab_private_server.classic_solo_raid_runtime_state_revision revision
             ON revision.classic_solo_raid_runtime_state_revision_id =
                state.current_classic_solo_raid_runtime_state_revision_id
+          LEFT JOIN lab_private_server.classic_raid_revision_context context
+            ON context.revision_uid = revision.classic_solo_raid_runtime_state_revision_uid
          WHERE state.classic_solo_raid_runtime_state_id = $1
          FOR UPDATE OF state;
         """;
@@ -649,8 +681,22 @@ public sealed class ClassicSoloRaidRuntimeStateStore
         capture.RaidDateDay.HasValue ? capture.RaidDateDay.Value : DBNull.Value);
     command.Parameters.AddWithValue(capture.CapturedAtUtc);
     command.Parameters.AddWithValue(DateTimeOffset.UtcNow);
-    return (long)(await command.ExecuteScalarAsync(cancellationToken) ??
+    var revisionId = (long)(await command.ExecuteScalarAsync(cancellationToken) ??
         throw new InvalidOperationException("phase_d_raid_state_revision_create_failed"));
+    await using var context = connection.CreateCommand();
+    context.Transaction = transaction;
+    context.CommandText = """
+        INSERT INTO lab_private_server.classic_raid_revision_context
+            (revision_uid, raid_snapshot_uid, raid_snapshot_sha256, client_build_code, client_executable_sha256)
+        VALUES ($1,$2,$3,$4,$5);
+        """;
+    context.Parameters.AddWithValue(revisionUid);
+    context.Parameters.AddWithValue(capture.Key.RaidSnapshotUid);
+    context.Parameters.AddWithValue(capture.Key.RaidSnapshotSha256);
+    context.Parameters.AddWithValue(capture.Key.ClientBuildCode);
+    context.Parameters.AddWithValue(capture.Key.ClientExecutableSha256);
+    await context.ExecuteNonQueryAsync(cancellationToken);
+    return revisionId;
   }
 
   private static async Task UpdateHeadAsync(
@@ -766,7 +812,13 @@ public sealed class ClassicSoloRaidRuntimeStateStore
       reader.GetInt16(9),
       reader.GetInt16(10),
       reader.IsDBNull(11) ? null : reader.GetInt32(11),
-      reader.GetFieldValue<DateTimeOffset>(12));
+      reader.GetFieldValue<DateTimeOffset>(12))
+  {
+    RaidSnapshotUid = reader.GetGuid(13),
+    RaidSnapshotSha256 = reader.GetFieldValue<byte[]>(14),
+    ClientBuildCode = reader.GetString(15),
+    ClientExecutableSha256 = reader.GetFieldValue<byte[]>(16)
+  };
 
   private static void ValidateKey(ClassicSoloRaidRuntimeStateKey key)
   {

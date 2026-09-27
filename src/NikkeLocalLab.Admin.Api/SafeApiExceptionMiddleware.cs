@@ -65,6 +65,7 @@ internal sealed class SafeApiExceptionMiddleware
   private static (int StatusCode, string Code) Map(Exception exception) => exception switch
   {
     ApiRequestException request => (request.StatusCode, request.Code),
+    AccountImportException import => (StatusCodes.Status422UnprocessableEntity, import.Message),
     ProfileManagementException management => management.Kind switch
     {
       ProfileManagementFailureKind.InvalidRequest => (StatusCodes.Status400BadRequest, management.Code),

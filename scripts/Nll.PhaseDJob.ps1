@@ -1,4 +1,5 @@
 # Import has no operational side effects. Call only after verifying the runner closure.
+. (Join-Path $PSScriptRoot 'Nll.PhaseDSharedIsolation.ps1')
 function Initialize-PhaseDJobType {
     if (-not ('Nll.PhaseD.ExecutionJob' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'Nll.PhaseDJob.cs') }
 }
@@ -86,8 +87,31 @@ function Invoke-PhaseDWithJobZeroProof {
             $verifyJob = $job
             $verifyPath = $receiptPath
             $verifySha = $receiptSha
+            # GetNewClosure creates a dynamic module. A .NET Action invoked
+            # through another helper cannot resolve this script's local helper
+            # functions there. Capture the verified file closure as data instead.
+            $verifyPins = @{}
+            $manifestPath = Join-Path $binding.bundle.root 'runner.bundle.json'
+            $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+            $verifyPins[$manifestPath] = $binding.bundle.sha256
+            foreach ($member in $manifest.members) { $verifyPins[(Join-Path $binding.bundle.root $member.name)] = $member.sha256 }
+            foreach ($member in $manifest.runtimeCode) { $verifyPins[(Join-Path (Join-Path $LaunchRoot 'runtime') $member.name)] = $member.sha256 }
+            foreach ($name in @('launch-context.json','tool.manifest.tsv')) {
+                $path = Join-Path $LaunchRoot $name
+                $verifyPins[$path] = (Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant()
+            }
+            $verifyRuntimeRoot = Join-Path $LaunchRoot 'runtime'
+            $verifyRuntimeNames = @($manifest.runtimeCode.name)
+            $null = Get-PhaseDJobBinding $verifyRoot $verifySeal
             $verify = [Action]{
-                $null = Get-PhaseDJobBinding $verifyRoot $verifySeal
+                foreach ($path in $verifyPins.Keys) {
+                    if ((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -cne $verifyPins[$path]) { throw 'phase_d_job_sealed_input_drifted' }
+                }
+                $actualNames = @(Get-ChildItem -LiteralPath $verifyRuntimeRoot -File | Where-Object {
+                    $_.Extension -in @('.dll','.exe') -or $_.Name -match '\.(deps|runtimeconfig)\.json$'
+                } | Select-Object -ExpandProperty Name)
+                if ($actualNames.Count -ne $verifyRuntimeNames.Count -or
+                    @(Compare-Object $verifyRuntimeNames $actualNames -CaseSensitive).Count -ne 0) { throw 'phase_d_job_sealed_input_drifted' }
                 $verifyJob.Validate()
                 if ($verifyJob.ActiveProcesses -ne 0 -or (Get-FileHash -LiteralPath $verifyPath).Hash.ToLowerInvariant() -cne $verifySha) {
                     throw 'phase_d_job_zero_unproven'
@@ -120,16 +144,43 @@ function Invoke-PhaseDExecutionFxCleanup {
         # PS5 cannot load the Net8/10 retirement assembly. The sealed materializer
         # CLI reopens the SAME named Job and verifies the closure inside its callback.
         # Outer handle + proof lock stay alive for this entire bounded invocation.
+        Write-PhaseDProgress $LaunchRoot 'fx_restore'
         $result = Invoke-PhaseDChildScript -ScriptPath $binding.bundle.specification.runtimeMaterializer `
             -Arguments ([ordered]@{
                 '-retire-execution-fx'='true'; '-launch-root'=$LaunchRoot
                 '-expected-bundle-sha256'=$ExpectedBundleSha256; '-expected-termination-sha256'=$terminationReceiptSha256
-            }) -TimeoutSeconds 60 -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-fx-retirement.identity.json') `
+            }) -TimeoutSeconds 300 -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-fx-retirement.identity.json') `
             -StandardOutputPath (Join-Path $LaunchRoot 'fx-retirement.stdout.log') `
             -StandardErrorPath (Join-Path $LaunchRoot 'fx-retirement.stderr.log')
         if ($result.ExitCode -ne 0) { throw 'phase_d_job_fx_retirement_failed' }
+        Assert-PhaseDNativeFxRetirement $LaunchRoot $binding.bundle.specification
         $verifyProcessTreeExit.Invoke()
     }
+}
+
+function Assert-PhaseDNativeFxRetirement {
+    param([string]$LaunchRoot, [object]$Specification)
+    if ($null -eq $Specification.executionFx) { return }
+    $root=Join-Path $LaunchRoot 'runtime/execution-fx'
+    $manifestPath=Join-Path $root 'manifest.private.json'
+    if ((Get-PhaseDRunnerHash $manifestPath) -cne $Specification.executionFx.manifestSha256) { throw 'phase_d_job_fx_manifest_drifted' }
+    $manifest=Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($manifest.contractId -cne 'nll/common-native-fx-execution/v2') { return }
+    $receipt=Get-Content -LiteralPath (Join-Path $root 'retired.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $range=$receipt.rangeReceipt
+    $bytes=0L
+    foreach ($patch in $manifest.patches) { $bytes += [long]$patch.before.length }
+    if ($receipt.contractId -cne 'nll/common-native-fx-retired/v2' -or
+        $receipt.manifestSha256 -cne $Specification.executionFx.manifestSha256 -or
+        $receipt.terminationReceiptSha256 -cne (Get-PhaseDRunnerHash (Join-Path $LaunchRoot 'job-zero.receipt.json')) -or
+        $receipt.actualGameAcceptanceClaimed -ne $false -or
+        $range.contractId -cne 'nll/common-native-fx-range-receipt/v2' -or
+        $range.validationScope -cne 'patched_ranges' -or $range.state -cne 'restored' -or
+        $range.executionUid -cne $Specification.launchContextUid -or
+        $range.planSha256 -cne $manifest.rangePlanSha256 -or $range.planSha256 -cnotmatch '^[0-9a-f]{64}$' -or
+        $bytes -le 0 -or $bytes -gt 67108864 -or $range.selectedBytes -ne $bytes -or
+        $range.bytesRead -lt $bytes -or $range.bytesRead -gt (2*$bytes) -or
+        $range.bytesWritten -lt 0 -or $range.bytesWritten -gt $bytes) { throw 'phase_d_job_fx_range_retirement_invalid' }
 }
 
 function Protect-PhaseDJobServerLog {
@@ -175,7 +226,7 @@ function Receive-PhaseDJobHandoff {
                 $commit = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
                 if ($commit.runnerBundleSha256 -cne $binding.bundle.sha256 -or
                     $commit.jobNonce -cne $binding.bundle.specification.jobNonce -or
-                    $commit.processId -ne $PID -or $commit.processStartedAtUtc -cne $started) { throw 'phase_d_job_handoff_invalid' }
+                    $commit.processId -ne $PID -or -not (Test-PhaseDProcessStartInstant $commit.processStartedAtUtc ([DateTime]$started))) { throw 'phase_d_job_handoff_invalid' }
                 return $job
             }
             Start-Sleep -Milliseconds 50
@@ -196,7 +247,7 @@ function Confirm-PhaseDJobHandoff {
             if ($ready.runnerBundleSha256 -cne $binding.bundle.sha256 -or
                 $ready.jobNonce -cne $binding.bundle.specification.jobNonce -or
                 $ready.processId -ne $Watcher.Id -or
-                $ready.processStartedAtUtc -cne $Watcher.StartTime.ToUniversalTime().ToString('o')) { throw 'phase_d_job_handoff_invalid' }
+                -not (Test-PhaseDProcessStartInstant $ready.processStartedAtUtc $Watcher.StartTime)) { throw 'phase_d_job_handoff_invalid' }
             Write-AtomicJson (Join-Path $LaunchRoot 'job-handoff.commit.json') $ready
             return
         }
@@ -212,7 +263,7 @@ function Test-PhaseDJobHandoffCommitted {
     $binding=Get-PhaseDJobBinding $LaunchRoot $ExpectedBundleSha256
     $commit=Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($commit.runnerBundleSha256 -cne $binding.bundle.sha256 -or $commit.jobNonce -cne $binding.bundle.specification.jobNonce -or
-        $commit.processId -ne $Watcher.Id -or $commit.processStartedAtUtc -cne $Watcher.StartTime.ToUniversalTime().ToString('o')) { throw 'phase_d_job_handoff_invalid' }
+        $commit.processId -ne $Watcher.Id -or -not (Test-PhaseDProcessStartInstant $commit.processStartedAtUtc $Watcher.StartTime)) { throw 'phase_d_job_handoff_invalid' }
     return $true
 }
 
@@ -250,6 +301,7 @@ function Read-PhaseDPhysicalCleanupCheckpoint {
     foreach ($relative in $pins.Keys) {
         if ($pins[$relative] -cnotmatch '^[0-9a-f]{64}$' -or (Get-PhaseDRunnerHash (Join-Path $LaunchRoot $relative)) -cne $pins[$relative]) { throw 'phase_d_job_checkpoint_drifted' }
     }
+    Assert-PhaseDNativeFxRetirement $LaunchRoot $binding.bundle.specification
     # This authorizes PG/pending replay ONLY. It cannot enter a physical cleanup
     # callback, restore hosts/runtime, adopt a lease, or recreate an absent Job.
     $value
@@ -260,6 +312,7 @@ function Write-PhaseDPhysicalCleanupCheckpoint {
     Invoke-PhaseDWithJobZeroProof $LaunchRoot $ExpectedBundleSha256 {
         $binding=Get-PhaseDJobBinding $LaunchRoot $ExpectedBundleSha256
         $fullRoot=[IO.Path]::GetFullPath($LaunchRoot).TrimEnd('\')
+        Assert-PhaseDNativeFxRetirement $LaunchRoot $binding.bundle.specification
         $fullCompletion=[IO.Path]::GetFullPath($CompletionPath)
         if (-not $fullCompletion.StartsWith($fullRoot+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'phase_d_job_checkpoint_invalid' }
         $relative=$fullCompletion.Substring($fullRoot.Length+1).Replace('\','/')
@@ -272,6 +325,7 @@ function Write-PhaseDPhysicalCleanupCheckpoint {
             $hosts.contractId -cne 'nll/phase-d-hosts-restoration/v1' -or -not $hosts.restoredToCapturedBaseline) { throw 'phase_d_job_cleanup_not_complete' }
         $path=Join-Path $LaunchRoot 'physical-cleanup.receipt.json'
         if (Test-Path -LiteralPath $path) { $null=Read-PhaseDPhysicalCleanupCheckpoint $LaunchRoot $ExpectedBundleSha256; return }
+        Restore-PhaseDSharedIsolation $LaunchRoot $ExpectedBundleSha256
         Write-AtomicJson $path ([ordered]@{
             contractId='nll/phase-d-physical-cleanup/v1';cleanupKind='completion';launchContextUid=$binding.bundle.specification.launchContextUid
             runnerBundleSha256=$binding.bundle.sha256;jobNonce=$binding.bundle.specification.jobNonce
@@ -288,6 +342,7 @@ function Write-PhaseDRollbackCleanupCheckpoint {
     param([string]$LaunchRoot, [string]$ExpectedBundleSha256)
     Invoke-PhaseDWithJobZeroProof $LaunchRoot $ExpectedBundleSha256 {
         $binding=Get-PhaseDJobBinding $LaunchRoot $ExpectedBundleSha256
+        Assert-PhaseDNativeFxRetirement $LaunchRoot $binding.bundle.specification
         $path=Join-Path $LaunchRoot 'physical-cleanup.receipt.json'
         if (Test-Path -LiteralPath $path) { $null=Read-PhaseDPhysicalCleanupCheckpoint $LaunchRoot $ExpectedBundleSha256; return }
         $db=Join-Path $LaunchRoot 'runtime/db.json'
@@ -308,6 +363,7 @@ function Write-PhaseDRollbackCleanupCheckpoint {
             if ($relative -cnotmatch '^evidence/[0-9a-f-]{36}/active-run\.pointer\.[a-z0-9T.Z-]+\.json$') { throw 'phase_d_job_checkpoint_invalid' }
             $archiveSha=Get-PhaseDRunnerHash $archives[0].FullName
         }
+        Restore-PhaseDSharedIsolation $LaunchRoot $ExpectedBundleSha256
         Write-AtomicJson $path ([ordered]@{
             contractId='nll/phase-d-physical-cleanup/v1';cleanupKind='rollback';launchContextUid=$binding.bundle.specification.launchContextUid
             runnerBundleSha256=$binding.bundle.sha256;jobNonce=$binding.bundle.specification.jobNonce

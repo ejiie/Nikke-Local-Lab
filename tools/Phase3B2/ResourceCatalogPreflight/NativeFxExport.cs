@@ -46,7 +46,7 @@ internal static class NativeFxExport
     using var store = new ChunkStoreReader(chunks);
     AddressableFxBinding.Require(store.IndexSha256 == indexHash, "index_drift");
     var assets = plan.GetProperty("assets").EnumerateArray().ToArray();
-    AddressableFxBinding.Require(assets.Length == 4, "roles_invalid");
+    AddressableFxBinding.Require(assets.Length is > 0 and <= 5, "roles_invalid");
     var roles = new HashSet<string>(StringComparer.Ordinal);
     var keys = new HashSet<string>(StringComparer.Ordinal);
     var payloads = new List<(string Role, byte[] Bytes)>();
@@ -56,8 +56,12 @@ internal static class NativeFxExport
       foreach (var asset in assets)
       {
         var role = asset.GetProperty("role").GetString()!;
-        var key = asset.GetProperty("key").GetString()!;
-        AddressableFxBinding.Require(role is "electric" or "fire" or "wind" or "iron" && roles.Add(role) && keys.Add(key), "roles_invalid");
+        var key = asset.TryGetProperty("prefabName", out var prefab)
+            ? AddressableFxBinding.ResolvePrefabName(embedded.Connection, prefab.GetString()!)
+            : asset.GetProperty("key").GetString()!;
+        if (asset.TryGetProperty("prefabName", out prefab))
+          AddressableFxBinding.Require(key == AddressableFxBinding.ResolvePrefabName(inner.Connection, prefab.GetString()!), "catalog_disagreement");
+        AddressableFxBinding.Require(role is "electric" or "water" or "fire" or "wind" or "iron" && roles.Add(role) && keys.Add(key), "roles_invalid");
         var first = AddressableFxBinding.Resolve(embedded.Connection, key);
         var second = AddressableFxBinding.Resolve(inner.Connection, key);
         AddressableFxBinding.Require(first.Dependencies.SequenceEqual(second.Dependencies), "catalog_disagreement");

@@ -1,5 +1,13 @@
 # Scope
 
+## 2026-09-20 통계 수집 확장
+
+운영자는 기존 classic Solo Raid Challenge 모의전의 BattleLog 수집과 실제 기록 UI 연결을 요청했다. 실전과 모의전의 결과 키·수집 모드를 분리하고, 개인별 기본 표시값은 적 투사체 피해를 차감한 값으로 한다. Normal/Museum 전투나 공식 서버 연결을 추가하는 범위가 아니다. 구현·설치·실게임 확인은 [기록 UI 연결](operations/RAID_RECORDS_LIVE.md)을 따른다.
+
+## 2026-09-17 범위 확장
+
+운영자 요청으로 유니온 레이드 하드의 시즌 선택·5보스 원본 행동 트리 조립과 NLL 유니온 소속/노멀 완료 상태를 추가한다. 현재 작업 계약은 [유니온 하드 계획](operations/UNION_RAID_HARD_IMPLEMENTATION.md)이다. 아래 Phase별 Solo 전용 범위는 해당 과거 인수 범위로 보존하며, 이번 유니온 작업을 금지하는 현행 요구로 해석하지 않는다. 유니온 조립에서는 속성 자유화와 QTE/FX 변환을 실행하지 않는다.
+
 ## 목적
 
 원본 NIKKE 클라이언트에 필요한 기능만 공급하는 자체 ID 기반 local private server를 만들고, 캐릭터 빌드와 지원 Solo Raid Challenge의 데이터·asset·runtime 근거를 고정하여 **운영자가 승인한 비배포·로컬 전용 환경의 원본 UI와 실제 전투 runtime**으로 실행·검증합니다.

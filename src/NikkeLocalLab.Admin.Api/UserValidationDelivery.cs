@@ -110,7 +110,11 @@ public sealed class UserValidationDelivery(string manifestPath, string manifestS
         var name = tool.GetProperty("path").GetString()!;
         Require(name.StartsWith(run + @"\controller\", StringComparison.Ordinal) && toolNames.Add(name)); PinBytes(tool, 16777216);
       }
-      Require(toolNames.Count == 7);
+      var preflight = e.TryGetProperty("preflightContractId", out var preflightContract);
+      if (preflight)
+        Require(preflightContract.GetString() == "nll/user-validation-preflight/v1" &&
+            e.GetProperty("preflightMode").GetString() == "deep" && toolNames.Contains(run + @"\controller\Nll.UserValidationPreflight.ps1"));
+      Require(toolNames.Count == (preflight ? 8 : 7));
       foreach (var name in new[] { "Nll.ResourceNative.ps1", "Nll.NativeFxManagedService.ps1", "Nll.NativeFxManagedDriver.ps1",
           "Nll.UserValidationController.ps1", "Nll.PhaseDJob.cs", "Nll.FxProcessIdentity.cs", "NikkeLocalLab.NativeFxUserValidationStore.dll" })
         Require(toolNames.Contains(run + @"\controller\" + name));

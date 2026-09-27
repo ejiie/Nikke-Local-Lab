@@ -42,8 +42,16 @@ try
   using var stageLease = Pinned(runRoot + @"\runtime-staging.receipt.json", args[5], 1048576);
   using var staging = JsonDocument.Parse(stageLease);
   var inputs = UserValidationProcessInputs.Bind(plan, staging.RootElement);
-  foreach (var pin in inputs.ServerFiles.Concat(plan.RuntimeFiles))
-    using (UserValidationPinnedFiles.Open(pin.Path, pin.Length, pin.Sha256, 536870912)) { }
+  var measurement = new UserValidationPreflightMeasurement("child", plan.ParentPlanSha256,
+      inputs.ServerFiles.Sum(p => p.Length) + plan.RuntimeFiles.Sum(p => p.Length));
+  var verified = false;
+  try
+  {
+    foreach (var pin in inputs.ServerFiles.Concat(plan.RuntimeFiles))
+      using (UserValidationPinnedFiles.Open(pin.Path, pin.Length, pin.Sha256, 536870912, measurement.Observe)) { }
+    verified = true;
+  }
+  finally { measurement.Save(runRoot, verified); }
   Require(UserValidationPinnedFiles.Inventory(inputs.ServerRoot, 128).SetEquals(inputs.ServerFiles.Select(p => p.Path)));
   var childPins = parent.RootElement.GetProperty("childFiles").EnumerateArray().ToArray();
   var names = new HashSet<string>(StringComparer.Ordinal);
@@ -109,11 +117,11 @@ finally
 {
   var ownedStopped = true;
   foreach (var process in new[] { bootstrap, server }) if (process is not null)
-  {
-    try { if (!process.HasExited) process.Kill(); if (!process.WaitForExit(10000)) ownedStopped = false; }
-    catch { ownedStopped = false; }
-    finally { process.Dispose(); }
-  }
+    {
+      try { if (!process.HasExited) process.Kill(); if (!process.WaitForExit(10000)) ownedStopped = false; }
+      catch { ownedStopped = false; }
+      finally { process.Dispose(); }
+    }
   try { await Task.WhenAll(drains).WaitAsync(TimeSpan.FromSeconds(5)); } catch { ownedStopped = false; }
   if (!ownedStopped) result = 1;
   Write("child-exit.json", new

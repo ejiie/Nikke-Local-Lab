@@ -77,6 +77,14 @@ try {
         $script:consumed++
     }
     Require-Test ($script:consumed -eq 1) 'callback_not_executed'; $count++
+    function Test-NestedJobConsumer($Launch, $Hash) {
+        Invoke-PhaseDWithJobZeroProof $Launch $Hash {
+            param($proof,$verify,$sha)
+            $verify.Invoke(); $verify.Invoke()
+        }
+    }
+    Test-NestedJobConsumer $spec.launchRoot $bundle.sha256
+    $count++ # A nested helper must not lose the .NET callback's script scope.
     $completionRoot=Join-Path $spec.launchRoot ('evidence/' + [guid]::NewGuid().ToString('D'))
     $null=New-Item -ItemType Directory -Path $completionRoot
     $completionFile=Join-Path $completionRoot 'completion.receipt.json'
@@ -119,15 +127,20 @@ try {
     })
     Reject-Test { Assert-PhaseDChildrenExited -LaunchRoot $spec.launchRoot -RuntimeStartJob $job }; $count++
     Remove-Item -LiteralPath $pgIdentity
-    $watcherCode=''
+    # Start-Process from PS7 may inherit only PS7 module roots. This watcher is
+    # WinPS5, like production, and needs its own built-in module directory.
+    $watcherCode='$env:PSModulePath=Join-Path $PSHOME ''Modules''; '
     foreach ($file in @('Nll.PhaseDRunnerContract.ps1','Nll.PhaseDRunnerSeal.ps1','Nll.PhaseDProcessIdentity.ps1','Nll.PhaseDJob.ps1')) {
         $watcherCode += '. ' + (ConvertTo-PhaseDPowerShellLiteral (Join-Path $bundle.root $file)) + '; '
     }
     $watcherCode += '$j=Receive-PhaseDJobHandoff ' + (ConvertTo-PhaseDPowerShellLiteral $spec.launchRoot) + ' ' + (ConvertTo-PhaseDPowerShellLiteral $bundle.sha256) + '; try { Start-Sleep -Seconds 90 } finally { $j.Dispose() }'
-    $watcher=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-EncodedCommand',(Encode-Test $watcherCode)) -WindowStyle Hidden -PassThru
+    $watcherCode='try { '+$watcherCode+' } catch { $Error | ForEach-Object { [Console]::Error.WriteLine($_.ToString()+" at "+$_.ScriptStackTrace) }; exit 1 }'
+    $watcherError=Join-Path $root 'watcher.stderr.log'
+    $watcher=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand',(Encode-Test $watcherCode)) -WindowStyle Hidden -PassThru -RedirectStandardError $watcherError
     $processes.Add($watcher)
     Require-Test (-not (Test-PhaseDJobHandoffCommitted $spec.launchRoot $bundle.sha256 $watcher)) 'spawn_implicitly_committed'; $count++
-    Confirm-PhaseDJobHandoff $spec.launchRoot $bundle.sha256 $watcher
+    try { Confirm-PhaseDJobHandoff $spec.launchRoot $bundle.sha256 $watcher }
+    catch { if (Test-Path -LiteralPath $watcherError) { Write-Output (Get-Content -LiteralPath $watcherError -Raw) }; throw }
     Require-Test (Test-PhaseDJobHandoffCommitted $spec.launchRoot $bundle.sha256 $watcher) 'commit_not_recognized'; $count++
     Require-Test (-not $job.Contains($watcher.Id)) 'watcher_in_job'
     $job.Dispose()
@@ -170,7 +183,35 @@ try {
         Reject-Test { Assert-PhaseDChildrenExited -LaunchRoot $spec.launchRoot -CheckpointStartIdentitySha256 $checkpoint.startIdentitySha256 }; $count++
         Reject-Test { Invoke-PhaseDWithJobZeroProof $spec.launchRoot $bundle.sha256 { throw 'unexpected_physical_replay' } }; $count++
     }
-    "Phase D Job: $count synthetic Windows checks passed (atomic descendants, exclusions, explicit handoff, crash, immutable same-job proof, closure)."
+    # The v2 cleanup consumer binds range-only receipts without accepting a v1
+    # whole-store hash as a substitute. Metadata only; no client file is present.
+    $fxLaunch=Join-Path $root ([guid]::NewGuid().ToString('D'))
+    $fxRoot=Join-Path $fxLaunch 'runtime/execution-fx'
+    $null=New-Item -ItemType Directory -Path $fxRoot
+    $fxManifest=Join-Path $fxRoot 'manifest.private.json'
+    $fxRetired=Join-Path $fxRoot 'retired.json'
+    Write-Test (Join-Path $fxLaunch 'job-zero.receipt.json') 'synthetic-zero-proof'
+    Write-AtomicJson $fxManifest @{contractId='nll/common-native-fx-execution/v2';rangePlanSha256=('a'*64);patches=@(@{before=@{length=60}})}
+    $fxSpec=[pscustomobject]@{launchContextUid=(Split-Path -Leaf $fxLaunch);executionFx=@{manifestSha256=(Get-PhaseDRunnerHash $fxManifest)}}
+    $fxValue=@{contractId='nll/common-native-fx-retired/v2';manifestSha256=$fxSpec.executionFx.manifestSha256;
+        terminationReceiptSha256=(Get-PhaseDRunnerHash (Join-Path $fxLaunch 'job-zero.receipt.json'));actualGameAcceptanceClaimed=$false;
+        rangeReceipt=@{contractId='nll/common-native-fx-range-receipt/v2';executionUid=$fxSpec.launchContextUid;
+            planSha256=('a'*64);state='restored';validationScope='patched_ranges';selectedBytes=60;bytesRead=120;bytesWritten=60}}
+    Write-AtomicJson $fxRetired $fxValue
+    Assert-PhaseDNativeFxRetirement $fxLaunch $fxSpec; $count++
+    foreach ($field in @('validationScope','state','executionUid','planSha256','selectedBytes','bytesRead','bytesWritten')) {
+        $old=$fxValue.rangeReceipt[$field]
+        $fxValue.rangeReceipt[$field]=$(if ($field -in @('selectedBytes','bytesRead','bytesWritten')) { -1 } else { 'invalid' })
+        Write-AtomicJson $fxRetired $fxValue
+        Reject-Test { Assert-PhaseDNativeFxRetirement $fxLaunch $fxSpec }; $count++
+        $fxValue.rangeReceipt[$field]=$old
+    }
+    $fxValue.terminationReceiptSha256='b'*64
+    Write-AtomicJson $fxRetired $fxValue
+    Reject-Test { Assert-PhaseDNativeFxRetirement $fxLaunch $fxSpec }; $count++
+    Write-AtomicJson $fxRetired @{contractId='nll/common-native-fx-retired/v1';storeSha256=('a'*64)}
+    Reject-Test { Assert-PhaseDNativeFxRetirement $fxLaunch $fxSpec }; $count++
+    "Phase D Job: $count synthetic Windows checks passed (atomic descendants, exclusions, explicit handoff, crash, immutable same-job proof, closure, v2 range receipts)."
 } finally {
     foreach ($job in $jobs) { $job.Dispose() }
     foreach ($process in $processes) {

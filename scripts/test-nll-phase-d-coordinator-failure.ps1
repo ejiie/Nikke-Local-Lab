@@ -17,7 +17,7 @@ $null = New-Item -ItemType Directory -Path $testRoot
 function Assert-PhaseD([bool]$Condition, [string]$Code) { if (-not $Condition) { throw $Code } }
 function Test-PhaseDDerivedStartRollbackProof { $script:proof }
 function Invoke-PhaseDEmergencyRollback { throw [ComponentModel.Win32Exception]::new(5, 'synthetic password=do-not-log') }
-function Invoke-PhaseDPgCtl { $script:pgStarts++; return $script:pgExitCode }
+function Ensure-PhaseDPostgresRunning { $script:pgStarts++; if ($script:pgExitCode) { throw 'synthetic_db_unavailable' } }
 function Get-Sha256Lower { param([string]$Path) (Get-FileHash -LiteralPath $Path).Hash.ToLowerInvariant() }
 function Write-AtomicJson { param($Path, $Value) $script:receipt = $Value }
 function Set-ExecutionState { param($StatusCode, $FailureCode) $script:lastState = $StatusCode; $script:lastFailure = $FailureCode }
@@ -30,7 +30,7 @@ try {
         $script:lastFailure = $null
         $watcherOwnershipTransferred = $case -eq 'watcher-owner'
         $coordinatorStage = 'runtime_identity_capture'
-        $controlCenterDatabaseStopped = $true
+        $runtimeLifecycleEntered = $true
         $controlCenterHostsPrepared = $true
         $launchRoot = $testRoot
         $evidenceRoot = $testRoot

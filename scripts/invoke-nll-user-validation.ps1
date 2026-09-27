@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory)][string]$EntryPath,
     [Parameter(Mandatory)][ValidatePattern('^[a-f0-9]{64}$')][string]$EntrySha256,
-    [ValidateSet('Inspect','Start','Recover')][string]$Mode='Inspect'
+    [ValidateSet('Inspect','Start','Recover')][string]$Mode='Inspect',
+    [string]$DiagnosticRoot
 )
 # Start/Recover are USER-owned elevated entry points. Inspect never launches a
 # server/game or changes hosts, registry, firewall, services, drivers or the CDB.
@@ -15,7 +16,7 @@ if($entry.contractId -cne 'nll/user-validation-entry/v1' -or
     (Get-FileHash -LiteralPath $PSCommandPath).Hash.ToLowerInvariant() -cne $entry.controller.sha256){throw 'uv_controller_drift'}
 # Verify the COMPLETE local helper closure before dot-sourcing any helper.
 $names=@('Nll.ResourceNative.ps1','Nll.NativeFxManagedService.ps1','Nll.NativeFxManagedDriver.ps1',
-    'Nll.UserValidationController.ps1','Nll.PhaseDJob.cs','Nll.FxProcessIdentity.cs','NikkeLocalLab.NativeFxUserValidationStore.dll')
+    'Nll.UserValidationController.ps1','Nll.UserValidationPreflight.ps1','Nll.PhaseDJob.cs','Nll.FxProcessIdentity.cs','NikkeLocalLab.NativeFxUserValidationStore.dll')
 if($entry.tools.Count -ne $names.Count){throw 'uv_tool_inventory_invalid'}
 foreach($name in $names){
     $pins=@($entry.tools | Where-Object path -CEQ (Join-Path $PSScriptRoot $name))
@@ -23,6 +24,8 @@ foreach($name in $names){
 }
 . (Join-Path $PSScriptRoot 'Nll.NativeFxManagedDriver.ps1')
 . (Join-Path $PSScriptRoot 'Nll.UserValidationController.ps1')
+. (Join-Path $PSScriptRoot 'Nll.UserValidationPreflight.ps1')
+Assert-Rn ($entry.preflightContractId -ceq 'nll/user-validation-preflight/v1' -and $entry.preflightMode -ceq 'deep') 'uv_preflight_contract_invalid'
 foreach($pin in @($entry.controller,$entry.parentPlan,$entry.bootstrapPlan,$entry.stagingReceipt,$entry.storePlan)+@($entry.tools)){Assert-RnPin $pin}
 $plan=Read-RnJson $entry.parentPlan.path $entry.parentPlan.sha256
 $bootstrap=Read-RnJson $entry.bootstrapPlan.path $entry.bootstrapPlan.sha256
@@ -30,6 +33,17 @@ $staging=Read-RnJson $entry.stagingReceipt.path $entry.stagingReceipt.sha256
 $storePlan=Read-RnJson $entry.storePlan.path $entry.storePlan.sha256
 Assert-UvBinding $plan $bootstrap $staging $storePlan
 $run=$plan.runRoot
+if($DiagnosticRoot){
+    Assert-RnPath $DiagnosticRoot
+    $actionUid=[guid]::ParseExact((Split-Path -Leaf $DiagnosticRoot),'D').ToString('D')
+    Assert-Rn ($DiagnosticRoot -ceq (Join-Path $run ('ui-actions\'+$actionUid))) 'uv_diagnostic_path_invalid'
+    $requestPath=Join-Path $DiagnosticRoot 'request.json'
+    Assert-RnPath $requestPath
+    Assert-Rn ((Get-Item -LiteralPath $requestPath).Length -le 16384) 'uv_diagnostic_request_invalid'
+    $request=Get-Content -LiteralPath $requestPath -Raw|ConvertFrom-Json
+    Assert-Rn ($request.operationUid -ceq $actionUid -and $request.entrySha256 -ceq $EntrySha256 -and $request.mode -ceq $Mode) 'uv_diagnostic_request_invalid'
+}
+Start-UvTrace $DiagnosticRoot $EntrySha256 $Mode
 Assert-Rn ($plan.clientRollbackManifest.path -ceq ('C:\NLL\Staging\NativeFxUserValidation\'+$plan.trialUid+'\client-pins.private.json')) 'uv_client_rollback_path'
 $clientManifest=Read-RnJson $plan.clientRollbackManifest.path $plan.clientRollbackManifest.sha256
 Assert-Rn ($clientManifest.trialUid -ceq $plan.trialUid -and $clientManifest.clientRoot -ceq $plan.clientRoot -and
@@ -45,18 +59,25 @@ Assert-Rn ($PSScriptRoot -ceq (Join-Path $run 'controller') -and $EntryPath -ceq
     $plan.nativeStorePlanSha256 -ceq $entry.storePlan.sha256) 'uv_entry_binding_invalid'
 foreach($root in @($run,$plan.clientRoot,$plan.serverRoot,$plan.bootstrapRoot,$plan.childRoot)){Assert-RnPath $root}
 Assert-Rn ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ceq $plan.operatorSid) 'uv_operator_invalid'
+Assert-Rn ([IntPtr]::Size -eq 8) 'uv_x64_shell_required'
 if($Mode -cne 'Inspect'){
     Assert-Rn ([Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) 'uv_administrator_required'
 }
 Assert-FxValidationDriverPolicy $plan.driverPolicy
-foreach($pin in @($plan.programs)+@($plan.blockOnlyPrograms)+@($plan.childFiles)+@($plan.protectedFiles)+@($plan.publicRoot,$plan.hostsChange.backup,$plan.hostsChange.replacement)) {Assert-RnPin $pin}
+$executionPins=@($plan.programs)+@($plan.blockOnlyPrograms)+@($plan.childFiles)+@($plan.protectedFiles)+@($plan.serviceImage)
+$deepPins=$executionPins+
+    @($staging.serverFiles)+@($staging.bootstrapFiles)+@($plan.clientFiles)+@($plan.serviceImage)+@($plan.clientRollback|ForEach-Object backup)
+foreach($set in @($deepPins|Group-Object path)){
+    Assert-Rn (@($set.Group.sha256|Sort-Object -Unique).Count -eq 1 -and @($set.Group.length|Sort-Object -Unique).Count -eq 1) 'uv_conflicting_file_pins'
+}
+$deepPins=@($deepPins|Sort-Object path -Unique)
+foreach($pin in @($plan.publicRoot,$plan.hostsChange.backup,$plan.hostsChange.replacement)){Assert-RnPin $pin}
 Assert-Rn ($plan.hostsChange.backup.path -ceq (Join-Path $run 'rollback/hosts.before') -and
     $plan.hostsChange.replacement.path -ceq (Join-Path $run 'rollback/hosts.after') -and
     $plan.hostsChange.before.path -ceq 'C:\Windows\System32\drivers\etc\hosts' -and
     $plan.hostsChange.before.sha256 -ceq $plan.hostsChange.backup.sha256 -and
     $plan.serviceImage.path -ceq 'C:\Program Files\AntiCheatExpert\ACE-Service64.exe' -and
     $plan.serviceImage.sha256 -ceq '6cfed38df64fcbb4a9863c4684ff7b1ccc1baa1ac45923f603f4969ad8a96777') 'uv_restore_or_service_invalid'
-Assert-RnPin $plan.serviceImage
 $expected=@(Get-ChildItem -LiteralPath $plan.clientRoot -Recurse -File -Filter '*.exe' | ForEach-Object FullName)+
     @((Join-Path $plan.serverRoot 'EpinelPS.exe'),(Join-Path $plan.bootstrapRoot 'NikkeLocalLab.NativeFxUserValidationBootstrap.exe'),
     (Join-Path $plan.childRoot 'NikkeLocalLab.NativeFxUserValidationChild.exe'))
@@ -106,7 +127,41 @@ function Assert-UvFirewall {
 }
 function Assert-UvSystemApplied {
     Assert-Rn ((Get-RnHash $plan.hostsChange.before.path) -ceq $plan.hostsChange.replacement.sha256 -and
-        ((@(Get-RnVoicePreferences)|ConvertTo-Json -Compress) -ceq ($plan.preferencesAfter|ConvertTo-Json -Compress))) 'uv_system_drift'
+        (Compare-UvVoicePreferences $plan.preferencesAfter (Get-UvVoicePreferences)).equal) 'uv_system_drift'
+}
+function Assert-UvQuickState {
+    Invoke-UvPreferenceCheck $plan.preferencesBefore $script:UvTrace.stage {Get-UvVoicePreferences} {
+        param($evidence)
+        if($DiagnosticRoot){Write-RnNewJson (Join-Path $DiagnosticRoot ('preferences-'+$script:UvTrace.sequence+'.json')) ([ordered]@{
+            contractId='nll/user-validation-preference-observation/v1';entrySha256=$EntrySha256;stage=$evidence.stage;
+            environment=(Get-UvPreferenceEnvironment $plan.operatorSid);comparison=$evidence.comparison;actualGameAcceptanceClaimed=$false})}
+    }
+    Assert-RnPin $plan.hostsChange.before
+    Assert-Rn ((Get-UvScoped).Count -eq 0) 'uv_runtime_not_cold'
+    Assert-FxManagedServiceSnapshot (Get-FxManagedServiceSnapshot) before
+    Assert-FxManagedServiceNoDependents
+    Assert-FxValidationDrivers $plan.driverPolicy (Get-FxValidationDriverSnapshot) before
+    Assert-Rn (@(Get-NetTCPConnection -State Listen -ErrorAction Stop|Where-Object LocalPort -in 80,443,8443).Count -eq 0) 'uv_listener_present'
+    Assert-Rn (@(Get-NetFirewallProfile -ErrorAction Stop|Where-Object {-not $_.Enabled}).Count -eq 0) 'uv_firewall_disabled'
+    Assert-Rn (@(Get-NetFirewallRule -Group $group -ErrorAction SilentlyContinue).Count -eq 0) 'uv_stale_firewall'
+    $ca=[Security.Cryptography.X509Certificates.X509Certificate2]::new($plan.publicRoot.path)
+    $trust=[Security.Cryptography.X509Certificates.X509Store]::new('Root','LocalMachine');$trust.Open('ReadOnly')
+    try{Assert-Rn (@($trust.Certificates|Where-Object Thumbprint -eq $ca.Thumbprint).Count -eq 1 -and
+        -not $ca.HasPrivateKey -and $ca.NotAfter.ToUniversalTime() -gt [datetime]::UtcNow) 'uv_existing_trust_invalid'}finally{$trust.Dispose();$ca.Dispose()}
+}
+function Invoke-UvMeasuredStore([string]$Operation,[bool]$Cold) {
+    try{
+        $result=[NikkeLocalLab.Phase3B2.UserValidation.NativeStoreOperations]::Execute($entry.storePlan.path,$entry.storePlan.sha256,$Operation,$Cold)|ConvertFrom-Json
+        $script:UvTrace.completedBytes+=[long]$result.storeBytesRead
+        return $result
+    }catch{
+        for($errorValue=$_.Exception;$null -ne $errorValue;$errorValue=$errorValue.InnerException){
+            if($errorValue.Data.Contains('userValidationStoreBytesRead')){
+                $script:UvTrace.completedBytes+=[long]$errorValue.Data['userValidationStoreBytesRead'];break
+            }
+        }
+        throw
+    }
 }
 function Write-UvMarker([string]$Name,[string]$Contract,$Extra) {
     $value=[ordered]@{contractId=$Contract;assessmentUid=$plan.assessmentUid;trialUid=$plan.trialUid;executionOwnerCode='user';
@@ -120,6 +175,7 @@ $locked=$false;$job=$null;$child=$null;$claimed=$false;$cleanup=$null;$failure=$
 try {
     try{$locked=$mutex.WaitOne(0)}catch [Threading.AbandonedMutexException]{$locked=$true}
     Assert-Rn $locked 'uv_another_controller_active'
+    Set-UvStage 'quick_check'
     if($Mode -ceq 'Recover'){
         $startedPath=Join-Path $run 'execution.started.json'
         Assert-RnPath $startedPath
@@ -127,6 +183,8 @@ try {
         $started=Get-Content -LiteralPath $startedPath -Raw|ConvertFrom-Json
         Assert-Rn ($started.entrySha256 -ceq $EntrySha256 -and $started.assessmentUid -ceq $plan.assessmentUid -and
             -not (Test-Path -LiteralPath (Join-Path $run 'cleanup.receipt.json'))) 'uv_recovery_binding'
+        Set-UvStage 'deep_check' ([long](($executionPins|Measure-Object length -Sum).Sum))
+        foreach($pin in $executionPins){Assert-UvMeasuredPin $pin}
     } else {
         Assert-Rn (-not (Test-Path -LiteralPath (Join-Path $run 'execution.started.json'))) 'uv_run_already_used'
         foreach($marker in @(Get-ChildItem -LiteralPath 'C:\NLL\Staging\NativeFxUserValidation' -Recurse -File -Filter 'execution.started.json')){
@@ -135,26 +193,16 @@ try {
             $receipt=Get-Content -LiteralPath $done -Raw|ConvertFrom-Json
             Assert-Rn ($receipt.isolationReleased -eq $true -and $receipt.driverBaselineRestored -eq $true -and $receipt.ownedInputsRestored -eq $true) 'uv_previous_recovery_required'
         }
-        Assert-Rn ((Get-UvScoped).Count -eq 0) 'uv_runtime_not_cold'
-        Assert-FxManagedServiceSnapshot (Get-FxManagedServiceSnapshot) before
-        Assert-FxManagedServiceNoDependents
-        Assert-FxValidationDrivers $plan.driverPolicy (Get-FxValidationDriverSnapshot) before
         $blockOnly=@(Get-RnBlockOnlyProgramPaths)+@(Get-ChildItem -LiteralPath 'C:\Program Files\AntiCheatExpert' -Recurse -File -Filter '*.exe'|ForEach-Object FullName)
         Assert-Rn (@(Compare-Object ($blockOnly|Sort-Object -Unique) ($plan.blockOnlyPrograms.path|Sort-Object)).Count -eq 0) 'uv_block_inventory_drift'
-        foreach($pin in @($staging.serverFiles)+@($staging.bootstrapFiles)+@($plan.clientFiles)){Assert-RnPin $pin}
-        foreach($pair in $plan.clientRollback){Assert-RnPin $pair.backup}
-        Assert-RnPin $plan.hostsChange.before
-        Assert-Rn ((@(Get-RnVoicePreferences)|ConvertTo-Json -Compress) -ceq ($plan.preferencesBefore|ConvertTo-Json -Compress)) 'uv_preferences_before_drift'
-        Assert-Rn (@(Get-NetTCPConnection -State Listen -ErrorAction Stop|Where-Object LocalPort -in 80,443,8443).Count -eq 0) 'uv_listener_present'
-        Assert-Rn (@(Get-NetFirewallProfile -ErrorAction Stop|Where-Object {-not $_.Enabled}).Count -eq 0) 'uv_firewall_disabled'
-        Assert-Rn (@(Get-NetFirewallRule -Group $group -ErrorAction SilentlyContinue).Count -eq 0) 'uv_stale_firewall'
-        $ca=[Security.Cryptography.X509Certificates.X509Certificate2]::new($plan.publicRoot.path)
-        $trust=[Security.Cryptography.X509Certificates.X509Store]::new('Root','LocalMachine');$trust.Open('ReadOnly')
-        try{Assert-Rn (@($trust.Certificates|Where-Object Thumbprint -eq $ca.Thumbprint).Count -eq 1 -and
-            -not $ca.HasPrivateKey -and $ca.NotAfter.ToUniversalTime() -gt [datetime]::UtcNow) 'uv_existing_trust_invalid'}finally{$trust.Dispose();$ca.Dispose()}
-        $inspected=[NikkeLocalLab.Phase3B2.UserValidation.NativeStoreOperations]::Execute($entry.storePlan.path,$entry.storePlan.sha256,'inspect',$false)|ConvertFrom-Json
-        Assert-Rn ($inspected.storeSha256 -ceq $storePlan.originalStore.sha256) 'uv_store_not_original'
+        Invoke-UvPreflightSequence -Quick {Assert-UvQuickState} -Deep {
+            Set-UvStage 'deep_check' ([long](($deepPins|Measure-Object length -Sum).Sum)+[long]$storePlan.originalStore.length)
+            foreach($pin in $deepPins){Assert-UvMeasuredPin $pin}
+            $inspected=Invoke-UvMeasuredStore 'inspect' $false
+            Assert-Rn ($inspected.storeSha256 -ceq $storePlan.originalStore.sha256) 'uv_store_not_original'
+        } -Recheck {Set-UvStage 'shared_state_recheck';Assert-UvQuickState}
         if($Mode -ceq 'Inspect'){
+            Set-UvStage 'complete'
             [ordered]@{statusCode='offline_inputs_verified';weaknessCode=$plan.weaknessCode;gameStarted=$false;systemChangesApplied=$false;actualGameAcceptanceClaimed=$false}|ConvertTo-Json -Compress
             return
         }
@@ -165,17 +213,20 @@ try {
         $job=[Nll.PhaseD.ExecutionJob]::Create($plan.jobName)
         Write-RnNewJson (Join-Path $run 'job-owned.json') ([ordered]@{entrySha256=$EntrySha256;jobName=$plan.jobName;createdBeforeLaunch=$true})
         $stage='isolation'
+        Set-UvStage 'isolation'
         for($i=0;$i -lt $programs.Count;$i++){
             New-NetFirewallRule -Name ('NLL-UserValidation-'+$plan.assessmentUid+'-'+$i) -DisplayName ($group+' '+$i) -Group $group `
                 -Direction Outbound -Action Block -Enabled True -Profile Any -Program $programs[$i] -RemoteAddress Any -ErrorAction Stop|Out-Null
         }
         Assert-UvFirewall
         $stage='native_store_apply'
+        Set-UvStage 'native_store_apply' ([long]$storePlan.originalStore.length*2)
         Assert-Rn ((Get-UvScoped).Count -eq 0 -and $job.ActiveProcesses -eq 0) 'uv_apply_scope_not_cold'
-        $null=[NikkeLocalLab.Phase3B2.UserValidation.NativeStoreOperations]::Execute($entry.storePlan.path,$entry.storePlan.sha256,'apply',$true)
+        $null=Invoke-UvMeasuredStore 'apply' $true
         $stage='system_apply'
+        Set-UvStage 'system_apply'
         Set-RnPinnedFile $plan.hostsChange.before $plan.hostsChange.replacement
-        Set-RnVoicePreferences $plan.preferencesBefore $plan.preferencesAfter
+        Set-UvVoicePreferences $plan.preferencesBefore $plan.preferencesAfter
         Clear-DnsClientCache
         Assert-UvSystemApplied;Assert-UvFirewall
         Assert-FxManagedServiceSnapshot (Get-FxManagedServiceSnapshot) before
@@ -185,6 +236,7 @@ try {
             allProgramsBlocked=$true;rollbackPrepared=$true;systemChangesVerified=$true;managedServiceBaselineVerified=$true;
             managedDriverBaselineVerified=$true;protectedInputsUnchanged=$true}
         $stage='child_start'
+        Set-UvStage 'bootstrap_check'
         $child=$job.Start((Join-Path $plan.childRoot 'NikkeLocalLab.NativeFxUserValidationChild.exe'),
             ('--user-start '+$plan.trialUid+' '+$plan.assessmentUid+' '+$entry.parentPlan.sha256+' '+$entry.bootstrapPlan.sha256+' '+$entry.stagingReceipt.sha256))
         $ready=$false;$watch=[Diagnostics.Stopwatch]::StartNew();$checkWatch=[Diagnostics.Stopwatch]::StartNew()
@@ -196,6 +248,20 @@ try {
                     Assert-FxManagedServiceEntry (Get-FxManagedServiceSnapshot) $p ([Nll.Fx.ProcessIdentity]::Read([int]$p.ParentProcessId))
                 }else{Assert-Rn ($p.ExecutablePath -in $plan.programs.path -and $p.JobMember) 'uv_process_outside_boundary'}
             }
+            if($script:UvTrace.stage -ceq 'bootstrap_check'){
+                $proofs=@(Get-ChildItem -LiteralPath $run -File -Filter 'bootstrap-preflight-*.json')
+                Assert-Rn ($proofs.Count -le 1) 'uv_bootstrap_preflight_duplicate'
+                if($proofs.Count -eq 1){
+                    Assert-RnPath $proofs[0].FullName
+                    Assert-Rn ($proofs[0].Length -le 16384) 'uv_bootstrap_preflight_invalid'
+                    $proof=Get-Content -LiteralPath $proofs[0].FullName -Raw|ConvertFrom-Json
+                    Assert-Rn ($proof.contractId -ceq 'nll/user-validation-process-preflight/v1' -and
+                        $proof.parentPlanSha256 -ceq $entry.parentPlan.sha256 -and -not $proof.actualGameAcceptanceClaimed) 'uv_bootstrap_preflight_invalid'
+                    Assert-Rn ($proof.statusCode -ceq 'verified') 'uv_bootstrap_preflight_failed'
+                    Set-UvStage 'game_start'
+                }
+            }
+            if($script:UvTrace.stage -ceq 'game_start' -and @($scoped|Where-Object {$_.ExecutablePath -ieq (Join-Path $plan.clientRoot 'NIKKE\game\nikke.exe') -and $_.JobMember}).Count -eq 1){Set-UvStage 'running'}
             $ids=@($scoped|ForEach-Object ProcessId)
             $connections=@(Get-NetTCPConnection -ErrorAction Stop|Where-Object OwningProcess -in $ids)
             Assert-Rn (@($connections|Where-Object {$_.State -eq 'Established' -and $_.RemoteAddress -notin '127.0.0.1','::1'}).Count -eq 0) 'uv_nonloopback_connection'
@@ -236,6 +302,8 @@ try {
     if($_.Exception.Message -cmatch '^(uv_|resource_native_)[a-z_]+$'){$failure=$_.Exception.Message}
 }finally{
     if($claimed){
+        # Diagnostics must never prevent mandatory recovery after ownership.
+        try{Set-UvStage 'cleanup'}catch{Write-Warning 'uv_progress_write_failed'}
         try{
             $cleanup=Invoke-UvCleanup $plan.driverPolicy -StopJob {
                 if($null -eq $job){
@@ -262,14 +330,14 @@ try {
             } -VerifyScopeCold { (Get-UvScoped).Count -eq 0 } -RestoreInputs {
                 try{
                     Assert-Rn ((Get-UvScoped).Count -eq 0) 'uv_restore_scope_alive'
-                    $null=[NikkeLocalLab.Phase3B2.UserValidation.NativeStoreOperations]::Execute($entry.storePlan.path,$entry.storePlan.sha256,'restore',$true)
+                    $null=Invoke-UvMeasuredStore 'restore' $true
                     Restore-UvClientFiles $plan
                 }finally{
                     # A damaged client must not prevent independent safe system
                     # restoration. Any failure still prevents isolation release.
                     Assert-Rn ((Get-UvScoped).Count -eq 0) 'uv_restore_scope_alive'
                     try{Restore-UvHosts $plan.hostsChange;Clear-DnsClientCache}
-                    finally{Restore-UvPreferences $plan.preferencesBefore $plan.preferencesAfter}
+                    finally{Restore-UvVoicePreferences $plan.preferencesBefore $plan.preferencesAfter}
                 }
                 foreach($pin in $plan.protectedFiles){Assert-RnPin $pin}
                 $true
@@ -290,5 +358,6 @@ try {
     }
     if($null -ne $child){$child.Dispose()};if($null -ne $job){$job.Dispose()}
     if($locked){$mutex.ReleaseMutex()};$mutex.Dispose()
+    try{Set-UvStage $(if($failure -or $cleanupFailure){'failed'}else{'complete'})}catch{Write-Warning 'uv_progress_write_failed'}
 }
 if($failure){throw $failure};if($cleanupFailure){throw $cleanupFailure}
