@@ -159,9 +159,10 @@ internal static class BossAffinityStaticDataVariant
     var elementVariantRequired =
         !string.Equals(sourceWeaknessCode, weaknessCode, StringComparison.Ordinal);
     var variantRequired = elementVariantRequired || shieldFxVariantRequired;
-    var sourceQteElementId = targetMonster.ElementId[0];
+    var sourceBossElementId = targetMonster.ElementId[0];
+    var elementCodeById = elementById.ToDictionary(pair => pair.Key, pair => CodeForAttackType(pair.Value.Element));
     BossQuickTimeEventVariant.ValidateSource(quickTimeEventRows, targetMonsterId,
-        profile.QuickTimeEventAffinity, sourceQteElementId, variantRequired);
+        profile.QuickTimeEventAffinity, elementCodeById, variantRequired);
     string? variantSha256 = null;
     var modifiedMonsterCount = 0;
     var modifiedFunctionCount = 0;
@@ -177,8 +178,8 @@ internal static class BossAffinityStaticDataVariant
           .ToArray();
       Require(canonicalTargetElements.Length == 1,
           "phase_d_staticdata_requested_element_ambiguous");
-      modifiedQuickTimeEventCount = BossQuickTimeEventVariant.Apply(quickTimeEventRows,
-          targetMonsterId, profile.QuickTimeEventAffinity, sourceQteElementId, canonicalTargetElements[0].Id);
+      modifiedQuickTimeEventCount = BossQuickTimeEventVariant.Apply(quickTimeEventRows, targetMonsterId,
+          profile.QuickTimeEventAffinity, elementCodeById, sourceBossElementId, canonicalTargetElements[0].Id);
       BossQuickTimeEventVariant.VerifyBoundary(sourceQuickTimeEventRows, quickTimeEventRows,
           targetMonsterId, canonicalTargetElements[0].Id, modifiedQuickTimeEventCount);
       var sourceMonsterFingerprints = monsterRows.ToDictionary(row => row.Id, FingerprintRecord);

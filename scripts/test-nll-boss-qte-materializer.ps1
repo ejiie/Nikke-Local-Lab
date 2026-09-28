@@ -64,7 +64,7 @@ try {
     Require ($LASTEXITCODE -eq 0 -and $lines.Count -eq 1) 'boss_qte_behavior_failed'
     $receipt.behavior = $lines[0] | ConvertFrom-Json
     Require ($receipt.behavior.contractId -ceq 'nll/boss-qte-behavior-check/v1' -and
-        $receipt.behavior.syntheticOnly -eq $true -and $receipt.behavior.passed -eq 37 -and
+        $receipt.behavior.syntheticOnly -eq $true -and $receipt.behavior.passed -eq 44 -and
         $receipt.behavior.failed -eq 0) 'boss_qte_behavior_invalid'
     $patternLines = @(& $exe --verify-boss-shield-patterns true)
     Require ($LASTEXITCODE -eq 0 -and $patternLines.Count -eq 1) 'boss_shield_pattern_behavior_failed'

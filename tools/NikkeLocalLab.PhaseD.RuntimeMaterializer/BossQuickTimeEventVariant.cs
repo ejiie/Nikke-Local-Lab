@@ -39,7 +39,8 @@ internal static class BossQuickTimeEventVariant
       Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", values))));
 
   internal static void ValidateSource(QuickTimeEventRecord[] rows, long targetMonsterId,
-      BossRuntimeVariantQuickTimeEventAffinity? contract, int sourceElementId, bool variantRequired)
+      BossRuntimeVariantQuickTimeEventAffinity? contract, IReadOnlyDictionary<int, string> elementCodes,
+      bool variantRequired)
   {
     Require(rows.Select(row => row.Id).Distinct().Count() == rows.Length, "index_invalid");
     var selected = Select(rows, targetMonsterId);
@@ -49,25 +50,33 @@ internal static class BossQuickTimeEventVariant
       Require(!variantRequired || !selected.Any(row => row.ElementId != 0), "contract_required");
       return;
     }
+    // Linked rows may keep different original elements. RecordSetSha256 binds each
+    // row's element; every row must still be a real element named by the profile.
     Require(contract.ModeCode == "target_monster_linked_element_only" &&
         selected.Length > 0 && selected.Length == contract.RecordCount &&
         selected.SelectMany(row => row.MonsterId ?? []).Distinct().Count() == contract.MonsterReferenceCount &&
         HashRecords(selected) == contract.RecordSetSha256 &&
         HashImmutable(selected) == contract.ImmutablePayloadSetSha256 &&
         HashElements(selected) == contract.SourceElementSetSha256 &&
-        selected.All(row => row.ElementId == sourceElementId), "source_mismatch");
+        selected.All(row => elementCodes.ContainsKey(row.ElementId)) &&
+        selected.Select(row => elementCodes[row.ElementId]).Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal).SequenceEqual(contract.SourceElementCodes ?? []), "source_mismatch");
   }
 
   internal static int Apply(QuickTimeEventRecord[] rows, long targetMonsterId,
-      BossRuntimeVariantQuickTimeEventAffinity? contract, int sourceElementId, int targetElementId)
+      BossRuntimeVariantQuickTimeEventAffinity? contract, IReadOnlyDictionary<int, string> elementCodes,
+      int bossElementId, int targetElementId)
   {
-    ValidateSource(rows, targetMonsterId, contract, sourceElementId, sourceElementId != targetElementId);
-    if (contract is null || sourceElementId == targetElementId) return 0;
+    ValidateSource(rows, targetMonsterId, contract, elementCodes, bossElementId != targetElementId);
+    // The original boss element keeps every linked row as authored. Any other
+    // target converts every linked row; only rows that actually differ count.
+    if (contract is null || bossElementId == targetElementId) return 0;
     Require(targetElementId > 0, "target_invalid");
     var selected = Select(rows, targetMonsterId);
+    var modified = selected.Count(row => row.ElementId != targetElementId);
     foreach (var row in selected) row.ElementId = targetElementId;
     Require(HashImmutable(selected) == contract.ImmutablePayloadSetSha256, "immutable_payload_changed");
-    return selected.Length;
+    return modified;
   }
 
   internal static void VerifyBoundary(QuickTimeEventRecord[] before, QuickTimeEventRecord[] after,

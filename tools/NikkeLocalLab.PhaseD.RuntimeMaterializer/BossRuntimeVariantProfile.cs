@@ -338,6 +338,10 @@ internal sealed record BossRuntimeVariantProfile(
 
   private void ValidateQte()
   {
+    // Linked rows may keep different original elements (the set is sorted and
+    // unique). The variant converts or preserves them per row, so the set need
+    // not equal the boss element.
+    var codes = QuickTimeEventAffinity?.SourceElementCodes ?? [];
     Require(QuickTimeEventAffinity is not null &&
             QuickTimeEventAffinity.ModeCode == "target_monster_linked_element_only" &&
             QuickTimeEventAffinity.RecordCount > 0 &&
@@ -345,9 +349,9 @@ internal sealed record BossRuntimeVariantProfile(
             IsSha256(QuickTimeEventAffinity.RecordSetSha256) &&
             IsSha256(QuickTimeEventAffinity.ImmutablePayloadSetSha256) &&
             IsSha256(QuickTimeEventAffinity.SourceElementSetSha256) &&
-            QuickTimeEventAffinity.SourceElementCodes is { Length: 1 } &&
-            QuickTimeEventAffinity.SourceElementCodes[0] ==
-                SourceAffinity.BossElementCode,
+            codes.Length > 0 && codes.Length <= QuickTimeEventAffinity.RecordCount &&
+            codes.All(IsElement) &&
+            codes.SequenceEqual(codes.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)),
         "phase_d_boss_variant_profile_invalid");
   }
 
