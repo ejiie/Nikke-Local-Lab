@@ -51,11 +51,32 @@ class BehaviorPreservationTests(unittest.TestCase):
                 behavior.run(args)
             receipt = json.loads(args.output.read_text())
             self.assertEqual((receipt["nodeCount"], receipt["disabledNodeCount"]), (3, 2))
+            # Without the onboarding flag the receipt keeps its previous shape (Union Hard).
+            self.assertNotIn("quickTimeEventNodeCount", receipt)
+            counted = NS(**{**vars(args), "output": root / "counted.json", "count_quick_time_event_nodes": True})
+            with patch.dict(sys.modules, {"UnityPy": NS(load=lambda _: NS(objects=[obj]))}):
+                behavior.run(counted)
+            counted_receipt = json.loads(counted.output.read_text())
+            self.assertEqual(counted_receipt.pop("quickTimeEventNodeCount"), 0)
+            self.assertEqual(counted_receipt, receipt)
             self.assertEqual(receipt["canonicalGraphSha256"], behavior.sha256_bytes(behavior.canonical_json(before)))
             self.assertFalse(receipt["sourceAssetModified"])
             self.assertEqual(graph, before)
             graph["RootTask"]["Children"][0]["Disabled"] = False
             self.assertNotEqual(receipt["canonicalGraphSha256"], behavior.sha256_bytes(behavior.canonical_json(graph)))
+
+    def test_qte_nodes_are_counted_from_the_tree_only(self):
+        # Synthetic type names: only QuickTimeEvent* tasks count, wherever they sit.
+        graph = {"RootTask": {"Type": "Synthetic.Root", "Children": [
+            {"Type": "Synthetic.Actions.QuickTimeEvent", "Int32_quickTimeId": 1},
+            {"Type": "Synthetic.Actions.QuickTimeEvent", "Disabled": True},
+            {"Type": "Synthetic.Actions.AttackV3", "Int32_quickTimeId": 2},
+            {"Type": "Synthetic.Multiplay.QuickTimeEventMultiplay"}]},
+            "DetachedTasks": [{"Type": "Synthetic.Actions.QuickTimeEvent"}]}
+        state = {"node_count": 0, "disabled_node_count": 0, "quick_time_event_node_count": 0,
+                 "task_types": [], "skill_animation_refs": [], "part_refs": [], "point_refs": []}
+        behavior.walk(graph, state)
+        self.assertEqual((state["node_count"], state["quick_time_event_node_count"]), (6, 4))
 
     def test_disabled_root_is_rejected_even_with_enabled_detached_task(self):
         with self.assertRaisesRegex(behavior.PipelineError, "graph_invalid"):
@@ -187,7 +208,8 @@ class ShieldFitTests(unittest.TestCase):
             behavior_path = root / "behavior.json"
             behavior_path.write_text(json.dumps({"contractId": "nll/boss-behavior-assembly/v1", "seasonNumber": 3,
                 "profileCode": "synthetic-boss", "sourceDiscoverySha256": profile.hash_file(source_path),
-                "rootReferenceCount": 1, "rootReferenceSetSha256": "a" * 64, "graphMatchCount": 1, "disabledNodeCount": 6}))
+                "rootReferenceCount": 1, "rootReferenceSetSha256": "a" * 64, "graphMatchCount": 1, "disabledNodeCount": 6,
+                "quickTimeEventNodeCount": 0}))
             args = NS(source_discovery=source_path, private_discovery=private_path, behavior_receipt=behavior_path,
                 asset_cache_root=root, profile_output=root / "profile.json", receipt_output=root / "candidate.json", unitypy_root=None)
             with patch.object(profile, "resolve_shield", return_value={"modeCode": "dynamic_affinity_linked"}), \
@@ -363,6 +385,75 @@ class QteAdmissionTests(unittest.TestCase):
             with self.subTest(missing=field):
                 with self.assertRaisesRegex(profile.PipelineError, "^boss_profile_qte_v3_pipeline_required$"):
                     profile.require_v2_qte_compatibility(source)
+
+
+class QteBehaviorTreeRuleTests(unittest.TestCase):
+    """The assembled behavior tree decides QTE use; linked table rows alone are not use."""
+    LINKED = {"modeCode": "target_monster_linked_element_only", "recordCount": 3, "monsterReferenceCount": 2,
+              "sourceElementCodes": ["electric", "water"], **{key: fit.digest(key.encode()) for key in (
+                  "recordSetSha256", "immutablePayloadSetSha256", "sourceElementSetSha256")}}
+
+    def assemble(self, qte, node_count):
+        closed = {"contractId": "nll/boss-shield-pattern-discovery/v1", "staticReferenceStatusCode": "resolved",
+                  "missingReferenceCount": 0,
+                  **{key: [] for key in ("entryPoints", "partTargets", "conditions", "normalInterrupts")},
+                  "quickTimeEvents": [{"elementCode": "electric"}] * qte["recordCount"]}
+        h = "a" * 64
+        source = {"contractId": "nll/boss-content-discovery/v1", "discoveryStatusCode": "static_graph_resolved",
+                  "unresolvedReasonCodes": [], "seasonNumber": 3, "profileCode": "synthetic-boss",
+                  "displayNameCode": "synthetic-boss", "selectedManagerObservation": {}, "challengeSelector": {},
+                  "sourceAffinity": {"bossElementCode": "water", "weaknessCode": "electric"}, "skillClosure": {},
+                  "behaviorAssembly": {"rootReferenceCount": 1, "rootReferenceSetSha256": h},
+                  "elementShield": {"modeCode": "none"}, "quickTimeEventAffinity": qte, "shieldPatterns": closed}
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_path = root / "source.json"; source_path.write_text(json.dumps(source))
+            private_path = root / "private.json"
+            private_path.write_text(json.dumps({"contractId": "nll/private-boss-content-diagnostic/v1", "seasonNumber": 3}))
+            behavior_path = root / "behavior.json"
+            behavior_path.write_text(json.dumps({
+                "contractId": "nll/boss-behavior-assembly/v1", "seasonNumber": 3, "profileCode": "synthetic-boss",
+                "sourceDiscoverySha256": profile.hash_file(source_path),
+                "modeCode": "preserve_exact_external_behavior_tree", "rootReferenceCount": 1,
+                "rootReferenceSetSha256": h, "assetClosureStatusCode": "resolved", "bundleByteLength": 1,
+                "bundleSha256": h, "graphMatchCount": 1, "nodeCount": 10, "disabledNodeCount": 0,
+                "quickTimeEventNodeCount": node_count, **{key: h for key in (
+                    "canonicalGraphSha256", "taskTypeSetSha256", "skillAnimationReferenceSetSha256",
+                    "partReferenceSetSha256", "pointReferenceSetSha256")}}))
+            args = NS(source_discovery=source_path, private_discovery=private_path, behavior_receipt=behavior_path,
+                      asset_cache_root=root, profile_output=root / "profile.json",
+                      receipt_output=root / "candidate.json", unitypy_root=None)
+            profile.run(args)
+            return json.loads(args.profile_output.read_text())
+
+    def test_tree_without_qte_node_assembles_only_the_tree(self):
+        # Mixed-element linked rows are never inspected when the tree has no QTE node.
+        with patch.object(profile, "require_v3_qte", side_effect=AssertionError("qte_path_entered")):
+            result = self.assemble(self.LINKED, 0)
+        self.assertNotIn("quickTimeEventAffinity", result)
+        self.assertEqual((result["schemaVersion"], result["contractId"]), (2, "nll/boss-runtime-variant-profile/v2"))
+        self.assertEqual(result["transformation"]["modeCode"], "target_monster_element_reference")
+        self.assertEqual(result["transformation"]["allowedTableCodes"], ["monster"])
+        self.assertEqual(result["behaviorAssembly"]["nodeCount"], 10)
+
+    def test_tree_with_qte_node_keeps_the_qte_contract(self):
+        result = self.assemble(self.LINKED, 2)
+        self.assertEqual(result["quickTimeEventAffinity"], self.LINKED)
+        self.assertEqual((result["schemaVersion"], result["contractId"]), (4, "nll/boss-runtime-variant-profile/v4"))
+        self.assertEqual(result["transformation"]["modeCode"], "target_monster_element_and_qte_element")
+        self.assertEqual(result["transformation"]["allowedTableCodes"], ["monster", "quick_time_event"])
+        closed = {"modeCode": "not_applicable", "recordCount": 0, "monsterReferenceCount": 0,
+                  "sourceElementCodes": [], **{key: profile.EMPTY_SHA256 for key in (
+                      "recordSetSha256", "immutablePayloadSetSha256", "sourceElementSetSha256")}}
+        self.assertNotIn("quickTimeEventAffinity", self.assemble(closed, 3))
+        with self.assertRaisesRegex(profile.PipelineError, "^boss_profile_qte_v3_discovery_invalid$"):
+            self.assemble({**self.LINKED, "sourceElementCodes": ["unresolved"]}, 1)
+
+    def test_qte_node_count_is_required_evidence(self):
+        for value in (None, -1, True, "0", 1.0):
+            with self.subTest(value=value), \
+                    self.assertRaisesRegex(profile.PipelineError, "^boss_profile_behavior_closure_invalid$"):
+                self.assemble(self.LINKED, value)
 
 
 if __name__ == "__main__":

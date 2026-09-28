@@ -223,6 +223,7 @@ try {
             --private-discovery $privateDiscoveryPath `
             --behavior-bundle $identity.Group[0].FullName `
             --unitypy-root $UnityPyRoot `
+            --count-quick-time-event-nodes `
             --output $probeReceipt 2>&1)
         if ($LASTEXITCODE -eq 0 -and
             (Test-Path -LiteralPath $probeReceipt -PathType Leaf)) {

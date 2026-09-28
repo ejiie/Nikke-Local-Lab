@@ -39,17 +39,13 @@ internal static class BossQuickTimeEventVariant
       Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", values))));
 
   internal static void ValidateSource(QuickTimeEventRecord[] rows, long targetMonsterId,
-      BossRuntimeVariantQuickTimeEventAffinity? contract, IReadOnlyDictionary<int, string> elementCodes,
-      bool variantRequired)
+      BossRuntimeVariantQuickTimeEventAffinity? contract, IReadOnlyDictionary<int, string> elementCodes)
   {
     Require(rows.Select(row => row.Id).Distinct().Count() == rows.Length, "index_invalid");
+    // The profile carries a QTE contract only when the assembled behavior tree has a
+    // QTE node. Rows that merely list the monster are not use: leave the table as authored.
+    if (contract is null) return;
     var selected = Select(rows, targetMonsterId);
-    if (contract is null)
-    {
-      // Older profiles must not silently leave an elemental QTE unchanged.
-      Require(!variantRequired || !selected.Any(row => row.ElementId != 0), "contract_required");
-      return;
-    }
     // Linked rows may keep different original elements. RecordSetSha256 binds each
     // row's element; every row must still be a real element named by the profile.
     Require(contract.ModeCode == "target_monster_linked_element_only" &&
@@ -67,7 +63,7 @@ internal static class BossQuickTimeEventVariant
       BossRuntimeVariantQuickTimeEventAffinity? contract, IReadOnlyDictionary<int, string> elementCodes,
       int bossElementId, int targetElementId)
   {
-    ValidateSource(rows, targetMonsterId, contract, elementCodes, bossElementId != targetElementId);
+    ValidateSource(rows, targetMonsterId, contract, elementCodes);
     // The original boss element keeps every linked row as authored. Any other
     // target converts every linked row; only rows that actually differ count.
     if (contract is null || bossElementId == targetElementId) return 0;

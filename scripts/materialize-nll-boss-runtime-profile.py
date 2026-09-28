@@ -431,7 +431,9 @@ def run(args: argparse.Namespace) -> None:
         == behavior_source.get("rootReferenceSetSha256")
         and behavior.get("graphMatchCount") == behavior.get("rootReferenceCount")
         and type(behavior.get("disabledNodeCount")) is int
-        and behavior["disabledNodeCount"] >= 0,
+        and behavior["disabledNodeCount"] >= 0
+        and type(behavior.get("quickTimeEventNodeCount")) is int
+        and behavior["quickTimeEventNodeCount"] >= 0,
         "boss_profile_behavior_closure_invalid",
     )
     shield = resolve_shield(source, private, asset_root)
@@ -469,10 +471,13 @@ def run(args: argparse.Namespace) -> None:
     write_atomic(assessment_path, assessment)
     require(assessment["preparationStatusCode"] in {"not_required", "prepared"},
             "boss_profile_shield_assessment_review_required")
-    has_qte = (source.get("quickTimeEventAffinity") or {}).get("modeCode") == "target_monster_linked_element_only"
+    linked_qte = (source.get("quickTimeEventAffinity") or {}).get("modeCode") == "target_monster_linked_element_only"
+    # The assembled behavior tree decides QTE use. Rows that only list the monster in
+    # MonsterId are not evidence: without a QTE node only the tree is assembled.
+    has_qte = linked_qte and behavior["quickTimeEventNodeCount"] > 0
     if has_qte:
         qte = require_v3_qte(source)
-    else:
+    elif not linked_qte:
         require_v2_qte_compatibility(source)
     dynamic = shield["modeCode"] == "dynamic_affinity_linked"
     profile = {

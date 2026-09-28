@@ -187,6 +187,25 @@ class CandidateTests(unittest.TestCase):
                 with self.subTest(weakness=weakness, wrong=wrong), self.assertRaises(ValueError):
                     self.validate(weakness, {**receipt, "modifiedQuickTimeEventRecordCount": wrong}, pack)
 
+    def test_tree_without_qte_node_changes_no_qte_row_for_any_weakness(self):
+        # Linked rows are still in the sealed discovery, but the profile has no QTE
+        # contract because the tree has no QTE node: every weakness changes 0 rows.
+        self.use_mixed_water_boss()
+        discovery = {"shieldPatterns": {"quickTimeEvents": [{"elementCode": code} for code in self.qte_rows]}}
+        self.profile.pop("quickTimeEventAffinity")
+        self.assertEqual(gate.qte_source_elements(self.profile, discovery), [])
+        for weakness in gate.TARGETS:
+            receipt, pack = self.receipt(weakness, v3=False)
+            self.assertEqual(receipt["modifiedQuickTimeEventRecordCount"], 0)
+            self.assertNotIn("target_qte_element_reference", receipt["modifiedTableCodes"])
+            gate.validate_variant(self.profile, "a" * 64, "b" * 64, weakness, receipt, pack, [])
+            for field, value in (("modifiedQuickTimeEventRecordCount", 1),
+                                 ("modifiedQuickTimeEventRecordCount", 3),
+                                 ("quickTimeEventAffinityContractVerified", True)):
+                with self.subTest(weakness=weakness, field=field, value=value), self.assertRaises(ValueError):
+                    gate.validate_variant(self.profile, "a" * 64, "b" * 64, weakness,
+                                          {**receipt, field: value}, pack, [])
+
     def test_qte_rows_come_from_sealed_discovery(self):
         self.use_mixed_water_boss()
         self.profile["quickTimeEventAffinity"] = self.qte
