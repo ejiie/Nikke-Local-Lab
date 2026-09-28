@@ -37,11 +37,25 @@ def read(path):
     return json.loads(fx.plain_path(path, file=True).read_bytes())
 
 
-def validate_variant(profile, profile_sha, source_sha, weakness, receipt, pack):
+def qte_source_elements(profile, discovery):
+    """Each linked QTE row's original element, in row order, from the sealed discovery."""
+    qte = profile.get("quickTimeEventAffinity")
+    if qte is None:
+        return []
+    rows = [row.get("elementCode") for row in
+            (discovery.get("shieldPatterns") or {}).get("quickTimeEvents") or []]
+    require(len(rows) == qte["recordCount"] and all(isinstance(code, str) and code in TARGETS for code in rows)
+            and sorted(set(rows)) == qte["sourceElementCodes"])
+    return rows
+
+
+def validate_variant(profile, profile_sha, source_sha, weakness, receipt, pack, qte_elements):
     changed = weakness != profile["sourceAffinity"]["weaknessCode"]
     dynamic = profile["elementShield"]["modeCode"] == "dynamic_affinity_linked"
     has_qte = profile.get("quickTimeEventAffinity") is not None
-    qte_count = profile["quickTimeEventAffinity"]["recordCount"] if has_qte and changed else 0
+    # The original boss element keeps every row; any other run converts every
+    # linked row, so only rows whose original element differs are modified.
+    qte_count = sum(code != TARGETS[weakness] for code in qte_elements) if changed else 0
     adjusted = (TARGETS[weakness] in fx.ROLES if profile["schemaVersion"] == 3 else
                 any(r["bossElementCode"] == TARGETS[weakness] and r["operationCode"] == "adjust_candidate"
                     for r in (profile.get("shieldFxPreparation") or {}).get("variants", [])))
@@ -141,10 +155,12 @@ def build_receipt(root, source_pack, season, profile_code, input_set_sha, cache)
                     {(b['sha256'], b['byteLength']) for b in bundles})
         artifact_names.append('fx-acquisition.receipt.json')
         artifact_names.extend(sorted('acquired-fx/' + p.name for p in fx_cache.iterdir()))
+    qte_elements = qte_source_elements(profile, discovery)
     for weakness in TARGETS:
         receipt_name = f"five-affinity-variants/{weakness}.receipt.json"
         pack_name = f"five-affinity-variants/{weakness}.pack"
-        validate_variant(profile, profile_sha, source_sha, weakness, read(root / receipt_name), root / pack_name)
+        validate_variant(profile, profile_sha, source_sha, weakness, read(root / receipt_name), root / pack_name,
+                         qte_elements)
         artifact_names.append(receipt_name)
         if (root / pack_name).exists():
             artifact_names.append(pack_name)

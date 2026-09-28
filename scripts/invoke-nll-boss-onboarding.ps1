@@ -265,14 +265,14 @@ try {
 
     $assemblyOptions = @('--unitypy-root', $UnityPyRoot)
     if ($CandidateOnly) { $assemblyOptions += '--allow-v3-candidate' }
-    & $PythonPath -B $profileAssembler @assemblyOptions `
+    $assemblyDiagnostic = @(& $PythonPath -B $profileAssembler @assemblyOptions `
         --source-discovery $discoveryPath `
         --private-discovery $privateDiscoveryPath `
         --behavior-receipt $behaviorReceiptPath `
         --asset-cache-root $AssetCacheRoot `
         --profile-output $candidateProfilePath `
         --receipt-output $candidateReceiptPath `
-        --shield-assessment-output $shieldAssessmentPath
+        --shield-assessment-output $shieldAssessmentPath 2>&1)
     $assemblyExitCode = $LASTEXITCODE
     if ($assemblyExitCode -eq 0 -or (Test-Path -LiteralPath $shieldAssessmentPath -PathType Leaf)) {
         try {
@@ -296,7 +296,13 @@ try {
         Assert-Onboarding ($shieldAssessment.preparationStatusCode -cin @('not_required', 'prepared')) `
             'boss_onboarding_shield_assessment_invalid'
     }
-    Assert-Onboarding ($assemblyExitCode -eq 0) 'boss_onboarding_profile_assembly_failed'
+    if ($assemblyExitCode -ne 0) {
+        # Surface the assembler's first controlled code; other diagnostic text stays private.
+        $assemblyCodes = @($assemblyDiagnostic | ForEach-Object { ([string]$_).Trim() } |
+            Where-Object { $_ -cmatch '^boss_profile_[a-z0-9_]{1,80}$' })
+        if ($assemblyCodes.Count -gt 0) { throw $assemblyCodes[0] }
+        throw 'boss_onboarding_profile_assembly_failed'
+    }
 
     $validationOutput = @(& $materializerCommand @materializerPrefix `
         --validate-boss-variant-profile $candidateProfilePath)

@@ -113,6 +113,19 @@ class AcquisitionTests(unittest.TestCase):
                 self.assertEqual(a.acquire(args,Unity)['statusCode'],'not_required')
             self.assertFalse(args.cache_root.exists()); self.assertFalse(args.output_root.exists())
 
+    def test_qualified_boss_fx_requests_the_common_effect(self):
+        # fx_<owner>_<qualifier>_<effect>: the owner colour keeps its own family, others share fx_m_<effect>.
+        with TemporaryDirectory() as directory:
+            args = setup(Path(directory))
+            source = a.profile.read_json(args.source_discovery)
+        def row(name): return {'fx': [name], 'fxPrefabSetSha256': a.fx.digest(name.encode())}
+        colors = ('red', 'blue', 'green', 'purple', 'yellow')
+        boss = row('fx_bx01_island_immune_barrier_purple')
+        private = {'shieldFunctions': [boss],
+                   'globalShieldFxCandidates': [boss] + [row('fx_m_immune_barrier_' + c) for c in colors]}
+        self.assertEqual(a.requested_names(source, private), sorted(
+            ['fx_bx01_island_immune_barrier_purple'] + ['fx_m_immune_barrier_' + c for c in colors if c != 'purple']))
+
     def test_catalog_missing_error_is_preserved_without_sealed_output(self):
         with TemporaryDirectory() as directory:
             args=setup(Path(directory))

@@ -94,6 +94,13 @@ def semantic_stems(stems: tuple[str, ...]) -> tuple[str, ...] | None:
     return tuple(result)
 
 
+def qualified_semantics(source: tuple[str, ...], common: tuple[str, ...] | None) -> bool:
+    # A boss FX may add whole qualifier segments before the shared effect name
+    # (fx_<owner>_<qualifier>_<effect>). Partial-segment suffixes never match.
+    return common is not None and len(common) == len(source) and all(
+        value.endswith("_" + effect) for value, effect in zip(source, common))
+
+
 def unique_candidates(
     candidates: list[dict[str, Any]], predicate: Any
 ) -> list[dict[str, Any]]:
@@ -207,6 +214,17 @@ def resolve_shield(
                     ),
                 )
                 source_kind = "common"
+            if not selected and source_semantics is not None:
+                # Only when no exact family exists; several qualified matches stay ambiguous.
+                selected = unique_candidates(
+                    candidates,
+                    lambda item: (
+                        (identity := fx_identity(item)) is not None
+                        and identity[0] == color
+                        and all(stem.startswith("fx_m_") for stem in identity[1])
+                        and qualified_semantics(source_semantics, semantic_stems(identity[1]))
+                    ),
+                )
             require(
                 len(selected) == 1,
                 "boss_profile_shield_fx_variant_not_unique",
@@ -282,10 +300,15 @@ def local_module(name: str, filename: str) -> Any:
 def require_v3_qte(source: dict[str, Any]) -> dict[str, Any]:
     qte = source.get("quickTimeEventAffinity")
     require(isinstance(qte, dict), "boss_profile_qte_discovery_missing")
+    codes = qte.get("sourceElementCodes")
+    # Linked rows may keep different original elements. The variant leaves every
+    # row as authored for the original boss element and otherwise converts each
+    # linked row, counting only rows that actually differ; no single source is assumed.
     require(qte.get("modeCode") == "target_monster_linked_element_only"
             and all(type(qte.get(key)) is int and qte[key] > 0
                     for key in ("recordCount", "monsterReferenceCount"))
-            and qte.get("sourceElementCodes") == [source["sourceAffinity"]["bossElementCode"]]
+            and isinstance(codes, list) and 0 < len(codes) <= qte["recordCount"]
+            and all(code in ELEMENTS for code in codes) and codes == sorted(set(codes))
             and all(isinstance(qte.get(key), str)
                     and re.fullmatch("[0-9a-f]{64}", qte[key]) is not None
                     and qte[key] != EMPTY_SHA256 for key in (

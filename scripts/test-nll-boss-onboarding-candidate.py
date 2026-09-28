@@ -39,6 +39,7 @@ class CandidateTests(unittest.TestCase):
                     "monsterReferenceCount": 3, "sourceElementCodes": ["electric"],
                     **{key: fx.digest(key.encode()) for key in (
                         "recordSetSha256", "immutablePayloadSetSha256", "sourceElementSetSha256")}}
+        self.qte_rows = ["electric"] * 5
         self.source = {"sourceAffinity": {"bossElementCode": "electric", "weaknessCode": "iron"},
                        "quickTimeEventAffinity": self.qte}
         self.shield = {"modeCode": "dynamic_affinity_linked", "functionRecordCount": 3, "fxVariants": []}
@@ -78,9 +79,17 @@ class CandidateTests(unittest.TestCase):
 
     def test_qte_validation(self):
         self.assertEqual(assembler.require_v3_qte(self.source), self.qte)
+        # Linked rows may keep other original elements; the variant handles each row.
+        for codes in (["fire"], ["electric", "fire"], ["electric", "water"]):
+            source = copy.deepcopy(self.source)
+            source["quickTimeEventAffinity"]["sourceElementCodes"] = codes
+            self.assertEqual(assembler.require_v3_qte(source)["sourceElementCodes"], codes)
         for field, values in {
             "modeCode": ["not_applicable", None], "recordCount": [0, -1, True, "5"],
-            "monsterReferenceCount": [0, False], "sourceElementCodes": [[], ["fire"], ["electric", "fire"]],
+            "monsterReferenceCount": [0, False],
+            "sourceElementCodes": [[], None, "electric", ["unresolved"], ["fire", "electric"],
+                                   ["electric", "electric"], [["electric"]],
+                                   ["fire", "water", "wind", "electric", "iron", "unresolved"]],
             "recordSetSha256": [None, "X" * 64, assembler.EMPTY_SHA256],
             "immutablePayloadSetSha256": [None], "sourceElementSetSha256": [None],
         }.items():
@@ -109,7 +118,8 @@ class CandidateTests(unittest.TestCase):
             self.assemble()
 
     def receipt(self, weakness, v3=True):
-        changed = weakness != "iron"
+        affinity = self.profile["sourceAffinity"]
+        changed = weakness != affinity["weaknessCode"]
         self.profile["schemaVersion"] = 3 if v3 else 2
         if v3:
             self.profile["quickTimeEventAffinity"] = self.qte
@@ -118,17 +128,19 @@ class CandidateTests(unittest.TestCase):
         pack = self.root / (weakness + ".pack")
         if changed:
             pack.write_bytes(("synthetic-pack-" + weakness).encode())
+        # Materializer semantics: convert every linked row, count actual differences.
+        qte_modified = sum(code != gate.TARGETS[weakness] for code in self.qte_rows) if changed and v3 else 0
         codes = ["target_monster_element_reference", "target_dynamic_shield_fx_reference"] if changed else []
-        if changed and v3:
+        if qte_modified:
             codes.append("target_qte_element_reference")
         target = next(row for row in self.shield["fxVariants"] if row["bossElementCode"] == gate.TARGETS[weakness])
         return {"schemaVersion": 1, "contractId": "nll/boss-affinity-static-data-variant/v1",
             "variantProfileCode": "synthetic-boss", "variantProfileSha256": "a" * 64,
-            "seasonNumber": 7, "weaknessCode": weakness, "sourceBossElementCode": "electric",
-            "sourceBossWeaknessCode": "iron", "targetBossElementCode": gate.TARGETS[weakness],
+            "seasonNumber": 7, "weaknessCode": weakness, "sourceBossElementCode": affinity["bossElementCode"],
+            "sourceBossWeaknessCode": affinity["weaknessCode"], "targetBossElementCode": gate.TARGETS[weakness],
             "sourceStaticDataSha256": "b" * 64, "variantRequired": changed,
             "modifiedMonsterRecordCount": int(changed), "modifiedFunctionRecordCount": 3 if changed else 0,
-            "modifiedQuickTimeEventRecordCount": 5 if changed and v3 else 0,
+            "modifiedQuickTimeEventRecordCount": qte_modified,
             "quickTimeEventAffinityContractVerified": v3, "modifiedElementRecordCount": 0,
             "modifiedTableCount": len(codes), "modifiedTableCodes": codes,
             "elementTablePreserved": True, "clientElementIndexInvariantVerified": True,
@@ -141,11 +153,54 @@ class CandidateTests(unittest.TestCase):
             "shieldFxAssetBundles": target["mappings"][0]["assetBundles"],
             "shieldFxMappingSetSha256": target["mappingSetSha256"]}, pack
 
+    def validate(self, weakness, receipt, pack):
+        rows = self.qte_rows if "quickTimeEventAffinity" in self.profile else []
+        gate.validate_variant(self.profile, "a" * 64, "b" * 64, weakness, receipt, pack, rows)
+
     def test_five_variants_v2_and_v3(self):
         for v3 in (False, True):
             for weakness in gate.TARGETS:
                 receipt, pack = self.receipt(weakness, v3)
-                gate.validate_variant(self.profile, "a" * 64, "b" * 64, weakness, receipt, pack)
+                self.validate(weakness, receipt, pack)
+                # A single-source boss keeps the previous expectation: all rows change.
+                self.assertEqual(receipt["modifiedQuickTimeEventRecordCount"],
+                                 5 if v3 and weakness != "iron" else 0)
+
+    def use_mixed_water_boss(self):
+        # Water boss whose linked rows keep electric x2 and water x1 (shared rows).
+        self.profile["sourceAffinity"] = self.source["sourceAffinity"] = {
+            "bossElementCode": "water", "weaknessCode": "electric"}
+        self.qte_rows = ["electric", "electric", "water"]
+        self.qte.update(recordCount=3, sourceElementCodes=["electric", "water"])
+
+    def test_mixed_source_qte_counts_only_rows_that_change(self):
+        self.use_mixed_water_boss()
+        self.assertEqual(assembler.require_v3_qte(self.source)["sourceElementCodes"], ["electric", "water"])
+        expected = {"electric": 0, "iron": 1, "fire": 3, "water": 3, "wind": 3}
+        for weakness, count in expected.items():
+            receipt, pack = self.receipt(weakness)
+            self.assertEqual(receipt["modifiedQuickTimeEventRecordCount"], count)
+            self.assertEqual("target_qte_element_reference" in receipt["modifiedTableCodes"], count > 0)
+            self.assertEqual(pack.exists(), weakness != "electric")
+            self.validate(weakness, receipt, pack)
+            for wrong in {0, 1, 3} - {count}:
+                with self.subTest(weakness=weakness, wrong=wrong), self.assertRaises(ValueError):
+                    self.validate(weakness, {**receipt, "modifiedQuickTimeEventRecordCount": wrong}, pack)
+
+    def test_qte_rows_come_from_sealed_discovery(self):
+        self.use_mixed_water_boss()
+        self.profile["quickTimeEventAffinity"] = self.qte
+        def discovery(codes):
+            return {"shieldPatterns": {"quickTimeEvents": [{"elementCode": code} for code in codes]}}
+        self.assertEqual(gate.qte_source_elements(self.profile, discovery(self.qte_rows)), self.qte_rows)
+        for codes in (["electric", "electric"], ["electric", "electric", "fire"], ["electric", "electric", None],
+                      ["electric"] * 3, []):
+            with self.subTest(codes=codes), self.assertRaises(ValueError):
+                gate.qte_source_elements(self.profile, discovery(codes))
+        with self.assertRaises(ValueError):
+            gate.qte_source_elements(self.profile, {})
+        self.profile.pop("quickTimeEventAffinity")
+        self.assertEqual(gate.qte_source_elements(self.profile, {}), [])
 
     def test_receipt_drift_missing_and_wrong_types_rejected(self):
         receipt, pack = self.receipt("fire")
@@ -153,7 +208,7 @@ class CandidateTests(unittest.TestCase):
             changed = copy.deepcopy(receipt)
             del changed[key]
             with self.subTest(missing=key), self.assertRaises((ValueError, KeyError)):
-                gate.validate_variant(self.profile, "a" * 64, "b" * 64, "fire", changed, pack)
+                self.validate("fire", changed, pack)
         for field, values in {
             "variantProfileSha256": ["c" * 64], "sourceStaticDataSha256": ["c" * 64],
             "seasonNumber": [True, 8], "modifiedQuickTimeEventRecordCount": [0, 4, "5"],
@@ -167,20 +222,20 @@ class CandidateTests(unittest.TestCase):
                 changed = copy.deepcopy(receipt)
                 changed[field] = value
                 with self.subTest(field=field, value=value), self.assertRaises(ValueError):
-                    gate.validate_variant(self.profile, "a" * 64, "b" * 64, "fire", changed, pack)
+                    self.validate("fire", changed, pack)
         pack.write_bytes(b"drift")
         with self.assertRaises(ValueError):
-            gate.validate_variant(self.profile, "a" * 64, "b" * 64, "fire", receipt, pack)
+            self.validate("fire", receipt, pack)
 
     def test_default_must_not_emit_pack_or_qte_changes(self):
         receipt, pack = self.receipt("iron")
         for field, value in (("modifiedQuickTimeEventRecordCount", 5), ("variantStaticDataSha256", "b" * 64)):
             changed = {**receipt, field: value}
             with self.assertRaises(ValueError):
-                gate.validate_variant(self.profile, "a" * 64, "b" * 64, "iron", changed, pack)
+                self.validate("iron", changed, pack)
         pack.write_bytes(b"unexpected")
         with self.assertRaises(ValueError):
-            gate.validate_variant(self.profile, "a" * 64, "b" * 64, "iron", receipt, pack)
+            self.validate("iron", receipt, pack)
 
     def complete_fixture(self):
         root = self.root / "full-candidate"
@@ -195,7 +250,8 @@ class CandidateTests(unittest.TestCase):
         profile_path = root / "boss-runtime-variant.profile.json"
         profile_path.write_bytes(fx.encoded(self.profile))
         profile_sha = gate.digest(profile_path)
-        discovery = {"seasonNumber": 7, "profileCode": "synthetic-boss"}
+        discovery = {"seasonNumber": 7, "profileCode": "synthetic-boss", "shieldPatterns": {
+            "quickTimeEvents": [{"elementCode": code} for code in self.qte_rows]}}
         discovery_path = root / "content-discovery.receipt.json"
         discovery_path.write_bytes(fx.encoded(discovery))
         behavior = {**discovery, "sourceDiscoverySha256": gate.digest(discovery_path)}
@@ -324,6 +380,11 @@ switch ($taskArguments[0]) {
             'inspect-nll-boss-behavior-assets.py' { Copy-Fixture 'behavior-assembly.receipt.json' (Arg '--output') }
             'materialize-nll-boss-runtime-profile.py' {
                 if ($env:NLL_TEST_FAILURE -eq 'shield-missing') { exit 1 }
+                if ($env:NLL_TEST_FAILURE -eq 'assembler-code') {
+                    # A real child process, like the assembler: stderr text plus a controlled code.
+                    & $env:NLL_TEST_PYTHON -c "import sys; sys.stderr.write('synthetic private raw-id-123\nboss_profile_qte_v3_discovery_invalid\n'); sys.exit(1)"
+                    exit $LASTEXITCODE
+                }
                 $assessment = @{ contractId = 'nll/boss-shield-preparation-assessment/v1';
                     sourceDiscoverySha256 = (Get-FileHash -LiteralPath (Arg '--source-discovery')).Hash.ToLowerInvariant();
                     behaviorAssemblySha256 = (Get-FileHash -LiteralPath (Arg '--behavior-receipt')).Hash.ToLowerInvariant();
@@ -371,7 +432,7 @@ exit 0
                    "-StaticDataPackPath", str(source), "-SourceDatabasePath", str(database), "-GameConfigPath", str(config),
                    "-AssetCacheRoot", str(self.cache), "-PythonPath", str(shim), "-UnityPyRoot", str(unity), "-RegistryRoot", str(registry)]
         for failure in ("partial", "bad-qte", "bad-fx", "input-drift", "shield-review", "shield-review-exit0",
-                        "shield-recipe-drift", "shield-bound-drift", "shield-missing", "none"):
+                        "shield-recipe-drift", "shield-bound-drift", "shield-missing", "assembler-code", "none"):
             output = self.root / ("run-" + failure)
             result = subprocess.run([*command, "-OutputRoot", str(output)], env={**env, "NLL_TEST_FAILURE": failure},
                                     text=True, capture_output=True, timeout=90)
@@ -390,6 +451,11 @@ exit 0
                             "shield-missing": "profile_assembly_failed"}.get(failure)
                 if expected:
                     self.assertIn("boss_onboarding_" + expected, result.stderr)
+                if failure == "assembler-code":
+                    # The assembler's controlled code reaches the job; its other text does not.
+                    self.assertIn("boss_profile_qte_v3_discovery_invalid", result.stderr)
+                    self.assertNotIn("boss_onboarding_profile_assembly_failed", result.stderr)
+                    self.assertNotIn("raw-id-123", result.stdout + result.stderr)
         # Same output root is rejected before discovery, including after failure.
         for suffix in ("partial", "none"):
             result = subprocess.run([*command, "-OutputRoot", str(self.root / ("run-" + suffix))], env=env,

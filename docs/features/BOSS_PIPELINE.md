@@ -75,16 +75,18 @@ UI 파일은 `wwwroot/editor/boss-seasons.js`입니다. `user-validation.js`는 
 
 ## 알려진 결함과 남은 작업
 
-- **S42 조립 실패** `boss_profile_qte_v3_discovery_invalid`: 보스 원본 속성은 수냉인데 대상
-  몬스터에 연결된 QTE 원본 속성이 전격 2행·수냉 1행으로 섞였습니다. 조립기와 C# 검증기는
-  원본 속성 한 종류만 허용합니다. 수냉 소비 행동 트리에는 QTE 노드가 없어 실제 소비 대상은
-  미확정입니다. 시즌 예외 없이 discovery/변환/검증의 의미를 정하고, 원래 오류가 포괄
-  코드 `boss_onboarding_profile_assembly_failed`로 가려지는 진단도 고쳐야 합니다.
-  [조사 기록](../archive/boss-pipeline/S42_ONBOARDING_QTE_20260922.md)
-- **S39 조립 실패** `boss_profile_shield_fx_variant_not_unique`: 실제로는 후보 0개입니다.
-  `materialize-nll-boss-runtime-profile.py`의 `semantic_stems`가 `fx_` 뒤 한 구간만 제거해
-  `island_immune_barrier`가 공통 후보 `immune_barrier`와 일치하지 않습니다.
-  [조사 기록](../archive/boss-pipeline/S39_ONBOARDING_FX_20260923.md)
+- **S39·S42 조립 실패 수정** (2026-09-28, 소스 변경·오프라인 후보 검증만. 설치·게시·실게임 전):
+  - S39 `boss_profile_shield_fx_variant_not_unique`(실제 후보 0개): 같은 이름 계열과 정확한 공통
+    효과명이 모두 없을 때만, 원본 의미 문자열이 `<한정어>_<효과>`처럼 구간 단위로 공통 `fx_m_<효과>`로
+    끝나는 후보(`island_immune_barrier` → `immune_barrier`)를 받습니다. 그런 후보가 둘 이상이면 계속 거절합니다.
+  - S42 `boss_profile_qte_v3_discovery_invalid`: QTE 행마다 원본 속성이 다를 수 있습니다(전격 2행·수냉
+    1행). 원본 보스 속성 실행은 행을 바꾸지 않고, 그 밖에는 연결된 모든 행을 목표 속성으로 바꾸되
+    실제로 달라진 행만 셉니다. profile은 정렬된 원본 속성 집합만 요구하고, 행별 원본 속성은
+    `recordSetSha256`와 discovery `shieldPatterns.quickTimeEvents[].elementCode`로 확인합니다.
+  - 조립기의 `boss_profile_*` 코드가 포괄 코드 대신 작업 결과로 전달됩니다.
+  - 남은 미확정: S42 수냉 소비 행동 트리에 QTE 노드가 없어 실제 QTE 소비 여부는 실게임 확인이
+    필요합니다. [S42 조사](../archive/boss-pipeline/S42_ONBOARDING_QTE_20260922.md),
+    [S39 조사](../archive/boss-pipeline/S39_ONBOARDING_FX_20260923.md)
 - 시작 요청→게임 창 생성 구간(약 32초)의 추가 단축 조사는 운영자가 보류했습니다.
 
 ## 검증

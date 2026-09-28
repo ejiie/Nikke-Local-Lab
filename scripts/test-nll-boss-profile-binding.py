@@ -74,6 +74,10 @@ def main():
         skillBindingCount=0, passiveBindingCount=0, fxVariantRequired=False, fxVariantStatusCode="not_required", fxVariants=[])
     qte_only["transformation"].update(modeCode="target_monster_element_and_qte_element", allowedTableCodes=["monster", "quick_time_event"])
     cases.append(("qte_without_shield", qte_only, True))
+    # Linked QTE rows may keep other original elements; the variant handles each row.
+    for codes in (["electric"], ["electric", "water"]):
+        mixed = copy.deepcopy(value); mixed["quickTimeEventAffinity"]["sourceElementCodes"] = codes
+        cases.append(("qte_source_" + "_".join(codes), mixed, True))
     def row(p): return p["shieldFxPreparation"]["variants"][0]
     mutations = [
         lambda p: p.update(schemaVersion=3),
@@ -92,7 +96,9 @@ def main():
         lambda p: row(p).update(targetBundle={"sha256": sha("wrong"), "byteLength": 64}),
         lambda p: row(p).update(sourceBundle={"sha256": sha("wrong"), "byteLength": 64}),
         lambda p: row(p).update(targetFxPrefabSetSha256=sha("wrong")),
-        lambda p: p["quickTimeEventAffinity"].update(sourceElementCodes=["electric"]),
+        *(lambda p, codes=codes: p["quickTimeEventAffinity"].update(sourceElementCodes=codes)
+          for codes in ([], ["water", "electric"], ["water", "water"], ["unresolved"], None,
+                        ["electric", "fire", "water"])),
         lambda p: p["transformation"].update(allowedTableCodes=["monster", "function"]),
         lambda p: p.update(shieldFxTransformNormalization={}),
     ]

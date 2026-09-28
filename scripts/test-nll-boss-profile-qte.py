@@ -201,6 +201,63 @@ class ShieldFitTests(unittest.TestCase):
             self.assertIn("shield_pattern_discovery_refresh_required", report["reasonCodes"])
 
 
+class ShieldCandidateSelectionTests(unittest.TestCase):
+    """Synthetic names only: exact families first, then whole-segment qualified names."""
+    COLORS = {"fire": "red", "water": "blue", "wind": "green", "electric": "purple", "iron": "yellow"}
+
+    @staticmethod
+    def candidate(name):
+        return {"fx": [name], "fxPrefabSetSha256": fit.digest(name.encode())}
+
+    def resolve(self, source_name, names):
+        source = {"elementShield": {"modeCode": "dynamic_affinity_linked", "functionTypeCode": "immune_other_element",
+                  "functionRecordCount": 1, "skillBindingCount": 1, "passiveBindingCount": 0,
+                  "functionSetSha256": "f" * 64, "fxPrefabSetSha256": "e" * 64}}
+        # Duplicate rows of one prefab set are one candidate, as in the real discovery.
+        private = {"shieldFunctions": [self.candidate(source_name)],
+                   "globalShieldFxCandidates": [self.candidate(n) for n in names + names]}
+        requested = []
+        def bundles(_, prefabs):
+            requested.extend(prefabs)
+            return {"assetBundleSetSha256": "0" * 64, "assetBundles": []}
+        shield = profile.resolve_shield(source, private, Path("."), bundles)
+        by_element = {row["bossElementCode"]: row["mappings"][0] for row in shield["fxVariants"]}
+        return by_element, requested
+
+    def common(self, effect):
+        return ["fx_m_" + effect + "_" + color for color in self.COLORS.values()]
+
+    def test_qualified_boss_name_uses_unique_common_effect(self):
+        source = "fx_bx01_island_immune_barrier_purple"
+        rows, requested = self.resolve(source, [source, "fx_bx02_immune_barrier_red"] + self.common("immune_barrier"))
+        self.assertEqual(rows["electric"]["sourceKindCode"], "boss_specific")
+        self.assertEqual(rows["electric"]["targetFxPrefabSetSha256"], fit.digest(source.encode()))
+        for element, color in self.COLORS.items():
+            if element != "electric":
+                self.assertEqual(rows[element]["sourceKindCode"], "common")
+                self.assertEqual(rows[element]["targetFxPrefabSetSha256"],
+                                 fit.digest(("fx_m_immune_barrier_" + color).encode()))
+        self.assertEqual(sorted(set(requested)), sorted({source, *self.common("immune_barrier")} -
+                                                        {"fx_m_immune_barrier_purple"}))
+
+    def test_exact_common_effect_precedes_qualified_match(self):
+        # Unchanged selection for existing names: the exact effect wins over a shorter suffix.
+        rows, _ = self.resolve("fx_bx01_immune_barrier_purple",
+                               ["fx_bx01_immune_barrier_purple"] + self.common("immune_barrier") + self.common("barrier"))
+        self.assertEqual(rows["fire"]["targetFxPrefabSetSha256"], fit.digest(b"fx_m_immune_barrier_red"))
+
+    def test_ambiguous_partial_or_missing_common_effect_is_refused(self):
+        cases = {"two_qualified_effects": ("island_immune_barrier", self.common("immune_barrier") + self.common("barrier")),
+                 "partial_segment": ("island_immune_barrier", self.common("nd_immune_barrier")),
+                 "partial_token": ("xbarrier", self.common("barrier")),
+                 "no_candidate": ("island_immune_barrier", [])}
+        for name, (semantic, names) in cases.items():
+            source = "fx_bx01_" + semantic + "_purple"
+            with self.subTest(name), \
+                    self.assertRaisesRegex(profile.PipelineError, "^boss_profile_shield_fx_variant_not_unique$"):
+                self.resolve(source, [source] + names)
+
+
 class ShieldSizeReferenceTests(unittest.TestCase):
     def test_size_signature_ignores_colour_but_detects_scale_and_helper(self):
         ref = profile.local_module("size_reference_tests", "inspect-nll-shield-size-reference.py")

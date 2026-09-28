@@ -31,7 +31,7 @@ internal static class BossQuickTimeEventChecks
         var after = Clone(before);
         var original = BossQuickTimeEventVariant.HashRecords(before);
         var contract = Contract(before);
-        var changed = BossQuickTimeEventVariant.Apply(after, 101, contract, 4, element);
+        var changed = BossQuickTimeEventVariant.Apply(after, 101, contract, Codes, 4, element);
         Check(changed == (element == 4 ? 0 : 2));
         Check(BossQuickTimeEventVariant.Select(after, 101).All(row => row.ElementId == element));
         Check(after.Single(row => row.Id == 3).ElementId == 4);
@@ -42,26 +42,26 @@ internal static class BossQuickTimeEventChecks
         Check(BossQuickTimeEventVariant.HashRecords(before) == original);
       });
     }
-    Case("legacy_no_qte", () => Check(BossQuickTimeEventVariant.Apply([], 101, null, 4, 1) == 0));
+    Case("legacy_no_qte", () => Check(BossQuickTimeEventVariant.Apply([], 101, null, Codes, 4, 1) == 0));
     Case("legacy_non_elemental", () =>
     {
       var rows = Rows();
       foreach (var row in rows) row.ElementId = 0;
-      Check(BossQuickTimeEventVariant.Apply(rows, 101, null, 4, 1) == 0);
+      Check(BossQuickTimeEventVariant.Apply(rows, 101, null, Codes, 4, 1) == 0);
     });
-    Case("legacy_baseline", () => Check(BossQuickTimeEventVariant.Apply(Rows(), 101, null, 4, 4) == 0));
+    Case("legacy_baseline", () => Check(BossQuickTimeEventVariant.Apply(Rows(), 101, null, Codes, 4, 4) == 0));
     Case("legacy_elemental_rejected", () => Reject("contract_required", () =>
-        BossQuickTimeEventVariant.Apply(Rows(), 101, null, 4, 1)));
-    Case("source_element_mismatch", () => Reject("source_mismatch", () =>
-        BossQuickTimeEventVariant.Apply(Rows(), 101, Contract(Rows()), 5, 1)));
+        BossQuickTimeEventVariant.Apply(Rows(), 101, null, Codes, 4, 1)));
+    Case("source_element_codes_mismatch", () => Reject("source_mismatch", () =>
+        BossQuickTimeEventVariant.Apply(Rows(), 101, Contract(Rows()) with { SourceElementCodes = ["iron"] }, Codes, 4, 1)));
     Case("target_invalid", () => Reject("target_invalid", () =>
-        BossQuickTimeEventVariant.Apply(Rows(), 101, Contract(Rows()), 4, 0)));
+        BossQuickTimeEventVariant.Apply(Rows(), 101, Contract(Rows()), Codes, 4, 0)));
     Case("target_absent", () => Reject("source_mismatch", () =>
-        BossQuickTimeEventVariant.Apply(Rows(), 999, Contract(Rows()), 4, 1)));
+        BossQuickTimeEventVariant.Apply(Rows(), 999, Contract(Rows()), Codes, 4, 1)));
     Case("duplicate_id", () =>
     {
       var rows = Rows(); rows[2].Id = rows[0].Id;
-      Reject("index_invalid", () => BossQuickTimeEventVariant.Apply(rows, 101, Contract(Rows()), 4, 1));
+      Reject("index_invalid", () => BossQuickTimeEventVariant.Apply(rows, 101, Contract(Rows()), Codes, 4, 1));
     });
     var originalContract = Contract(Rows());
     foreach (var (name, invalid) in new[]
@@ -74,12 +74,44 @@ internal static class BossQuickTimeEventChecks
       ("mode", originalContract with { ModeCode = "unsupported" })
     })
       Case(name, () => Reject("source_mismatch", () =>
-          BossQuickTimeEventVariant.Apply(Rows(), 101, invalid, 4, 1)));
-    Case("mixed_source_elements", () =>
+          BossQuickTimeEventVariant.Apply(Rows(), 101, invalid, Codes, 4, 1)));
+    foreach (var element in new[] { 1, 2, 3, 4, 5 })
     {
-      var rows = Rows(); rows[1].ElementId = 5;
-      Reject("source_mismatch", () => BossQuickTimeEventVariant.Apply(rows, 101, Contract(rows), 4, 1));
+      // Linked rows authored with different elements: the boss element keeps them
+      // as authored; any other target converts all and counts actual differences.
+      Case("mixed_source_element_" + element, () =>
+      {
+        var before = Rows(); before[1].ElementId = 5;
+        var after = Clone(before);
+        var contract = Contract(before);
+        Check(contract.SourceElementCodes.SequenceEqual(["electric", "iron"]));
+        var changed = BossQuickTimeEventVariant.Apply(after, 101, contract, Codes, 4, element);
+        Check(changed == element switch { 4 => 0, 5 => 1, _ => 2 });
+        Check(element == 4
+            ? after.Select(row => row.ElementId).SequenceEqual(before.Select(row => row.ElementId))
+            : BossQuickTimeEventVariant.Select(after, 101).All(row => row.ElementId == element));
+        Check(after.Single(row => row.Id == 3).ElementId == 4 && after.Single(row => row.Id == 4).ElementId == 0);
+        BossQuickTimeEventVariant.VerifyBoundary(before, Clone(after), 101, element, changed);
+      });
+    }
+    Case("boss_element_differs_from_qte", () =>
+    {
+      // Boss iron, linked rows electric: electric target changes no row at all.
+      foreach (var (element, expected) in new[] { (5, 0), (4, 0), (1, 2) })
+      {
+        var after = Rows();
+        var changed = BossQuickTimeEventVariant.Apply(after, 101, Contract(Rows()), Codes, 5, element);
+        Check(changed == expected);
+        BossQuickTimeEventVariant.VerifyBoundary(Rows(), after, 101, element, changed);
+      }
     });
+    foreach (var (name, elementId) in new[] { ("non_elemental_linked_row", 0), ("unknown_linked_element", 9) })
+      Case(name, () =>
+      {
+        // A linked row without a real element is never made elemental.
+        var rows = Rows(); rows[1].ElementId = elementId;
+        Reject("source_mismatch", () => BossQuickTimeEventVariant.Apply(rows, 101, Contract(rows), Codes, 4, 1));
+      });
     Case("foreign_element_changed", () =>
     {
       var after = Rows(); after[2].ElementId = 1;
@@ -135,12 +167,20 @@ internal static class BossQuickTimeEventChecks
   private static QuickTimeEventRecord[] Clone(QuickTimeEventRecord[] rows) =>
       MemoryPackSerializer.Deserialize<QuickTimeEventRecord[]>(MemoryPackSerializer.Serialize(rows))!;
 
+  private static readonly Dictionary<int, string> Codes = new()
+  {
+    [1] = "fire", [2] = "water", [3] = "wind", [4] = "electric", [5] = "iron"
+  };
+
+  // Mirrors discovery: per-row element codes as a sorted set, unknown kept unresolved.
   private static BossRuntimeVariantQuickTimeEventAffinity Contract(QuickTimeEventRecord[] rows)
   {
     var selected = BossQuickTimeEventVariant.Select(rows, 101);
     return new("target_monster_linked_element_only", selected.Length,
         selected.SelectMany(row => row.MonsterId).Distinct().Count(),
         BossQuickTimeEventVariant.HashRecords(selected), BossQuickTimeEventVariant.HashImmutable(selected),
-        BossQuickTimeEventVariant.HashElements(selected), ["electric"]);
+        BossQuickTimeEventVariant.HashElements(selected), selected
+            .Select(row => Codes.GetValueOrDefault(row.ElementId, "unresolved"))
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
   }
 }
