@@ -162,7 +162,7 @@ internal static class BossAffinityStaticDataVariant
     var sourceBossElementId = targetMonster.ElementId[0];
     var elementCodeById = elementById.ToDictionary(pair => pair.Key, pair => CodeForAttackType(pair.Value.Element));
     BossQuickTimeEventVariant.ValidateSource(quickTimeEventRows, targetMonsterId,
-        profile.QuickTimeEventAffinity, elementCodeById, variantRequired);
+        profile.QuickTimeEventAffinity, elementCodeById);
     string? variantSha256 = null;
     var modifiedMonsterCount = 0;
     var modifiedFunctionCount = 0;

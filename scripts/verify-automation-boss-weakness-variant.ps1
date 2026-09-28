@@ -222,7 +222,10 @@ Assert-BossVariant `
      $materializer.Contains('BossQuickTimeEventVariant.VerifyBoundary') -and
      $materializer.Contains('modifiedQuickTimeEventRecordCount') -and
      $materializer.Contains('quickTimeEventAffinityContractVerified') -and
-     $qteMaterializer.Contains('contract_required') -and
+     $qteMaterializer.Contains('source_mismatch') -and
+     $behaviorInspector.Contains('quickTimeEventNodeCount') -and
+     $onboarding.Contains('--count-quick-time-event-nodes') -and
+     $profileAssembler.Contains('behavior["quickTimeEventNodeCount"] > 0') -and
      $qteMaterializer.Contains('immutable_payload_changed') -and
      $qteMaterializer.Contains('foreign_row_changed') -and
      $profileAssembler.Contains('require_v2_qte_compatibility(source)') -and

@@ -46,6 +46,9 @@ def walk(value: Any, state: dict[str, Any]) -> None:
             state["task_types"].append(value["Type"])
             if value.get("Disabled") is True:
                 state["disabled_node_count"] += 1
+            # QTE use is decided by the tree: a QuickTimeEvent* task, not a table row.
+            if value["Type"].rsplit(".", 1)[-1].startswith("QuickTimeEvent"):
+                state["quick_time_event_node_count"] += 1
         for key, child in value.items():
             key_lower = key.lower()
             if "skillaninumber" in key_lower and isinstance(child, str):
@@ -158,6 +161,7 @@ def run(args: argparse.Namespace) -> None:
         state: dict[str, Any] = {
             "node_count": 0,
             "disabled_node_count": 0,
+            "quick_time_event_node_count": 0,
             "task_types": [],
             "skill_animation_refs": [],
             "part_refs": [],
@@ -168,6 +172,7 @@ def run(args: argparse.Namespace) -> None:
             {
                 "nodeCount": state["node_count"],
                 "disabledNodeCount": state["disabled_node_count"],
+                "quickTimeEventNodeCount": state["quick_time_event_node_count"],
                 "canonicalGraphSha256": sha256_bytes(canonical_json(graph)),
                 "taskTypeSet": string_set_summary(state["task_types"]),
                 "skillAnimationReferenceSet": string_set_summary(
@@ -224,6 +229,10 @@ def run(args: argparse.Namespace) -> None:
         "rawSourceIdentifiersPersisted": False,
         "sourceAssetModified": False,
     }
+    if getattr(args, "count_quick_time_event_nodes", False):
+        # Solo onboarding decides QTE use from this count. Other callers (Union Hard)
+        # keep their published receipt bytes unchanged.
+        receipt["quickTimeEventNodeCount"] = sum(graph["quickTimeEventNodeCount"] for graph in graphs)
     write_atomic(output_path, receipt)
 
 
@@ -234,6 +243,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--behavior-bundle", required=True, type=Path)
     result.add_argument("--output", required=True, type=Path)
     result.add_argument("--unitypy-root", type=Path)
+    result.add_argument("--count-quick-time-event-nodes", action="store_true")
     return result
 
 

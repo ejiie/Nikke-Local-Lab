@@ -50,8 +50,17 @@ internal static class BossQuickTimeEventChecks
       Check(BossQuickTimeEventVariant.Apply(rows, 101, null, Codes, 4, 1) == 0);
     });
     Case("legacy_baseline", () => Check(BossQuickTimeEventVariant.Apply(Rows(), 101, null, Codes, 4, 4) == 0));
-    Case("legacy_elemental_rejected", () => Reject("contract_required", () =>
-        BossQuickTimeEventVariant.Apply(Rows(), 101, null, Codes, 4, 1)));
+    Case("no_contract_elemental_unchanged", () =>
+    {
+      // No profile QTE contract (the behavior tree has no QTE node): linked elemental
+      // rows are not use, so every target leaves the whole table as authored.
+      foreach (var element in new[] { 1, 2, 3, 4, 5 })
+      {
+        var after = Rows();
+        Check(BossQuickTimeEventVariant.Apply(after, 101, null, Codes, 4, element) == 0);
+        BossQuickTimeEventVariant.VerifyBoundary(Rows(), after, 101, element, 0);
+      }
+    });
     Case("source_element_codes_mismatch", () => Reject("source_mismatch", () =>
         BossQuickTimeEventVariant.Apply(Rows(), 101, Contract(Rows()) with { SourceElementCodes = ["iron"] }, Codes, 4, 1)));
     Case("target_invalid", () => Reject("target_invalid", () =>

@@ -12,6 +12,11 @@
 - 특정 속성 외 피해를 받지 않는 body·parts·QTE 패턴에는 속성 실드가 있으며, 피해 허용 조건과
   실드 FX를 함께 처리·검증합니다(2026-09-14 운영자 요구). 원본에서 조건/FX를 찾지 못하면
   결손으로 남기고 준비 완료를 거절합니다.
+- QTE 사용 여부는 조립한 행동 트리가 정합니다(2026-09-28 운영자 요구). 트리에 QTE 노드
+  (`QuickTimeEvent*` 작업, 조립 행동 영수증의 `quickTimeEventNodeCount`)가 없으면 QuickTimeEvent 행이
+  `MonsterId`에 대상 몬스터를 포함해도 사용 근거가 아니며, S26처럼 profile에 QTE 계약
+  (`quickTimeEventAffinity`)을 두지 않고 QTE 변환·QTE 관련 처리 없이 행동 트리만 조립합니다.
+  body·parts 속성 실드는 별도 패턴이며 이 규칙과 무관합니다.
 - 자동 조립 완료, 실행 준비 `ready`, 운영자 실게임 인수는 서로 다른 상태입니다.
 
 ## 처리 흐름
@@ -84,8 +89,11 @@ UI 파일은 `wwwroot/editor/boss-seasons.js`입니다. `user-validation.js`는 
     실제로 달라진 행만 셉니다. profile은 정렬된 원본 속성 집합만 요구하고, 행별 원본 속성은
     `recordSetSha256`와 discovery `shieldPatterns.quickTimeEvents[].elementCode`로 확인합니다.
   - 조립기의 `boss_profile_*` 코드가 포괄 코드 대신 작업 결과로 전달됩니다.
-  - 남은 미확정: S42 수냉 소비 행동 트리에 QTE 노드가 없어 실제 QTE 소비 여부는 실게임 확인이
-    필요합니다. [S42 조사](../archive/boss-pipeline/S42_ONBOARDING_QTE_20260922.md),
+  - QTE 노드 규칙 적용(2026-09-28, 소스 변경·오프라인 후보 검증만): S42 수냉 행동 트리(typed node
+    10개)에는 QTE 노드가 없어 QTE 계약 없는 v4(속성 실드만)로 조립되고 5약점 모두 QTE 행 변경 0입니다.
+    위 혼합 원본 속성 처리는 QTE 노드가 있는 트리의 연결 행에 계속 적용됩니다. 등록 보스는 QTE 계약이
+    있는 8개(S7·10·25·27·29·34·39·41) 모두 트리에 QTE 노드가 있고 S9·S26은 행·노드가 없어 profile·
+    recipe·5약점 pack이 바뀌지 않습니다. [S42 조사](../archive/boss-pipeline/S42_ONBOARDING_QTE_20260922.md),
     [S39 조사](../archive/boss-pipeline/S39_ONBOARDING_FX_20260923.md)
 - 시작 요청→게임 창 생성 구간(약 32초)의 추가 단축 조사는 운영자가 보류했습니다.
 
