@@ -174,33 +174,43 @@ public sealed class UserValidationExecutionTests
       path = Map(path); Directory.CreateDirectory(Path.GetDirectoryName(path)!);
       File.WriteAllBytes(path, JsonSerializer.SerializeToUtf8Bytes(value, FilesystemBossSeasonCatalogService.JsonOptions));
     }
+    // The worker writes owner/process-exit/result files and only then releases
+    // its lease in a finally block, so an exclusive open of the lock proves it
+    // settled. Wait on the lock alone: polling Get while the worker atomically
+    // replaces owner.json lets either side fail with a sharing violation.
+    private async Task WaitForLeaseReleaseAsync(string failure)
+    {
+      var deadline = Stopwatch.StartNew();
+      while (true)
+      {
+        try
+        {
+          using var settled = new FileStream(Path.Combine(root, ".ui-action.lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+          return;
+        }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { return; } // No lease was taken.
+        catch (IOException) when (deadline.Elapsed < TimeSpan.FromSeconds(10)) { }
+        catch (IOException error) { throw new TimeoutException(failure, error); }
+        await Task.Delay(20).ConfigureAwait(false);
+      }
+    }
     internal async Task Finish()
     {
       Launcher.Done.TrySetResult();
-      var deadline = Stopwatch.StartNew();
-      while (deadline.Elapsed < TimeSpan.FromSeconds(5))
-      {
-        if (Service.Get(29, "water").StatusCode is not ("running" or "awaiting_user_approval") &&
-            Directory.GetFiles(root, "result.json", SearchOption.AllDirectories).Length == Launcher.Starts)
-        {
-          // The result is durable before the worker finally releases its lease.
-          // Observe that release before fixture disposal or a follow-up request.
-          try
-          {
-            using var settled = new FileStream(Path.Combine(root, ".ui-action.lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-            return;
-          }
-          catch (IOException) { }
-        }
-        await Task.Delay(20);
-      }
-      throw new TimeoutException("synthetic_action_did_not_settle");
+      await WaitForLeaseReleaseAsync("synthetic_action_did_not_release_lease");
+      var status = Service.Get(29, "water").StatusCode;
+      var results = Directory.GetFiles(root, "result.json", SearchOption.AllDirectories).Length;
+      if (status is "running" or "awaiting_user_approval" || results != Launcher.Starts)
+        throw new InvalidOperationException($"synthetic_action_did_not_settle: status={status} results={results} starts={Launcher.Starts}");
     }
     public void Dispose()
     {
       Launcher.Done.TrySetResult();
       // Only this exact newly created synthetic test root, never a user lane.
       Assert.StartsWith(Path.GetFullPath(Path.GetTempPath()) + "nll-validation-actions-", Path.GetFullPath(root), StringComparison.Ordinal);
+      // A test that fails before Finish leaves its worker running. Deleting under
+      // it fails on the held lock and that IOException replaces the real failure.
+      WaitForLeaseReleaseAsync("synthetic_action_lease_not_released_before_cleanup").GetAwaiter().GetResult();
       if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
     }
   }
