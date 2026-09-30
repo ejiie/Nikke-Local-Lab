@@ -179,6 +179,8 @@ if ($env:OS -eq 'Windows_NT') {
     }
     Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory 'test-nll-phase-d-runner-behavior.ps1'), '-JobContract')
     Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-execution-fx-retirement.ps1'))
+    # Preparation resolves Windows runtime paths; before S2 only the Windows job ran this gate.
+    Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'verify-automation-boss-weakness-variant.ps1'))
 } else {
     Write-Output 'Phase D Windows preparation/legacy-template behavior tests require the Windows local gate.'
 }
@@ -213,8 +215,6 @@ foreach ($test in @(
 )) {
     Invoke-Checked python @('-B', (Join-Path $ScriptDirectory $test))
 }
-
-Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'verify-automation-boss-weakness-variant.ps1'))
 
 if (-not $SkipIntegration) {
     Invoke-Checked dotnet @('test', $IntegrationTests, '-c', 'Release', '--no-build', '--no-restore')
