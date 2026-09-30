@@ -13,7 +13,10 @@ param(
     [Parameter(Mandatory)] [ValidateSet('fire', 'water', 'wind', 'electric', 'iron')]
     [string]$WeaknessCode,
     [switch]$ValidateOnly,
-    [ValidatePattern('^[0-9a-f]{64}$')] [string]$ExpectedPreparationBindingSha256,
+    [Parameter(Mandatory)] [ValidatePattern('^[0-9a-f]{64}$')] [string]$ExpectedPreparationBindingSha256,
+    [Parameter(Mandatory)] [ValidatePattern('^[0-9a-f-]{36}$')] [string]$AccountUid,
+    [Parameter(Mandatory)] [string]$AccountLabel,
+    [Parameter(Mandatory)] [ValidatePattern('^[0-9a-f]{64}$')] [string]$AccountRevisionSetSha256,
     [string]$RuntimeSelectionPath = 'C:\NLL\ControlCenter\runtime-selection.private.json',
     [ValidateSet('parameterized/v1')][string]$RunnerEngine = 'parameterized/v1'
 )
@@ -37,71 +40,6 @@ function Get-Sha256Lower {
     (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
-function Assert-PhaseDCacheArtifactIdentity {
-    param(
-        [string]$CacheRoot,
-        [long]$ByteLength,
-        [string]$Sha256,
-        [string]$FailureCode,
-        [object]$CommonDelivery = $null,
-        [string]$ProfileSha256,
-        [ValidateSet('fx', 'behavior')][string]$AssetRole = 'fx'
-    )
-    # Onboarding may acquire FX from the native client without adding it to the
-    # server cache. Follow the published delivery seal to those exact originals.
-    # Derived FX delivery is still checked/staged separately by the materializer.
-    if ($null -ne $CommonDelivery) {
-        try {
-            $descriptor = Read-PhaseDPreparationJson $CommonDelivery.path $FailureCode
-            Assert-PhaseD ($descriptor.sha256 -ceq $CommonDelivery.sha256 -and
-                $descriptor.length -eq $CommonDelivery.length -and
-                $descriptor.value.contractId -ceq 'nll/common-boss-delivery/v1' -and
-                $descriptor.value.profileSha256 -ceq $ProfileSha256) $FailureCode
-            $sealPin = $descriptor.value.candidateSeal
-            $seal = Read-PhaseDPreparationJson $sealPin.path $FailureCode
-            Assert-PhaseD ($seal.sha256 -ceq $sealPin.sha256 -and $seal.length -eq $sealPin.length -and
-                $seal.value.contractId -ceq 'nll/boss-onboarding-verified-candidate/v1' -and
-                $seal.value.profileSha256 -ceq $ProfileSha256) $FailureCode
-            $artifacts = @($seal.value.artifacts)
-            if (@($artifacts | Where-Object relativePath -CEQ ($AssetRole + '-acquisition.receipt.json')).Count -gt 0) {
-                $sealedAssets = @($artifacts | Where-Object {
-                    $_.relativePath.StartsWith(('acquired-' + $AssetRole + '/'), [StringComparison]::Ordinal) -and
-                    $_.sha256 -ceq $Sha256
-                })
-                Assert-PhaseD ($ByteLength -gt 0 -and $Sha256 -cmatch '^[0-9a-f]{64}$' -and $sealedAssets.Count -gt 0) $FailureCode
-                $root = [IO.Path]::GetFullPath((Split-Path -Parent $sealPin.path)).TrimEnd('\') + '\'
-                foreach ($row in $sealedAssets) {
-                    $relative = [string]$row.relativePath
-                    Assert-PhaseD (-not [IO.Path]::IsPathRooted($relative) -and -not $relative.Contains(':') -and
-                        @($relative.Replace('\', '/').Split('/') | Where-Object { $_ -cin @('', '.', '..') }).Count -eq 0) $FailureCode
-                    $path = [IO.Path]::GetFullPath((Join-Path $root $relative))
-                    Assert-PhaseD ($path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) $FailureCode
-                    for ($cursor = $path; $cursor; $cursor = [IO.Path]::GetDirectoryName($cursor)) {
-                        Assert-PhaseD (((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) $FailureCode
-                    }
-                    Assert-PhaseD ((Get-Item -LiteralPath $path).Length -eq $ByteLength -and
-                        (Get-Sha256Lower $path) -ceq $Sha256) $FailureCode
-                }
-                return $sealedAssets.Count
-            }
-        }
-        catch { throw $FailureCode }
-    }
-    Assert-PhaseD `
-        ((Test-Path -LiteralPath $CacheRoot -PathType Container) -and
-         $ByteLength -gt 0 -and $Sha256 -cmatch '^[0-9a-f]{64}$') `
-        $FailureCode
-    $matchCount = 0
-    foreach ($candidate in Get-ChildItem -LiteralPath $CacheRoot -File -Recurse) {
-        if ($candidate.Length -eq $ByteLength -and
-            (Get-Sha256Lower $candidate.FullName) -ceq $Sha256) {
-            $matchCount++
-        }
-    }
-    Assert-PhaseD ($matchCount -gt 0) $FailureCode
-    $matchCount
-}
-
 function Invoke-PhaseDEmergencyRollback {
     param([string]$EvidencePath, [string]$RuntimePath)
     $pointerPath = Join-Path $EvidencePath 'active-run.pointer.json'
@@ -117,9 +55,15 @@ function Invoke-PhaseDEmergencyRollback {
     }
     if ($jobAttempted -and -not (Test-Path -LiteralPath $pointerPath -PathType Leaf)) {
         # New start publishes its baseline before any mutation. No pointer means
-        # no mutable start phase, but still require live same-job zero proof.
+        # no runner DB mutation, but extension rules may already exist.
+        # Cleanup still requires live same-job zero proof.
         Invoke-PhaseDWithJobZeroProof $launchRoot $runnerBundle.sha256 {
             Assert-PhaseD ((Get-Sha256Lower $runtimeDbPath) -ceq $runtimeDbSha256) 'phase_d_job_unjournaled_runtime_drift'
+            # Coordinator may have installed extension rules before child publication.
+            if ($script:PhaseDRunnerIsolationOwned) {
+                Get-NetFirewallRule -Group 'NLL Phase3B2 Epinel Minimal Extension' `
+                    -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+            }
         }
         return $true
     }
@@ -200,9 +144,9 @@ function Set-ExecutionState {
         contractId = 'nll/phase-d-execution-state/v1'
         launchContextUid = $LaunchContextUid
         createdAtUtc = $createdAtUtc
-        accountUid = [string]$candidate.accountUid
-        accountLabel = [string]$candidate.accountLabel
-        accountRevisionSetSha256 = [string]$candidate.baseRevisions.revisionSetSha256
+        accountUid = $AccountUid
+        accountLabel = $AccountLabel
+        accountRevisionSetSha256 = $AccountRevisionSetSha256
         seasonNumber = $SeasonNumber
         validationKind = $ValidationKind
         weaknessCode = $WeaknessCode
@@ -270,13 +214,11 @@ $watcherOwnershipTransferred = $false
 $watcherSpawned = $false
 $executionJob = $null
 $jobAttempted = $false
+$script:PhaseDRunnerIsolationOwned = $false
 $controlCenterHostsOriginalSha256 = $null
 $controlCenterHostsBackupPath = Join-Path $launchRoot 'control-center-hosts.before.bin'
 
-$candidate = Get-Content -LiteralPath $RuntimeCandidatePath -Raw -Encoding UTF8 |
-    ConvertFrom-Json
-$lobby = Get-Content -LiteralPath $LobbyProjectionPath -Raw -Encoding UTF8 |
-    ConvertFrom-Json
+# The materializer validates the full candidate/lobby; PowerShell needs only API headers.
 New-Item -ItemType Directory -Path $launchRoot -Force | Out-Null
 Set-ExecutionState -StatusCode 'draft'
 
@@ -289,18 +231,11 @@ try {
     Assert-PhaseD `
         ($env:SystemDrive -ceq 'C:' -and $env:USERNAME -ceq 'nlloperator') `
         'phase_d_wrong_operator_or_boot_boundary'
-    Assert-PhaseD `
-        ($candidate.contractId -ceq 'nll/runtime-projection-candidate/v1' -and
-         [string]$candidate.accountUid -ceq [string]$lobby.accountUid -and
-         [string]$candidate.validationStatusCode -ceq 'ready' -and
-         @($candidate.validationReasonCodes).Count -eq 0) `
-        'phase_d_candidate_not_ready'
     $preparation = Get-PhaseDPreparation -RepositoryRoot $RepositoryRoot `
-        -SeasonNumber $SeasonNumber -WeaknessCode $WeaknessCode -RuntimeSelectionPath $RuntimeSelectionPath
+        -SeasonNumber $SeasonNumber -WeaknessCode $WeaknessCode -RuntimeSelectionPath $RuntimeSelectionPath -StageDelivery
     Assert-PhaseD ($preparation.statusCode -ceq 'ready') ([string]$preparation.failureCode)
     Assert-PhaseDDatabaseBinding $preparation
-    Assert-PhaseD ([string]::IsNullOrEmpty($ExpectedPreparationBindingSha256) -or
-        $ExpectedPreparationBindingSha256 -ceq $preparation.bindingSha256) 'phase_d_preparation_changed'
+    Assert-PhaseD ($ExpectedPreparationBindingSha256 -ceq $preparation.bindingSha256) 'phase_d_preparation_changed'
     $bossRuntimeVariantRegistrySha256 = $preparation.plan.registry.sha256
     $bossRuntimeVariantRegistry = $preparation.plan.registry.path
     $bossRuntimeVariantProfile = $preparation.plan.profile.path
@@ -371,9 +306,7 @@ try {
         'phase_d_launch_root_not_clean'
 
     if (-not $ValidateOnly) {
-        $activeBundle = Read-PdRuntimeBundle $RuntimeSelectionPath
-        Assert-PhaseD ($activeBundle.manifestPath -ceq $runtimeBundle.manifestPath -and
-            (Get-PdBundleHash $activeBundle.manifestPath) -ceq $preparation.plan.bundleSha256 -and
+        Assert-PhaseD ((Get-PdBundleHash $runtimeBundle.manifestPath) -ceq $preparation.plan.bundleSha256 -and
             (Get-PdBundleHash $RuntimeSelectionPath) -ceq $preparation.plan.selectionSha256) 'phase_d_preparation_changed'
     }
 
@@ -473,10 +406,8 @@ try {
         'phase_d_staticdata_source_pack_invalid'
     $behaviorAssetBundleSha256 = $null
     $behaviorAssetBundleByteLength = 0L
-    $behaviorAssetMatchCount = 0
     $selectedShieldFxMappingSetSha256 = $null
     $selectedShieldFxAssetBundles = @()
-    $shieldFxAssetMatchCount = 0
     if ([int]$bossVariantProfile.schemaVersion -eq 2) {
         Assert-PhaseD `
             ([string]$bossVariantProfile.behaviorAssembly.modeCode -ceq `
@@ -491,13 +422,6 @@ try {
             [string]$bossVariantProfile.behaviorAssembly.bundleSha256
         $behaviorAssetBundleByteLength =
             [long]$bossVariantProfile.behaviorAssembly.bundleByteLength
-        $behaviorAssetMatchCount = Assert-PhaseDCacheArtifactIdentity `
-            -CacheRoot $runtimeCacheRoot `
-            -ByteLength $behaviorAssetBundleByteLength `
-            -Sha256 $behaviorAssetBundleSha256 `
-            -CommonDelivery $preparation.plan.commonDelivery -AssetRole behavior `
-            -ProfileSha256 $bossRuntimeVariantProfileSha256 `
-            -FailureCode 'phase_d_boss_behavior_asset_closure_invalid'
     }
     if ($targetShieldFxVariants.Count -eq 1) {
         $selectedShieldFxMappingSetSha256 =
@@ -511,15 +435,6 @@ try {
             ($selectedShieldFxMappingSetSha256 -cmatch '^[0-9a-f]{64}$' -and
              $selectedShieldFxAssetBundles.Count -gt 0) `
             'phase_d_boss_shield_fx_asset_contract_invalid'
-        foreach ($bundle in $selectedShieldFxAssetBundles) {
-            $shieldFxAssetMatchCount += Assert-PhaseDCacheArtifactIdentity `
-                -CacheRoot $runtimeCacheRoot `
-                -ByteLength ([long]$bundle.byteLength) `
-                -Sha256 ([string]$bundle.sha256) `
-                -CommonDelivery $preparation.plan.commonDelivery `
-                -ProfileSha256 $bossRuntimeVariantProfileSha256 `
-                -FailureCode 'phase_d_boss_shield_fx_asset_closure_invalid'
-        }
     }
     $variantStaticDataRoot = Join-Path $runtimeRoot 'static-data-variant'
     New-Item -ItemType Directory -Path $variantStaticDataRoot -Force | Out-Null
@@ -575,9 +490,9 @@ try {
         -Raw -Encoding UTF8 | ConvertFrom-Json
     Assert-PhaseD `
         ($materialization.contractId -ceq 'nll/phase-d-runtime-materialization/v1' -and
-         [string]$materialization.accountUid -ceq [string]$candidate.accountUid -and
+         [string]$materialization.accountUid -ceq $AccountUid -and
          [string]$materialization.accountRevisionSetSha256 -ceq `
-            [string]$candidate.baseRevisions.revisionSetSha256 -and
+            $AccountRevisionSetSha256 -and
          [int]$materialization.raidSeasonNumber -eq $SeasonNumber -and
          [string]$materialization.raidSnapshotUid -cmatch `
             '^[0-9a-f-]{36}$' -and
@@ -694,6 +609,7 @@ try {
         ((Get-Sha256Lower $sealedWeaknessVariantSourceManifestPath) -ceq `
             $expectedWeaknessVariantSourceManifestSha256) `
         'phase_d_weakness_variant_source_manifest_copy_failed'
+    $sourceStaticDataSha256 = Get-Sha256Lower $sourceStaticDataPack
     $sourceLines = @(
         "role_code`tbyte_length`tsha256"
         "candidate`t$((Get-Item -LiteralPath $RuntimeCandidatePath).Length)`t$(Get-Sha256Lower $RuntimeCandidatePath)"
@@ -704,7 +620,7 @@ try {
         "server_source_manifest`t$expectedWeaknessVariantSourceManifestByteLength`t$expectedWeaknessVariantSourceManifestSha256"
         "boss_runtime_variant_registry`t$((Get-Item -LiteralPath $bossRuntimeVariantRegistry).Length)`t$(Get-Sha256Lower $bossRuntimeVariantRegistry)"
         "boss_runtime_variant_profile`t$bossRuntimeVariantProfileByteLength`t$bossRuntimeVariantProfileSha256"
-        "static_data_source`t$((Get-Item -LiteralPath $sourceStaticDataPack).Length)`t$(Get-Sha256Lower $sourceStaticDataPack)"
+        "static_data_source`t$((Get-Item -LiteralPath $sourceStaticDataPack).Length)`t$($sourceStaticDataSha256)"
         "static_data_variant_receipt`t$((Get-Item -LiteralPath $variantStaticDataReceiptPath).Length)`t$(Get-Sha256Lower $variantStaticDataReceiptPath)"
         "hosts_original`t$((Get-Item -LiteralPath $hostsPath).Length)`t$controlCenterHostsOriginalSha256"
         "hosts_phase3b2_base`t$((Get-Item -LiteralPath $phase3B2BaseHostsReference).Length)`t$expectedPhase3B2BaseHostsSha256"
@@ -776,8 +692,8 @@ try {
         runtimeMaterializer = $runtimeMaterializer
         soloRaidPendingPath = $soloRaidPendingPath
         soloRaidCaptureReceiptPath = $soloRaidCaptureReceiptPath
-        accountUid = ([string]$candidate.accountUid)
-        accountRevisionSetSha256 = ([string]$candidate.baseRevisions.revisionSetSha256)
+        accountUid = $AccountUid
+        accountRevisionSetSha256 = $AccountRevisionSetSha256
         SeasonNumber = $SeasonNumber
         raidSnapshotUid = ([string]$materialization.raidSnapshotUid)
         raidSnapshotSha256 = ([string]$materialization.raidSnapshotSha256)
@@ -816,8 +732,8 @@ try {
         contractId = 'nll/phase-d-prelaunch-validation/v1'
         validatedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
         launchContextUid = $LaunchContextUid
-        accountUid = [string]$candidate.accountUid
-        accountRevisionSetSha256 = [string]$candidate.baseRevisions.revisionSetSha256
+        accountUid = $AccountUid
+        accountRevisionSetSha256 = $AccountRevisionSetSha256
         runtimeDatabaseSha256 = $runtimeDbSha256
         weaknessCode = $WeaknessCode
         bossVariantRegistrySha256 = $bossRuntimeVariantRegistrySha256
@@ -827,15 +743,13 @@ try {
         sourceBossWeaknessCode = [string]$materialization.sourceBossWeaknessCode
         targetBossElementCode = [string]$materialization.targetBossElementCode
         staticDataVariantRequired = $staticDataVariantRequired
-        staticDataSourceSha256 = Get-Sha256Lower $sourceStaticDataPack
+        staticDataSourceSha256 = $sourceStaticDataSha256
         staticDataVariantSha256 = $variantStaticDataSha256
         staticDataVariantReceiptSha256 = Get-Sha256Lower $variantStaticDataReceiptPath
         behaviorAssetBundleSha256 = $behaviorAssetBundleSha256
         behaviorAssetBundleByteLength = $behaviorAssetBundleByteLength
-        behaviorAssetMatchCount = $behaviorAssetMatchCount
         shieldFxMappingSetSha256 = $selectedShieldFxMappingSetSha256
         shieldFxAssetBundleCount = $selectedShieldFxAssetBundles.Count
-        shieldFxAssetMatchCount = $shieldFxAssetMatchCount
         serverDllSha256 = $expectedWeaknessVariantServerDllSha256
         serverSourceManifestSha256 = $expectedWeaknessVariantSourceManifestSha256
         sourceManifestSha256 = $sourceManifestSha256
@@ -862,8 +776,8 @@ try {
         runtimePersistenceContractId = 'nll/runtime-persistence/v2'
         launchContextUid = $LaunchContextUid
         createdAtUtc = $createdAtUtc
-        accountUid = [string]$candidate.accountUid
-        accountRevisionSetSha256 = [string]$candidate.baseRevisions.revisionSetSha256
+        accountUid = $AccountUid
+        accountRevisionSetSha256 = $AccountRevisionSetSha256
         seasonNumber = $SeasonNumber
         weaknessCode = $WeaknessCode
         bossVariantRegistrySha256 = $bossRuntimeVariantRegistrySha256
@@ -877,7 +791,7 @@ try {
         sourceBossWeaknessCode = [string]$materialization.sourceBossWeaknessCode
         targetBossElementCode = [string]$materialization.targetBossElementCode
         staticDataVariantRequired = $staticDataVariantRequired
-        staticDataSourceSha256 = Get-Sha256Lower $sourceStaticDataPack
+        staticDataSourceSha256 = $sourceStaticDataSha256
         staticDataVariantSha256 = $variantStaticDataSha256
         staticDataVariantReceiptSha256 = Get-Sha256Lower $variantStaticDataReceiptPath
         behaviorAssetBundleSha256 = $behaviorAssetBundleSha256
@@ -893,8 +807,6 @@ try {
         statusCode = 'validated'
     }
     Write-AtomicJson $contextPath $launchContext
-    $null = Read-PhaseDRunnerBundle -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
-    Assert-PhaseDRunnerStartDependencies $runnerSpec
     Set-ExecutionState -StatusCode 'validated'
 
     if ($ValidateOnly) {
@@ -950,12 +862,12 @@ try {
     # The sealed runner owns the bootstrap lane and per-run assessment UID.
     $runtimeLifecycleEntered = $true
     $coordinatorStage = 'derived_start'
-    $null = Read-PhaseDRunnerBundle -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
     $startArguments = [ordered]@{ Phase='start'; LaunchRoot=$launchRoot; ExpectedBundleSha256=$runnerBundle.sha256 }
     . (Join-Path $runnerBundle.root 'Nll.PhaseDJob.ps1')
     $jobAttempted = $true
     $executionJob = New-PhaseDExecutionJob -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
     Enter-PhaseDSharedIsolation -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256 -RuntimeBundle $runtimeBundle
+    Enter-PhaseDRunnerIsolation $runnerSpec
     $startToolResult = Invoke-PhaseDChildScript `
         -ExecutionJob $executionJob `
         -TimeoutSeconds 300 -OwnershipPath (Join-Path $launchRoot 'phase-d-child-start.identity.json') `
@@ -1015,7 +927,6 @@ try {
         '-ConnectionStringEnvironmentVariable', $connectionEnvironmentVariable,
         '-IdentitySecretEnvironmentVariable', $secretEnvironmentVariable
     )
-    $null = Read-PhaseDRunnerBundle -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
     $watcherArguments += @('-ExpectedRunnerBundleSha256', $runnerBundle.sha256)
     $watcherProcess = Start-Process -FilePath $powershell `
         -ArgumentList $watcherArguments -WindowStyle Hidden -PassThru

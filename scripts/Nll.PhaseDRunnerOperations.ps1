@@ -27,8 +27,7 @@ function Start-PhaseDRunnerBootstrap {
 }
 function Assert-PhaseDRunnerJobProcess {
     param([object]$Specification, [int]$ProcessId)
-    $bundle = Read-PhaseDRunnerBundle -LaunchRoot $Specification.launchRoot
-    $job = Open-PhaseDExecutionJob $Specification.launchRoot $bundle.sha256
+    $job = Open-PhaseDExecutionJob $Specification.launchRoot $script:PhaseDVerifiedRunnerBundle.sha256
     try {
         if (-not $job.Contains($PID) -or -not $job.Contains($ProcessId)) { throw 'phase_d_job_runtime_member_unproven' }
     } finally { $job.Dispose() }

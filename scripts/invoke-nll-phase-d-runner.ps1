@@ -19,6 +19,7 @@ $bundle = Read-PhaseDRunnerBundle -LaunchRoot $LaunchRoot -ExpectedBundleSha256 
 if ([IO.Path]::GetFullPath($bundle.root) -ine [IO.Path]::GetFullPath($PSScriptRoot)) { throw 'phase_d_runner_bundle_invalid' }
 . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerContract.ps1')
 Assert-PhaseDRunnerSpecification $bundle.specification
+$script:PhaseDVerifiedRunnerBundle = $bundle
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDJob.ps1')
 if ($Phase -ceq 'start') { Assert-PhaseDJobMember $LaunchRoot $ExpectedBundleSha256 }

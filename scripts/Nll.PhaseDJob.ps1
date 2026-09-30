@@ -6,9 +6,13 @@ function Initialize-PhaseDJobType {
 
 function Get-PhaseDJobBinding {
     param([string]$LaunchRoot, [string]$ExpectedBundleSha256)
-    $bundle = Read-PhaseDRunnerBundle -LaunchRoot $LaunchRoot -ExpectedBundleSha256 $ExpectedBundleSha256
-    if ($null -eq $bundle -or $bundle.specification.contractId -cne 'nll/phase-d-runner-input/v3') { throw 'phase_d_job_binding_invalid' }
-    Assert-PhaseDRunnerSpecification $bundle.specification
+    # Set only by entrypoint verification or by this coordinator's bundle publisher.
+    $bundle = Get-Variable -Name PhaseDVerifiedRunnerBundle -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+    if ($null -eq $bundle -or $bundle.specification.contractId -cne 'nll/phase-d-runner-input/v3' -or
+        $bundle.sha256 -cne $ExpectedBundleSha256 -or
+        [IO.Path]::GetFullPath($bundle.specification.launchRoot) -cne [IO.Path]::GetFullPath($LaunchRoot)) {
+        throw 'phase_d_job_binding_invalid'
+    }
     [pscustomobject]@{ bundle=$bundle; name=('Local\NLL.PhaseD.' + $bundle.specification.jobNonce) }
 }
 
@@ -82,36 +86,12 @@ function Invoke-PhaseDWithJobZeroProof {
             if ($job.Contains($PID) -or $job.ActiveProcesses -ne 0) { throw 'phase_d_job_zero_unproven' }
             $receiptPath = Join-Path $LaunchRoot 'job-zero.receipt.json'
             $receiptSha = (Get-FileHash -LiteralPath $receiptPath).Hash.ToLowerInvariant()
-            $verifyRoot = $LaunchRoot
-            $verifySeal = $binding.bundle.sha256
             $verifyJob = $job
             $verifyPath = $receiptPath
             $verifySha = $receiptSha
-            # GetNewClosure creates a dynamic module. A .NET Action invoked
-            # through another helper cannot resolve this script's local helper
-            # functions there. Capture the verified file closure as data instead.
-            $verifyPins = @{}
-            $manifestPath = Join-Path $binding.bundle.root 'runner.bundle.json'
-            $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-            $verifyPins[$manifestPath] = $binding.bundle.sha256
-            foreach ($member in $manifest.members) { $verifyPins[(Join-Path $binding.bundle.root $member.name)] = $member.sha256 }
-            foreach ($member in $manifest.runtimeCode) { $verifyPins[(Join-Path (Join-Path $LaunchRoot 'runtime') $member.name)] = $member.sha256 }
-            foreach ($name in @('launch-context.json','tool.manifest.tsv')) {
-                $path = Join-Path $LaunchRoot $name
-                $verifyPins[$path] = (Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant()
-            }
-            $verifyRuntimeRoot = Join-Path $LaunchRoot 'runtime'
-            $verifyRuntimeNames = @($manifest.runtimeCode.name)
-            $null = Get-PhaseDJobBinding $verifyRoot $verifySeal
+            # Retain the SAME live Job and receipt under the proof lock. The
+            # immutable code closure was checked once at process entry.
             $verify = [Action]{
-                foreach ($path in $verifyPins.Keys) {
-                    if ((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -cne $verifyPins[$path]) { throw 'phase_d_job_sealed_input_drifted' }
-                }
-                $actualNames = @(Get-ChildItem -LiteralPath $verifyRuntimeRoot -File | Where-Object {
-                    $_.Extension -in @('.dll','.exe') -or $_.Name -match '\.(deps|runtimeconfig)\.json$'
-                } | Select-Object -ExpandProperty Name)
-                if ($actualNames.Count -ne $verifyRuntimeNames.Count -or
-                    @(Compare-Object $verifyRuntimeNames $actualNames -CaseSensitive).Count -ne 0) { throw 'phase_d_job_sealed_input_drifted' }
                 $verifyJob.Validate()
                 if ($verifyJob.ActiveProcesses -ne 0 -or (Get-FileHash -LiteralPath $verifyPath).Hash.ToLowerInvariant() -cne $verifySha) {
                     throw 'phase_d_job_zero_unproven'

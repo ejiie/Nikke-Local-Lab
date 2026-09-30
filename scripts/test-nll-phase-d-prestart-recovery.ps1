@@ -43,6 +43,19 @@ try {
     [IO.File]::WriteAllText($runtimeDbPath,'synthetic-runtime')
     $jobAttempted=$true
     Rejected {Invoke-PhaseDEmergencyRollback $evidenceRoot $runtimeRoot} 'existing_job_proof_required'
+    function Invoke-PhaseDWithJobZeroProof { param($LaunchRoot,$ExpectedBundleSha256,$Action) & $Action }
+    function Get-NetFirewallRule { param($Group,$ErrorAction) [pscustomobject]@{Name='synthetic-extension'} }
+    function Remove-NetFirewallRule {
+        [CmdletBinding()]param([Parameter(ValueFromPipeline=$true)]$InputObject)
+        process { $script:removed++ }
+    }
+    foreach($owned in @($false,$true)) {
+        $script:PhaseDRunnerIsolationOwned=$owned; $script:removed=0
+        if(-not (Invoke-PhaseDEmergencyRollback $evidenceRoot $runtimeRoot) -or
+            $script:removed -ne [int]$owned){throw 'prestart_extension_ownership_lost'}
+        $checks++
+    }
+
     $script:pgStatus=3
     Assert-PhaseDPostgresStopped 'synthetic-pgctl' $launchRoot 'synthetic-identity'; $checks++
     foreach($status in @(0,1,4)) {

@@ -7,12 +7,12 @@ function Assert-PdBundle([bool]$Condition, [string]$Code) {
 function Get-PdBundleHash([string]$Path) {
     (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
-function Assert-PdBundlePin([object]$Pin) {
+function Assert-PdBundlePin([object]$Pin, [switch]$LengthOnly) {
     Assert-PdBundle ((Test-Path -LiteralPath $Pin.path -PathType Leaf) -and
         (Get-Item -LiteralPath $Pin.path).Length -eq $Pin.length -and
-        (Get-PdBundleHash $Pin.path) -ceq $Pin.sha256) 'file_drifted'
+        ($LengthOnly -or (Get-PdBundleHash $Pin.path) -ceq $Pin.sha256)) 'file_drifted'
 }
-function Read-PdRuntimeBundle([string]$PointerPath, [switch]$BeforeActivation, [switch]$FilePinsOnly) {
+function Read-PdRuntimeBundle([string]$PointerPath, [switch]$BeforeActivation, [switch]$FilePinsOnly, [switch]$FullVerification) {
     Assert-PdBundle (-not ($BeforeActivation -and $FilePinsOnly)) 'read_mode_invalid'
     if (-not (Test-Path -LiteralPath $PointerPath)) { return $null }
     $pointer = Get-Content -LiteralPath $PointerPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -35,25 +35,19 @@ function Read-PdRuntimeBundle([string]$PointerPath, [switch]$BeforeActivation, [
         $bundle.native.sha256 -ceq '54ee18f5ee3d16fea8bb6c3407a880727aa3b848f6a55908e6bf90f8635e5662' -and
         $bundle.preserveExistingAccount -eq $true -and $bundle.syntheticRegistration -eq $false -and
         $bundle.httpDiagnosticLayer -eq $false) 'contract_invalid'
-    foreach ($pin in @($bundle.files) + @($bundle.client) + @($bundle.clientPrograms)) {
-        Assert-PdBundlePin $pin
+    # Installed immutable inputs: length at launch, all digests at installation/repair.
+    foreach ($pin in @($bundle.files) + @($bundle.clientPrograms)) {
+        if ($pin.path -cin @($bundle.client.path, $bundle.native.path, $bundle.certificate.path)) { continue }
+        Assert-PdBundlePin $pin -LengthOnly:(-not ($BeforeActivation -or $FullVerification))
     }
+    Assert-PdBundlePin $bundle.client
     if ($BeforeActivation) {
         foreach ($change in $bundle.overlay) { Assert-PdBundlePin $change.before }
     }
     else {
         foreach ($pin in @($bundle.native, $bundle.certificate)) { Assert-PdBundlePin $pin }
-        if (-not $FilePinsOnly) {
-        $rules = @(Get-NetFirewallRule -Group 'NLL PhaseD 151 Client Isolation' -ErrorAction SilentlyContinue)
-        $paths = @($bundle.clientPrograms.path) + @($bundle.blockOnlyPrograms) | Sort-Object -Unique
-        $inventory = @(Get-PhaseDIsolationRules)
-        Assert-PdBundle ($rules.Count -eq $paths.Count -and @($inventory | Where-Object {
-            -not $_.enabled -and -not (Test-PhaseDSharedIsolationPath $_.program)
-        }).Count -eq 0) 'client_isolation_missing'
-        $actual = @($inventory.program)
-        Assert-PdBundle (@(Compare-Object @($paths) @($actual)).Count -eq 0) 'client_isolation_changed'
-        }
     }
+
     $bundle | Add-Member -NotePropertyName manifestPath -NotePropertyValue $pointer.manifest.path
     return $bundle
 }

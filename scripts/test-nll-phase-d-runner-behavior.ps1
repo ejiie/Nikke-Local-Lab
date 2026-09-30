@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'test-nll-phase-d-runner-contract.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1')
+. (Join-Path $PSScriptRoot 'Nll.PhaseDSharedIsolation.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerStart.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerComplete.ps1')
 function Assert-PhaseDRunnerHost { param($Phase) }
@@ -26,8 +27,8 @@ function Get-NetFirewallRule {
     } else { @($script:rules.Values) }
 }
 function New-NetFirewallRule {
-    param($Name,$DisplayName,$Group,$Direction,$Action,$Enabled,$Profile,$Program)
-    $script:rules[$Name] = [pscustomobject]@{ Name=$Name; Program=$Program }
+    param($Name,$DisplayName,$Group,$Direction,$Action,$Enabled,$Profile,$Program,$ErrorAction)
+    $script:rules[$Name] = [pscustomobject]@{ Name=$Name; Program=$Program; Direction=$Direction; Action=$Action; Enabled=$Enabled }
 }
 function Get-NetFirewallApplicationFilter {
     [CmdletBinding()]param([Parameter(ValueFromPipeline=$true)]$InputObject)
@@ -139,14 +140,14 @@ try {
         $script:clock=[pscustomobject]@{Elapsed=[TimeSpan]::Zero}
         if ($case -eq 'digest-failure') { $spec.serverDllSha256='0'*64 }
         $failed=$false
-        try { $start=Invoke-PhaseDRunnerStart $spec | ConvertFrom-Json } catch { $failed=$true; $errorCode=$_.Exception.Message }
+        try { Enter-PhaseDRunnerIsolation $spec; $start=Invoke-PhaseDRunnerStart $spec | ConvertFrom-Json } catch { $failed=$true; $errorCode=$_.Exception.Message }
         $shouldFail=$case -in @('digest-failure','listener-failure','bootstrap-failure','network-failure')
         if ($failed -and -not $shouldFail) { throw $errorCode }
         Assert-Test ($failed -eq $shouldFail)
         foreach ($name in $environmentNames) { Assert-Test ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($name))) }
         if ($shouldFail) {
             if ($case -eq 'digest-failure') {
-                Assert-Test ((Get-PhaseDRunnerHash $hosts) -ceq $baseHash -and $script:rules.Count -eq 0)
+                Assert-Test ((Get-PhaseDRunnerHash $hosts) -ceq $baseHash -and $script:rules.Count -eq 2)
                 Assert-Test ($script:processes.Count -eq 0)
             }
             Assert-Test ((Get-PhaseDRunnerHash $db) -ceq $spec.runtimeDbSha256)

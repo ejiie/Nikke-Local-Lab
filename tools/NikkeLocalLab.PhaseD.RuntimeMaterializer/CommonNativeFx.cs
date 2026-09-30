@@ -102,8 +102,14 @@ internal static class CommonNativeFx
         }
         else Require(Convert.ToHexString(SHA256.HashData(store)).ToLowerInvariant() == seal.OriginalSha256);
         verify(); Cold();
-        if (!File.Exists(retired)) Save(retired, new { contractId = "nll/common-native-fx-retired/v1", manifestSha256 = hash,
-            terminationReceiptSha256 = termination, storeSha256 = seal.OriginalSha256, actualGameAcceptanceClaimed = false });
+        if (!File.Exists(retired)) Save(retired, new
+        {
+          contractId = "nll/common-native-fx-retired/v1",
+          manifestSha256 = hash,
+          terminationReceiptSha256 = termination,
+          storeSha256 = seal.OriginalSha256,
+          actualGameAcceptanceClaimed = false
+        });
         else
         {
           using var old = JsonDocument.Parse(File.ReadAllBytes(Plain(retired)));

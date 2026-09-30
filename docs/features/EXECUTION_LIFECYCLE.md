@@ -59,6 +59,22 @@
 | 계정·전투 자료 변환, 저장 | `tools/NikkeLocalLab.PhaseD.RuntimeMaterializer/` (`ClassicSoloRaidRuntimeState.cs`, `RuntimePreferencesPersistence.cs`, `NativeFxExecutionDelivery.cs`) |
 | 영속 저장소 | `src/NikkeLocalLab.Persistence.PostgreSql/ClassicSoloRaidRuntimeStateStore.cs` |
 
+## 시작 입력 검증 (WP-L2, 설치 전)
+
+- UI 준비 조회의 binding SHA는 Start 요청의 필수 입력이며 coordinator가 현재 준비 결과와 한 번 대조합니다.
+  API는 준비 PowerShell을 다시 실행하지 않고 같은 계정 snapshot의 헤더와 candidate/lobby 파일을 전달합니다.
+- 실행 시 runtime bundle은 파일 존재·길이와 승인 sodium DLL·client exe·인증서·선택 manifest SHA를 확인합니다.
+  설치·선택·수리는 `Read-PdRuntimeBundle -FullVerification`(overlay 적용 전에는 `-BeforeActivation`)으로 전체 SHA를 확인합니다.
+- 보스 전달은 시작 때 stage 한 번으로 검사합니다. descriptor·seal·profile SHA와 artifact 길이를 대조하며,
+  `byteLength`가 없는 이전 onboarding seal의 artifact는 재봉인 없이 시작 때도 SHA로 확인합니다. 명시적 delivery 검증은 기본 전체 SHA입니다.
+- runner/watcher/recovery는 진입 시 봉인을 검증하고 해당 프로세스에서 spec을 보관합니다. coordinator는 직접 만든 bundle을 씁니다.
+  이후 Job 소속·same-Job zero·receipt·checkpoint 검사는 계속 수행합니다.
+- 기본 차단 규칙 확인과 확장 규칙 생성·확인은 coordinator가 runner child 생성 전에 수행합니다.
+  부분 적용과 child 생성 전 실패도 기존 Job 종료 증명 뒤 원복합니다.
+
+위 변경은 source-only 검사 대상입니다. 앱·materializer·runtime bundle 및 보스 전달 입력의 재봉인·설치,
+원본 runtime 실행과 시간 측정은 별도이며 기존 실게임 완료 기록을 대체하지 않습니다.
+
 ## 실행 중 변경과 원복
 
 - **hosts**: 실행 전 기준선을 백업하고 종료 때 복원합니다.

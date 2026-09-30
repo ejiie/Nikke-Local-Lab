@@ -62,13 +62,19 @@ try {
     foreach ($season in @(26)) {
         $uid = [guid]::NewGuid().ToString('D')
         $caseRoot = Join-Path $testRoot $uid
+        . (Join-Path $repo 'scripts/Nll.PhaseDPreparation.ps1')
+        $prepared = Get-PhaseDPreparation $repo $season water $testPointer
+        Assert-PdBundle ($prepared.statusCode -ceq 'ready') 'preparation_failed'
+        $header = Get-Content -LiteralPath (Join-Path $candidateDirectory 'runtime-candidate.json') -Raw | ConvertFrom-Json
         $result = & (Join-Path $repo 'scripts\invoke-nll-phase-d-execution.ps1') `
             -RepositoryRoot $repo -ConfigurationPath (Join-Path $repo 'config\appsettings.example.json') `
             -ExecutionRoot $testRoot -LaunchContextUid $uid `
             -RuntimeCandidatePath (Join-Path $candidateDirectory 'runtime-candidate.json') `
             -LobbyProjectionPath (Join-Path $candidateDirectory 'lobby-projection.json') `
             -SeasonNumber $season -ValidationKind challenge -WeaknessCode water `
-            -RuntimeSelectionPath $testPointer -ValidateOnly
+            -RuntimeSelectionPath $testPointer -ValidateOnly `
+            -ExpectedPreparationBindingSha256 $prepared.bindingSha256 -AccountUid $header.accountUid `
+            -AccountLabel $header.accountLabel -AccountRevisionSetSha256 $header.baseRevisions.revisionSetSha256
         $verified = ($result -join "`n") | ConvertFrom-Json
         Assert-PdBundle ($verified.statusCode -ceq 'validated_not_started' -and $verified.progressionPreserved -eq $true) 'account_validation_failed'
         $checks += $verified
@@ -101,7 +107,12 @@ try {
         New-NetFirewallRule -Name ('NLL.PhaseD151.Program.' + $i) -DisplayName ('NLL Phase D 151 program ' + $i) `
             -Group $isolationGroup -Direction Outbound -Action Block -Enabled $enabled -Profile Any -Program $paths[$i] | Out-Null
     }
-    $null = Read-PdRuntimeBundle $testPointer
+    $null = Read-PdRuntimeBundle $testPointer -FullVerification
+    # Installation verifies its newly created rules before publishing selection.
+    $inventory = @(Get-PhaseDIsolationRules)
+    Assert-PdBundle ($inventory.Count -eq $paths.Count -and
+        @(Compare-Object @($paths) @($inventory.program)).Count -eq 0 -and
+        @($inventory | Where-Object { -not $_.enabled -and -not (Test-PhaseDSharedIsolationPath $_.program) }).Count -eq 0) 'client_isolation_changed'
     Write-RnNewJson $activePointer $pointer
     $activationCompleted = $true
     Write-RnNewJson (Join-Path $testRoot 'activation.receipt.json') ([ordered]@{

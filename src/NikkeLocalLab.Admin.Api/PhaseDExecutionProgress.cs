@@ -35,13 +35,12 @@ internal static class PhaseDExecutionProgress
     "ready",
     "recovery_required"];
 
-  internal static PhaseDProgress Initial(string uid, DateTimeOffset received, DateTimeOffset preparation,
+  internal static PhaseDProgress Initial(string uid, DateTimeOffset received,
       DateTimeOffset snapshot, DateTimeOffset prepared)
   {
     var events = new List<PhaseDProgressEvent>();
     // Each event starts its named phase; the current phase has no completed interval yet.
-    foreach (var (code, at, end) in new[] { ("api_preparation", preparation, snapshot),
-        ("account_snapshot", snapshot, prepared), ("coordinator_preparation", prepared, prepared) })
+    foreach (var (code, at, end) in new[] { ("account_snapshot", snapshot, prepared), ("coordinator_preparation", prepared, prepared) })
       events.Add(new(code, at, at, Math.Max(0, (at - received).TotalMilliseconds), Math.Max(0, (end - at).TotalMilliseconds)));
     return new(Contract, uid, received, "coordinator_preparation", prepared, events);
   }

@@ -29,12 +29,14 @@ try {
     if (@(Get-Process -Name nikke,EpinelPS,postgres,NikkeLocalLab.Admin.Api -ErrorAction SilentlyContinue).Count -ne 0) {
         throw 'common_native_rehearsal_not_cold'
     }
-    $null=Read-PdRuntimeBundle 'C:\NLL\ControlCenter\runtime-selection.private.json'
+    $null=Read-PdRuntimeBundle 'C:\NLL\ControlCenter\runtime-selection.private.json' -FullVerification
     $results=@()
     foreach ($case in $preparation.cases) {
         $launch=Join-Path (Split-Path -Parent $PreparationReceiptPath) $case.launchContextUid
         $bundle=Read-PhaseDRunnerBundle $launch
         $spec=$bundle.specification
+        Assert-PhaseDRunnerSpecification $spec
+        $script:PhaseDVerifiedRunnerBundle=$bundle
         if ($null -eq $spec.executionFx) { continue }
         $timer=[Diagnostics.Stopwatch]::StartNew()
         $job=New-PhaseDExecutionJob $launch $bundle.sha256

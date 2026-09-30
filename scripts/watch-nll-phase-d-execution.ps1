@@ -204,6 +204,7 @@ $executionJob = $null
 $physicalCleanupCommitted = $false
 . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerContract.ps1')
 Assert-PhaseDRunnerSpecification $sealedRunner.specification
+$script:PhaseDVerifiedRunnerBundle = $sealedRunner
 . (Join-Path $PSScriptRoot 'Nll.PhaseDJob.ps1')
 # No operational catch/rollback before the explicit handoff has committed.
 $executionJob = Receive-PhaseDJobHandoff $LaunchRoot $ExpectedRunnerBundleSha256
@@ -238,7 +239,6 @@ try {
     Protect-PhaseDJobServerLog $LaunchRoot $ExpectedRunnerBundleSha256
     Invoke-PhaseDExecutionFxCleanup $LaunchRoot $ExpectedRunnerBundleSha256
     Write-PhaseDProgress $LaunchRoot 'runtime_restore'
-    $null = Read-PhaseDRunnerBundle -LaunchRoot $LaunchRoot -ExpectedBundleSha256 $ExpectedRunnerBundleSha256
     $completionArguments = [ordered]@{ Phase='completion'; LaunchRoot=$LaunchRoot
         ExpectedBundleSha256=$ExpectedRunnerBundleSha256; ObservedStageCode='startup_only'; OutcomeCode='client_exit' }
     $completionResult = Invoke-PhaseDChildScript `

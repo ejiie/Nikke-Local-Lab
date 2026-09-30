@@ -6,9 +6,12 @@ function Test-PhaseDSharedIsolationPath([string]$Path) {
 }
 
 function Get-PhaseDIsolationRules {
-    $rules = @(Get-NetFirewallRule -Group 'NLL PhaseD 151 Client Isolation' -ErrorAction Stop)
+    param([string[]]$Name)
+    $rules = @(if ($Name) { Get-NetFirewallRule -Name $Name -ErrorAction Stop }
+        else { Get-NetFirewallRule -Group 'NLL PhaseD 151 Client Isolation' -ErrorAction Stop })
     $filters=@{}
-    foreach ($filter in @(Get-NetFirewallApplicationFilter -PolicyStore PersistentStore -ErrorAction Stop)) {
+    foreach ($filter in @(if ($Name) { $rules | Get-NetFirewallApplicationFilter -ErrorAction Stop }
+        else { Get-NetFirewallApplicationFilter -PolicyStore PersistentStore -ErrorAction Stop })) {
         $filters[[string]$filter.InstanceID]=$filter
     }
     foreach ($rule in $rules) {
@@ -69,11 +72,14 @@ function Enter-PhaseDSharedIsolation {
         launchRoot=[IO.Path]::GetFullPath($LaunchRoot);runnerBundleSha256=$ExpectedBundleSha256
         rules=$shared;services=$services})
     $enable=@($shared | Where-Object { -not $_.enabled } | ForEach-Object { $_.name })
-    if ($enable.Count) { Enable-NetFirewallRule -Name $enable -ErrorAction Stop | Out-Null }
-    $after=@(Get-PhaseDIsolationRules)
-    if (@($after | Where-Object { -not $_.enabled }).Count -or
-        $after.Count -ne $expected.Count -or @(Compare-Object $expected @($after.program)).Count) {
-        throw 'phase_d_shared_isolation_apply_failed'
+    if ($enable.Count) {
+        Enable-NetFirewallRule -Name $enable -ErrorAction Stop | Out-Null
+        $after=@(Get-PhaseDIsolationRules -Name $enable)
+        if ($after.Count -ne $enable.Count -or @($after | Where-Object { -not $_.enabled }).Count -or
+            @(Compare-Object $enable @($after.name)).Count -or
+            @(Compare-Object @($shared | Where-Object { $_.name -in $enable } | ForEach-Object program) @($after.program)).Count) {
+            throw 'phase_d_shared_isolation_apply_failed'
+        }
     }
 }
 
@@ -149,4 +155,34 @@ function Restore-PhaseDSharedIsolation {
     Write-PhaseDIsolationJson (Join-Path $LaunchRoot 'shared-isolation.restored.json') ([ordered]@{
         contractId='nll/phase-d-shared-isolation-restored/v1';runnerBundleSha256=$ExpectedBundleSha256
         beforeSha256=(Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant();restored=$true})
+}
+
+# Coordinator calls this before creating the runner child. Existing cleanup owns
+# the extension group, including failure before the runner publishes its pointer.
+function Enter-PhaseDRunnerIsolation {
+    param([object]$Specification)
+    $group = 'NLL Phase3B2 Epinel Minimal Extension'
+    $base = @(Get-NetFirewallRule -Group 'NLL Phase3B2 Physical Isolation' -ErrorAction Stop)
+    if ($base.Count -ne 17 -or @($base | Where-Object {
+        $_.Direction -ne 'Outbound' -or $_.Action -ne 'Block' -or $_.Enabled -ne 'True'
+    }).Count -or @(Get-NetFirewallRule -Group $group -ErrorAction SilentlyContinue).Count) {
+        throw 'phase3b2_epinel_minimal_start_firewall_precondition_invalid'
+    }
+    $script:PhaseDRunnerIsolationOwned = $true
+    $programs = [ordered]@{
+        'NLL.Phase3B2.EpinelMinimal.BootstrapBlock' = (Join-Path $Specification.bootstrapRoot 'artifact/NikkeLocalLab.Phase3B2.PhysicalBootstrap.exe')
+        'NLL.PhaseD.RuntimeServerBlock' = (Join-Path $Specification.launchRoot 'runtime/EpinelPS.exe')
+    }
+    foreach ($name in $programs.Keys) {
+        New-NetFirewallRule -Name $name -DisplayName $name -Group $group -Direction Outbound -Action Block `
+            -Enabled True -Profile Any -Program $programs[$name] -ErrorAction Stop | Out-Null
+    }
+    $rules = @(Get-NetFirewallRule -Group $group -ErrorAction Stop)
+    if ($rules.Count -ne $programs.Count) { throw 'phase3b2_epinel_minimal_start_firewall_apply_failed' }
+    foreach ($rule in $rules) {
+        $apps = @($rule | Get-NetFirewallApplicationFilter -ErrorAction Stop)
+        if (-not $programs.Contains($rule.Name) -or $rule.Direction -ne 'Outbound' -or
+            $rule.Action -ne 'Block' -or $rule.Enabled -ne 'True' -or $apps.Count -ne 1 -or
+            $apps[0].Program -cne $programs[$rule.Name]) { throw 'phase3b2_epinel_minimal_start_firewall_apply_failed' }
+    }
 }

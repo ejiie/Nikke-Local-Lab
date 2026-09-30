@@ -133,7 +133,8 @@ if (options.ContainsKey("validate-common-boss-delivery") || options.ContainsKey(
     result = await CommonBossDelivery.Stage(descriptor, hash, profilePath, weakness, Required(options, "launch-root"));
   else
   {
-    var prepared = await CommonBossDelivery.Validate(descriptor, hash, profilePath, weakness);
+    var prepared = await CommonBossDelivery.Validate(descriptor, hash, profilePath, weakness,
+        !options.TryGetValue("full-delivery-verification", out var fullVerification) || fullVerification != "false");
     if (options.ContainsKey("require-native-fx-baseline") && prepared.Patches.Length > 0)
       _ = CommonNativeFxBaseline.Load(prepared.Plan.NativeStore!);
     result = new { statusCode = "prepared", profileSha256 = prepared.Profile.Sha256, nativePatchCount = prepared.Patches.Length };
@@ -479,6 +480,7 @@ try
   var accountUidParsed = Guid.TryParse(candidate.AccountUid, out var accountUid);
   Require(candidate.SchemaVersion == 1 &&
           candidate.ContractId == "nll/runtime-projection-candidate/v1" &&
+          candidate.ValidationStatusCode == "ready" && candidate.ValidationReasonCodes.Count == 0 &&
           accountUidParsed && accountUid != Guid.Empty &&
           candidate.BaseRevisions.RevisionSetSha256.Length == 64 &&
           candidate.Values.Count > 0,

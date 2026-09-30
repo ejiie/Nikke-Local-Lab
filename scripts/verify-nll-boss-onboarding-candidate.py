@@ -190,7 +190,7 @@ def build_receipt(root, source_pack, season, profile_code, input_set_sha, cache)
               "runtimeAdmissionStatusCode": "not_assessed", "registryModified": False,
               "sharedCacheModified": False, "clientStarted": False, "officialInstallModified": False,
               "rawSourceIdentifiersPersisted": False,
-              "artifacts": [{"relativePath": name, "sha256": digest(root / name)} for name in artifact_names]}
+              "artifacts": [{"relativePath": name, "byteLength": (root / name).stat().st_size, "sha256": digest(root / name)} for name in artifact_names]}
     if profile["schemaVersion"] == 4:
         result["shieldFxPreparationManifestSha256"] = preparation_sha
     return result

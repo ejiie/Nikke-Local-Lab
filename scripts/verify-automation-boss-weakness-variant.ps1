@@ -182,8 +182,6 @@ Assert-BossVariant `
      $materializer.Contains('serverStaticDataModified = false') -and
      $materializer.Contains('pending_original_client_runtime_observation') -and
      $coordinator.Contains('$staticDataVariantRequired = [bool]$staticDataVariant.variantRequired') -and
-     $coordinator.Contains('phase_d_boss_behavior_asset_closure_invalid') -and
-     $coordinator.Contains('phase_d_boss_shield_fx_asset_closure_invalid') -and
      $coordinator.Contains('$targetByWeakness = @{') -and
      $coordinator.Contains('bossVariantRegistrySha256') -and
      -not $coordinator.Contains('config\boss-runtime-variants\season-26-providence.json') -and
@@ -295,7 +293,7 @@ if (Test-Path -LiteralPath $externalRoot -PathType Container) {
 }
 
 Write-Output 'Boss weakness variant automation contract passed.'
-& (Join-Path $PSScriptRoot 'test-nll-phase-d-fx-closure.ps1')
+# CommonBossDeliveryTests exercises the materializer's delivery hash/length contract in verify-all.
 
 $fxCandidate = Read-RequiredText (Join-Path $repositoryRoot 'scripts\materialize-nll-shield-fx-candidate.py')
 $fxTransform = Read-RequiredText (Join-Path $repositoryRoot 'scripts\materialize-nll-shield-fx-transform-variant.py')

@@ -97,7 +97,8 @@ function Resolve-PhaseDBossAffinity {
 }
 function Get-PhaseDPreparation {
     param([string]$RepositoryRoot, [int]$SeasonNumber, [string]$WeaknessCode,
-        [string]$RuntimeSelectionPath = 'C:\NLL\ControlCenter\runtime-selection.private.json')
+        [string]$RuntimeSelectionPath = 'C:\NLL\ControlCenter\runtime-selection.private.json',
+        [switch]$StageDelivery)
     $result = [ordered]@{
         schemaVersion = 1; contractId = 'nll/phase-d-preparation/v1'
         seasonNumber = $SeasonNumber; weaknessCode = $WeaknessCode
@@ -153,16 +154,17 @@ function Get-PhaseDPreparation {
             }
             $delivery = $entry.delivery
             Assert-PdBundlePin $delivery
-            $validator = Join-Path $bundle.materializerRoot 'NikkeLocalLab.PhaseD.RuntimeMaterializer.exe'
-            $validationOutput = @(& $validator --validate-common-boss-delivery true --delivery-path $delivery.path `
-                --delivery-sha256 $delivery.sha256 --boss-variant-profile $profile.path --weakness-code $WeaknessCode `
-                --require-native-fx-baseline true 2>&1)
-            if ($LASTEXITCODE -ne 0) { throw 'phase_d_boss_runtime_delivery_invalid' }
-            $validation = ($validationOutput -join "`n") | ConvertFrom-Json
-            if ($validation.statusCode -cne 'prepared' -or $validation.profileSha256 -cne $profile.sha256) {
-                throw 'phase_d_boss_runtime_delivery_invalid'
+            if (-not $StageDelivery) {
+                $validator = Join-Path $bundle.materializerRoot 'NikkeLocalLab.PhaseD.RuntimeMaterializer.exe'
+                $validationOutput = @(& $validator --validate-common-boss-delivery true --delivery-path $delivery.path `
+                    --delivery-sha256 $delivery.sha256 --boss-variant-profile $profile.path --weakness-code $WeaknessCode `
+                    --full-delivery-verification false --require-native-fx-baseline true 2>&1)
+                if ($LASTEXITCODE -ne 0) { throw 'phase_d_boss_runtime_delivery_invalid' }
+                $validation = ($validationOutput -join "`n") | ConvertFrom-Json
+                if ($validation.statusCode -cne 'prepared' -or $validation.profileSha256 -cne $profile.sha256) {
+                    throw 'phase_d_boss_runtime_delivery_invalid'
+                }
             }
-            Assert-PdBundlePin $delivery
         }
         $build = if ($null -ne $bundle) { [string]$bundle.clientBuildCode } else { 'build_150.6.9' }
         $binding = [ordered]@{

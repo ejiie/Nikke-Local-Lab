@@ -54,7 +54,10 @@ function New-PhaseDRunnerBundle {
     }
     $path = Join-Path $root 'runner.bundle.json'
     [IO.File]::WriteAllText($path, (($manifest | ConvertTo-Json -Depth 8) + "`n"), [Text.UTF8Encoding]::new($false))
-    [pscustomobject]@{ root=$root; manifestPath=$path; sha256=(Get-PhaseDRunnerHash $path) }
+    $script:PhaseDVerifiedRunnerBundle = [pscustomobject]@{
+        root=$root; manifestPath=$path; sha256=(Get-PhaseDRunnerHash $path); specification=$Specification
+    }
+    $script:PhaseDVerifiedRunnerBundle
 }
 
 function Read-PhaseDRunnerBundle {

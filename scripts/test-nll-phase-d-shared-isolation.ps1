@@ -26,12 +26,16 @@ function Reset-Test {
     $script:bundle=[pscustomobject]@{clientPrograms=@([pscustomobject]@{path=$rules[2].program});blockOnlyPrograms=@($rules[0].program,$rules[1].program)}
 }
 function Get-NetFirewallRule {
-    param($Group)
-    foreach($row in $script:rules){[pscustomobject]@{Name=$row.name;InstanceID=$row.name;Direction='Outbound';Action='Block';Enabled=[string]$row.enabled}}
+    param($Group,$Name)
+    foreach($row in @($script:rules | Where-Object { -not $Name -or $_.name -in $Name })){[pscustomobject]@{Name=$row.name;InstanceID=$row.name;Direction='Outbound';Action='Block';Enabled=[string]$row.enabled}}
 }
 function Get-NetFirewallApplicationFilter {
-    param($PolicyStore)
-    foreach($row in $script:rules){[pscustomobject]@{InstanceID=$row.name;Program=$row.program}}
+    [CmdletBinding()]param($PolicyStore,[Parameter(ValueFromPipeline=$true)]$InputObject)
+    process {
+        foreach($row in @($script:rules | Where-Object { -not $InputObject -or $_.name -ceq $InputObject.Name })) {
+            [pscustomobject]@{InstanceID=$row.name;Program=$row.program}
+        }
+    }
 }
 function Enable-NetFirewallRule {
     param([string[]]$Name)
@@ -131,6 +135,39 @@ try {
     Need (-not $rules[0].enabled -and -not $rules[1].enabled)
     $rules[0].enabled=$true # a later owner changed the policy; old recovery must not overwrite it
     Reject {Restore-PhaseDSharedIsolation $case $seal} 'phase_d_shared_isolation_state_changed'
+    # Base/extension rules are now acquired by the coordinator, before its child.
+    & {
+        $spec=@{launchRoot=$root;bootstrapRoot=(Join-Path $root 'bootstrap')}
+        foreach($fault in @('none','base-count','base-disabled','existing','partial','apply-disabled','apply-program')) {
+            $script:extension=@();$script:PhaseDRunnerIsolationOwned=$false
+            $created=0;$admitted=$false
+            function Get-NetFirewallRule {
+                param($Group,$ErrorAction)
+                if($Group -ceq 'NLL Phase3B2 Physical Isolation') {
+                    $count=if($fault -ceq 'base-count'){16}else{17}
+                    1..$count | ForEach-Object { [pscustomobject]@{Direction='Outbound';Action='Block';Enabled=$(if($fault -ceq 'base-disabled'){'False'}else{'True'})} }
+                } else {
+                    if($fault -ceq 'existing'){[pscustomobject]@{Name='preexisting'}}else{$script:extension}
+                }
+            }
+            function New-NetFirewallRule {
+                param($Name,$DisplayName,$Group,$Direction,$Action,$Enabled,$Profile,$Program,$ErrorAction)
+                if($fault -ceq 'partial' -and $script:extension.Count -eq 1){throw 'synthetic_partial_apply'}
+                $script:extension+= [pscustomobject]@{Name=$Name;Direction=$Direction;Action=$Action
+                    Enabled=$(if($fault -ceq 'apply-disabled'){'False'}else{$Enabled});Program=$Program}
+            }
+            function Get-NetFirewallApplicationFilter {
+                [CmdletBinding()]param([Parameter(ValueFromPipeline=$true)]$InputObject)
+                process { [pscustomobject]@{Program=$(if($fault -ceq 'apply-program'){'C:\unbound.exe'}else{$InputObject.Program})} }
+            }
+            $caught=$false
+            try { Enter-PhaseDRunnerIsolation $spec; $admitted=$true } catch { $caught=$true }
+            Need ($caught -eq ($fault -cne 'none') -and $admitted -eq ($fault -ceq 'none'))
+            Need ($script:PhaseDRunnerIsolationOwned -eq ($fault -cnotin @('base-count','base-disabled','existing')))
+            if($fault -ceq 'partial'){Need ($script:extension.Count -eq 1)}
+        }
+    }
+
     Write-Output "Shared isolation lifecycle: $checks checks passed."
 } finally {
     $resolved=[IO.Path]::GetFullPath($root)
