@@ -21,10 +21,15 @@
     <Compile Include="..\..\tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\NativeFxRangeTransaction.cs" Link="NativeFxRangeTransaction.cs" />
     <Compile Include="..\..\tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\NativeFxRangeJournal.cs" Link="NativeFxRangeJournal.cs" />
     <Compile Include="..\..\tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\CommonDeliveryFiles.cs" Link="CommonDeliveryFiles.cs" />
+    <Compile Include="..\..\tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\CommonBossDelivery.cs" Link="CommonBossDelivery.cs" />
+    <Compile Include="..\..\tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\BossRuntimeVariantProfile.cs" Link="BossRuntimeVariantProfile.cs" />
+    <Compile Include="..\..\tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\CommonNativeFxBaseline.cs" Link="CommonNativeFxBaseline.cs" />
+    <Compile Include="..\..\tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\CommonNativeFx.cs" Link="CommonNativeFx.cs" />
     <Compile Include="..\..\tools\NikkeLocalLab.PhaseD.RuntimeMaterializer\NativeFxExecutionDelivery.cs" Link="NativeFxExecutionDelivery.cs" />
     <Compile Include="..\..\tools\Phase3B2\EpinelUserValidation\UserValidationGenerationPrototype.cs" Link="UserValidationGenerationPrototype.cs" />
     <Compile Include="..\..\tools\Phase3B2\NativeFxUserValidationStore\UserValidationStorePlan.cs" Link="UserValidationStorePlan.cs" />
     <Compile Include="..\..\tools\Phase3B2\NativeFxUserValidationStore\NativeStoreOperations.cs" Link="NativeStoreOperations.cs" />
+    <Compile Include="..\..\src\NikkeLocalLab.Automation\ExecutionAssetOverlay.cs" Link="ExecutionAssetOverlay.cs" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Admin.Api\NikkeLocalLab.Admin.Api.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Application.PrivateServer\NikkeLocalLab.Application.PrivateServer.csproj" />

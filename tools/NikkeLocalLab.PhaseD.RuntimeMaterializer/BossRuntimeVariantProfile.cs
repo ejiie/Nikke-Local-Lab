@@ -176,7 +176,7 @@ internal sealed record BossRuntimeVariantProfile(
           document.ShieldFxTransformNormalization,
           document.ShieldFxPreparation,
           document.Transformation ?? new(string.Empty, [], false, false, true),
-          Convert.ToHexStringLower(SHA256.HashData(bytes)));
+          Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
       profile.Validate();
       return profile;
     }
@@ -471,8 +471,8 @@ internal sealed record BossRuntimeVariantProfile(
           character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
   private static string HashStrings(IEnumerable<string> values) =>
-      Convert.ToHexStringLower(SHA256.HashData(
-          Encoding.UTF8.GetBytes(string.Join("\n", values))));
+      Convert.ToHexString(SHA256.HashData(
+          Encoding.UTF8.GetBytes(string.Join("\n", values)))).ToLowerInvariant();
 
   private static void Require(bool condition, string code)
   {

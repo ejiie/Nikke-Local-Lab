@@ -110,8 +110,7 @@ internal static class AdminApiProgram
                               "WindowsPowerShell",
                               "v1.0",
                               "powershell.exe")),
-                      logger: provider.GetRequiredService<ILogger<FilesystemPhaseDExecutionService>>(),
-                      preparation: provider.GetRequiredService<IPhaseDPreparationService>()));
+                      logger: provider.GetRequiredService<ILogger<FilesystemPhaseDExecutionService>>()));
               services.AddHostedService<PhaseDLifecycleWorker>();
               services.AddSingleton(new AccountImportOptions(
                           options["repository-root"],

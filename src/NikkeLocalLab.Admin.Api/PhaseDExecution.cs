@@ -98,7 +98,6 @@ public sealed class FilesystemPhaseDExecutionService : IPhaseDExecutionService
   private readonly PhaseDExecutionOptions _options;
   private readonly PhaseDOperationGate _operations;
   private readonly IPhaseDProcessRunner _processes;
-  private readonly IPhaseDPreparationService _preparation;
   private readonly ILogger<FilesystemPhaseDExecutionService>? _logger;
 
   public FilesystemPhaseDExecutionService(
@@ -106,13 +105,11 @@ public sealed class FilesystemPhaseDExecutionService : IPhaseDExecutionService
       PhaseDExecutionOptions options,
       IPhaseDProcessRunner? processes = null,
       ILogger<FilesystemPhaseDExecutionService>? logger = null,
-      TimeSpan? responseTimeout = null,
-      IPhaseDPreparationService? preparation = null)
+      TimeSpan? responseTimeout = null)
   {
     _profiles = profiles;
     _options = options;
     _processes = processes ?? new PhaseDProcessRunner();
-    _preparation = preparation ?? new PowerShellPhaseDPreparationService(options.RepositoryRoot, options.PowerShellPath);
     _logger = logger;
     _operations = new PhaseDOperationGate(options.ExecutionRoot, responseTimeout ?? TimeSpan.FromMinutes(2));
     RequireAbsoluteDirectory(options.RepositoryRoot, "phase_d_repository_root_invalid");
@@ -135,7 +132,9 @@ public sealed class FilesystemPhaseDExecutionService : IPhaseDExecutionService
     var weaknessCode = NormalizeWeaknessCode(request.WeaknessCode);
     if (request.AccountUid.Value == Guid.Empty ||
         request.SeasonNumber <= 0 ||
-        request.ValidationKind is not ("challenge" or "practice") || weaknessCode is null)
+        request.ValidationKind is not ("challenge" or "practice") || weaknessCode is null ||
+        request.PreparationBindingSha256 is not { Length: 64 } binding ||
+        binding.Any(static c => c is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
     {
       throw new PhaseDExecutionException("phase_d_launch_request_invalid");
     }
@@ -150,13 +149,6 @@ public sealed class FilesystemPhaseDExecutionService : IPhaseDExecutionService
       {
         throw new PhaseDExecutionException("phase_d_runtime_not_cold");
       }
-
-      var preparationStartedAtUtc = DateTimeOffset.UtcNow;
-      var preparation = await _preparation.PrepareAsync(request.SeasonNumber, weaknessCode, operationToken).ConfigureAwait(false);
-      if (preparation.StatusCode != "ready")
-        throw new PhaseDExecutionException(preparation.FailureCode ?? "phase_d_preparation_unavailable");
-      if (request.PreparationBindingSha256 is not null && request.PreparationBindingSha256 != preparation.BindingSha256)
-        throw new PhaseDExecutionException("phase_d_preparation_changed");
 
       var snapshotStartedAtUtc = DateTimeOffset.UtcNow;
       var snapshot = await _profiles.GetRuntimeProjectionSnapshotAsync(
@@ -199,7 +191,7 @@ public sealed class FilesystemPhaseDExecutionService : IPhaseDExecutionService
           candidate.BaseRevisions.RevisionSetSha256.ToString(), request.SeasonNumber,
           request.ValidationKind, weaknessCode, "draft", null, null, null, null, null, null, now);
       var progress = PhaseDExecutionProgress.Initial(launchUid.ToString(), requestReceivedAtUtc,
-          preparationStartedAtUtc, snapshotStartedAtUtc, snapshotCompletedAtUtc);
+          snapshotStartedAtUtc, snapshotCompletedAtUtc);
       await WriteJsonAsync(Path.Combine(launchRoot, "execution-progress.json"), progress,
           JsonOptions, operationToken).ConfigureAwait(false);
       await WriteJsonAsync(Path.Combine(launchRoot, "execution-state.json"), initialState,
@@ -227,7 +219,10 @@ public sealed class FilesystemPhaseDExecutionService : IPhaseDExecutionService
         "-SeasonNumber", request.SeasonNumber.ToString(CultureInfo.InvariantCulture),
         "-ValidationKind", request.ValidationKind,
         "-WeaknessCode", weaknessCode,
-        "-ExpectedPreparationBindingSha256", preparation.BindingSha256!
+        "-ExpectedPreparationBindingSha256", binding,
+        "-AccountUid", candidate.AccountUid.ToString(),
+        "-AccountLabel", candidate.AccountLabel,
+        "-AccountRevisionSetSha256", candidate.BaseRevisions.RevisionSetSha256.ToString()
       })
       {
         startInfo.ArgumentList.Add(argument);

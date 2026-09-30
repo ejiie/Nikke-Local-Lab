@@ -15,10 +15,10 @@ public sealed class PhaseDExecutionStateTests
   {
     var received = DateTimeOffset.Parse("2026-09-01T00:00:00Z");
     var progress = PhaseDExecutionProgress.Initial("synthetic", received, received.AddMilliseconds(50),
-        received.AddMilliseconds(2450), received.AddMilliseconds(2530));
-    Assert.Equal(new[] { "api_preparation", "account_snapshot", "coordinator_preparation" }, progress.Events.Select(e => e.StageCode));
-    Assert.Equal(new double[] { 2400, 80, 0 }, progress.Events.Select(e => e.IntervalMilliseconds));
-    Assert.Equal(new double[] { 50, 2450, 2530 }, progress.Events.Select(e => e.CumulativeMilliseconds));
+        received.AddMilliseconds(130));
+    Assert.Equal(new[] { "account_snapshot", "coordinator_preparation" }, progress.Events.Select(e => e.StageCode));
+    Assert.Equal(new double[] { 80, 0 }, progress.Events.Select(e => e.IntervalMilliseconds));
+    Assert.Equal(new double[] { 50, 130 }, progress.Events.Select(e => e.CumulativeMilliseconds));
   }
 
   [Theory]
@@ -304,12 +304,12 @@ public sealed class PhaseDExecutionStateTests
     var runner = new FakeProcessRunner();
     using var fixture = new ExecutionStateFixture(runner);
     var profiles = DispatchProxy.Create<IProfileManagementService, LaunchProfiles>();
-    var service = new FilesystemPhaseDExecutionService(profiles, fixture.Options, runner, preparation: new FakePreparation());
+    var service = new FilesystemPhaseDExecutionService(profiles, fixture.Options, runner);
     var registryRoot = Directory.CreateDirectory(Path.Combine(fixture.Options.RepositoryRoot, "config", "boss-runtime-variants"));
     File.WriteAllText(Path.Combine(registryRoot.FullName, "registry.json"),
         """{"schemaVersion":1,"contractId":"nll/boss-runtime-variant-registry/v1","profiles":[{"seasonNumber":26,"operationalStatusCode":"enabled"}]}""");
     using var caller = new CancellationTokenSource();
-    var request = new PhaseDLaunchRequest(EntityUid.New(), 26, "challenge", "water");
+    var request = new PhaseDLaunchRequest(EntityUid.New(), 26, "challenge", "water", new string('a', 64));
     var launch = await service.StartAsync(request, caller.Token).WaitAsync(TimeSpan.FromSeconds(2));
     await runner.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
     caller.Cancel();
@@ -318,7 +318,7 @@ public sealed class PhaseDExecutionStateTests
       Assert.Equal("draft", launch.StatusCode);
       Assert.Equal("water", launch.WeaknessCode);
       Assert.Equal("coordinator_preparation", launch.Progress!.StageCode);
-      Assert.Equal(new[] { "api_preparation", "account_snapshot", "coordinator_preparation" },
+      Assert.Equal(new[] { "account_snapshot", "coordinator_preparation" },
           launch.Progress.Events.Select(e => e.StageCode));
       Assert.All(launch.Progress.Events, e =>
       {
@@ -364,12 +364,12 @@ public sealed class PhaseDExecutionStateTests
     using var fixture = new ExecutionStateFixture(runner);
     var profiles = DispatchProxy.Create<IProfileManagementService, LaunchProfiles>();
     ((LaunchProfiles)(object)profiles).PendingSave = true;
-    var service = new FilesystemPhaseDExecutionService(profiles, fixture.Options, runner, preparation: new FakePreparation());
+    var service = new FilesystemPhaseDExecutionService(profiles, fixture.Options, runner);
     var registryRoot = Directory.CreateDirectory(Path.Combine(fixture.Options.RepositoryRoot, "config", "boss-runtime-variants"));
     File.WriteAllText(Path.Combine(registryRoot.FullName, "registry.json"),
         """{"schemaVersion":1,"contractId":"nll/boss-runtime-variant-registry/v1","profiles":[{"seasonNumber":26,"operationalStatusCode":"enabled"}]}""");
     var failure = await Assert.ThrowsAsync<ProfileManagementException>(() => service.StartAsync(
-        new PhaseDLaunchRequest(EntityUid.New(), 26, "challenge", "water")));
+        new PhaseDLaunchRequest(EntityUid.New(), 26, "challenge", "water", new string('a', 64))));
     Assert.Equal(ProfileManagementFailureKind.Conflict, failure.Kind);
     Assert.Equal("account_workspace_save_pending", failure.Code);
     Assert.Equal(0, runner.Calls);
@@ -590,36 +590,22 @@ public sealed class PhaseDExecutionStateTests
   }
 
   [Theory]
-  [InlineData("phase_d_boss_variant_profile_drifted", null)]
-  [InlineData("phase_d_bundle_file_drifted", null)]
-  [InlineData(null, "different-binding")]
-  public async Task PreparationFailureCreatesNoLaunchOrProfileSnapshot(string? code, string? binding)
+  [InlineData(null)]
+  [InlineData("")]
+  [InlineData("different-binding")]
+  [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
+  public async Task MissingOrInvalidPreparationBindingCreatesNoLaunchOrProfileSnapshot(string? binding)
   {
     var runner = new FakeProcessRunner();
     using var fixture = new ExecutionStateFixture(runner);
     var profiles = DispatchProxy.Create<IProfileManagementService, LaunchProfiles>();
-    var preparation = new FakePreparation { FailureCode = code };
-    var service = new FilesystemPhaseDExecutionService(profiles, fixture.Options, runner, preparation: preparation);
+    var service = new FilesystemPhaseDExecutionService(profiles, fixture.Options, runner);
     var failure = await Assert.ThrowsAsync<PhaseDExecutionException>(() => service.StartAsync(
         new PhaseDLaunchRequest(EntityUid.New(), 26, "challenge", "water", binding)));
-    Assert.Equal(code ?? "phase_d_preparation_changed", failure.Message);
+    Assert.Equal("phase_d_launch_request_invalid", failure.Message);
     Assert.Equal(0, runner.Calls);
     Assert.Equal(0, ((LaunchProfiles)(object)profiles).SnapshotCalls);
     Assert.Empty(Directory.GetFiles(fixture.ExecutionRoot, "execution-state.json", SearchOption.AllDirectories));
-    Assert.Equal(1, preparation.Calls);
-  }
-
-  private sealed class FakePreparation : IPhaseDPreparationService
-  {
-    public string? FailureCode { get; init; }
-    public int Calls { get; private set; }
-    public Task<PhaseDPreparationProjection> PrepareAsync(int season, string weakness, CancellationToken cancellationToken = default)
-    {
-      Calls++;
-      return Task.FromResult(FailureCode is null
-          ? new PhaseDPreparationProjection(1, "nll/phase-d-preparation/v1", season, weakness, "ready", null, new string('a', 64), "build_151.8.5")
-          : PhaseDPreparationProjection.Blocked(season, weakness, FailureCode));
-    }
   }
 
   private sealed class FakeProcessRunner : IPhaseDProcessRunner
@@ -633,6 +619,16 @@ public sealed class PhaseDExecutionStateTests
     public Task<int> RunAsync(ProcessStartInfo startInfo, string identityPath)
     {
       Calls++;
+      if (startInfo.ArgumentList.Contains("-RuntimeCandidatePath"))
+      {
+        var args = startInfo.ArgumentList.ToList();
+        Assert.Equal(new string('a', 64), args[args.IndexOf("-ExpectedPreparationBindingSha256") + 1]);
+        using var candidate = JsonDocument.Parse(File.ReadAllText(args[args.IndexOf("-RuntimeCandidatePath") + 1]));
+        Assert.Equal(candidate.RootElement.GetProperty("accountUid").GetString(), args[args.IndexOf("-AccountUid") + 1]);
+        Assert.Equal(candidate.RootElement.GetProperty("accountLabel").GetString(), args[args.IndexOf("-AccountLabel") + 1]);
+        Assert.Equal(candidate.RootElement.GetProperty("baseRevisions").GetProperty("revisionSetSha256").GetString(),
+            args[args.IndexOf("-AccountRevisionSetSha256") + 1]);
+      }
       Entered.TrySetResult();
       return Exit.Task;
     }

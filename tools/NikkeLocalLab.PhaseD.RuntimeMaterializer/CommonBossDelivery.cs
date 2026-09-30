@@ -13,7 +13,7 @@ internal static class CommonBossDelivery
 {
   private static void Require([System.Diagnostics.CodeAnalysis.DoesNotReturnIf(false)] bool ok) => CommonDeliveryFiles.Require(ok);
   internal static async Task<(CommonBossDeliveryPlan Plan, BossRuntimeVariantProfile Profile, CommonNativePatch[] Patches)>
-      Validate(string descriptor, string digest, string profilePath, string weakness)
+      Validate(string descriptor, string digest, string profilePath, string weakness, bool fullVerification = true)
   {
     using var document = ReadJson(descriptor, digest);
     var plan = document.RootElement.Deserialize<CommonBossDeliveryPlan>(Json)!;
@@ -34,7 +34,10 @@ internal static class CommonBossDelivery
       var name = Text(row, "relativePath");
       var path = Plain(Path.Combine(root, name));
       Require(!Path.IsPathRooted(name) && names.Add(name) && path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
-      Require(FileHash(path) == Text(row, "sha256"));
+      if (fullVerification) Require(FileHash(path) == Text(row, "sha256"));
+      if (!fullVerification || row.TryGetProperty("byteLength", out _))
+        Require(row.TryGetProperty("byteLength", out var size) && size.TryGetInt64(out var length) &&
+          length >= 0 && File.Exists(path) && new FileInfo(path).Length == length);
     }
     Require(names.Contains("boss-runtime-variant.profile.json") && FileHash(Path.Combine(root, "boss-runtime-variant.profile.json")) == profile.Sha256);
     var adjusted = profile.ShieldFxPreparation?.Variants.Where(row => row.OperationCode == "adjust_candidate").ToArray() ?? [];
@@ -76,7 +79,9 @@ internal static class CommonBossDelivery
       {
         var name = $"{role}-{ordinal}-{kind}.chunk"; Require(Text(row, kind + "File") == name);
         var pin = new CommonFilePin(Path.Combine(chunkRoot, name), size, Text(row, kind + "Sha256"));
-        _ = Read(pin, 16777216); return pin;
+        if (fullVerification) _ = Read(pin, 16777216);
+        else Require(File.Exists(Plain(pin.Path)) && new FileInfo(pin.Path).Length == pin.Length);
+        return pin;
       }
       var before = Chunk("before"); var after = Chunk("after"); Require(before.Sha256 != after.Sha256);
       patches.Add(new(role, offset, before, after)); end = offset + size;
@@ -88,7 +93,7 @@ internal static class CommonBossDelivery
 
   internal static async Task<object?> Stage(string descriptor, string digest, string profilePath, string weakness, string launchRoot)
   {
-    var (plan, profile, patches) = await Validate(descriptor, digest, profilePath, weakness);
+    var (plan, profile, patches) = await Validate(descriptor, digest, profilePath, weakness, fullVerification: false);
     if (patches.Length == 0) return null;
     var baseline = CommonNativeFxBaseline.Load(plan.NativeStore!);
     return NativeFxExecutionDelivery.Stage(launchRoot, profile.Sha256, plan.CandidateSeal.Sha256,

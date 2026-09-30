@@ -321,6 +321,8 @@ class CandidateTests(unittest.TestCase):
             'asset': pin(bundle.read_bytes())}))
         result = self.seal(root, source)
         paths = {r['relativePath'] for r in result['artifacts']}
+        for row in result['artifacts']:
+            self.assertEqual(row['byteLength'], (root / row['relativePath']).stat().st_size)
         self.assertIn('acquired-behavior/' + bundle.name, paths)
         self.assertIn('behavior-acquisition.receipt.json', paths)
         bundle.write_bytes(b'drift')

@@ -33,6 +33,8 @@ try {
     Write-Test (Join-Path $bundle.root 'Nll.PhaseDJob.cs') 'changed'
     Reject-Test { Read-PhaseDRunnerBundle $spec.launchRoot }; $count++
     [IO.File]::WriteAllBytes((Join-Path $bundle.root 'Nll.PhaseDJob.cs'),$sourceBytes)
+    Reject-Test { Get-PhaseDJobBinding $spec.launchRoot ('0'*64) }; $count++
+    Reject-Test { Get-PhaseDJobBinding (Join-Path $root 'different-run') $bundle.sha256 }; $count++
     $job=New-PhaseDExecutionJob $spec.launchRoot $bundle.sha256; $jobs.Add($job)
     Require-Test (-not $job.Contains($PID)) 'coordinator_in_job'; $count++
     Reject-Test { New-PhaseDExecutionJob $spec.launchRoot $bundle.sha256 }; $count++
@@ -133,6 +135,7 @@ try {
     foreach ($file in @('Nll.PhaseDRunnerContract.ps1','Nll.PhaseDRunnerSeal.ps1','Nll.PhaseDProcessIdentity.ps1','Nll.PhaseDJob.ps1')) {
         $watcherCode += '. ' + (ConvertTo-PhaseDPowerShellLiteral (Join-Path $bundle.root $file)) + '; '
     }
+    $watcherCode += '$script:PhaseDVerifiedRunnerBundle=Read-PhaseDRunnerBundle ' + (ConvertTo-PhaseDPowerShellLiteral $spec.launchRoot) + '; Assert-PhaseDRunnerSpecification $script:PhaseDVerifiedRunnerBundle.specification; '
     $watcherCode += '$j=Receive-PhaseDJobHandoff ' + (ConvertTo-PhaseDPowerShellLiteral $spec.launchRoot) + ' ' + (ConvertTo-PhaseDPowerShellLiteral $bundle.sha256) + '; try { Start-Sleep -Seconds 90 } finally { $j.Dispose() }'
     $watcherCode='try { '+$watcherCode+' } catch { $Error | ForEach-Object { [Console]::Error.WriteLine($_.ToString()+" at "+$_.ScriptStackTrace) }; exit 1 }'
     $watcherError=Join-Path $root 'watcher.stderr.log'

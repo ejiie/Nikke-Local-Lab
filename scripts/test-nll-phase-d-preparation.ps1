@@ -139,6 +139,55 @@ try {
         $p21Checks++
     }
     Reset-Fixture; Save-Fixture
+    # Runtime bundle I/O is a synthetic map, never the installed C:\NLL tree.
+    & {
+        $manifest='C:\NLL\Runtime\PhaseD152-v99\bundle.private.json'
+        $pointer='C:\NLL\ControlCenter\runtime-selection.private.json'
+        $client='C:\NLL\Clients\NIKKE-152.8.11-ResourceProbe\NIKKE\game\nikke.exe'
+        $native='C:\NLL\Clients\NIKKE-152.8.11-ResourceProbe\NIKKE\game\sodium.dll'
+        $certificate='C:\NLL\Clients\NIKKE-152.8.11-ResourceProbe\certificate.pem'
+        $asset='C:\NLL\Runtime\PhaseD152-v99\server\cache\synthetic.bundle'
+        $launcher='C:\NIKKE\Launcher\nikke_launcher.exe'
+        $files=@{}
+        foreach($path in @($manifest,$pointer,$client,$native,$certificate,$asset,$launcher)) {
+            $files[$path]=@{length=32;sha256=('a'*64);content=''}
+        }
+        $files[$client].sha256='9c50d1e5e2312783b7ae908237081ff2976e06dcb0d90ae1d59f563afc5c73ef'
+        $files[$native].sha256='54ee18f5ee3d16fea8bb6c3407a880727aa3b848f6a55908e6bf90f8635e5662'
+        function Pin-Test($Path) { @{path=$Path;length=$files[$Path].length;sha256=$files[$Path].sha256} }
+        $value=@{contractId='nll/phase-d-runtime-bundle/v1';clientBuildCode='build_152.8.11'
+            serverRoot='C:\NLL\Runtime\PhaseD152-v99\server';bootstrapRoot='C:\NLL\Runtime\PhaseD152-v99\bootstrap'
+            client=(Pin-Test $client);native=(Pin-Test $native);certificate=(Pin-Test $certificate)
+            files=@((Pin-Test $asset),(Pin-Test $native),(Pin-Test $certificate),(Pin-Test $client))
+            clientPrograms=@((Pin-Test $client),(Pin-Test $launcher));blockOnlyPrograms=@()
+            overlay=@();preserveExistingAccount=$true;syntheticRegistration=$false;httpDiagnosticLayer=$false}
+        $files[$manifest].content=$value | ConvertTo-Json -Depth 8
+        $files[$pointer].content=@{contractId='nll/phase-d-runtime-selection/v1';manifest=(Pin-Test $manifest)} | ConvertTo-Json
+        $hashes=[Collections.Generic.List[string]]::new()
+        function Test-Path { param($LiteralPath,$PathType) $files.ContainsKey($LiteralPath) }
+        function Get-Item { param($LiteralPath) [pscustomobject]@{Length=$files[$LiteralPath].length} }
+        function Get-Content { param($LiteralPath,[switch]$Raw,$Encoding) $files[$LiteralPath].content }
+        function Get-PdBundleHash($Path) { $hashes.Add($Path); $files[$Path].sha256 }
+        function Get-NetFirewallRule { throw 'bundle_reader_must_not_query_firewall' }
+        $null=Read-PdRuntimeBundle $pointer
+        Assert-Test ($hashes.Count -eq 4 -and $asset -cnotin $hashes -and $launcher -cnotin $hashes) 'launch_hash_scope_changed'
+        foreach($path in @($manifest,$client,$native,$certificate)) {
+            $before=$files[$path].sha256; $files[$path].sha256='b'*64
+            $caught=$false; try { $null=Read-PdRuntimeBundle $pointer } catch { $caught=$_.Exception.Message -ceq 'phase_d_bundle_file_drifted' }
+            Assert-Test $caught 'security_pin_drift_accepted'; $files[$path].sha256=$before
+        }
+        $files[$asset].length++
+        $caught=$false; try { $null=Read-PdRuntimeBundle $pointer } catch { $caught=$_.Exception.Message -ceq 'phase_d_bundle_file_drifted' }
+        Assert-Test $caught 'asset_length_drift_accepted'; $files[$asset].length--
+        $files[$asset].sha256='b'*64
+        $null=Read-PdRuntimeBundle $pointer
+        $caught=$false; try { $null=Read-PdRuntimeBundle $pointer -FullVerification } catch { $caught=$_.Exception.Message -ceq 'phase_d_bundle_file_drifted' }
+        Assert-Test $caught 'full_verification_lost_asset_hash'
+        $caught=$false; try { $null=Read-PdRuntimeBundle $pointer -BeforeActivation } catch { $caught=$_.Exception.Message -ceq 'phase_d_bundle_file_drifted' }
+        Assert-Test $caught 'installation_lost_asset_hash'
+        Write-Output 'Runtime bundle: 9 synthetic length/security-pin/full-verification checks passed; zero firewall queries.'
+    }
+
     # Exercise error sanitization without invoking any operating-system boundary.
     function Read-PdRuntimeBundle { param($PointerPath, [switch]$FilePinsOnly) throw 'C:\private\sensitive-data' }
     Assert-Test ((Read-Fixture).failureCode -ceq 'phase_d_preparation_invalid') 'raw_exception_leaked'

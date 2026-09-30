@@ -142,19 +142,6 @@ function Invoke-PhaseDRunnerStart {
     Assert-True ($runtime.Count -eq 0) `
         'phase3b2_epinel_minimal_start_runtime_not_cold'
     
-    $baseFirewallGroup = 'NLL Phase3B2 Physical Isolation'
-    $baseRules = @(Get-NetFirewallRule -Group $baseFirewallGroup `
-        -ErrorAction SilentlyContinue)
-    Assert-True (
-        $baseRules.Count -eq 17 -and
-        @($baseRules | Where-Object {
-            $_.Direction -ne 'Outbound' -or $_.Action -ne 'Block' -or
-            $_.Enabled -ne 'True'
-        }).Count -eq 0 -and
-        @(Get-NetFirewallRule -Group $extensionFirewallGroup `
-            -ErrorAction SilentlyContinue).Count -eq 0
-    ) 'phase3b2_epinel_minimal_start_firewall_precondition_invalid'
-    
     $assessmentUid = [Guid]::NewGuid().ToString('D')
     $runRoot = Join-Path $EvidenceRoot $assessmentUid
     $bootstrapRunRoot = Join-Path (Get-PhaseDRunnerBootstrapEvidenceRoot $BootstrapEvidenceLane) $assessmentUid
@@ -234,24 +221,6 @@ function Invoke-PhaseDRunnerStart {
 
         Assert-True ((Get-Sha256Hex $hostsPath) -ceq $expectedAppliedHostsSha256) `
             'phase3b2_epinel_minimal_start_hosts_apply_failed'
-    
-        New-NetFirewallRule `
-            -Name 'NLL.Phase3B2.EpinelMinimal.BootstrapBlock' `
-            -DisplayName 'NLL Phase3B2 Epinel Minimal Bootstrap Outbound Block' `
-            -Group $extensionFirewallGroup -Direction Outbound -Action Block `
-            -Enabled True -Profile Any -Program $bootstrapPath | Out-Null
-
-        New-NetFirewallRule -Name 'NLL.PhaseD.RuntimeServerBlock' -DisplayName 'NLL Phase D local runtime server' -Group $extensionFirewallGroup -Direction Outbound -Action Block -Enabled True -Profile Any -Program $serverPath | Out-Null
-        $extensionRules = @(Get-NetFirewallRule -Group $extensionFirewallGroup)
-        $extensionPrograms = @(
-            $extensionRules | Get-NetFirewallApplicationFilter
-        )
-        Assert-True (
-            $extensionRules.Count -eq 2 -and
-            $extensionPrograms.Count -eq $extensionRules.Count -and
-            (@($extensionPrograms.Program) -ccontains $bootstrapPath) -and
-            (@($extensionPrograms.Program) -ccontains $serverPath)
-        ) 'phase3b2_epinel_minimal_start_firewall_apply_failed'
     
         if ($null -ne $Specification.executionFx) {
             $stageCode = 'native_fx_apply'

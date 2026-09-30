@@ -20,6 +20,7 @@ if ($null -ne $recoveryBundle -and
 if ($null -eq $recoveryBundle) { throw 'phase_d_runner_binding_missing' }
 . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerContract.ps1')
 Assert-PhaseDRunnerSpecification $recoveryBundle.specification
+$script:PhaseDVerifiedRunnerBundle = $recoveryBundle
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDCompletion.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDChildProcess.ps1')
