@@ -1,4 +1,4 @@
-# Run the real DB-readiness block with fake pg_ctl and temporary bindings only.
+# Run real DB-readiness and pointer recovery branches with synthetic resources only.
 $ErrorActionPreference = 'Stop'
 $jobRequired = $false
 $replayOnly = $false
@@ -42,6 +42,67 @@ try {
         $expected = switch ($case) { 'already-ready' { 'status' }; 'start-failed' { 'status,start' }; default { 'status,start,status' } }
         if (($script:commands -join ',') -cne $expected) { throw 'database_restart_sequence_invalid' }
     }
+    # Exercise the complete pointer recovery branch. Capturing changed bytes is
+    # a prerequisite for restoring the baseline and retiring the active pointer.
+    $outerTry=@($ast.EndBlock.Statements | Where-Object {$_ -is [Management.Automation.Language.TryStatementAst]})[-1]
+    $restoreBlocks=@($outerTry.Body.Statements | Where-Object {
+        $_ -is [Management.Automation.Language.IfStatementAst] -and
+        $null -ne $_.Find({param($node)
+            $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'Invoke-SoloRaidCapture'
+        },$false)
+    })
+    Assert-Recovery ($restoreBlocks.Count -eq 1) 'recovery_restore_branch_ambiguous'
+    $restore=[scriptblock]::Create($restoreBlocks[0].Extent.Text)
+    $hashFunction=$ast.Find({param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Get-Sha256Lower'
+    },$false)
+    . ([scriptblock]::Create($hashFunction.Extent.Text))
+    function Invoke-SoloRaidCapture {
+        param($SourceDatabasePath)
+        $script:captureCalls++
+        Assert-Recovery ([IO.File]::ReadAllText($SourceDatabasePath) -ceq 'changed') 'capture_after_baseline_restore'
+        if($case -eq 'capture-failed'){throw 'synthetic_capture_failed'}
+        if($case -ne 'missing-pending'){[IO.File]::WriteAllText($SoloRaidPendingPayloadPath,'captured')}
+    }
+    foreach($case in @('unchanged','changed','existing-pending','capture-failed','missing-pending','missing-baseline')) {
+        $evidenceRoot=Join-Path $root $case
+        $runRoot=Join-Path $evidenceRoot 'run'; $runtimeRoot=Join-Path $evidenceRoot 'runtime'
+        $null=New-Item -ItemType Directory -Path $runRoot,$runtimeRoot
+        $dbBefore=Join-Path $runRoot 'db.before.bin'; $runtimeDbPath=Join-Path $runtimeRoot 'db.json'
+        if($case -ne 'missing-baseline'){[IO.File]::WriteAllText($dbBefore,'baseline')}
+        $original=if($case -eq 'unchanged'){'baseline'}else{'changed'}
+        [IO.File]::WriteAllText($runtimeDbPath,$original)
+        $SoloRaidPendingPayloadPath=Join-Path $evidenceRoot 'pending'
+        if($case -eq 'existing-pending'){[IO.File]::WriteAllText($SoloRaidPendingPayloadPath,'existing')}
+        $pointerPath=Join-Path $runRoot 'active-run.pointer.json'
+        [IO.File]::WriteAllText($pointerPath,(@{contractId='nll/phase3b2-epinel-minimal-active-run-pointer/v1';runRoot=$runRoot} | ConvertTo-Json))
+        $pointer=Get-Item -LiteralPath $pointerPath
+        $script:captureCalls=0; $failure=$null
+        try { & $restore } catch { $failure=$_.Exception.Message }
+        $expectedFailure=switch($case){
+            'capture-failed' {'synthetic_capture_failed'}
+            'missing-pending' {'phase_d_raid_state_capture_missing_before_rollback'}
+            'missing-baseline' {'phase_d_orphan_recovery_baseline_missing'}
+            default {$null}
+        }
+        Assert-Recovery ($failure -ceq $expectedFailure) 'recovery_capture_failure_not_preserved'
+        Assert-Recovery ((Test-Path -LiteralPath $pointerPath) -eq ($null -ne $failure)) 'recovery_pointer_retired_before_capture'
+        $archives=@(Get-ChildItem -LiteralPath $runRoot -Filter 'active-run.pointer.orphan-recovery-*.json')
+        $expectedArchives=if($null -eq $failure){1}else{0}
+        Assert-Recovery ($archives.Count -eq $expectedArchives) 'recovery_pointer_archive_missing'
+        if($archives.Count){
+            $archived=Get-Content -LiteralPath $archives[0].FullName -Raw | ConvertFrom-Json
+            Assert-Recovery ($archived.runRoot -ceq $runRoot) 'recovery_pointer_archive_changed'
+        }
+        $expectedDb=if($null -eq $failure){'baseline'}else{$original}
+        Assert-Recovery ([IO.File]::ReadAllText($runtimeDbPath) -ceq $expectedDb) 'recovery_database_lost_before_capture'
+        $expectedCalls=if($case -in @('changed','capture-failed','missing-pending')){1}else{0}
+        Assert-Recovery ($script:captureCalls -eq $expectedCalls) 'recovery_recaptured_existing_pending'
+        if($case -in @('changed','existing-pending')){
+            $expectedPending=if($case -eq 'changed'){'captured'}else{'existing'}
+            Assert-Recovery ([IO.File]::ReadAllText($SoloRaidPendingPayloadPath) -ceq $expectedPending) 'recovery_pending_not_preserved'
+        }
+    }
 } finally {
     foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name,$before[$name],'Process') }
     $resolved = [IO.Path]::GetFullPath($root)
@@ -49,4 +110,4 @@ try {
         [IO.Path]::GetFileName($resolved) -notlike 'nll-recovery-db-*') { throw 'unsafe_test_cleanup' }
     Remove-Item -LiteralPath $resolved -Recurse -Force
 }
-'Phase D recovery DB: unchanged/pending/already-ready/start-failure cases passed without a DB process.'
+'Phase D recovery DB: 4 readiness and 6 capture/restore/pointer cases passed without a DB process.'

@@ -38,10 +38,8 @@ try {
     Assert-Test ((Pin $target) -ceq (Pin $old))
     $startAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'start-nll-phase-d-control-center.ps1'), [ref]$tokens, [ref]$errors)
     if ($errors.Count) { throw 'release_test_start_parse_failed' }
-    # The pre-bootstrap startup body must not consume/delete a stop request.
-    $markerOffset = $startAst.Extent.Text.IndexOf("Write-Output ('NLL_DESKTOP_BOOTSTRAP:'", [StringComparison]::Ordinal)
-    Assert-Test ($markerOffset -gt 0)
-    Assert-Test (-not $startAst.Extent.Text.Substring(0,$markerOffset).Contains('Remove-Item -LiteralPath $DesktopStopSignalPath'))
+    # Caller-owned stop requests must not be deleted anywhere in the host.
+    Assert-Test (-not $startAst.Extent.Text.Contains('Remove-Item -LiteralPath $DesktopStopSignalPath'))
     $smokeAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'test-nll-stabilization-installed.ps1'), [ref]$tokens, [ref]$errors)
     Assert-Test ($errors.Count -eq 0)
     $readDefinition=$smokeAst.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Read-SmokeBootstrapLines'},$true)

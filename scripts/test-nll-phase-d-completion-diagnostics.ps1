@@ -1,6 +1,4 @@
-param([string]$PinnedTemplatePath = '')
-# Default: source-free fixture. Optional: the actual locally pinned template's
-# post-stop body, executed ONLY against synthetic paths and fake firewall cmdlets.
+# Source-free completion adapter fixture; synthetic paths and fake firewall cmdlets only.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.PhaseDCompletion.ps1')
@@ -49,11 +47,6 @@ $receipt = [ordered]@{
 Write-AtomicUtf8NoBom $completionPath ($receipt | ConvertTo-Json -Depth 6)
 Move-Item -LiteralPath $activePointerPath -Destination (Join-Path $runRoot 'active-run.pointer.archived.json')
 '@
-if ($PinnedTemplatePath) {
-    Assert-Test ((Get-Sha256Hex $PinnedTemplatePath) -ceq
-        '5277d6ea79410acbe79d7581461bc3e1d07fb6baa9d695b97d46237c839466d4') 'completion_test_parent_pin_mismatch'
-    $template = [IO.File]::ReadAllText($PinnedTemplatePath)
-}
 $derived = ConvertTo-PhaseDCompletionText $template
 Assert-Test ($derived -ceq (ConvertTo-PhaseDCompletionText ($template.Replace("`r`n", "`n").Replace("`n", "`r`n")))) 'completion_newline_derivation_differs'
 foreach ($invalid in @($derived, $template.Replace('    markerOnlyEvidencePersisted = $true', ''),
@@ -62,18 +55,7 @@ foreach ($invalid in @($derived, $template.Replace('    markerOnlyEvidencePersis
     try { $null = ConvertTo-PhaseDCompletionText $invalid } catch { $rejected = $_.Exception.Message -ceq 'phase_d_completion_diagnostics_template_invalid' }
     Assert-Test $rejected 'changed_template_accepted'
 }
-if ($PinnedTemplatePath) {
-    $tokens = $null; $errors = $null
-    $ast = [Management.Automation.Language.Parser]::ParseInput($derived, [ref]$tokens, [ref]$errors)
-    # Only pure file helpers; never load the pinned process termination helpers.
-    foreach ($name in @('Protect-ServerLog', 'Get-TrialRecordMetrics')) {
-        $function = @($ast.EndBlock.Statements | Where-Object { $_ -is [Management.Automation.Language.FunctionDefinitionAst] -and $_.Name -ceq $name })[0]
-        . ([scriptblock]::Create($function.Extent.Text))
-    }
-    $offset = $derived.IndexOf('$redactedServerLogMatchCount = Protect-ServerLog $stdoutPath', [StringComparison]::Ordinal)
-    Assert-Test ($offset -gt 0) 'completion_test_post_stop_anchor_missing'
-    $body = $derived.Substring($offset)
-} else { $body = $derived }
+$body = $derived
 $taskRoot = Join-Path ([IO.Path]::GetTempPath()) ('nll-completion-diagnostics-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $taskRoot
 $previousProfile = $env:USERPROFILE

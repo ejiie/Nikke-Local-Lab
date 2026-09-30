@@ -21,11 +21,13 @@ function Read-PhaseDRunnerBundle { param($LaunchRoot,$ExpectedBundleSha256) @{sh
 function Write-AtomicJson($Path, $Value) {
     if ($Path -ceq $statePath -and $Value.statusCode -ceq 'completed') {
         Assert-Watcher $script:persisted 'terminal_state_before_persistence'
+        Assert-Watcher (Test-Path -LiteralPath $SoloRaidPendingPayloadPath) 'pending_deleted_before_terminal_state'
     }
     [IO.File]::WriteAllText($Path, ($Value | ConvertTo-Json -Depth 8))
 }
 function Get-PhaseDVerifiedProcess {
     param($Identity)
+    if ($case -eq 'identity-failure') { throw 'synthetic_identity_mismatch' }
     if ($case -eq 'early-exit') { return $null }
     $p = [pscustomobject]@{}
     $p | Add-Member ScriptMethod WaitForExit { $script:waited = $true }
@@ -50,6 +52,7 @@ function Restore-ControlCenterHosts { $script:hostsRestored = $true }
 function Ensure-PhaseDPostgresRunning {
     param($PgCtlPath, $DataPath, $LogPath, $OwnershipPath)
     Assert-Watcher $script:hostsRestored 'database_start_before_hosts_restore'
+    if ($jobRequired) { Assert-Watcher $script:checkpointWritten 'database_start_before_cleanup_checkpoint' }
     if ($case -eq 'pg-failure') { throw 'phase_d_control_center_database_restart_failed' }
     $script:databaseReady = $true
 }
@@ -74,7 +77,7 @@ try {
     $sealedRunner=if ($engine -ne 'legacy') { @{sha256=('a'*64)} } else { $null }
     $jobRequired=$engine -eq 'job'
     $ExpectedRunnerBundleSha256='a'*64
-    foreach ($case in @('early-exit', 'normal-exit', 'pg-failure', 'persist-failure')) {
+    foreach ($case in @('early-exit', 'normal-exit', 'pg-failure', 'persist-failure', 'identity-failure')) {
         $physicalCleanupCommitted=$false
         $script:checkpointWritten=$false
         $LaunchRoot = Join-Path $taskRoot ($engine+'-'+$case)
@@ -99,6 +102,7 @@ try {
             launchContextUid = $case; startReceiptSha256 = $StartReceiptSha256; client = @{processId = 123}
         })
         Write-AtomicJson $statePath ([ordered]@{
+            createdAtUtc = [DateTimeOffset]::UtcNow.AddSeconds(-20).ToString('o')
             statusCode = 'started'; clientProcessId = 123; watcherProcessId = 456; watcherProcessStartedAtUtc = 'synthetic'
             startReceiptSha256 = $null; completionReceiptSha256 = $null; failureCode = $null; updatedAtUtc = $null
         })
@@ -109,8 +113,19 @@ try {
         $success = $case -in @('early-exit','normal-exit')
         $expectedStatus = if ($success) { 'completed' } else { 'started' }
         Assert-Watcher ($state.statusCode -ceq $expectedStatus -and $context.statusCode -ceq $expectedStatus) 'watcher_completion_state_invalid'
-        Assert-Watcher ((Test-Path -LiteralPath $SoloRaidPendingPayloadPath) -eq (-not $success)) 'pending_deleted_before_acknowledgement'
+        Assert-Watcher ((Test-Path -LiteralPath $SoloRaidPendingPayloadPath) -eq ($case -in @('pg-failure','persist-failure'))) 'pending_deleted_before_acknowledgement'
         Assert-Watcher ($null -eq $state.clientProcessId -and $null -eq $state.watcherProcessId) 'exited_process_indicator_not_cleared'
+        $progressPath=Join-Path $LaunchRoot 'execution-progress.json'
+        $exitObserved=$false
+        if (Test-Path -LiteralPath $progressPath) {
+            $progress=Get-Content -LiteralPath $progressPath -Raw | ConvertFrom-Json
+            $exitObserved=@($progress.events | Where-Object {$_.stageCode -ceq 'game_exited'}).Count -gt 0
+        }
+        Assert-Watcher ($exitObserved -eq ($case -ne 'identity-failure')) ('unverified_exit_progress_' + $engine + '_' + $case)
+        if ($case -eq 'identity-failure') {
+            Assert-Watcher (-not $script:waited -and -not $script:disposed -and -not $script:hostsRestored -and
+                -not $script:databaseReady -and -not $script:persisted) 'identity_failure_changed_runtime'
+        }
         if ($success) { Assert-Watcher ($null -eq $state.failureCode -and $script:databaseReady -and $script:persisted) 'completed_without_database_or_acknowledgement' }
         else { Assert-Watcher ($null -ne $state.failureCode) 'failure_not_reconcilable' }
     }
@@ -122,4 +137,4 @@ finally {
         [IO.Path]::GetFileName($resolved) -notlike 'nll-watcher-completion-*') { throw 'unsafe_test_cleanup' }
     Remove-Item -LiteralPath $resolved -Recurse -Force
 }
-'Phase D watcher: early/normal exit, database failure and persistence failure ordering passed; synthetic resources only.'
+'Phase D watcher: early/normal exit, identity rejection, database failure and persistence failure ordering passed; synthetic resources only.'
