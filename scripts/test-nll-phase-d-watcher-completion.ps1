@@ -2,9 +2,7 @@
 # boundaries. This checks ordering; it is not original-game or database evidence.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$sealedRunner = $null # Legacy fixture; sealed-route cases are below.
 $executionJob = $null
-$jobRequired = $false
 $physicalCleanupCommitted = $false
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 $tokens = $null; $errors = $null
@@ -37,12 +35,10 @@ function Get-PhaseDVerifiedProcess {
 function Invoke-PhaseDChildScript {
     param($ScriptPath, $Arguments, $StandardOutputPath, $StandardErrorPath)
     Assert-Watcher ($Arguments.OutcomeCode -ceq 'client_exit' -and $Arguments.ObservedStageCode -ceq 'startup_only') 'automatic_exit_claimed_gameplay'
-    if ($null -ne $sealedRunner) {
-        Assert-Watcher ($Arguments.Phase -ceq 'completion' -and $Arguments.ExpectedBundleSha256 -ceq $ExpectedRunnerBundleSha256 -and
-            $Arguments.LaunchRoot -ceq $LaunchRoot) 'watcher_changed_runner_binding'
-    } else { Assert-Watcher ($Arguments.ServerRoot -ceq $ServerRoot -and $Arguments.EvidenceRoot -ceq $EvidenceRoot) 'watcher_changed_legacy_binding' }
+    Assert-Watcher ($Arguments.Phase -ceq 'completion' -and $Arguments.ExpectedBundleSha256 -ceq $ExpectedRunnerBundleSha256 -and
+        $Arguments.LaunchRoot -ceq $LaunchRoot) 'watcher_changed_runner_binding'
     Assert-Watcher ($case -eq 'early-exit' -or ($script:waited -and $script:disposed)) 'completion_before_client_exit'
-    if ($jobRequired) { Assert-Watcher ($script:jobOrder -ceq 'zero,redact,fx') 'completion_before_job_cleanup'; $script:jobOrder+=',completion' }
+ Assert-Watcher ($script:jobOrder -ceq 'zero,redact,fx') 'completion_before_job_cleanup'; $script:jobOrder+=',completion'
     [IO.File]::WriteAllText((Join-Path $EvidenceRoot 'active-run.pointer.archived.json'), 'synthetic-archived')
     [IO.File]::WriteAllText((Join-Path $EvidenceRoot 'completion.receipt.json'), '{"diagnosticObservationStatus":"not_observed"}')
     [IO.File]::WriteAllText($SoloRaidPendingPayloadPath, 'synthetic-pending')
@@ -52,14 +48,14 @@ function Restore-ControlCenterHosts { $script:hostsRestored = $true }
 function Ensure-PhaseDPostgresRunning {
     param($PgCtlPath, $DataPath, $LogPath, $OwnershipPath)
     Assert-Watcher $script:hostsRestored 'database_start_before_hosts_restore'
-    if ($jobRequired) { Assert-Watcher $script:checkpointWritten 'database_start_before_cleanup_checkpoint' }
+ Assert-Watcher $script:checkpointWritten 'database_start_before_cleanup_checkpoint'
     if ($case -eq 'pg-failure') { throw 'phase_d_control_center_database_restart_failed' }
     $script:databaseReady = $true
 }
 function Invoke-SoloRaidPersistence {
     param($LaunchContextUid)
     Assert-Watcher ($script:databaseReady -and (Test-Path -LiteralPath $SoloRaidPendingPayloadPath)) 'persistence_without_ready_database_or_pending'
-    if ($jobRequired) { Assert-Watcher ($script:jobOrder -ceq 'zero,redact,fx,completion') 'persistence_before_job_completion' }
+ Assert-Watcher ($script:jobOrder -ceq 'zero,redact,fx,completion') 'persistence_before_job_completion'
     $current = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
     Assert-Watcher ($current.statusCode -ceq 'started') 'state_released_before_replay'
     if ($case -eq 'persist-failure') { throw 'phase_d_synthetic_persist_failed' }
@@ -73,63 +69,59 @@ function Invoke-PhaseDExecutionFxCleanup { Assert-Watcher ($script:jobOrder -ceq
 function Write-PhaseDPhysicalCleanupCheckpoint { Assert-Watcher ($script:jobOrder -ceq 'zero,redact,fx,completion') 'checkpoint_before_physical_completion'; $script:checkpointWritten=$true }
 function Assert-PhaseDChildrenExited { }
 try {
-  foreach ($engine in @('legacy','sealed','job')) {
-    $sealedRunner=if ($engine -ne 'legacy') { @{sha256=('a'*64)} } else { $null }
-    $jobRequired=$engine -eq 'job'
-    $ExpectedRunnerBundleSha256='a'*64
-    foreach ($case in @('early-exit', 'normal-exit', 'pg-failure', 'persist-failure', 'identity-failure')) {
-        $physicalCleanupCommitted=$false
-        $script:checkpointWritten=$false
-        $LaunchRoot = Join-Path $taskRoot ($engine+'-'+$case)
-        $EvidenceRoot = Join-Path $LaunchRoot 'evidence'
-        $null = New-Item -ItemType Directory -Path $EvidenceRoot
-        $ServerRoot = Join-Path $LaunchRoot 'runtime'
-        $CompletionScriptPath = Join-Path $LaunchRoot 'never-executed.ps1'
-        $launchContextUid = $case; $StartReceiptSha256 = 'synthetic-start'; $ClientProcessId = 123
-        $statePath = Join-Path $LaunchRoot 'execution-state.json'
-        $contextPath = Join-Path $LaunchRoot 'launch-context.json'
-        $watcherLogPath = Join-Path $LaunchRoot 'completion-watcher.log'
-        $SoloRaidPendingPayloadPath = Join-Path $LaunchRoot 'payload.pending.json'
-        $SoloRaidCaptureReceiptPath = Join-Path $LaunchRoot 'capture.receipt.json'
-        $ControlCenterHostsBackupPath = Join-Path $LaunchRoot 'synthetic-hosts.before'
-        $ControlCenterHostsOriginalSha256 = 'synthetic-hash'
-        $ControlCenterPgCtlPath = 'synthetic-pgctl'; $ControlCenterPgDataPath = 'synthetic-data'; $ControlCenterPgLogPath = 'synthetic-log'
-        $databaseRestarted = $false; $controlCenterHostsRestored = $false; $completionApplied = $false; $raidStatePersisted = $false
-        $script:waited = $false; $script:disposed = $false; $script:persisted = $false; $script:databaseReady = $false; $script:hostsRestored = $false
-        [IO.File]::WriteAllText($ControlCenterHostsBackupPath, 'synthetic-hosts')
-        Write-AtomicJson (Join-Path $LaunchRoot 'runtime-processes.identity.json') ([ordered]@{
-            schemaVersion = 1; contractId = 'nll/phase-d-runtime-process-identities/v1'
-            launchContextUid = $case; startReceiptSha256 = $StartReceiptSha256; client = @{processId = 123}
-        })
-        Write-AtomicJson $statePath ([ordered]@{
-            createdAtUtc = [DateTimeOffset]::UtcNow.AddSeconds(-20).ToString('o')
-            statusCode = 'started'; clientProcessId = 123; watcherProcessId = 456; watcherProcessStartedAtUtc = 'synthetic'
-            startReceiptSha256 = $null; completionReceiptSha256 = $null; failureCode = $null; updatedAtUtc = $null
-        })
-        Write-AtomicJson $contextPath @{statusCode = 'started'}
-        & $action
-        $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-        $context = Get-Content -LiteralPath $contextPath -Raw | ConvertFrom-Json
-        $success = $case -in @('early-exit','normal-exit')
-        $expectedStatus = if ($success) { 'completed' } else { 'started' }
-        Assert-Watcher ($state.statusCode -ceq $expectedStatus -and $context.statusCode -ceq $expectedStatus) 'watcher_completion_state_invalid'
-        Assert-Watcher ((Test-Path -LiteralPath $SoloRaidPendingPayloadPath) -eq ($case -in @('pg-failure','persist-failure'))) 'pending_deleted_before_acknowledgement'
-        Assert-Watcher ($null -eq $state.clientProcessId -and $null -eq $state.watcherProcessId) 'exited_process_indicator_not_cleared'
-        $progressPath=Join-Path $LaunchRoot 'execution-progress.json'
-        $exitObserved=$false
-        if (Test-Path -LiteralPath $progressPath) {
-            $progress=Get-Content -LiteralPath $progressPath -Raw | ConvertFrom-Json
-            $exitObserved=@($progress.events | Where-Object {$_.stageCode -ceq 'game_exited'}).Count -gt 0
-        }
-        Assert-Watcher ($exitObserved -eq ($case -ne 'identity-failure')) ('unverified_exit_progress_' + $engine + '_' + $case)
-        if ($case -eq 'identity-failure') {
-            Assert-Watcher (-not $script:waited -and -not $script:disposed -and -not $script:hostsRestored -and
-                -not $script:databaseReady -and -not $script:persisted) 'identity_failure_changed_runtime'
-        }
-        if ($success) { Assert-Watcher ($null -eq $state.failureCode -and $script:databaseReady -and $script:persisted) 'completed_without_database_or_acknowledgement' }
-        else { Assert-Watcher ($null -ne $state.failureCode) 'failure_not_reconcilable' }
+$ExpectedRunnerBundleSha256='a'*64
+foreach ($case in @('early-exit', 'normal-exit', 'pg-failure', 'persist-failure', 'identity-failure')) {
+    $physicalCleanupCommitted=$false
+    $script:checkpointWritten=$false
+    $LaunchRoot = Join-Path $taskRoot ('job-'+$case)
+    $EvidenceRoot = Join-Path $LaunchRoot 'evidence'
+    $null = New-Item -ItemType Directory -Path $EvidenceRoot
+    $ServerRoot = Join-Path $LaunchRoot 'runtime'
+    $CompletionScriptPath = Join-Path $LaunchRoot 'never-executed.ps1'
+    $launchContextUid = $case; $StartReceiptSha256 = 'synthetic-start'; $ClientProcessId = 123
+    $statePath = Join-Path $LaunchRoot 'execution-state.json'
+    $contextPath = Join-Path $LaunchRoot 'launch-context.json'
+    $watcherLogPath = Join-Path $LaunchRoot 'completion-watcher.log'
+    $SoloRaidPendingPayloadPath = Join-Path $LaunchRoot 'payload.pending.json'
+    $SoloRaidCaptureReceiptPath = Join-Path $LaunchRoot 'capture.receipt.json'
+    $ControlCenterHostsBackupPath = Join-Path $LaunchRoot 'synthetic-hosts.before'
+    $ControlCenterHostsOriginalSha256 = 'synthetic-hash'
+    $ControlCenterPgCtlPath = 'synthetic-pgctl'; $ControlCenterPgDataPath = 'synthetic-data'; $ControlCenterPgLogPath = 'synthetic-log'
+    $databaseRestarted = $false; $controlCenterHostsRestored = $false; $completionApplied = $false; $raidStatePersisted = $false
+    $script:waited = $false; $script:disposed = $false; $script:persisted = $false; $script:databaseReady = $false; $script:hostsRestored = $false
+    [IO.File]::WriteAllText($ControlCenterHostsBackupPath, 'synthetic-hosts')
+    Write-AtomicJson (Join-Path $LaunchRoot 'runtime-processes.identity.json') ([ordered]@{
+        schemaVersion = 1; contractId = 'nll/phase-d-runtime-process-identities/v1'
+        launchContextUid = $case; startReceiptSha256 = $StartReceiptSha256; client = @{processId = 123}
+    })
+    Write-AtomicJson $statePath ([ordered]@{
+        createdAtUtc = [DateTimeOffset]::UtcNow.AddSeconds(-20).ToString('o')
+        statusCode = 'started'; clientProcessId = 123; watcherProcessId = 456; watcherProcessStartedAtUtc = 'synthetic'
+        startReceiptSha256 = $null; completionReceiptSha256 = $null; failureCode = $null; updatedAtUtc = $null
+    })
+    Write-AtomicJson $contextPath @{statusCode = 'started'}
+    & $action
+    $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+    $context = Get-Content -LiteralPath $contextPath -Raw | ConvertFrom-Json
+    $success = $case -in @('early-exit','normal-exit')
+    $expectedStatus = if ($success) { 'completed' } else { 'started' }
+    Assert-Watcher ($state.statusCode -ceq $expectedStatus -and $context.statusCode -ceq $expectedStatus) 'watcher_completion_state_invalid'
+    Assert-Watcher ((Test-Path -LiteralPath $SoloRaidPendingPayloadPath) -eq ($case -in @('pg-failure','persist-failure'))) 'pending_deleted_before_acknowledgement'
+    Assert-Watcher ($null -eq $state.clientProcessId -and $null -eq $state.watcherProcessId) 'exited_process_indicator_not_cleared'
+    $progressPath=Join-Path $LaunchRoot 'execution-progress.json'
+    $exitObserved=$false
+    if (Test-Path -LiteralPath $progressPath) {
+        $progress=Get-Content -LiteralPath $progressPath -Raw | ConvertFrom-Json
+        $exitObserved=@($progress.events | Where-Object {$_.stageCode -ceq 'game_exited'}).Count -gt 0
     }
-  }
+    Assert-Watcher ($exitObserved -eq ($case -ne 'identity-failure')) ('unverified_exit_progress_' + $case)
+    if ($case -eq 'identity-failure') {
+        Assert-Watcher (-not $script:waited -and -not $script:disposed -and -not $script:hostsRestored -and
+            -not $script:databaseReady -and -not $script:persisted) 'identity_failure_changed_runtime'
+    }
+    if ($success) { Assert-Watcher ($null -eq $state.failureCode -and $script:databaseReady -and $script:persisted) 'completed_without_database_or_acknowledgement' }
+    else { Assert-Watcher ($null -ne $state.failureCode) 'failure_not_reconcilable' }
+}
 }
 finally {
     $resolved = [IO.Path]::GetFullPath($taskRoot)

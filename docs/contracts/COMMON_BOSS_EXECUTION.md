@@ -12,7 +12,7 @@ recipe 결박이 필요해 profile v4를 추가했다. 문서·합성 검사만�
 | 보스의 의미 | `BossRuntimeVariantProfile` | 원본 manager/Challenge·skill/behavior·속성·QTE/FX 참조와 각 버전 shape 검증 |
 | 계정/진행도 | 기존 runtime candidate, account revision, raid snapshot | 선택 revision을 고정하며 보스 추가가 계정을 새로 만들지 않음 |
 | 실행 준비 | `nll/phase-d-preparation/v1`, preparation binding | 요청·profile·bundle의 일치 및 필요한 입력이 준비됐는지 판정 |
-| 실행 | 기존 LaunchContext와 `nll/phase-d-runner-input/v1..v3` | 공통 생성기가 완전한 입력을 생성·검증한 뒤 봉인 |
+| 실행 | 기존 LaunchContext와 `nll/phase-d-runner-input/v3` | 공통 생성기가 완전한 입력을 생성·검증한 뒤 봉인 |
 | 선택적 FX | 기존 `executionFx` 및 별도 변경/복구 manifest | 동일 profile·weakness·실행 신원 결박과 실제 전달 증거 필요 |
 | 결과/복구 | 기존 Job/완료/복구 영수증 | 게임 종료·소유 자원 복구와 게임/FX 인수 결과를 별도로 판정 |
 
@@ -30,19 +30,19 @@ recipe 결박이 필요해 profile v4를 추가했다. 문서·합성 검사만�
 | profile v3 | 현재 QTE와 FX transform 정보를 함께 표현 | 현재 지원 범위만 정확히 수락; version 숫자로 부팅을 선택하지 않음 |
 | profile v4 | 원본 속성 기반 크기 recipe·재사용/보정 자산 결박 | 전체 의미·후보 봉인·전달 descriptor 검증 필요; 같은 공통 실행기 사용 |
 | runner input v1 | 기존 실행 입력 | 과거 봉인 실행/복구 호환 유지 |
-| runner input v2 | weakness가 추가된 실행 입력 | profile 버전과 독립 |
+| runner input v2 | weakness가 추가된 과거 실행 입력 | 과거 봉인 코드로 복구 dispatch 유지 |
 | runner input v3 | weakness, Job nonce, 선택적 executionFx | 모든 보스가 동일 수명주기로 사용 가능 |
 
 profile의 schemaVersion/contractId는 정확한 쌍이어야 한다. profile v3를 runner v3와
 동일시하거나, runner v3가 profile v3/FX의 실행 수락을 입증한다고 해석하지 않는다.
 profile의 이미 존재하는 검증을 생략하거나 버전 표기를 낮춰 호환시키지 않는다.
 
-## 공통 생성기와 결박 규칙 — P1 구현
+## 공통 생성기와 결박 규칙 — 2026-09-30 L1 코드
 
-`New-PhaseDRunnerSpecification`이 제공된 필드로 기존 wire 계약을 선택한다.
+`New-PhaseDRunnerSpecification`은 선택 runtime bundle과 v3 실행 입력을 요구한다.
+과거 실행은 현재 생성기에 넣지 않고 그 실행의 hash로 봉인된 코드에 복구를 위임한다.
 
-- weakness가 없고 lifecycle/FX 필드도 없으면 기존 v1, weakness만 있으면 기존 v2다.
-- jobNonce 또는 executionFx가 있으면 두 필드와 weakness가 모두 있어야 한다. 누락은
+- jobNonce, executionFx, weakness가 모두 있어야 한다. 누락은
   `phase_d_runner_input_invalid`이며 조용히 버리거나 v1/v2로 낮추지 않는다.
 - 완전한 lifecycle 입력은 v3다. executionFx는 명시적 null일 수 있다. 이는 해당 실행에
   전달된 FX 참조가 없다는 뜻이며 profile이 요구하는 FX를 생략해도 된다는 뜻이 아니다.
@@ -306,7 +306,10 @@ P2-1에서는 기존 준비기에 순수 해석 함수 `Resolve-PhaseDBossAffini
 - 검증용 전달 reader의 v3 한정과 별도 실행 경로는 P2~P5 이관 대상이다. 필요한 증거
   검사를 삭제하는 대신 공통 준비/전달로 옮긴다. 이번 P1은 이를 실행 가능으로 바꾸지 않는다.
 
-## 검증
+## P1 당시 검증 기록
+
+L1은 새 입력 검사를 v3로 제한하고 과거 v1/v2/v3 봉인 dispatch를 합성 검사한다.
+아래 수치는 P1 당시 기록이며 현재 검사 수를 뜻하지 않는다.
 
 - 기존 runner 70개 검사와 별도로 세 시즌 × 다섯 약점 × 기존 wire/FX 유무 조합 60개,
   lifecycle 필드 누락 3개, 교차 profile/weakness·결손·추가 필드·잘못된 hash/nonce 6개를

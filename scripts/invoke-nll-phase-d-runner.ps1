@@ -19,11 +19,9 @@ $bundle = Read-PhaseDRunnerBundle -LaunchRoot $LaunchRoot -ExpectedBundleSha256 
 if ([IO.Path]::GetFullPath($bundle.root) -ine [IO.Path]::GetFullPath($PSScriptRoot)) { throw 'phase_d_runner_bundle_invalid' }
 . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerContract.ps1')
 Assert-PhaseDRunnerSpecification $bundle.specification
-if ($bundle.specification.contractId -ceq 'nll/phase-d-runner-input/v3') {
-    . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
-    . (Join-Path $PSScriptRoot 'Nll.PhaseDJob.ps1')
-    if ($Phase -ceq 'start') { Assert-PhaseDJobMember $LaunchRoot $ExpectedBundleSha256 }
-}
+. (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
+. (Join-Path $PSScriptRoot 'Nll.PhaseDJob.ps1')
+if ($Phase -ceq 'start') { Assert-PhaseDJobMember $LaunchRoot $ExpectedBundleSha256 }
 . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerOperations.ps1')
 if ($Phase -ceq 'start') {
     Assert-PhaseDRunnerStartDependencies $bundle.specification
@@ -31,9 +29,7 @@ if ($Phase -ceq 'start') {
     Invoke-PhaseDRunnerStart $bundle.specification
 } else {
     . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerComplete.ps1')
-    if ($bundle.specification.contractId -ceq 'nll/phase-d-runner-input/v3') {
-        Invoke-PhaseDWithJobZeroProof $LaunchRoot $ExpectedBundleSha256 {
-            Invoke-PhaseDRunnerComplete $bundle.specification -ObservedStageCode $ObservedStageCode -OutcomeCode $OutcomeCode
-        }
-    } else { Invoke-PhaseDRunnerComplete $bundle.specification -ObservedStageCode $ObservedStageCode -OutcomeCode $OutcomeCode }
+    Invoke-PhaseDWithJobZeroProof $LaunchRoot $ExpectedBundleSha256 {
+        Invoke-PhaseDRunnerComplete $bundle.specification -ObservedStageCode $ObservedStageCode -OutcomeCode $OutcomeCode
+    }
 }

@@ -75,22 +75,7 @@ function Invoke-PhaseDRunnerStart {
         )
         Move-Item -LiteralPath $temporary -Destination $Path -Force
     }
-    
-    function Protect-ServerLog {
-        param([string]$Path)
-        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return 0 }
-        $text = [IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8)
-        $pattern = '(?m)^(?<prefix>\s*authtoken:\s*)\S+\s*$'
-        $matchCount = [regex]::Matches($text, $pattern).Count
-        if ($matchCount -gt 0) {
-            $protected = [regex]::Replace(
-                $text, $pattern, '${prefix}[REDACTED]'
-            )
-            Write-AtomicUtf8NoBom $Path $protected
-        }
-        return $matchCount
-    }
-    
+
     function Get-PinnedProcess {
         param([int]$ProcessId, [string]$ExpectedName)
         $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
@@ -99,18 +84,7 @@ function Invoke-PhaseDRunnerStart {
         }
         $process
     }
-    
-    function Stop-PinnedProcess {
-        param([int]$ProcessId, [string]$ExpectedName)
-        $process = Get-PinnedProcess $ProcessId $ExpectedName
-        if ($null -eq $process) { return }
-        Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
-        for ($attempt = 0; $attempt -lt 40; $attempt++) {
-            if ($null -eq (Get-PinnedProcess $ProcessId $ExpectedName)) { return }
-            Start-Sleep -Milliseconds 250
-        }
-    }
-    
+
     $expectedServerExeSha256 = $Specification.serverExeSha256
     $expectedServerDllSha256 = $Specification.serverDllSha256
     $expectedParentServerDllSha256 = `
@@ -201,10 +175,7 @@ function Invoke-PhaseDRunnerStart {
         'bootstrap-start.receipt.json'
     $bootstrapFailurePath = Join-Path $bootstrapRunRoot `
         'bootstrap-failure.receipt.json'
-    
-    $hostsApplied = $false
-    $firewallApplied = $false
-    $databaseBackupCreated = $false
+
     $serverProcess = $null
     $bootstrapProcess = $null
     $clientProcessId = 0
@@ -228,20 +199,18 @@ function Invoke-PhaseDRunnerStart {
         [IO.File]::WriteAllBytes(
             $hostsBeforePath, [IO.File]::ReadAllBytes($hostsPath)
         )
-        $databaseBackupCreated = $true
+
         Assert-True (
             (Get-Sha256Hex $dbBeforePath) -ceq $expectedDbSha256 -and
             (Get-Sha256Hex $hostsBeforePath) -ceq $expectedHostsSha256
         ) 'phase3b2_epinel_minimal_start_backup_failed'
-        if ($Specification.contractId -ceq 'nll/phase-d-runner-input/v3') {
-            # Publish rollback baseline BEFORE the first operational mutation.
-            # Start failure cannot clean up its own Job; an outside owner does it.
-            Write-AtomicUtf8NoBom $activePointerPath (([ordered]@{
-                schemaVersion=1; contractId='nll/phase3b2-epinel-minimal-active-run-pointer/v1'
-                assessmentUid=$assessmentUid; runRoot=$runRoot; serverProcessId=0; bootstrapProcessId=0; clientProcessId=0
-                databaseBeforeSha256=(Get-Sha256Hex $dbBeforePath); hostsBeforeSha256=(Get-Sha256Hex $hostsBeforePath)
-            } | ConvertTo-Json) + "`n")
-        }
+        # Publish rollback baseline BEFORE the first operational mutation.
+        # Start failure cannot clean up its own Job; an outside owner does it.
+        Write-AtomicUtf8NoBom $activePointerPath (([ordered]@{
+            schemaVersion=1; contractId='nll/phase3b2-epinel-minimal-active-run-pointer/v1'
+            assessmentUid=$assessmentUid; runRoot=$runRoot; serverProcessId=0; bootstrapProcessId=0; clientProcessId=0
+            databaseBeforeSha256=(Get-Sha256Hex $dbBeforePath); hostsBeforeSha256=(Get-Sha256Hex $hostsBeforePath)
+        } | ConvertTo-Json) + "`n")
     
         $hostsText = [Text.UTF8Encoding]::new($true, $true).GetString(
             [IO.File]::ReadAllBytes($hostsPath)
@@ -262,7 +231,7 @@ function Invoke-PhaseDRunnerStart {
             '# end NLL Phase3B2 Physical entries'
         )
         Write-AtomicUtf8Bom $hostsPath $hostsAppliedText
-        $hostsApplied = $true
+
         Assert-True ((Get-Sha256Hex $hostsPath) -ceq $expectedAppliedHostsSha256) `
             'phase3b2_epinel_minimal_start_hosts_apply_failed'
     
@@ -271,22 +240,20 @@ function Invoke-PhaseDRunnerStart {
             -DisplayName 'NLL Phase3B2 Epinel Minimal Bootstrap Outbound Block' `
             -Group $extensionFirewallGroup -Direction Outbound -Action Block `
             -Enabled True -Profile Any -Program $bootstrapPath | Out-Null
-        $firewallApplied = $true
-        if ($Specification.clientBuildCode -cne 'build_150.6.9') {
-            New-NetFirewallRule -Name 'NLL.PhaseD.RuntimeServerBlock' -DisplayName 'NLL Phase D local runtime server' -Group $extensionFirewallGroup -Direction Outbound -Action Block -Enabled True -Profile Any -Program $serverPath | Out-Null
-        }
+
+        New-NetFirewallRule -Name 'NLL.PhaseD.RuntimeServerBlock' -DisplayName 'NLL Phase D local runtime server' -Group $extensionFirewallGroup -Direction Outbound -Action Block -Enabled True -Profile Any -Program $serverPath | Out-Null
         $extensionRules = @(Get-NetFirewallRule -Group $extensionFirewallGroup)
         $extensionPrograms = @(
             $extensionRules | Get-NetFirewallApplicationFilter
         )
         Assert-True (
-            $extensionRules.Count -eq $(if ($Specification.clientBuildCode -cne 'build_150.6.9') { 2 } else { 1 }) -and
+            $extensionRules.Count -eq 2 -and
             $extensionPrograms.Count -eq $extensionRules.Count -and
             (@($extensionPrograms.Program) -ccontains $bootstrapPath) -and
-            ($Specification.clientBuildCode -ceq 'build_150.6.9' -or (@($extensionPrograms.Program) -ccontains $serverPath))
+            (@($extensionPrograms.Program) -ccontains $serverPath)
         ) 'phase3b2_epinel_minimal_start_firewall_apply_failed'
     
-        if ($Specification.contractId -ceq 'nll/phase-d-runner-input/v3' -and $null -ne $Specification.executionFx) {
+        if ($null -ne $Specification.executionFx) {
             $stageCode = 'native_fx_apply'
             Write-PhaseDProgress $Specification.launchRoot 'fx_apply'
             $runnerManifest = Join-Path $Specification.launchRoot 'tools/runner/runner.bundle.json'
@@ -348,13 +315,7 @@ function Invoke-PhaseDRunnerStart {
         }
         Assert-True $listenerReady `
             'phase3b2_epinel_minimal_start_loopback_listener_not_ready'
-    
-        if ($Specification.resourcePreflightRequired) {
-            $stageCode = 'required_resource_catalog_set_loopback_preflight'
-            Write-PhaseDProgress $Specification.launchRoot 'resource_check'
-            Invoke-PhaseDRunnerResourcePreflight -Specification $Specification
-        }
-    
+
         $stageCode = 'physical_bootstrap_and_sail_observation'
         Write-PhaseDProgress $Specification.launchRoot 'game_start'
         $env:NLL_PHASE3B2_ASSESSMENT_UID = $assessmentUid
@@ -538,69 +499,12 @@ function Invoke-PhaseDRunnerStart {
         $receipt | ConvertTo-Json -Depth 6
     }
     catch {
-        $failureMessage = $_.Exception.Message
         Write-PhaseDProgress $Specification.launchRoot 'recovery_required'
-        if ($Specification.contractId -ceq 'nll/phase-d-runner-input/v3') {
-            # No restore, PID stop, firewall removal or claimed rollback in this Job.
-            Write-AtomicUtf8NoBom $runFailurePath (([ordered]@{
-                contractId='nll/phase-d-job-start-failure/v1'; failedStageCode=$stageCode
-                automaticRollbackCompleted=$false; recoveryOwnerCode='outside_execution_job'
-            } | ConvertTo-Json) + "`n")
-            throw 'phase_d_job_start_failed'
-        }
-        if ($clientProcessId -gt 0) {
-            Stop-PinnedProcess $clientProcessId 'nikke'
-        }
-        if ($null -ne $bootstrapProcess) {
-            Stop-PinnedProcess $bootstrapProcess.Id `
-                'NikkeLocalLab.Phase3B2.PhysicalBootstrap'
-        }
-        if ($null -ne $serverProcess) {
-            Stop-PinnedProcess $serverProcess.Id 'EpinelPS'
-        }
-        $redactedServerLogMatchCount = Protect-ServerLog $stdoutPath
-        if ($databaseBackupCreated -and
-            (Test-Path -LiteralPath $dbBeforePath -PathType Leaf)) {
-            [IO.File]::WriteAllBytes(
-                $dbPath, [IO.File]::ReadAllBytes($dbBeforePath)
-            )
-            foreach ($name in @('epinelps.db', 'epinelps.db-shm', 'epinelps.db-wal')) {
-                $path = Join-Path $ServerRoot $name
-                if (Test-Path -LiteralPath $path) {
-                    Remove-Item -LiteralPath $path -Force
-                }
-            }
-        }
-        if ($hostsApplied -and
-            (Test-Path -LiteralPath $hostsBeforePath -PathType Leaf)) {
-            [IO.File]::WriteAllBytes(
-                $hostsPath, [IO.File]::ReadAllBytes($hostsBeforePath)
-            )
-        }
-        if ($firewallApplied) {
-            Get-NetFirewallRule -Group $extensionFirewallGroup `
-                -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-        }
-        $failure = [ordered]@{
-            schemaVersion = 1
-            contractId = 'nll/phase3b2-epinel-solo-raid-ranking-prefix-failure/v9'
-            failedAtUtc = [DateTimeOffset]::UtcNow.ToString(
-                "yyyy-MM-dd'T'HH:mm:ss'Z'"
-            )
-            assessmentUid = $assessmentUid
-            failedStageCode = $stageCode
-            failureMessage = $failureMessage
-            automaticRollbackCompleted = $true
-            redactedServerLogMatchCount = $redactedServerLogMatchCount
-            rawSensitiveServerLogPersisted = $false
-            officialLauncherExecutionStarted = $false
-            officialOutboundFallbackUsed = $false
-            requiredLocalAssetPreflightPerformed = `
-                $requiredLocalAssetPreflightPerformed
-            clientExecutionStarted = $clientProcessId -gt 0
-        }
-        Write-AtomicUtf8NoBom $runFailurePath `
-            (($failure | ConvertTo-Json -Depth 5) + "`n")
-        throw "phase3b2_epinel_minimal_reference_failed:${stageCode}:$failureMessage"
+        # Cleanup belongs to the owner outside the execution Job.
+        Write-AtomicUtf8NoBom $runFailurePath (([ordered]@{
+            contractId='nll/phase-d-job-start-failure/v1'; failedStageCode=$stageCode
+            automaticRollbackCompleted=$false; recoveryOwnerCode='outside_execution_job'
+        } | ConvertTo-Json) + "`n")
+        throw 'phase_d_job_start_failed'
     }
 }

@@ -102,9 +102,6 @@ function Assert-PhaseDCacheArtifactIdentity {
     $matchCount
 }
 
-
-
-
 function Invoke-PhaseDEmergencyRollback {
     param([string]$EvidencePath, [string]$RuntimePath)
     $pointerPath = Join-Path $EvidencePath 'active-run.pointer.json'
@@ -188,56 +185,6 @@ function Invoke-PhaseDEmergencyRollback {
     $true
 }
 
-function Test-PhaseDDerivedStartRollbackProof {
-    param(
-        [string]$EvidencePath,
-        [string]$RuntimeDatabasePath,
-        [string]$ExpectedRuntimeDatabaseSha256
-    )
-    try {
-        $pointerPath = Join-Path $EvidencePath 'active-run.pointer.json'
-        if (Test-Path -LiteralPath $pointerPath -PathType Leaf) { return $false }
-        $failures = @(Get-ChildItem -LiteralPath $EvidencePath -Recurse -File `
-            -Filter 'run-failure.receipt.json')
-        if ($failures.Count -ne 1) { return $false }
-        $failure = Get-Content -LiteralPath $failures[0].FullName -Raw -Encoding UTF8 |
-            ConvertFrom-Json
-        $failureRunRoot = $failures[0].Directory.FullName
-        $innerHostsBaselinePath = Join-Path $failureRunRoot 'hosts.before.bin'
-        $systemHostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
-        $runtimeProcessesCold = @(
-            Get-Process -Name nikke,EpinelPS,
-                NikkeLocalLab.Phase3B2.PhysicalBootstrap `
-                -ErrorAction SilentlyContinue
-        ).Count -eq 0
-        $innerHostsRestored =
-            (Test-Path -LiteralPath $innerHostsBaselinePath -PathType Leaf) -and
-            (Test-Path -LiteralPath $systemHostsPath -PathType Leaf) -and
-            ((Get-Sha256Lower $systemHostsPath) -ceq
-                (Get-Sha256Lower $innerHostsBaselinePath))
-        $acceptedFailureContracts = @(
-            'nll/phase3b2-epinel-minimal-reference-failure/v1',
-            'nll/phase3b2-epinel-solo-raid-ranking-prefix-failure/v9'
-        )
-        if ([string]$failure.contractId -notin $acceptedFailureContracts -or
-            -not [bool]$failure.automaticRollbackCompleted -or
-            [bool]$failure.officialLauncherExecutionStarted -or
-            [bool]$failure.officialOutboundFallbackUsed -or
-            -not $runtimeProcessesCold -or
-            -not $innerHostsRestored) {
-            return $false
-        }
-        # A client may have started before a fail-closed health check rejects
-        # the run. Accept the derived rollback only when the pointer is absent,
-        # all pinned runtime processes are gone, hosts are restored, and the
-        # runtime database exactly matches the pre-run materialization hash.
-        (Test-Path -LiteralPath $RuntimeDatabasePath -PathType Leaf) -and
-            ((Get-Sha256Lower $RuntimeDatabasePath) -ceq `
-                $ExpectedRuntimeDatabaseSha256)
-    }
-    catch { $false }
-}
-
 function Set-ExecutionState {
     param(
         [string]$StatusCode,
@@ -297,47 +244,16 @@ $runtimeRoot = Join-Path $launchRoot 'runtime'
 $evidenceRoot = Join-Path $launchRoot 'evidence'
 $toolsRoot = Join-Path $launchRoot 'tools'
 $parentRoot = 'C:\NLL\Runtime\EpinelPS-SoloRaidRankingPrefix-v9'
-$rankingPrefixDeploymentReceipt =
-    'C:\NLL\E\P3SRRP9D\deployment.receipt.json'
-$rankingPrefixSourceManifest = 'C:\NLL\E\P3SRRP9D\source.manifest.tsv'
-$materializer = Join-Path $RepositoryRoot `
-    'artifacts\phase-d\runtime-materializer\NikkeLocalLab.PhaseD.RuntimeMaterializer.exe'
-$weaknessVariantArtifactRoot = Join-Path $RepositoryRoot `
-    'artifacts\phase-d\weakness-variant-server'
-$weaknessVariantServerDll = Join-Path $weaknessVariantArtifactRoot 'EpinelPS.dll'
-$weaknessVariantSourceManifest = Join-Path $weaknessVariantArtifactRoot `
-    'source.manifest.tsv'
 $bossRuntimeVariantRegistry = Join-Path $RepositoryRoot `
     'config\boss-runtime-variants\registry.json'
 $watcher = Join-Path $RepositoryRoot 'scripts\watch-nll-phase-d-execution.ps1'
 $resourcePreflightHelper = Join-Path $RepositoryRoot 'scripts\Nll.ResourcePreflight.ps1'
-$resourcePreflightTool = Join-Path $RepositoryRoot `
-    'artifacts\phase-d\resource-preflight\ResourceCatalogPreflight.exe'
-$clientExecutable = 'C:\NLL\Clients\NIKKE-150.6.9-Physical\NIKKE\game\nikke.exe'
-$clientBuildCode = 'build_150.6.9'
-$runtimeBaseRoot = $parentRoot
-$runtimeBundle = $null
 $hostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
 $cleanHostsReference = `
     'C:\NLL\Backups\Phase3B2\Physical-P0-v1\hosts.original.bin'
 $phase3B2BaseHostsReference = `
     'C:\NLL\Backups\Phase3B2\PhysicalP2-v2\hosts.before.bin'
 $expectedParentDbSha256 = 'dee9c6aa5421287ca030e325b81a90a302a5d9e113d57c3065e5d36f6e7c4019'
-$expectedServerDllSha256 = '98d4f4d12ff83c694ee052f9eca3c63ae782f2c4747a80993ee257384eef2498'
-$expectedServerDllByteLength = 15398400L
-$expectedWeaknessVariantServerDllSha256 =
-    'a364b9211efc1b60d23efc50075e101b0212f09b96a311b167743d01583939e6'
-$expectedWeaknessVariantServerDllByteLength = 15406592L
-$expectedWeaknessVariantSourceManifestSha256 =
-    '0ebd23987384fde1537b88efcfdd5b19fc18176f185d9cd1e9fa743914d24bbf'
-$expectedWeaknessVariantSourceManifestByteLength = 3270L
-$rankingWirePrefix = 1130781186L
-$expectedRankingPrefixSourceManifestSha256 =
-    'be2b0107ecec425d3c6dc4538d33306f81c55e0142f312fa3da9bd10ed29a1d7'
-$expectedRankingPrefixSourceManifestByteLength = 2559L
-$expectedRankingPrefixDeploymentReceiptSha256 =
-    'd360b29ca19fa36c6c1504d7b29a30d541621bf5855b45810f87e43d9e63a269'
-$expectedRankingPrefixDeploymentReceiptByteLength = 3501L
 $expectedCleanHostsSha256 = '565955a47a890e8090a2987a234ba05e2624c84a587ba86e8648f912678984b9'
 $expectedPostDockerUninstallCleanHostsSha256 =
     'ce44d858ef28f09073edcb5bb805fc1800663e94eb540518a66680cb0d08fdda'
@@ -398,50 +314,31 @@ try {
     # The old seed/account/persistence pipeline remains authoritative. A selected
     # version bundle replaces only the runtime/data/bootstrap inputs, never the DB.
     $runtimeBundle = $preparation.plan.bundle
-    if ($null -ne $runtimeBundle) {
-        $runtimeBaseRoot = [string]$runtimeBundle.serverRoot
-        $clientExecutable = [string]$runtimeBundle.client.path
-        $clientBuildCode = [string]$runtimeBundle.clientBuildCode
-        $materializer = Join-Path $runtimeBundle.materializerRoot 'NikkeLocalLab.PhaseD.RuntimeMaterializer.exe'
-        $weaknessVariantServerDll = [string]$runtimeBundle.serverDll.path
-        $expectedWeaknessVariantServerDllSha256 = [string]$runtimeBundle.serverDll.sha256
-        $expectedWeaknessVariantServerDllByteLength = [long]$runtimeBundle.serverDll.length
-        $weaknessVariantSourceManifest = [string]$runtimeBundle.serverSourceManifest.path
-        $expectedWeaknessVariantSourceManifestSha256 = [string]$runtimeBundle.serverSourceManifest.sha256
-        $expectedWeaknessVariantSourceManifestByteLength = [long]$runtimeBundle.serverSourceManifest.length
-    }
+    Assert-PhaseD ($null -ne $runtimeBundle) 'phase_d_runtime_bundle_missing'
+    $runtimeBaseRoot = [string]$runtimeBundle.serverRoot
+    $clientExecutable = [string]$runtimeBundle.client.path
+    $clientBuildCode = [string]$runtimeBundle.clientBuildCode
+    $materializer = Join-Path $runtimeBundle.materializerRoot 'NikkeLocalLab.PhaseD.RuntimeMaterializer.exe'
+    $weaknessVariantServerDll = [string]$runtimeBundle.serverDll.path
+    $expectedWeaknessVariantServerDllSha256 = [string]$runtimeBundle.serverDll.sha256
+    $expectedWeaknessVariantServerDllByteLength = [long]$runtimeBundle.serverDll.length
+    $weaknessVariantSourceManifest = [string]$runtimeBundle.serverSourceManifest.path
+    $expectedWeaknessVariantSourceManifestSha256 = [string]$runtimeBundle.serverSourceManifest.sha256
+    $expectedWeaknessVariantSourceManifestByteLength = [long]$runtimeBundle.serverSourceManifest.length
 
     foreach ($path in @(
             $ConfigurationPath, $RuntimeCandidatePath, $LobbyProjectionPath,
             $materializer, $watcher,
-            $rankingPrefixDeploymentReceipt, $rankingPrefixSourceManifest,
             $weaknessVariantServerDll, $weaknessVariantSourceManifest,
             $bossRuntimeVariantRegistry, $bossRuntimeVariantProfile,
             $clientExecutable,
             $hostsPath, $cleanHostsReference, $phase3B2BaseHostsReference,
-            (Join-Path $parentRoot 'db.json'),
-            (Join-Path $parentRoot 'EpinelPS.exe'),
-            (Join-Path $parentRoot 'EpinelPS.dll'))) {
+            (Join-Path $parentRoot 'db.json'))) {
         Assert-PhaseD (Test-Path -LiteralPath $path -PathType Leaf) `
             'phase_d_required_input_missing'
     }
-    Assert-PhaseD `
-        ((Get-Sha256Lower (Join-Path $parentRoot 'db.json')) -ceq $expectedParentDbSha256 -and
-         (Get-Item -LiteralPath (Join-Path $parentRoot 'EpinelPS.dll')).Length -eq `
-            $expectedServerDllByteLength -and
-         (Get-Sha256Lower (Join-Path $parentRoot 'EpinelPS.dll')) -ceq `
-            $expectedServerDllSha256) `
-        'phase_d_parent_runtime_drifted'
-    Assert-PhaseD `
-        ((Get-Item -LiteralPath $rankingPrefixDeploymentReceipt).Length -eq `
-            $expectedRankingPrefixDeploymentReceiptByteLength -and
-         (Get-Sha256Lower $rankingPrefixDeploymentReceipt) -ceq `
-            $expectedRankingPrefixDeploymentReceiptSha256 -and
-         (Get-Item -LiteralPath $rankingPrefixSourceManifest).Length -eq `
-            $expectedRankingPrefixSourceManifestByteLength -and
-         (Get-Sha256Lower $rankingPrefixSourceManifest) -ceq `
-            $expectedRankingPrefixSourceManifestSha256) `
-        'phase_d_ranking_prefix_deployment_drifted'
+    Assert-PhaseD ((Get-Sha256Lower (Join-Path $parentRoot 'db.json')) -ceq $expectedParentDbSha256) `
+        'phase_d_parent_database_drifted'
     Assert-PhaseD `
         ((Get-Item -LiteralPath $weaknessVariantServerDll).Length -eq `
             $expectedWeaknessVariantServerDllByteLength -and
@@ -452,23 +349,6 @@ try {
          (Get-Sha256Lower $weaknessVariantSourceManifest) -ceq `
             $expectedWeaknessVariantSourceManifestSha256) `
         'phase_d_weakness_variant_server_artifact_drifted'
-    $rankingPrefixDeployment = Get-Content `
-        -LiteralPath $rankingPrefixDeploymentReceipt -Raw -Encoding UTF8 |
-        ConvertFrom-Json
-    Assert-PhaseD `
-        ($rankingPrefixDeployment.contractId -ceq `
-            'nll/phase3b2-epinel-solo-raid-ranking-prefix-deployment/v9' -and
-         $rankingPrefixDeployment.appliedServerDllSha256 -ceq `
-            $expectedServerDllSha256 -and
-         [long]$rankingPrefixDeployment.rankingWirePrefix -eq $rankingWirePrefix -and
-         $rankingPrefixDeployment.responseSemanticsCode -ceq `
-            'ranking_wire_domain_encoded_common_prefix' -and
-         $rankingPrefixDeployment.persistedChallengeDamageRemainsRaw -and
-         $rankingPrefixDeployment.rankingWireFieldsAreCumulative -and
-         $rankingPrefixDeployment.completionVerifierSeparatesRawAndWireDomains -and
-         -not $rankingPrefixDeployment.serverExecutionStarted -and
-         -not $rankingPrefixDeployment.clientExecutionStarted) `
-        'phase_d_ranking_prefix_deployment_contract_invalid'
     Assert-PhaseD `
         ((Get-Sha256Lower $cleanHostsReference) -ceq $expectedCleanHostsSha256 -and
          (Get-Sha256Lower $phase3B2BaseHostsReference) -ceq `
@@ -490,7 +370,7 @@ try {
          -not (Test-Path -LiteralPath $toolsRoot)) `
         'phase_d_launch_root_not_clean'
 
-    if (-not $ValidateOnly -and $null -ne $runtimeBundle) {
+    if (-not $ValidateOnly) {
         $activeBundle = Read-PdRuntimeBundle $RuntimeSelectionPath
         Assert-PhaseD ($activeBundle.manifestPath -ceq $runtimeBundle.manifestPath -and
             (Get-PdBundleHash $activeBundle.manifestPath) -ceq $preparation.plan.bundleSha256 -and
@@ -503,26 +383,15 @@ try {
         'phase_d_resource_preflight_helper_missing'
     . $resourcePreflightHelper
     $resourceSelection = Get-NllVoiceResourceSelection
-    if ($null -eq $runtimeBundle) {
-      $resourceCatalogReceipt = Invoke-NllResourceCatalogPreflight `
-        -ToolPath $resourcePreflightTool -ServerRoot $parentRoot `
-        -ClientExecutable $clientExecutable -Selection $resourceSelection
-      $resourcePreflightToolSha256 = Get-NllResourcePreflightToolSetSha256 $resourcePreflightTool
-    }
-    else {
-      # 151 native initialization was verified with installed chunk resources.
-      # Do not run the 150 five-catalog/HTTP diagnostic contract against it.
-      $resourceCatalogReceipt = [ordered]@{
-        contractId = 'nll/phase-d-installed-runtime-inputs/v1'
-        clientBuildCode = $clientBuildCode
-        referenceAssessmentUid = $runtimeBundle.referenceAssessmentUid
-        localFilePinsVerified = $true
-        voiceSelection = $resourceSelection
-        voicePreferencesChanged = $false
-        httpDiagnosticLayer = $false
-        nativeGameplayValidated = $false
-      }
-      $resourcePreflightToolSha256 = $null
+    $resourceCatalogReceipt = [ordered]@{
+      contractId = 'nll/phase-d-installed-runtime-inputs/v1'
+      clientBuildCode = $clientBuildCode
+      referenceAssessmentUid = $runtimeBundle.referenceAssessmentUid
+      localFilePinsVerified = $true
+      voiceSelection = $resourceSelection
+      voicePreferencesChanged = $false
+      httpDiagnosticLayer = $false
+      nativeGameplayValidated = $false
     }
     $resourceCatalogReceiptPath = Join-Path $launchRoot 'resource-catalog-preflight.receipt.json'
     Write-AtomicJson $resourceCatalogReceiptPath $resourceCatalogReceipt -Depth 8
@@ -538,21 +407,11 @@ try {
         /NFL /NDL /NJH /NJS /NP /LOG:$copyLog | Out-Null
     Assert-PhaseD ($LASTEXITCODE -lt 8) 'phase_d_runtime_copy_failed'
     $parentCache = Get-Item -LiteralPath (Join-Path $runtimeBaseRoot 'cache') -Force
-    $parentCacheTargets = @($parentCache.Target)
-    if ($null -ne $runtimeBundle) { $parentCacheTargets = @($parentCache.FullName) }
-    else { Assert-PhaseD `
-        ($parentCache.LinkType -ceq 'Junction' -and $parentCacheTargets.Count -eq 1) `
-        'phase_d_parent_cache_link_invalid' }
     New-Item -ItemType Junction -Path (Join-Path $runtimeRoot 'cache') `
-        -Target ([string]$parentCacheTargets[0]) | Out-Null
+        -Target $parentCache.FullName | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $runtimeRoot 'logs') -Force |
         Out-Null
-    if ($null -eq $runtimeBundle) { Assert-PhaseD `
-        ((Get-Item -LiteralPath (Join-Path $runtimeRoot 'EpinelPS.dll')).Length -eq `
-            $expectedServerDllByteLength -and
-         (Get-Sha256Lower (Join-Path $runtimeRoot 'EpinelPS.dll')) -ceq `
-            $expectedServerDllSha256) `
-        'phase_d_ranking_prefix_server_copy_failed' }
+
     Copy-Item -LiteralPath $weaknessVariantServerDll `
         -Destination (Join-Path $runtimeRoot 'EpinelPS.dll') -Force
     Assert-PhaseD `
@@ -827,18 +686,10 @@ try {
     $runtimeDbSha256 = Get-Sha256Lower $runtimeDbPath
 
     $sourceManifestPath = Join-Path $launchRoot 'source.manifest.tsv'
-    $sealedRankingPrefixSourceManifestPath = Join-Path $launchRoot `
-        'ranking-prefix-server-source.manifest.tsv'
-    Copy-Item -LiteralPath $rankingPrefixSourceManifest `
-        -Destination $sealedRankingPrefixSourceManifestPath
     $sealedWeaknessVariantSourceManifestPath = Join-Path $launchRoot `
         'weakness-variant-server-source.manifest.tsv'
     Copy-Item -LiteralPath $weaknessVariantSourceManifest `
         -Destination $sealedWeaknessVariantSourceManifestPath
-    Assert-PhaseD `
-        ((Get-Sha256Lower $sealedRankingPrefixSourceManifestPath) -ceq `
-            $expectedRankingPrefixSourceManifestSha256) `
-        'phase_d_ranking_prefix_source_manifest_copy_failed'
     Assert-PhaseD `
         ((Get-Sha256Lower $sealedWeaknessVariantSourceManifestPath) -ceq `
             $expectedWeaknessVariantSourceManifestSha256) `
@@ -849,11 +700,8 @@ try {
         "lobby`t$((Get-Item -LiteralPath $LobbyProjectionPath).Length)`t$(Get-Sha256Lower $LobbyProjectionPath)"
         "materializer`t$((Get-Item -LiteralPath $materializer).Length)`t$(Get-Sha256Lower $materializer)"
         "parent_db`t$((Get-Item -LiteralPath (Join-Path $parentRoot 'db.json')).Length)`t$expectedParentDbSha256"
-        "parent_server_dll`t$expectedServerDllByteLength`t$expectedServerDllSha256"
         "server_dll`t$expectedWeaknessVariantServerDllByteLength`t$expectedWeaknessVariantServerDllSha256"
-        "parent_server_source_manifest`t$expectedRankingPrefixSourceManifestByteLength`t$expectedRankingPrefixSourceManifestSha256"
         "server_source_manifest`t$expectedWeaknessVariantSourceManifestByteLength`t$expectedWeaknessVariantSourceManifestSha256"
-        "server_deployment_receipt`t$expectedRankingPrefixDeploymentReceiptByteLength`t$expectedRankingPrefixDeploymentReceiptSha256"
         "boss_runtime_variant_registry`t$((Get-Item -LiteralPath $bossRuntimeVariantRegistry).Length)`t$(Get-Sha256Lower $bossRuntimeVariantRegistry)"
         "boss_runtime_variant_profile`t$bossRuntimeVariantProfileByteLength`t$bossRuntimeVariantProfileSha256"
         "static_data_source`t$((Get-Item -LiteralPath $sourceStaticDataPack).Length)`t$(Get-Sha256Lower $sourceStaticDataPack)"
@@ -920,12 +768,6 @@ try {
         runtimeDbSha256 = $runtimeDbSha256
         expectedWeaknessVariantServerDllSha256 = $expectedWeaknessVariantServerDllSha256
         runtimeBundle = $runtimeBundle
-        resourcePreflightHelper = $resourcePreflightHelper
-        resourcePreflightHelperSha256 = $resourcePreflightHelperSha256
-        resourcePreflightTool = $resourcePreflightTool
-        resourceCatalogReceiptPath = $resourceCatalogReceiptPath
-        resourceCatalogReceiptSha256 = $resourceCatalogReceiptSha256
-        resourcePreflightToolSha256 = $resourcePreflightToolSha256
         launchRoot = $launchRoot
         bossRuntimeVariantProfile = $bossRuntimeVariantProfile
         staticDataVariantRequired = $staticDataVariantRequired
@@ -996,14 +838,9 @@ try {
         shieldFxAssetMatchCount = $shieldFxAssetMatchCount
         serverDllSha256 = $expectedWeaknessVariantServerDllSha256
         serverSourceManifestSha256 = $expectedWeaknessVariantSourceManifestSha256
-        parentServerDllSha256 = $expectedServerDllSha256
-        parentServerSourceManifestSha256 = $expectedRankingPrefixSourceManifestSha256
-        serverDeploymentReceiptSha256 =
-            $expectedRankingPrefixDeploymentReceiptSha256
         sourceManifestSha256 = $sourceManifestSha256
         toolManifestSha256 = $toolManifestSha256
         resourceCatalogPreflightSha256 = $resourceCatalogReceiptSha256
-        resourcePreflightToolSetSha256 = $resourcePreflightToolSha256
         resourcePreflightHelperSha256 = $resourcePreflightHelperSha256
         resourceVoiceLanguage = [string]$resourceSelection.language
         resourceDownloadScope = [string]$resourceSelection.scope
@@ -1049,12 +886,8 @@ try {
         shieldFxAssetBundleCount = $selectedShieldFxAssetBundles.Count
         serverDllSha256 = $expectedWeaknessVariantServerDllSha256
         serverSourceManifestSha256 = $expectedWeaknessVariantSourceManifestSha256
-        parentServerDllSha256 = $expectedServerDllSha256
-        parentServerSourceManifestSha256 = $expectedRankingPrefixSourceManifestSha256
         runtimeDatabaseSha256 = $runtimeDbSha256
-        cacheManifestSha256 = if ($null -eq $runtimeBundle) {
-            '4fbbe7132de0ed0d489bdae6f647a0dc98c4559328de057fd4f4dc891dc9b26e'
-        } else { Get-Sha256Lower ([string]$runtimeBundle.manifestPath) }
+        cacheManifestSha256 = Get-Sha256Lower ([string]$runtimeBundle.manifestPath)
         toolManifestSha256 = $toolManifestSha256
         validationReceiptSha256 = $validationReceiptSha256
         statusCode = 'validated'
@@ -1143,11 +976,7 @@ try {
         ([IO.Path]::GetFullPath($runRoot).StartsWith(
             $evidenceRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) `
         'phase_d_process_identity_run_root_invalid'
-    $bootstrapExecutable = if ($null -ne $runtimeBundle) {
-        Join-Path $runtimeBundle.bootstrapRoot 'artifact\NikkeLocalLab.Phase3B2.PhysicalBootstrap.exe'
-    } else {
-        'C:\NLL\Runtime\PhysicalBootstrap-v2\artifact\NikkeLocalLab.Phase3B2.PhysicalBootstrap.exe'
-    }
+    $bootstrapExecutable = Join-Path $runtimeBundle.bootstrapRoot 'artifact\NikkeLocalLab.Phase3B2.PhysicalBootstrap.exe'
     $identityLowerBound = [DateTime]::Parse($createdAtUtc).ToUniversalTime()
     $identityUpperBound = (Get-Item -LiteralPath $runStartPath).LastWriteTimeUtc
     $runtimeProcessIdentities = [ordered]@{
@@ -1275,29 +1104,18 @@ catch {
     }
     $coordinatorRollbackProven = -not $runtimeLifecycleEntered
     if ($runtimeLifecycleEntered) {
-        if (Test-PhaseDDerivedStartRollbackProof `
-                -EvidencePath $evidenceRoot `
-                -RuntimeDatabasePath $runtimeDbPath `
-                -ExpectedRuntimeDatabaseSha256 $runtimeDbSha256) {
+        try {
+            $coordinatorRolledBack = [bool](Invoke-PhaseDEmergencyRollback `
+                -EvidencePath $evidenceRoot -RuntimePath $runtimeRoot
+            )
+            Assert-PhaseD $coordinatorRolledBack `
+                'phase_d_emergency_rollback_unproven'
             $coordinatorRollbackProven = $true
-            if ($failureCode -ceq 'phase_d_uncontrolled_failure') {
-                $failureCode = 'phase_d_derived_start_failed'
-            }
         }
-        else {
-            try {
-                $coordinatorRolledBack = [bool](Invoke-PhaseDEmergencyRollback `
-                    -EvidencePath $evidenceRoot -RuntimePath $runtimeRoot
-                )
-                Assert-PhaseD $coordinatorRolledBack `
-                    'phase_d_emergency_rollback_unproven'
-                $coordinatorRollbackProven = $true
-            }
-            catch {
-                try { Write-PhaseDFirstFailure -LaunchRoot $launchRoot -Owner coordinator -Stage rollback -CleanupStage rollback -Failure $_ } catch { }
-                $failureCode = 'phase_d_emergency_rollback_failed'
-                $coordinatorRollbackProven = $false
-            }
+        catch {
+            try { Write-PhaseDFirstFailure -LaunchRoot $launchRoot -Owner coordinator -Stage rollback -CleanupStage rollback -Failure $_ } catch { }
+            $failureCode = 'phase_d_emergency_rollback_failed'
+            $coordinatorRollbackProven = $false
         }
     }
     if ($coordinatorRollbackProven -and $controlCenterHostsPrepared -and

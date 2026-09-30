@@ -188,7 +188,6 @@ Assert-BossVariant `
      $coordinator.Contains('bossVariantRegistrySha256') -and
      -not $coordinator.Contains('config\boss-runtime-variants\season-26-providence.json') -and
      -not $coordinator.Contains("--season-number '26'") -and
-     $coordinator.Contains('parentServerDllSha256') -and
      $coordinator.Contains('parentRuntimeModified = $false') -and
      $coordinator.Contains('officialInstallModified = $false')) `
     'boss_weakness_automation_derived_lane_boundary_invalid'

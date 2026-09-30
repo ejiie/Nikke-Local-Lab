@@ -10,6 +10,17 @@ namespace NikkeLocalLab.Admin.Api.UnitTests;
 
 public sealed class PhaseDExecutionStateTests
 {
+  [Fact]
+  public void InitialProgressIntervalsBelongToTheirNamedPhase()
+  {
+    var received = DateTimeOffset.Parse("2026-09-01T00:00:00Z");
+    var progress = PhaseDExecutionProgress.Initial("synthetic", received, received.AddMilliseconds(50),
+        received.AddMilliseconds(2450), received.AddMilliseconds(2530));
+    Assert.Equal(new[] { "api_preparation", "account_snapshot", "coordinator_preparation" }, progress.Events.Select(e => e.StageCode));
+    Assert.Equal(new double[] { 2400, 80, 0 }, progress.Events.Select(e => e.IntervalMilliseconds));
+    Assert.Equal(new double[] { 50, 2450, 2530 }, progress.Events.Select(e => e.CumulativeMilliseconds));
+  }
+
   [Theory]
   [InlineData("game_exited")]
   [InlineData("fx_restore")]

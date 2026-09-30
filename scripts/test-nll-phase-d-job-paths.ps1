@@ -22,15 +22,12 @@ function Invoke-TestMaterializer {
 try {
     $spec=@{runtimeMaterializer='Invoke-TestMaterializer';soloRaidPendingPath=(Join-Path $root 'pending');soloRaidCaptureReceiptPath=(Join-Path $root 'capture')}
     foreach ($field in @('accountUid','accountRevisionSetSha256','seasonNumber','raidSnapshotUid','raidSnapshotSha256','clientBuildCode','clientExecutableSha256','launchContextUid','expectedSoloRaidHeadRevisionUid','secretEnvironmentVariable')) { $spec[$field]='synthetic' }
-    foreach ($version in @(1,2,3)) {
-        foreach ($weakness in @('fire','water','wind','electric','iron')) {
-            $spec.contractId='nll/phase-d-runner-input/v'+$version; $spec.weaknessCode=$weakness
-            Invoke-PhaseDRunnerCapture $spec (Join-Path $root 'synthetic-db')
-            $index=[Array]::IndexOf($script:captureArguments,'--weakness-code')
-            if ($version -eq 1) { Check-PathTest ($index -eq -1) }
-            else { Check-PathTest ($index -ge 0 -and $script:captureArguments[$index+1] -ceq $weakness) }
-            $count++
-        }
+    foreach ($weakness in @('fire','water','wind','electric','iron')) {
+        $spec.contractId='nll/phase-d-runner-input/v3'; $spec.weaknessCode=$weakness
+        Invoke-PhaseDRunnerCapture $spec (Join-Path $root 'synthetic-db')
+        $index=[Array]::IndexOf($script:captureArguments,'--weakness-code')
+        Check-PathTest ($index -ge 0 -and $script:captureArguments[$index+1] -ceq $weakness)
+        $count++
     }
     # Execute recovery's separate capture function, not just the shared runner path.
     $recoveryAst=Ast-PathTest 'recover-nll-phase-d-orphaned-execution.ps1'
@@ -51,16 +48,14 @@ $global:LASTEXITCODE=0
     $context=@{contractId='nll/launch-context/v1';launchContextUid=$LaunchContextUid;accountUid='synthetic';accountRevisionSetSha256=('a'*64);seasonNumber=29;raidSnapshotUid='synthetic';raidSnapshotSha256=('b'*64);clientBuildCode='build_151.8.5';clientExecutableSha256=('c'*64);weaknessCode='iron'}
     $materialization=@{accountUid='synthetic';accountRevisionSetSha256=('a'*64);raidSeasonNumber=29;raidSnapshotUid='synthetic';raidSnapshotSha256=('b'*64);soloRaidStateHeadRevisionUid=$null}
     [IO.File]::WriteAllText((Join-Path $root 'materialization.receipt.json'),($materialization | ConvertTo-Json))
-    foreach ($version in @(2,3)) {
-        foreach ($weakness in @('fire','water','wind','electric','iron')) {
-            $context.weaknessCode=$weakness
-            [IO.File]::WriteAllText((Join-Path $root 'launch-context.json'),($context | ConvertTo-Json))
-            $recoveryBundle=@{specification=@{contractId=('nll/phase-d-runner-input/v'+$version);weaknessCode=$weakness}}
-            Invoke-SoloRaidCapture $sourceDb
-            $index=[Array]::IndexOf($global:phaseDTestRecoveryArgs,'--weakness-code')
-            Check-PathTest ($index -ge 0 -and $global:phaseDTestRecoveryArgs[$index+1] -ceq $weakness); $count++
-            Remove-Item -LiteralPath $SoloRaidPendingPayloadPath,$soloRaidCaptureReceiptPath
-        }
+    foreach ($weakness in @('fire','water','wind','electric','iron')) {
+        $context.weaknessCode=$weakness
+        [IO.File]::WriteAllText((Join-Path $root 'launch-context.json'),($context | ConvertTo-Json))
+        $recoveryBundle=@{specification=@{contractId=('nll/phase-d-runner-input/v3');weaknessCode=$weakness}}
+        Invoke-SoloRaidCapture $sourceDb
+        $index=[Array]::IndexOf($global:phaseDTestRecoveryArgs,'--weakness-code')
+        Check-PathTest ($index -ge 0 -and $global:phaseDTestRecoveryArgs[$index+1] -ceq $weakness); $count++
+        Remove-Item -LiteralPath $SoloRaidPendingPayloadPath,$soloRaidCaptureReceiptPath
     }
     function Write-PhaseDFirstFailure { }
     function Set-ExecutionState { param($StatusCode,$FailureCode) $script:terminal=$StatusCode }
@@ -90,7 +85,7 @@ $global:LASTEXITCODE=0
     function Assert-PhaseDChildrenExited { }
     function Invoke-PhaseDStateLock { param($LaunchRoot,$Action) & $Action }
     function Write-AtomicJson { param($Path,$Value) [IO.File]::WriteAllText($Path,($Value | ConvertTo-Json -Depth 8)) }
-    $LaunchRoot=$root; $ExpectedRunnerBundleSha256='a'*64; $jobRequired=$true; $physicalCleanupCommitted=$false; $statePath=Join-Path $root 'state.json'
+    $LaunchRoot=$root; $ExpectedRunnerBundleSha256='a'*64; $physicalCleanupCommitted=$false; $statePath=Join-Path $root 'state.json'
     Write-AtomicJson $statePath @{statusCode='started';failureCode=$null}
     $ast=Ast-PathTest 'watch-nll-phase-d-execution.ps1'
     $outer=@($ast.EndBlock.Statements | Where-Object { $_ -is [Management.Automation.Language.TryStatementAst] })[-1]
@@ -126,7 +121,7 @@ $global:LASTEXITCODE=0
     function Ensure-PhaseDPostgresRunning { Check-PathTest $script:checkpoint; throw 'synthetic_pg_failure' }
     function Invoke-RecoveryPgCtl { Check-PathTest $script:checkpoint; throw 'synthetic_pg_failure' }
     function Assert-Recovery { }
-    $jobAttempted=$true; $jobRequired=$true; $replayOnly=$false; $physicalCleanupCommitted=$false
+    $jobAttempted=$true; $replayOnly=$false; $physicalCleanupCommitted=$false
     $controlCenterPgCtl='synthetic';$controlCenterPgData=$root;$controlCenterPgLog='synthetic'
     $ControlCenterPgCtlPath='synthetic';$ControlCenterPgDataPath=$root;$ControlCenterPgLogPath='synthetic'
     foreach ($file in @('invoke-nll-phase-d-execution.ps1','watch-nll-phase-d-execution.ps1','recover-nll-phase-d-orphaned-execution.ps1')) {
@@ -144,7 +139,7 @@ $global:LASTEXITCODE=0
         Check-PathTest (($script:trace -join ',') -ceq 'post'); $count++
         $replayOnly=$false
     }
-    "Phase D Job paths: $count synthetic capture-version and production failure/order checks passed."
+    "Phase D Job paths: $count synthetic v3 capture and production failure/order checks passed."
 } finally {
     $resolved=[IO.Path]::GetFullPath($root)
     if ([IO.Path]::GetDirectoryName($resolved).TrimEnd('\') -ine ([IO.Path]::GetTempPath()).TrimEnd('\') -or [IO.Path]::GetFileName($resolved) -notlike 'nll-job-paths-*') { throw 'unsafe_test_cleanup' }

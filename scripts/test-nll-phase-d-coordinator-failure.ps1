@@ -1,7 +1,10 @@
 # Execute the actual outer failure block with synthetic files and fake services.
 # The coordinator body, game, hosts, firewall and real DB are NEVER executed.
 $ErrorActionPreference = 'Stop'
-$jobAttempted = $false # Historical branch; new Job failure cases are tested separately.
+$jobAttempted = $true
+$runnerBundle = @{sha256=('a'*64)}
+function Stop-PhaseDExecutionJob { }
+function Write-PhaseDRollbackCleanupCheckpoint { }
 $watcherSpawned = $false
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
@@ -15,8 +18,7 @@ $failureBlock = [scriptblock]::Create("try { throw 'synthetic_start_failed' } " 
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('nll-coordinator-failure-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $testRoot
 function Assert-PhaseD([bool]$Condition, [string]$Code) { if (-not $Condition) { throw $Code } }
-function Test-PhaseDDerivedStartRollbackProof { $script:proof }
-function Invoke-PhaseDEmergencyRollback { throw [ComponentModel.Win32Exception]::new(5, 'synthetic password=do-not-log') }
+function Invoke-PhaseDEmergencyRollback { if (-not $script:proof) { throw [ComponentModel.Win32Exception]::new(5, 'synthetic password=do-not-log') }; $true }
 function Ensure-PhaseDPostgresRunning { $script:pgStarts++; if ($script:pgExitCode) { throw 'synthetic_db_unavailable' } }
 function Get-Sha256Lower { param([string]$Path) (Get-FileHash -LiteralPath $Path).Hash.ToLowerInvariant() }
 function Write-AtomicJson { param($Path, $Value) $script:receipt = $Value }

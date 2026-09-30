@@ -1,6 +1,11 @@
 # The real watcher's outer catch, but with synthetic files and fake services.
 $ErrorActionPreference = 'Stop'
-$jobRequired = $false # Historical branch; new Job failure cases are tested separately.
+$ExpectedRunnerBundleSha256 = 'a'*64
+function Assert-PhaseDChildrenExited { }
+function Stop-PhaseDExecutionJob { }
+function Protect-PhaseDJobServerLog { }
+function Invoke-PhaseDExecutionFxCleanup { }
+function Write-PhaseDRollbackCleanupCheckpoint { }
 $physicalCleanupCommitted = $false
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')

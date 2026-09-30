@@ -206,3 +206,18 @@ test("blocked, failed, and stale preparations cannot inherit a ready message fro
   assert.match(h.title(), /약점 수냉 실행 준비 완료/);
   h.buttons(false);
 });
+
+test("phase timing uses its start, without adding the previous phase duration", () => {
+  const h = setup();
+  const at = Date.now();
+  h.ctx.Date = { now: () => at, parse: Date.parse };
+  const display = h.ctx.launchProgressDisplay({ progress: {
+    stageCode: "health_observation", events: [
+      { stageCode: "game_spawned", occurredAtUtc: new Date(at - 24000).toISOString(), cumulativeMilliseconds: 60000, intervalMilliseconds: 19000 },
+      { stageCode: "health_observation", occurredAtUtc: new Date(at - 5000).toISOString(), cumulativeMilliseconds: 79000, intervalMilliseconds: 0 }
+    ]
+  } });
+  assert.match(display.title, /30초/);
+  assert.match(display.description, /요청 후 84\.0초 · 현재 단계 경과 5\.0초/);
+  assert.match(display.description, /로딩 완료를 뜻하지 않습니다/);
+});

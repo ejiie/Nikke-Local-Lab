@@ -43,7 +43,7 @@ function New-PhaseDRunnerBundle {
     @{root=(Join-Path $Specification.launchRoot 'tools/runner');sha256=('d'*64)}
 }
 $count=0
-foreach ($build in @('build_150.6.9','build_151.8.5')) {
+foreach ($build in @('build_151.8.5','build_152.8.11')) {
     foreach ($variant in @($false,$true)) {
         $expected=[ordered]@{}; foreach ($key in $spec.Keys) { $expected[$key]=$spec[$key] }
         $expected.clientBuildCode=$build
@@ -52,14 +52,7 @@ foreach ($build in @('build_150.6.9','build_151.8.5')) {
         $expected.weaknessCode='iron'
         $expected.staticDataVariantRequired=$variant
         if ($variant) { $expected.variantStaticDataPack=Join-Path $root 'pack'; $expected.variantStaticDataSha256='6'*64 }
-        $expected.resourcePreflightRequired=$build -ceq 'build_150.6.9'
-        if ($expected.resourcePreflightRequired) {
-            foreach ($field in @('resourcePreflightHelper','resourcePreflightTool','resourceCatalogReceiptPath')) { $expected[$field]=Join-Path $root $field }
-            foreach ($field in @('resourcePreflightHelperSha256','resourcePreflightToolSha256','resourceCatalogReceiptSha256')) { $expected[$field]='5'*64 }
-            $expected.bootstrapRoot='C:\NLL\Runtime\PhysicalBootstrap-v2'
-            $expected.bootstrapSha256='ff7371b3e20119030c0f3a8e2f6ba9482094c4118f06dbcc4e0e7f137f8e404f'
-            $expected.serverExeSha256='a28c7ff227a74d260a29389b82caeed3fe196f91eef3d28cabe9977b5ed9d07b'
-        }
+
         $invokeMapping={
             foreach ($key in $expected.Keys) { Set-Variable -Name $key -Value $expected[$key] -Scope Local }
             $candidate=@{accountUid=$expected.accountUid;baseRevisions=@{revisionSetSha256=$expected.accountRevisionSetSha256}}
@@ -68,13 +61,12 @@ foreach ($build in @('build_150.6.9','build_151.8.5')) {
             $expectedWeaknessVariantServerDllSha256=$expected.serverDllSha256
             $sourceManifestSha256=$expected.derivedSourceManifestSha256
             $ValidationKind=$expected.runIntentCode
-            $runtimeBundle=if ($build -ceq 'build_151.8.5') {
-                @{bootstrapRoot=$expected.bootstrapRoot;bootstrap=@{sha256=$expected.bootstrapSha256};serverExe=@{sha256=$expected.serverExeSha256}}
-            } else { $null }
+            $runtimeBundle=@{bootstrapRoot=$expected.bootstrapRoot;bootstrap=@{sha256=$expected.bootstrapSha256};serverExe=@{sha256=$expected.serverExeSha256}}
             & $body
         }
         $actual=& $invokeMapping
-        foreach ($key in $expected.Keys) { Assert-Route ($actual.spec[$key] -ceq $expected[$key]) }
+        Assert-Route ($actual.spec.jobNonce -cmatch '^[0-9a-f]{32}$')
+        foreach ($key in $expected.Keys | Where-Object { $_ -cne 'jobNonce' }) { Assert-Route ($actual.spec[$key] -ceq $expected[$key]) }
         Assert-Route ($actual.start -ceq $actual.completion -and
             $actual.start -ceq (Join-Path $actual.bundle.root 'invoke-nll-phase-d-runner.ps1') -and
             $actual.watcher -ceq (Join-Path $actual.bundle.root 'watch-nll-phase-d-execution.ps1'))
