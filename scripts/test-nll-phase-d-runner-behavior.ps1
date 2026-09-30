@@ -12,10 +12,13 @@ function Get-PhaseDRunnerHostsPath { Join-Path $caseRoot 'synthetic.hosts' }
 function Get-PhaseDRunnerHostPins { $script:hostPins }
 function Get-PhaseDRunnerContextPath { Join-Path $caseRoot 'synthetic-context.json' }
 function Get-PhaseDRunnerBootstrapEvidenceRoot { param($Lane) Join-Path $caseRoot 'bootstrap-evidence' }
-function New-PhaseDRunnerStopwatch { $script:clock }
-function Start-Sleep { param($Seconds, $Milliseconds) if ($Seconds) { $script:clock.Elapsed = $script:clock.Elapsed.Add([TimeSpan]::FromSeconds($Seconds)) } }
+function Start-Sleep { param($Seconds, $Milliseconds) $script:sleepMilliseconds += 1000 * $Seconds + $Milliseconds }
 function Get-Process {
     param($Id, $Name, $ErrorAction)
+    if ($Id -eq 903) {
+        $script:clientReads++
+        if ($case -eq 'early-exit' -and $script:clientReads -gt 1) { $script:processes.Remove(903) }
+    }
     if ($null -ne $Id -and $script:processes.ContainsKey([int]$Id)) { return $script:processes[[int]$Id] }
     if ($null -ne $Name) { @($script:processes.Values | Where-Object { $_.ProcessName -in $Name }) }
 }
@@ -43,7 +46,7 @@ function Get-NetTCPConnection {
     if ($State -eq 'Listen' -and $case -ne 'listener-failure') {
         @(80,443) | ForEach-Object { [pscustomobject]@{LocalAddress='127.0.0.1';LocalPort=$_} }
     }
-    if ($State -eq 'Established' -and $case -eq 'network-failure') { [pscustomobject]@{RemoteAddress='192.0.2.1'} }
+    if ($State -eq 'Established') { throw 'network_sampling_still_blocks_start' }
 }
 function Get-NetUDPEndpoint { param($OwningProcess,$ErrorAction) }
 function Start-PhaseDRunnerBootstrap {
@@ -78,7 +81,7 @@ function Start-Process {
     if ($case -eq 'bootstrap-failure') {
         Write-TestJson (Join-Path $bootstrapEvidence 'bootstrap-failure.receipt.json') @{reasonCode='synthetic_failure'}
     } else {
-        $script:processes[903]=[pscustomobject]@{Id=903;ProcessName='nikke';Responding=$true}
+        $script:processes[903]=[pscustomobject]@{Id=903;ProcessName='nikke';Responding=($case -ne 'unresponsive');StartTime=[DateTime]::UtcNow}
         Write-TestJson (Join-Path $bootstrapEvidence 'bootstrap-start.receipt.json') @{
             contractId='nll/phase3b2-physical-bootstrap-client-start/v1'; assessmentUid=$env:NLL_PHASE3B2_ASSESSMENT_UID
             clientProcessId=903; sailNamedPipeConnected=$true; sailNamedPipePayloadWritten=$true
@@ -108,7 +111,7 @@ try {
     $env:USERPROFILE=$root
     foreach ($build in @('build_151.8.5','build_152.8.11')) {
       foreach ($variant in @($false,$true)) {
-       foreach ($case in @('early-exit','observed-exit','digest-failure','listener-failure','bootstrap-failure','network-failure','capture-failure')) {
+       foreach ($case in @('early-exit','observed-exit','digest-failure','listener-failure','bootstrap-failure','unresponsive','capture-failure')) {
         $caseRoot=Join-Path $root "$build-$variant-$case"
         $spec=[ordered]@{}; foreach ($key in $originalSpec.Keys) { $spec[$key]=$originalSpec[$key] }
         $spec.launchRoot=Join-Path $caseRoot $id
@@ -121,6 +124,7 @@ try {
         $runtimeRoot=Join-Path $spec.launchRoot 'runtime'
         $spec.bootstrapRoot=Join-Path $caseRoot 'bootstrap'
         $null=New-Item -ItemType Directory -Path $runtimeRoot,(Join-Path $spec.bootstrapRoot 'artifact')
+        Write-TestJson (Join-Path $spec.launchRoot 'execution-state.json') @{createdAtUtc=[DateTimeOffset]::UtcNow.AddSeconds(-1).ToString('o')}
         $db=Join-Path $runtimeRoot 'db.json'
         [IO.File]::WriteAllText($db,'{"Users":[]}')
         foreach ($binding in @(@{name='EpinelPS.exe';field='serverExeSha256'},@{name='EpinelPS.dll';field='serverDllSha256'})) {
@@ -137,11 +141,11 @@ try {
         $script:hostPins=@{base=$baseHash;applied=(Get-PhaseDRunnerHash $hosts)}
         [IO.File]::WriteAllText($hosts,"# synthetic`r`n# end NLL Phase3B2 Physical entries",[Text.UTF8Encoding]::new($false))
         $script:processes=@{}; $script:rules=@{}; $script:captureCalled=$false
-        $script:clock=[pscustomobject]@{Elapsed=[TimeSpan]::Zero}
+        $script:sleepMilliseconds=0; $script:clientReads=0
         if ($case -eq 'digest-failure') { $spec.serverDllSha256='0'*64 }
         $failed=$false
         try { Enter-PhaseDRunnerIsolation $spec; $start=Invoke-PhaseDRunnerStart $spec | ConvertFrom-Json } catch { $failed=$true; $errorCode=$_.Exception.Message }
-        $shouldFail=$case -in @('digest-failure','listener-failure','bootstrap-failure','network-failure')
+        $shouldFail=$case -in @('digest-failure','listener-failure','bootstrap-failure')
         if ($failed -and -not $shouldFail) { throw $errorCode }
         Assert-Test ($failed -eq $shouldFail)
         foreach ($name in $environmentNames) { Assert-Test ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($name))) }
@@ -168,6 +172,16 @@ try {
         Assert-Test ($script:rules.Count -eq 2)
  Assert-Test (($script:membershipChecks -join ',') -ceq '901,902,903')
         Assert-Test (-not $start.requiredLocalCatalogPreflightPerformed -and -not $start.officialOutboundFallbackUsed)
+        Assert-Test ($start.contractId -ceq 'nll/phase3b2-epinel-solo-raid-ranking-prefix-start/v10')
+        Assert-Test ($script:sleepMilliseconds -lt 1000)
+        foreach ($field in @('thirtySecondMeasurementCompleted','measurementSampleCount','measurementElapsedMilliseconds',
+            'minimumAcceptedSampleCount','minimumAcceptedElapsedMilliseconds','successfulNonLoopbackConnectionCount')) {
+            Assert-Test ($field -notin $start.PSObject.Properties.Name)
+        }
+        $progress=Get-Content -LiteralPath (Join-Path $spec.launchRoot 'execution-progress.json') -Raw | ConvertFrom-Json
+        Assert-Test ($progress.stageCode -ceq 'running' -and 'health_observation' -notin $progress.events.stageCode)
+        Assert-Test (@(Get-ChildItem -LiteralPath $spec.launchRoot -Recurse -Filter startup.measurement.json).Count -eq 0)
+        if ($case -eq 'early-exit') { Assert-Test (-not $script:processes.ContainsKey(903)) }
         $script:processes.Remove(903) # operator closes the synthetic client
  $script:processes.Clear() # outside Job owner has proven zero before completion entry
         [IO.File]::WriteAllText($db,'{"Users":[],"changed":true}')
