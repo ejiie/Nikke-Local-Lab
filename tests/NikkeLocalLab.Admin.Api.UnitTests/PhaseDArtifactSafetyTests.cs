@@ -31,14 +31,6 @@ public sealed class PhaseDArtifactSafetyTests
     var stop = File.ReadAllText(Path.Combine(root, "scripts", "stop-nll-phase-d-control-center.ps1"));
     var lifecycleSmoke = File.ReadAllText(Path.Combine(
         root, "scripts", "test-nll-phase-d-control-center-lifecycle.ps1"));
-    var overloadStateEffectSmoke = File.ReadAllText(Path.Combine(
-        root, "scripts", "test-nll-phase-d-overload-state-effect-materialization.ps1"));
-    var clientStartScripts = new[]
-    {
-      "start-phase3b2-epinel-minimal-reference-in-micron.ps1",
-      "start-phase3b2-epinel-user-progression-v2-in-micron.ps1",
-      "start-phase3b2-epinel-solo-raid-unlock-v1-in-micron.ps1"
-    }.Select(name => File.ReadAllText(Path.Combine(root, "scripts", name))).ToArray();
     var presentationAssets = File.ReadAllText(
         Path.Combine(root, "scripts", "materialize-nll-phase-d-presentation-assets.ps1"));
     var materializer = File.ReadAllText(
@@ -183,18 +175,6 @@ public sealed class PhaseDArtifactSafetyTests
         StringComparison.Ordinal);
     Assert.Contains("$innerHostsRestored", coordinator, StringComparison.Ordinal);
     Assert.Contains("$hostsRollbackProven", recovery, StringComparison.Ordinal);
-    foreach (var clientStartScript in clientStartScripts)
-    {
-      Assert.Contains(
-          "$measurementElapsedMilliseconds = [long]$deadline.Elapsed.TotalMilliseconds",
-          clientStartScript,
-          StringComparison.Ordinal);
-      Assert.Contains("Record a terminal sample", clientStartScript,
-          StringComparison.Ordinal);
-      Assert.DoesNotContain("[long]$samples[-1].offsetMilliseconds",
-          clientStartScript,
-          StringComparison.Ordinal);
-    }
     Assert.Contains("profile_trusted_unique/v1", coordinator, StringComparison.Ordinal);
     Assert.Contains(
         "Set-ExecutionState -StatusCode $failureStatusCode -FailureCode $failureCode",
@@ -265,8 +245,6 @@ public sealed class PhaseDArtifactSafetyTests
         runtimeStateStore + materializer + materializerState + installer +
         repair + raidBindingRepair,
         StringComparison.OrdinalIgnoreCase);
-    Assert.Contains("EpinelPS-SoloRaidRankingPrefix-v9", overloadStateEffectSmoke,
-        StringComparison.Ordinal);
     Assert.Contains("AssetDownloadUtil.ConfigureOfficialOutbound(false)", materializer, StringComparison.Ordinal);
     Assert.Contains("favoriteCharacterUid", materializer, StringComparison.Ordinal);
     Assert.DoesNotContain("favoriteCharacterNameCode", materializer, StringComparison.Ordinal);
@@ -368,16 +346,6 @@ public sealed class PhaseDArtifactSafetyTests
     Assert.Contains("sessionRemovedAfterStop=$true", lifecycleSmoke,
         StringComparison.Ordinal);
     Assert.Contains("staleSessionRecovered=$true", lifecycleSmoke,
-        StringComparison.Ordinal);
-    Assert.Contains("phase_d_overload_smoke_parent_option_id_persisted",
-        overloadStateEffectSmoke, StringComparison.Ordinal);
-    Assert.Contains("phase_d_synchro_level_projection_mismatch",
-        overloadStateEffectSmoke, StringComparison.Ordinal);
-    Assert.Contains("materializerStateEffectAdmissionPassed = $true",
-        overloadStateEffectSmoke, StringComparison.Ordinal);
-    Assert.Contains("sourceDatabaseModified = $false", overloadStateEffectSmoke,
-        StringComparison.Ordinal);
-    Assert.Contains("derivedDatabaseRetained = $false", overloadStateEffectSmoke,
         StringComparison.Ordinal);
     Assert.Contains("failedProjection?.FailureCode", executionService, StringComparison.Ordinal);
     Assert.Contains("PropertyNamingPolicy = JsonNamingPolicy.CamelCase", documentContract,

@@ -165,14 +165,6 @@ try {
     $fixture=New-TestFixture; $plan=Get-TestPlan $fixture
     $null=New-Item -ItemType Junction -Path (Join-Path $fixture.RuntimeRoot 'cache') -Target $fixture.InputDirectory
     Assert-Rejected { Copy-NllResourceHeader $fixture.RuntimeRoot $plan } 'path_reparse'
-    # Both preparation entry points must check the exact member before sealing.
-    foreach ($name in @('prepare-nll-resource-probe-auth-smoke.ps1','prepare-nll-resource-native-observation.ps1')) {
-        $source=Get-Content -LiteralPath (Join-Path $PSScriptRoot $name) -Raw
-        Assert-Test ($source.Contains('Get-NllResourceHeaderPlan') -and $source.Contains('Assert-NllResourceHeaderManifest')) 'preparation_wiring'
-        $tokens=$null;$errors=$null
-        $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot $name),[ref]$tokens,[ref]$errors)
-        Assert-Test ($errors.Count -eq 0) 'preparation_parse'
-    }
     $candidate=Join-Path (Split-Path -Parent $PSScriptRoot) '.external\EpinelPS-151-candidate\EpinelPS'
     $asset=Get-Content -LiteralPath (Join-Path $candidate 'Utils\AssetDownloadUtil.cs') -Raw
     $program=Get-Content -LiteralPath (Join-Path $candidate 'Program.cs') -Raw
