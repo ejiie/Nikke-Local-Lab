@@ -168,7 +168,7 @@ Invoke-Checked dotnet @((Join-Path $RepositoryRoot 'tests/NikkeLocalLab.ReadBenc
 Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-ui-reuse-assets.ps1'))
 if ($env:OS -eq 'Windows_NT') {
     $WindowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
-    foreach ($test in @('test-nll-phase-d-preparation.ps1', 'test-nll-phase-d-launch-tools.ps1',
+    foreach ($test in @('test-nll-phase-d-preparation.ps1',
         'test-nll-phase-d-runner-contract.ps1', 'test-nll-phase-d-runner-seal.ps1', 'test-nll-phase-d-job.ps1', 'test-nll-phase-d-job-paths.ps1',
         'test-nll-phase-d-runner-behavior.ps1',
         'test-nll-phase-d-runner-routing.ps1', 'test-nll-phase-d-runner-dependencies.ps1',
@@ -177,7 +177,6 @@ if ($env:OS -eq 'Windows_NT') {
         'test-nll-phase-d-materializer-errors.ps1', 'test-nll-stabilization-release.ps1')) {
         Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory $test))
     }
-    Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory 'test-nll-phase-d-runner-behavior.ps1'), '-JobContract')
     Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-execution-fx-retirement.ps1'))
     # Preparation resolves Windows runtime paths; before S2 only the Windows job ran this gate.
     Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'verify-automation-boss-weakness-variant.ps1'))

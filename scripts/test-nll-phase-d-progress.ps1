@@ -34,7 +34,21 @@ try {
     Write-PhaseDProgress $root 'game_exited'
     Write-PhaseDProgress $root 'running'
     $progress = Get-Content -LiteralPath $progressPath -Raw | ConvertFrom-Json
-    Check-Progress ($progress.stageCode -ceq 'game_exited' -and $progress.events[-1].stageCode -ceq 'running')
+    Check-Progress ($progress.stageCode -ceq 'game_exited' -and $progress.events[-1].stageCode -ceq 'game_exited' -and $progress.events.Count -eq 2)
+    Check-Progress (([IO.File]::ReadAllText($statePath)) -ceq $original)
+    # Phase starts: own durations are closed by the next phase, not attached to it.
+    Remove-Item -LiteralPath $progressPath
+    $start=[DateTimeOffset]::UtcNow.AddSeconds(-10)
+    Write-PhaseDProgress $root 'fx_stage' $start
+    Write-PhaseDProgress $root 'runtime_preparation' $start.AddMilliseconds(600)
+    Write-PhaseDProgress $root 'runtime_preparation' $start.AddSeconds(1)
+    Write-PhaseDProgress $root 'fx_stage' $start.AddSeconds(2)
+    Write-PhaseDProgress $root 'server_start' $start.AddSeconds(3)
+    $progress=Get-Content -LiteralPath $progressPath -Raw | ConvertFrom-Json
+    Check-Progress ($progress.events.Count -eq 3)
+    Check-Progress ($progress.events[0].intervalMilliseconds -eq 600)
+    Check-Progress ($progress.events[1].intervalMilliseconds -eq 2400)
+    Check-Progress ($progress.events[2].intervalMilliseconds -eq 0)
     Check-Progress (([IO.File]::ReadAllText($statePath)) -ceq $original)
     # Telemetry cannot wait ten seconds on admission ownership or damage the last record.
     $before = [IO.File]::ReadAllText($progressPath)

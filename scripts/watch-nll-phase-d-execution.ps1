@@ -20,25 +20,23 @@ param(
     [string]$ConnectionStringEnvironmentVariable,
     [Parameter(Mandatory)] [ValidatePattern('^[A-Z][A-Z0-9_]{2,63}$')]
     [string]$IdentitySecretEnvironmentVariable,
-    [string]$ExpectedRunnerBundleSha256 = ''
+    [Parameter(Mandatory)] [ValidatePattern('^[0-9a-f]{64}$')]
+    [string]$ExpectedRunnerBundleSha256
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$sealedRunner = $null
-if ($ExpectedRunnerBundleSha256) {
-    # Verify the verifier before importing it; the parent supplied the pin.
-    $manifestPath = Join-Path $PSScriptRoot 'runner.bundle.json'
-    if ((Get-FileHash -LiteralPath $manifestPath).Hash.ToLowerInvariant() -cne $ExpectedRunnerBundleSha256) { throw 'phase_d_runner_bundle_invalid' }
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    $seal = @($manifest.members | Where-Object { $_.name -ceq 'Nll.PhaseDRunnerSeal.ps1' })
-    $sealPath = Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1'
-    if ($seal.Count -ne 1 -or (Get-FileHash -LiteralPath $sealPath).Hash.ToLowerInvariant() -cne $seal[0].sha256) { throw 'phase_d_runner_bundle_invalid' }
-    . $sealPath
-    $sealedRunner = Read-PhaseDRunnerBundle -LaunchRoot $LaunchRoot -ExpectedBundleSha256 $ExpectedRunnerBundleSha256
-    if ([IO.Path]::GetFullPath($sealedRunner.root) -ine [IO.Path]::GetFullPath($PSScriptRoot) -or
-        [IO.Path]::GetFullPath($CompletionScriptPath) -ine (Join-Path $PSScriptRoot 'invoke-nll-phase-d-runner.ps1')) { throw 'phase_d_runner_bundle_invalid' }
-} elseif (Test-Path -LiteralPath (Join-Path $LaunchRoot 'tools/runner')) { throw 'phase_d_runner_binding_missing' }
+# Verify the verifier before importing it; the parent supplied the pin.
+$manifestPath = Join-Path $PSScriptRoot 'runner.bundle.json'
+if ((Get-FileHash -LiteralPath $manifestPath).Hash.ToLowerInvariant() -cne $ExpectedRunnerBundleSha256) { throw 'phase_d_runner_bundle_invalid' }
+$manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$seal = @($manifest.members | Where-Object { $_.name -ceq 'Nll.PhaseDRunnerSeal.ps1' })
+$sealPath = Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1'
+if ($seal.Count -ne 1 -or (Get-FileHash -LiteralPath $sealPath).Hash.ToLowerInvariant() -cne $seal[0].sha256) { throw 'phase_d_runner_bundle_invalid' }
+. $sealPath
+$sealedRunner = Read-PhaseDRunnerBundle -LaunchRoot $LaunchRoot -ExpectedBundleSha256 $ExpectedRunnerBundleSha256
+if ([IO.Path]::GetFullPath($sealedRunner.root) -ine [IO.Path]::GetFullPath($PSScriptRoot) -or
+    [IO.Path]::GetFullPath($CompletionScriptPath) -ine (Join-Path $PSScriptRoot 'invoke-nll-phase-d-runner.ps1')) { throw 'phase_d_runner_bundle_invalid' }
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDCompletion.ps1')
 . (Join-Path $PSScriptRoot 'Nll.PhaseDChildProcess.ps1')
@@ -128,9 +126,7 @@ function Invoke-EmergencyRollback {
             $EvidenceRoot.TrimEnd('\') + '\',
             [StringComparison]::OrdinalIgnoreCase)) `
         'phase_d_emergency_rollback_run_root_invalid'
-    if ($jobRequired) {
-        Invoke-PhaseDWithJobZeroProof $LaunchRoot $ExpectedRunnerBundleSha256 { }
-    } else { Stop-PhaseDVerifiedProcessSet -Pointer $pointer -Identities $runtimeProcessIdentities }
+    Invoke-PhaseDWithJobZeroProof $LaunchRoot $ExpectedRunnerBundleSha256 { }
     $dbBefore = Join-Path $runRoot 'db.before.bin'
     $hostsBefore = Join-Path $runRoot 'hosts.before.bin'
     Assert-Watcher (Test-Path -LiteralPath $dbBefore -PathType Leaf) `
@@ -206,13 +202,11 @@ $raidStatePersisted = $false
 $runtimeProcessIdentities = $null
 $executionJob = $null
 $physicalCleanupCommitted = $false
-$jobRequired = $null -ne $sealedRunner -and $sealedRunner.specification.contractId -ceq 'nll/phase-d-runner-input/v3'
-if ($jobRequired) {
-    . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerContract.ps1')
-    . (Join-Path $PSScriptRoot 'Nll.PhaseDJob.ps1')
-    # No operational catch/rollback before the explicit handoff has committed.
-    $executionJob = Receive-PhaseDJobHandoff $LaunchRoot $ExpectedRunnerBundleSha256
-}
+. (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerContract.ps1')
+Assert-PhaseDRunnerSpecification $sealedRunner.specification
+. (Join-Path $PSScriptRoot 'Nll.PhaseDJob.ps1')
+# No operational catch/rollback before the explicit handoff has committed.
+$executionJob = Receive-PhaseDJobHandoff $LaunchRoot $ExpectedRunnerBundleSha256
 
 try {
     Assert-Watcher `
@@ -239,22 +233,14 @@ try {
     # Identity was checked above. Publish the observation before any slow cleanup.
     Write-PhaseDProgress $LaunchRoot 'game_exited'
 
-    if ($jobRequired) {
-        Write-PhaseDProgress $LaunchRoot 'runtime_stopping'
-        Stop-PhaseDExecutionJob $LaunchRoot $ExpectedRunnerBundleSha256
-        Protect-PhaseDJobServerLog $LaunchRoot $ExpectedRunnerBundleSha256
-        Invoke-PhaseDExecutionFxCleanup $LaunchRoot $ExpectedRunnerBundleSha256
-    }
+    Write-PhaseDProgress $LaunchRoot 'runtime_stopping'
+    Stop-PhaseDExecutionJob $LaunchRoot $ExpectedRunnerBundleSha256
+    Protect-PhaseDJobServerLog $LaunchRoot $ExpectedRunnerBundleSha256
+    Invoke-PhaseDExecutionFxCleanup $LaunchRoot $ExpectedRunnerBundleSha256
     Write-PhaseDProgress $LaunchRoot 'runtime_restore'
-    $completionArguments = [ordered]@{
-        ObservedStageCode = 'startup_only'; OutcomeCode = 'client_exit'
-        ServerRoot = $ServerRoot; EvidenceRoot = $EvidenceRoot
-    }
-    if ($null -ne $sealedRunner) {
-        $null = Read-PhaseDRunnerBundle -LaunchRoot $LaunchRoot -ExpectedBundleSha256 $ExpectedRunnerBundleSha256
-        $completionArguments = [ordered]@{ Phase='completion'; LaunchRoot=$LaunchRoot
-            ExpectedBundleSha256=$ExpectedRunnerBundleSha256; ObservedStageCode='startup_only'; OutcomeCode='client_exit' }
-    }
+    $null = Read-PhaseDRunnerBundle -LaunchRoot $LaunchRoot -ExpectedBundleSha256 $ExpectedRunnerBundleSha256
+    $completionArguments = [ordered]@{ Phase='completion'; LaunchRoot=$LaunchRoot
+        ExpectedBundleSha256=$ExpectedRunnerBundleSha256; ObservedStageCode='startup_only'; OutcomeCode='client_exit' }
     $completionResult = Invoke-PhaseDChildScript `
         -TimeoutSeconds 180 -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-completion.identity.json') `
         -ScriptPath $CompletionScriptPath `
@@ -286,10 +272,8 @@ try {
                 (Join-Path $env:SystemRoot 'System32\drivers\etc\hosts')
             restorationOwnerCode = 'phase_d_completion_watcher'
         })
-    if ($jobRequired) {
-        Write-PhaseDPhysicalCleanupCheckpoint $LaunchRoot $ExpectedRunnerBundleSha256 $completionPath
-        $physicalCleanupCommitted = $true
-    }
+    Write-PhaseDPhysicalCleanupCheckpoint $LaunchRoot $ExpectedRunnerBundleSha256 $completionPath
+    $physicalCleanupCommitted = $true
     Write-PhaseDProgress $LaunchRoot 'database_restart'
     Ensure-PhaseDPostgresRunning `
         -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-pg.identity.json') `
@@ -358,7 +342,7 @@ catch {
         throw $failureCode
     }
     $rolledBack = $false
-    if ($jobRequired -and -not $physicalCleanupCommitted) {
+    if (-not $physicalCleanupCommitted) {
         try {
             Assert-PhaseDChildrenExited -LaunchRoot $LaunchRoot
             Stop-PhaseDExecutionJob $LaunchRoot $ExpectedRunnerBundleSha256
@@ -414,7 +398,7 @@ catch {
     }
     if (($completionApplied -or $rolledBack) -and $controlCenterHostsRestored -and -not $databaseRestarted) {
         try {
-            if ($jobRequired -and -not $physicalCleanupCommitted) {
+            if (-not $physicalCleanupCommitted) {
                 Write-PhaseDRollbackCleanupCheckpoint $LaunchRoot $ExpectedRunnerBundleSha256
                 $physicalCleanupCommitted=$true
             }

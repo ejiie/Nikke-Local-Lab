@@ -27,7 +27,7 @@ function New-PhaseDRunnerBundle {
     if (Test-Path -LiteralPath $root) { throw 'phase_d_runner_bundle_exists' }
     $null = New-Item -ItemType Directory -Path $root
     $members = @()
-    $version = if ($Specification.contractId -ceq 'nll/phase-d-runner-input/v3') { 2 } else { 1 }
+    $version = 2
     foreach ($name in Get-PhaseDRunnerCodeMembers -Version $version) {
         $source = Join-Path $ScriptsRoot $name
         $hash = Get-PhaseDRunnerHash $source
@@ -121,21 +121,9 @@ function Assert-PhaseDRunnerStartDependencies {
     if ($Specification.staticDataVariantRequired) {
         $pins += @{path=$Specification.variantStaticDataPack; hash=$Specification.variantStaticDataSha256}
     }
-    if ($Specification.resourcePreflightRequired) {
-        $pins += @(
-            @{path=$Specification.resourcePreflightHelper; hash=$Specification.resourcePreflightHelperSha256},
-            @{path=$Specification.resourceCatalogReceiptPath; hash=$Specification.resourceCatalogReceiptSha256}
-        )
-    }
+
     foreach ($pin in $pins) {
         if ((Get-PhaseDRunnerHash $pin.path) -cne $pin.hash) { throw 'phase_d_runner_dependency_drifted' }
     }
-    if ($Specification.resourcePreflightRequired) {
-        # This historical field contains the WHOLE published tool-set digest,
-        # not the hash of the executable. Use the already hash-verified helper.
-        . $Specification.resourcePreflightHelper
-        if ((Get-NllResourcePreflightToolSetSha256 $Specification.resourcePreflightTool) -cne $Specification.resourcePreflightToolSha256) {
-            throw 'phase_d_runner_dependency_drifted'
-        }
-    }
+
 }

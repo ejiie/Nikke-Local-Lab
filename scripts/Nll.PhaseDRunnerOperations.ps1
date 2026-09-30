@@ -19,9 +19,7 @@ function Get-PhaseDRunnerBootstrapEvidenceRoot([string]$Lane) { Join-Path 'C:\NL
 function New-PhaseDRunnerStopwatch { [Diagnostics.Stopwatch]::StartNew() }
 function Start-PhaseDRunnerBootstrap {
     param([object]$Specification, [string]$Path)
-    if ($Specification.contractId -cne 'nll/phase-d-runner-input/v3') {
-        return Start-Process -FilePath $Path -WorkingDirectory (Split-Path -Parent $Path) -PassThru -WindowStyle Hidden
-    }
+
     $info = [Diagnostics.ProcessStartInfo]::new()
     $info.FileName = $Path; $info.WorkingDirectory = Split-Path -Parent $Path
     $info.UseShellExecute = $false; $info.CreateNoWindow = $true
@@ -29,33 +27,15 @@ function Start-PhaseDRunnerBootstrap {
 }
 function Assert-PhaseDRunnerJobProcess {
     param([object]$Specification, [int]$ProcessId)
-    if ($Specification.contractId -cne 'nll/phase-d-runner-input/v3') { return }
     $bundle = Read-PhaseDRunnerBundle -LaunchRoot $Specification.launchRoot
     $job = Open-PhaseDExecutionJob $Specification.launchRoot $bundle.sha256
     try {
         if (-not $job.Contains($PID) -or -not $job.Contains($ProcessId)) { throw 'phase_d_job_runtime_member_unproven' }
     } finally { $job.Dispose() }
 }
-function Invoke-PhaseDRunnerResourcePreflight {
-    param([object]$Specification)
-    if (-not $Specification.resourcePreflightRequired -or $Specification.clientBuildCode -cne 'build_150.6.9') {
-        throw 'phase_d_runner_resource_lane_invalid'
-    }
-    if ((Get-FileHash -LiteralPath $Specification.resourcePreflightHelper -Algorithm SHA256).Hash.ToLowerInvariant() -cne $Specification.resourcePreflightHelperSha256) {
-        throw 'phase_d_resource_preflight_helper_drifted'
-    }
-    . $Specification.resourcePreflightHelper
-    Assert-NllResourceTransportBeforeClient -ToolPath $Specification.resourcePreflightTool `
-        -ReceiptPath $Specification.resourceCatalogReceiptPath -ReceiptSha256 $Specification.resourceCatalogReceiptSha256 `
-        -ToolSha256 $Specification.resourcePreflightToolSha256 `
-        -TransportReceiptPath (Join-Path $Specification.launchRoot 'resource-loopback-preflight.receipt.json')
-}
 function Invoke-PhaseDRunnerCapture {
     param([object]$Specification, [string]$SourceDatabasePath)
-    $scopeArguments = @()
-    if ($Specification.contractId -cin @('nll/phase-d-runner-input/v2','nll/phase-d-runner-input/v3')) {
-        $scopeArguments = @('--weakness-code', [string]$Specification.weaknessCode)
-    }
+    $scopeArguments = @('--weakness-code', [string]$Specification.weaknessCode)
     $captureOutput = @(& $Specification.runtimeMaterializer --capture-solo-raid-state true `
         --source-db $SourceDatabasePath --pending-payload $Specification.soloRaidPendingPath `
         --receipt $Specification.soloRaidCaptureReceiptPath --account-uid $Specification.accountUid `

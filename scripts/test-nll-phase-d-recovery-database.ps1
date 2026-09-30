@@ -1,6 +1,7 @@
 # Run real DB-readiness and pointer recovery branches with synthetic resources only.
 $ErrorActionPreference = 'Stop'
-$jobRequired = $false
+$recoveryBundle = @{sha256=('a'*64)}
+function Write-PhaseDRollbackCleanupCheckpoint { }
 $replayOnly = $false
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')

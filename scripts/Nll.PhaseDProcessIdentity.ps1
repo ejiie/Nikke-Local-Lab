@@ -166,44 +166,6 @@ function Initialize-PhaseDProcessIdentitySet {
     }
 }
 
-function Stop-PhaseDResidualServer {
-    param([string]$LaunchRoot)
-    # Caller must have excluded live coordinator/watcher owners. Recheck client
-    # coldness here as well; this path NEVER terminates a client or bootstrap.
-    if (@(Get-Process -Name nikke,nikke_launcher,'NikkeLocalLab.Phase3B2.PhysicalBootstrap' -ErrorAction SilentlyContinue).Count -ne 0) {
-        throw 'phase_d_orphan_recovery_runtime_not_cold'
-    }
-    $servers = @(Get-Process -Name EpinelPS -ErrorAction SilentlyContinue)
-    try {
-        if ($servers.Count -eq 0) { return $false }
-        if ($servers.Count -ne 1) { throw 'phase_d_process_identity_unresolved' }
-        $root = [IO.Path]::GetFullPath($LaunchRoot).TrimEnd('\')
-        $pointerPath = Join-Path $root 'evidence\active-run.pointer.json'
-        $identityPath = Join-Path $root 'runtime-processes.identity.json'
-        if (-not (Test-Path -LiteralPath $pointerPath -PathType Leaf) -or
-            -not (Test-Path -LiteralPath $identityPath -PathType Leaf)) { throw 'phase_d_process_identity_unresolved' }
-        $pointer = Get-Content -LiteralPath $pointerPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        $identities = Get-Content -LiteralPath $identityPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        $runRoot = [IO.Path]::GetFullPath([string]$pointer.runRoot)
-        if ($pointer.contractId -cne 'nll/phase3b2-epinel-minimal-active-run-pointer/v1' -or
-            -not $runRoot.StartsWith((Join-Path $root 'evidence') + '\', [StringComparison]::OrdinalIgnoreCase) -or
-            $identities.schemaVersion -ne 1 -or
-            $identities.contractId -cne 'nll/phase-d-runtime-process-identities/v1' -or
-            $identities.launchContextUid -cne (Split-Path -Leaf $root) -or
-            $null -eq $identities.server -or
-            [int]$identities.server.processId -ne [int]$pointer.serverProcessId -or
-            [int]$identities.server.processId -ne $servers[0].Id -or
-            -not [string]::Equals([string]$identities.server.executablePath, (Join-Path $root 'runtime\EpinelPS.exe'), [StringComparison]::OrdinalIgnoreCase)) {
-            throw 'phase_d_process_identity_mismatch'
-        }
-        $receiptHash = (Get-FileHash -LiteralPath (Join-Path $runRoot 'run-start.receipt.json') -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($identities.startReceiptSha256 -cne $receiptHash) { throw 'phase_d_process_identity_mismatch' }
-        Stop-PhaseDVerifiedProcess -Identity $identities.server
-        return $true
-    }
-    finally { foreach ($process in $servers) { $process.Dispose() } }
-}
-
 function Write-PhaseDFirstFailure {
     param([string]$LaunchRoot, [ValidateSet('coordinator','watcher')][string]$Owner,
         [string]$Stage, [Management.Automation.ErrorRecord]$Failure,
@@ -281,14 +243,16 @@ function Write-PhaseDProgress {
             }
             $origin=[DateTimeOffset]$progress.requestReceivedAtUtc
             if ($at -lt $origin -or $at -gt $observed) { throw 'phase_d_progress_clock_invalid' }
-            $previous=if (@($progress.events).Count) { [DateTimeOffset]$progress.events[-1].occurredAtUtc } else { $origin }
+            # Duplicate or late owners must not restart the displayed phase or close it twice.
+            if (@($progress.events).Count) {
+                if ([array]::IndexOf($stages,$StageCode) -le [array]::IndexOf($stages,[string]$progress.stageCode)) { return }
+                $previous=$progress.events[-1]
+                $previous.intervalMilliseconds=[math]::Max(0,($at-([DateTimeOffset]$previous.occurredAtUtc)).TotalMilliseconds)
+            }
             $progress.events=@($progress.events)+@([ordered]@{stageCode=$StageCode;occurredAtUtc=$at.ToString('o');
                 observedAtUtc=$observed.ToString('o');cumulativeMilliseconds=[math]::Max(0,($at-$origin).TotalMilliseconds);
-                intervalMilliseconds=[math]::Max(0,($at-$previous).TotalMilliseconds)})
-            # A late startup owner cannot turn an already-exited game back into running.
-            if ([array]::IndexOf($stages,$StageCode) -ge [array]::IndexOf($stages,[string]$progress.stageCode)) {
-                $progress.stageCode=$StageCode
-            }
+                intervalMilliseconds=0})
+            $progress.stageCode=$StageCode
             $progress.updatedAtUtc=$observed.ToString('o')
             Write-AtomicJson $path $progress
         }

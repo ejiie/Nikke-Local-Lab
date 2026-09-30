@@ -18,7 +18,7 @@ try {
     $runtimeRoot = Join-Path $spec.launchRoot 'runtime'
     $sourceRoot = Join-Path $root 'source'
     $null = New-Item -ItemType Directory -Path $runtimeRoot, $sourceRoot
-    foreach ($name in Get-PhaseDRunnerCodeMembers) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $sourceRoot }
+    foreach ($name in Get-PhaseDRunnerCodeMembers -Version 2) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $sourceRoot }
     $spec.runtimeMaterializer = Join-Path $runtimeRoot 'NikkeLocalLab.PhaseD.RuntimeMaterializer.exe'
     [IO.File]::WriteAllText($spec.bossRuntimeVariantProfile,'{"synthetic":true}')
     $spec.bossRuntimeVariantProfileSha256=Get-PhaseDRunnerHash $spec.bossRuntimeVariantProfile
@@ -34,7 +34,7 @@ try {
     # Modifying the repository AFTER sealing cannot change the active run's code.
     [IO.File]::WriteAllText((Join-Path $sourceRoot 'Nll.PhaseDRunnerStart.ps1'), 'throw "unpublished-next-version"')
     Assert-Test ((Read-PhaseDRunnerBundle $spec.launchRoot).sha256 -ceq $bundle.sha256); $count++
-    foreach ($name in @('runner.input.json','runner.profile.json') + @(Get-PhaseDRunnerCodeMembers)) {
+    foreach ($name in @('runner.input.json','runner.profile.json') + @(Get-PhaseDRunnerCodeMembers -Version 2)) {
         $path = Join-Path $bundle.root $name
         $before = [IO.File]::ReadAllBytes($path)
         [IO.File]::WriteAllText($path, 'tampered')
@@ -77,6 +77,45 @@ try {
     try { & (Join-Path $bundle.root 'invoke-nll-phase-d-runner.ps1') -Phase start -LaunchRoot $spec.launchRoot -ExpectedBundleSha256 ('0' * 64) }
     catch { $failed = $_.Exception.Message -ceq 'phase_d_runner_bundle_invalid' }
     Assert-Test $failed; $count++
+    # Historical input shapes are interpreted by their own sealed closure, before
+    # current v3-only validation. Execute just the real dispatch prefix, never recovery.
+    $tokens=$null; $errors=$null
+    $recoveryAst=[Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $PSScriptRoot 'recover-nll-phase-d-orphaned-execution.ps1'),[ref]$tokens,[ref]$errors)
+    Assert-Test ($errors.Count -eq 0)
+    $statements=@($recoveryAst.EndBlock.Statements)
+    $begin=@($statements | Where-Object { $_ -is [Management.Automation.Language.AssignmentStatementAst] -and
+        $_.Left.Extent.Text -ceq '$recoveryBundle' })[0].Extent.StartOffset
+    $end=@($statements | Where-Object { $_.Extent.Text -ceq ". (Join-Path `$PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')" })[0].Extent.StartOffset
+    $testScriptsRoot=$PSScriptRoot
+    $dispatch=[scriptblock]::Create('$PSScriptRoot=$testScriptsRoot;' + $recoveryAst.Extent.Text.Substring($begin,$end-$begin))
+    $ExecutionRoot=Split-Path -Parent $spec.launchRoot; $LaunchContextUid=$id; $ConfigurationPath='synthetic-config'
+    $historicalEntry=Join-Path $bundle.root 'recover-nll-phase-d-orphaned-execution.ps1'
+    [IO.File]::WriteAllText($historicalEntry, 'param($ExecutionRoot,$LaunchContextUid,$ConfigurationPath) $global:phaseDDispatch=@($ExecutionRoot,$LaunchContextUid,$ConfigurationPath)')
+    foreach ($oldVersion in @(1,2,3)) {
+        $oldSpec=$spec | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+        $oldSpec.contractId='nll/phase-d-runner-input/v'+$oldVersion
+        if ($oldVersion -lt 3) { $oldSpec.PSObject.Properties.Remove('jobNonce'); $oldSpec.PSObject.Properties.Remove('executionFx') }
+        if ($oldVersion -eq 1) { $oldSpec.PSObject.Properties.Remove('weaknessCode') }
+        $oldSpec | Add-Member resourcePreflightRequired $false
+        Write-TestJson (Join-Path $bundle.root 'runner.input.json') $oldSpec
+        $oldManifest=[Text.Encoding]::UTF8.GetString($originalManifest) | ConvertFrom-Json
+        $bundleVersion=if ($oldVersion -lt 3) {1} else {2}
+        $oldManifest.contractId='nll/phase-d-runner-bundle/v'+$bundleVersion
+        $members=@(Get-PhaseDRunnerCodeMembers -Version $bundleVersion)+@('runner.input.json','runner.profile.json')
+        $oldManifest.members=@($oldManifest.members | Where-Object { $_.name -cin $members })
+        foreach ($member in $oldManifest.members) { $member.sha256=Get-PhaseDRunnerHash (Join-Path $bundle.root $member.name) }
+        Write-TestJson $bundle.manifestPath $oldManifest
+        Pin-TestBundle
+        $global:phaseDDispatch=$null
+        & $dispatch
+        Assert-Test (($global:phaseDDispatch -join '|') -ceq (@($ExecutionRoot,$id,$ConfigurationPath) -join '|')); $count++
+    }
+    $LaunchContextUid='44444444-4444-4444-8444-444444444444'
+    $global:phaseDDispatch=$null; $rejected=$false
+    try { & $dispatch } catch { $rejected=$_.Exception.Message -ceq 'phase_d_runner_binding_missing' }
+    Assert-Test ($rejected -and $null -eq $global:phaseDDispatch); $count++
+    Remove-Variable phaseDDispatch -Scope Global
     [IO.File]::WriteAllText($toolPath, 'invalid')
     Assert-Rejected { Read-PhaseDRunnerBundle $spec.launchRoot }; $count++
     Assert-Test ($null -eq (Read-PhaseDRunnerBundle (Join-Path $root 'legacy-run'))); $count++

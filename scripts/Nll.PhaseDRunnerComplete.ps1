@@ -29,21 +29,7 @@ function Invoke-PhaseDRunnerComplete {
         }
         $process
     }
-    
-    function Stop-PinnedProcess {
-        param([int]$ProcessId, [string]$ExpectedName)
-        $process = Get-PinnedProcess $ProcessId $ExpectedName
-        if ($null -eq $process) { return $false }
-        Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
-        for ($attempt = 0; $attempt -lt 40; $attempt++) {
-            if ($null -eq (Get-PinnedProcess $ProcessId $ExpectedName)) {
-                return $true
-            }
-            Start-Sleep -Milliseconds 250
-        }
-        return $false
-    }
-    
+
     function Write-AtomicUtf8NoBom {
         param([string]$Path, [string]$Text)
         $temporary = $Path + '.partial-' + [Guid]::NewGuid().ToString('N')
@@ -152,32 +138,12 @@ function Invoke-PhaseDRunnerComplete {
     ) 'phase3b2_epinel_minimal_completion_evidence_or_hosts_invalid'
     
     $clientId = [int]$pointer.clientProcessId
-    $bootstrapId = [int]$pointer.bootstrapProcessId
-    $serverId = [int]$pointer.serverProcessId
     Assert-True ($null -eq (Get-PinnedProcess $clientId 'nikke')) `
         'phase3b2_epinel_minimal_completion_client_still_running_close_game_first'
     
     $bootstrapForcedStop = $false
     $serverForcedStop = $false
-    if ($Specification.contractId -cne 'nll/phase-d-runner-input/v3') {
-    for ($attempt = 0; $attempt -lt 40; $attempt++) {
-        if ($null -eq (Get-PinnedProcess $bootstrapId `
-                'NikkeLocalLab.Phase3B2.PhysicalBootstrap')) { break }
-        Start-Sleep -Milliseconds 250
-    }
-    if ($null -ne (Get-PinnedProcess $bootstrapId `
-            'NikkeLocalLab.Phase3B2.PhysicalBootstrap')) {
-        $bootstrapForcedStop = Stop-PinnedProcess $bootstrapId `
-            'NikkeLocalLab.Phase3B2.PhysicalBootstrap'
-    }
-    $serverForcedStop = Stop-PinnedProcess $serverId 'EpinelPS'
-    Assert-True (
-        $null -eq (Get-PinnedProcess $bootstrapId `
-            'NikkeLocalLab.Phase3B2.PhysicalBootstrap') -and
-        $null -eq (Get-PinnedProcess $serverId 'EpinelPS')
-    ) 'phase3b2_epinel_minimal_completion_runtime_stop_failed'
-    }
-    
+
     Invoke-PhaseDRunnerCapture -Specification $Specification -SourceDatabasePath $dbPath
     
     $redactedServerLogMatchCount = Protect-ServerLog $stdoutPath

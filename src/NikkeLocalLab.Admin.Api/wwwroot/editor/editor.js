@@ -513,11 +513,12 @@ function launchProgressDisplay(projection) {
     : code === "running" ? "게임이 종료될 때까지 관리 도구를 닫지 마세요."
       : "처리가 완료될 때까지 기다려 주세요. 완료 후 게임 시작 버튼이 활성화됩니다.";
   const events = progress.events || [];
-  const event = [...events].reverse().find(item => item.stageCode === code);
+  // Events mark phase starts; intervalMilliseconds closes a completed phase.
+  const event = events.find(item => item.stageCode === code);
   if (event) {
     const elapsed = Math.max(0, Date.now() - Date.parse(event.occurredAtUtc));
     if (Number.isFinite(elapsed) && Number.isFinite(event.cumulativeMilliseconds)) {
-      description += ` 요청 후 ${((event.cumulativeMilliseconds + elapsed) / 1000).toFixed(1)}초 · 현재 단계 ${(elapsed / 1000).toFixed(1)}초.`;
+      description += ` 요청 후 ${((event.cumulativeMilliseconds + elapsed) / 1000).toFixed(1)}초 · 현재 단계 경과 ${(elapsed / 1000).toFixed(1)}초.`;
     }
   }
   return { title, description };

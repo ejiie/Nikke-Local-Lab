@@ -39,12 +39,10 @@ internal static class PhaseDExecutionProgress
       DateTimeOffset snapshot, DateTimeOffset prepared)
   {
     var events = new List<PhaseDProgressEvent>();
-    var previous = received;
-    foreach (var (code, at) in new[] { ("api_preparation", preparation), ("account_snapshot", snapshot), ("coordinator_preparation", prepared) })
-    {
-      events.Add(new(code, at, at, Math.Max(0, (at - received).TotalMilliseconds), Math.Max(0, (at - previous).TotalMilliseconds)));
-      previous = at;
-    }
+    // Each event starts its named phase; the current phase has no completed interval yet.
+    foreach (var (code, at, end) in new[] { ("api_preparation", preparation, snapshot),
+        ("account_snapshot", snapshot, prepared), ("coordinator_preparation", prepared, prepared) })
+      events.Add(new(code, at, at, Math.Max(0, (at - received).TotalMilliseconds), Math.Max(0, (end - at).TotalMilliseconds)));
     return new(Contract, uid, received, "coordinator_preparation", prepared, events);
   }
 

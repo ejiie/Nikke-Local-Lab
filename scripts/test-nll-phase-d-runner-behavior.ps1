@@ -1,6 +1,5 @@
 # Executes fixed Start/Complete functions, with every OS/service/process boundary
 # replaced. All file paths and all bytes are synthetic, including Player.log root.
-param([switch]$JobContract)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'test-nll-phase-d-runner-contract.ps1')
@@ -46,17 +45,14 @@ function Get-NetTCPConnection {
     if ($State -eq 'Established' -and $case -eq 'network-failure') { [pscustomobject]@{RemoteAddress='192.0.2.1'} }
 }
 function Get-NetUDPEndpoint { param($OwningProcess,$ErrorAction) }
-function Invoke-PhaseDRunnerResourcePreflight { param($Specification) $script:preflightCalled=$true }
 function Start-PhaseDRunnerBootstrap {
     param($Specification,$Path)
     Start-Process -FilePath $Path -WorkingDirectory (Split-Path -Parent $Path) -PassThru -WindowStyle Hidden
 }
 function Assert-PhaseDRunnerJobProcess {
     param($Specification,$ProcessId)
-    if ($Specification.contractId -ceq 'nll/phase-d-runner-input/v3') {
-        Assert-Test ($ProcessId -in @(901,902,903))
-        $script:membershipChecks.Add($ProcessId)
-    }
+    Assert-Test ($ProcessId -in @(901,902,903))
+    $script:membershipChecks.Add($ProcessId)
 }
 function Write-TestJson($Path,$Value) { [IO.File]::WriteAllText($Path, ($Value | ConvertTo-Json -Depth 8)) }
 function Start-Process {
@@ -109,23 +105,17 @@ foreach ($name in $environmentNames) { $previousEnvironment[$name]=[Environment]
 $count=0
 try {
     $env:USERPROFILE=$root
-    foreach ($build in @('build_150.6.9','build_151.8.5')) {
+    foreach ($build in @('build_151.8.5','build_152.8.11')) {
       foreach ($variant in @($false,$true)) {
        foreach ($case in @('early-exit','observed-exit','digest-failure','listener-failure','bootstrap-failure','network-failure','capture-failure')) {
         $caseRoot=Join-Path $root "$build-$variant-$case"
         $spec=[ordered]@{}; foreach ($key in $originalSpec.Keys) { $spec[$key]=$originalSpec[$key] }
         $spec.launchRoot=Join-Path $caseRoot $id
         $script:membershipChecks=[Collections.Generic.List[int]]::new()
-        if ($JobContract) {
-            $spec.contractId='nll/phase-d-runner-input/v3'; $spec.jobNonce=[guid]::NewGuid().ToString('N')
-            $spec.executionFx=$null; $spec.weaknessCode='iron'
-        }
+        $spec.contractId='nll/phase-d-runner-input/v3'; $spec.jobNonce=[guid]::NewGuid().ToString('N')
+        $spec.executionFx=$null; $spec.weaknessCode='iron'
         $spec.clientBuildCode=$build; $spec.staticDataVariantRequired=$variant
-        $spec.resourcePreflightRequired=$build -ceq 'build_150.6.9'
-        if ($spec.resourcePreflightRequired) {
-            foreach ($name in @('resourcePreflightHelper','resourcePreflightTool','resourceCatalogReceiptPath')) { $spec[$name]=Join-Path $caseRoot $name }
-            foreach ($name in @('resourcePreflightHelperSha256','resourcePreflightToolSha256','resourceCatalogReceiptSha256')) { $spec[$name]='a'*64 }
-        }
+
         if ($variant) { $spec.variantStaticDataPack=Join-Path $caseRoot 'variant'; $spec.variantStaticDataSha256='a'*64 }
         $runtimeRoot=Join-Path $spec.launchRoot 'runtime'
         $spec.bootstrapRoot=Join-Path $caseRoot 'bootstrap'
@@ -145,7 +135,7 @@ try {
         [IO.File]::WriteAllText($hosts,"# synthetic`r`n127.0.0.1 global-match.nikke-kr.com`r`n# end NLL Phase3B2 Physical entries",[Text.UTF8Encoding]::new($true))
         $script:hostPins=@{base=$baseHash;applied=(Get-PhaseDRunnerHash $hosts)}
         [IO.File]::WriteAllText($hosts,"# synthetic`r`n# end NLL Phase3B2 Physical entries",[Text.UTF8Encoding]::new($false))
-        $script:processes=@{}; $script:rules=@{}; $script:preflightCalled=$false; $script:captureCalled=$false
+        $script:processes=@{}; $script:rules=@{}; $script:captureCalled=$false
         $script:clock=[pscustomobject]@{Elapsed=[TimeSpan]::Zero}
         if ($case -eq 'digest-failure') { $spec.serverDllSha256='0'*64 }
         $failed=$false
@@ -155,7 +145,7 @@ try {
         Assert-Test ($failed -eq $shouldFail)
         foreach ($name in $environmentNames) { Assert-Test ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($name))) }
         if ($shouldFail) {
-            if (-not $JobContract -or $case -eq 'digest-failure') {
+            if ($case -eq 'digest-failure') {
                 Assert-Test ((Get-PhaseDRunnerHash $hosts) -ceq $baseHash -and $script:rules.Count -eq 0)
                 Assert-Test ($script:processes.Count -eq 0)
             }
@@ -167,29 +157,18 @@ try {
             }
             $failurePath=@(Get-ChildItem -LiteralPath $spec.launchRoot -Recurse -Filter run-failure.receipt.json)[0].FullName
             $failure=Get-Content -LiteralPath $failurePath -Raw | ConvertFrom-Json
-            if ($JobContract) {
-                Assert-Test (-not $failure.automaticRollbackCompleted -and $failure.recoveryOwnerCode -ceq 'outside_execution_job')
-                Assert-Test ($script:processes.Count -gt 0 -and $script:rules.Count -gt 0)
-                $journal=Get-Content -LiteralPath (Join-Path $spec.launchRoot 'evidence/active-run.pointer.json') -Raw | ConvertFrom-Json
-                Assert-Test ($journal.databaseBeforeSha256 -ceq $spec.runtimeDbSha256 -and
-                    (Get-PhaseDRunnerHash $hosts) -ceq $script:hostPins.applied)
-                $count++; continue
-            }
-            Assert-Test $failure.automaticRollbackCompleted
-            $expectedFailure=@{
-                'listener-failure'=@('server_start_and_listener_observation','phase3b2_epinel_minimal_start_loopback_listener_not_ready')
-                'bootstrap-failure'=@('physical_bootstrap_and_sail_observation','bootstrap_synthetic_failure')
-                'network-failure'=@('thirty_second_interactive_health_observation','phase3b2_epinel_minimal_start_health_or_network_invalid')
-            }[$case]
-            Assert-Test ($failure.failedStageCode -ceq $expectedFailure[0] -and $failure.failureMessage -ceq $expectedFailure[1])
+            Assert-Test (-not $failure.automaticRollbackCompleted -and $failure.recoveryOwnerCode -ceq 'outside_execution_job')
+            Assert-Test ($script:processes.Count -gt 0 -and $script:rules.Count -gt 0)
+            $journal=Get-Content -LiteralPath (Join-Path $spec.launchRoot 'evidence/active-run.pointer.json') -Raw | ConvertFrom-Json
+            Assert-Test ($journal.databaseBeforeSha256 -ceq $spec.runtimeDbSha256 -and
+                (Get-PhaseDRunnerHash $hosts) -ceq $script:hostPins.applied)
             $count++; continue
         }
-        Assert-Test ($script:rules.Count -eq $(if ($build -eq 'build_151.8.5') {2} else {1}))
-        Assert-Test ($script:preflightCalled -eq $spec.resourcePreflightRequired)
-        if ($JobContract) { Assert-Test (($script:membershipChecks -join ',') -ceq '901,902,903') }
+        Assert-Test ($script:rules.Count -eq 2)
+ Assert-Test (($script:membershipChecks -join ',') -ceq '901,902,903')
         Assert-Test (-not $start.requiredLocalCatalogPreflightPerformed -and -not $start.officialOutboundFallbackUsed)
         $script:processes.Remove(903) # operator closes the synthetic client
-        if ($JobContract) { $script:processes.Clear() } # outside Job owner has proven zero before completion entry
+ $script:processes.Clear() # outside Job owner has proven zero before completion entry
         [IO.File]::WriteAllText($db,'{"Users":[],"changed":true}')
         if ($case -eq 'observed-exit') {
             $null=New-Item -ItemType Directory -Path (Join-Path $runtimeRoot 'logs')
