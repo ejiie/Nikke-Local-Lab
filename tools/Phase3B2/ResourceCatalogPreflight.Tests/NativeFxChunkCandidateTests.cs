@@ -1,8 +1,100 @@
 using System.Buffers.Binary;
+using System.Data.HashFunction.SpookyHash;
 using ResourceCatalogPreflight;
 using Xunit;
 
 namespace ResourceCatalogPreflight.Tests;
+
+// Synthetic store only. The registered identity replaces a whole-store re-hash;
+// length, path and every read chunk digest must still be enforced.
+public sealed class NativeFxRegisteredStoreTests : IDisposable
+{
+  private readonly string root = Path.Combine(Path.GetTempPath(), "nll-registered-store-test-" + Guid.NewGuid().ToString("N"));
+  private readonly byte[] payload = "synthetic registered chunk"u8.ToArray();
+  private readonly byte[] compressed;
+  private readonly string hash;
+  private string StorePath => Path.Combine(root, "chunk", "store.cdb");
+  private string Length => new FileInfo(StorePath).Length.ToString(System.Globalization.CultureInfo.InvariantCulture);
+  // Deliberately not the synthetic file's real SHA-256: the stage records the registration.
+  private static readonly string Registered = new('c', 64);
+
+  public NativeFxRegisteredStoreTests()
+  {
+    Directory.CreateDirectory(Path.Combine(root, "chunk"));
+    using var zstd = new ZstdSharp.Compressor();
+    compressed = zstd.Wrap(payload).ToArray();
+    var hashBytes = SpookyHashV2Factory.Instance.Create(new SpookyHashConfig { HashSizeInBits = 128 }).ComputeHash(compressed).Hash;
+    hash = Convert.ToHexString(hashBytes);
+    var store = new byte[256 + compressed.Length];
+    new byte[] { 67, 66, 76, 66, 1, 0, 0, 0 }.CopyTo(store, 0);
+    compressed.CopyTo(store, 256);
+    File.WriteAllBytes(StorePath, store);
+    var index = new byte[56];
+    new byte[] { 67, 73, 68, 88, 1, 0, 0, 0 }.CopyTo(index, 0);
+    BinaryPrimitives.WriteInt32LittleEndian(index.AsSpan(8), 1);
+    hashBytes.CopyTo(index, 12);
+    BinaryPrimitives.WriteInt64LittleEndian(index.AsSpan(28), 256);
+    BinaryPrimitives.WriteInt32LittleEndian(index.AsSpan(36), compressed.Length);
+    File.WriteAllBytes(Path.Combine(root, "chunk", "store.cdb.idx"), index);
+  }
+
+  [Fact]
+  public void RegisteredIdentityOpensTheSameHandleThatServesVerifiedReads()
+  {
+    using var store = NativeFxChunkCandidate.OpenRegisteredStore(root, StorePath.ToUpperInvariant(), Registered, Length);
+    Assert.Equal(new FileInfo(StorePath).Length, store.StoreLength);
+    Assert.Equal(payload, store.ReadVerified(hash, payload.Length, compressed.Length));
+    // Writers are denied while the registered handle is open.
+    Assert.Throws<IOException>(() => new FileStream(StorePath, FileMode.Open, FileAccess.Write, FileShare.ReadWrite).Dispose());
+  }
+
+  [Theory]
+  [InlineData(1)]
+  [InlineData(-1)]
+  public void WrongRegisteredLengthIsRejected(int delta)
+  {
+    var length = (new FileInfo(StorePath).Length + delta).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    Assert.Equal("resource_fx_chunk_candidate_store_length_mismatch", Assert.Throws<PreflightException>(
+        () => NativeFxChunkCandidate.OpenRegisteredStore(root, StorePath, Registered, length)).Message);
+    using var writable = new FileStream(StorePath, FileMode.Open, FileAccess.Write, FileShare.None); // Handle was released.
+  }
+
+  [Theory]
+  [InlineData("other", null, null)]
+  [InlineData(null, "C", null)]
+  [InlineData(null, "c", null)]
+  [InlineData(null, null, "256")]
+  [InlineData(null, null, "-300")]
+  [InlineData(null, null, "3e2")]
+  [InlineData(null, null, "")]
+  public void OtherPathOrMalformedRegistrationIsRejected(string? path, string? digest, string? length)
+  {
+    path = path is null ? StorePath : Path.Combine(root, path, "store.cdb");
+    digest = digest is null ? Registered : digest == "c" ? new string('c', 63) : new string('C', 64);
+    Assert.Equal("resource_fx_chunk_candidate_registered_store_invalid", Assert.Throws<PreflightException>(
+        () => NativeFxChunkCandidate.OpenRegisteredStore(root, path, digest, length ?? Length)).Message);
+  }
+
+  [Fact]
+  public void CorruptedChunkWithUnchangedLengthIsStillRejected()
+  {
+    var bytes = File.ReadAllBytes(StorePath);
+    bytes[^1] ^= 1;
+    File.WriteAllBytes(StorePath, bytes);
+    using var store = NativeFxChunkCandidate.OpenRegisteredStore(root, StorePath, Registered, Length);
+    Assert.Equal("resource_chunk_digest_mismatch", Assert.Throws<PreflightException>(
+        () => store.ReadVerified(hash, payload.Length, compressed.Length)).Message);
+    Assert.Equal("resource_chunk_digest_mismatch", Assert.Throws<PreflightException>(
+        () => store.ReadCompressedVerified(hash, compressed.Length)).Message);
+  }
+
+  public void Dispose()
+  {
+    foreach (var file in Directory.GetFiles(Path.Combine(root, "chunk"))) File.Delete(file);
+    Directory.Delete(Path.Combine(root, "chunk"));
+    Directory.Delete(root);
+  }
+}
 
 public sealed class NativeFxChunkCandidateTests
 {

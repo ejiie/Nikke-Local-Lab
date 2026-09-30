@@ -6,6 +6,7 @@ function New-NllBossNativeCandidate {
         [Parameter(Mandatory)][string]$JobRoot,
         [Parameter(Mandatory)][string]$CandidateRoot,
         [Parameter(Mandatory)][string]$CandidateReceiptSha256,
+        [Parameter(Mandatory)][object]$NativeStore,
         [Parameter(Mandatory)][string]$PythonPath,
         [Parameter(Mandatory)][string]$UnityPyRoot,
         [string]$CacheRoot)
@@ -55,8 +56,11 @@ function New-NllBossNativeCandidate {
             --source-root $nativeRoot --source-sha256 (Digest (Join-Path $nativeRoot 'receipt.json')) `
             --output-root $layoutRoot --unitypy-root $UnityPyRoot | Out-Null
         Check ($LASTEXITCODE -eq 0) 'layout_failed'
+        # The registered store identity was fully hashed at installation. The tool
+        # checks its path and length plus the index and chunk digests, not every byte.
         & $Configuration.dotnetPath $Configuration.catalogToolPath stage-native-fx-chunks $nativeRoot $layoutRoot `
-            (Digest (Join-Path $layoutRoot 'receipt.json')) $chunkRoot | Out-Null
+            (Digest (Join-Path $layoutRoot 'receipt.json')) ([string]$NativeStore.path) ([string]$NativeStore.sha256) `
+            ([string]$NativeStore.length) $chunkRoot | Out-Null
         Check ($LASTEXITCODE -eq 0) 'chunks_failed'
     }
     finally { $env:PATH = $priorPath }
