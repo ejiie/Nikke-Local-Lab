@@ -2,22 +2,9 @@
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.PhaseDChildProcess.ps1')
-function Get-DatabaseBlocks {
-    $start=Get-Content (Join-Path $PSScriptRoot 'invoke-nll-phase-d-execution.ps1') -Raw
-    $offset=$start.IndexOf("'phase_d_control_center_database_binding_missing'")
-    $offset=$start.IndexOf("`n",$offset)+1
-    $end=$start.IndexOf('    # The sealed runner owns',$offset)
-    $finish=Get-Content (Join-Path $PSScriptRoot 'watch-nll-phase-d-execution.ps1') -Raw
-    $from=$finish.IndexOf("    Write-PhaseDProgress `$LaunchRoot 'database_restart'")
-    $to=$finish.IndexOf("    Write-PhaseDProgress `$LaunchRoot 'progress_save'",$from)
-    if($offset -le 0 -or $end -le $offset -or $from -lt 0 -or $to -le $from){throw 'database_lifecycle_blocks_missing'}
-    @([scriptblock]::Create($start.Substring($offset,$end-$offset)),[scriptblock]::Create($finish.Substring($from,$to-$from)))
-}
-$blocks=Get-DatabaseBlocks
-$launchRoot=$PSScriptRoot
-$controlCenterPgCtl='synthetic';$controlCenterPgData='synthetic-cluster';$controlCenterPgLog='synthetic-log'
-$ControlCenterPgCtlPath=$controlCenterPgCtl;$ControlCenterPgDataPath=$controlCenterPgData;$ControlCenterPgLogPath=$controlCenterPgLog
-function Write-PhaseDProgress {}
+# Call the production helpers; do not depend on coordinator/watcher source layout.
+$start = { Assert-PhaseDPostgresRunning 'synthetic' 'synthetic-cluster' 'synthetic-identity' }
+$complete = { Ensure-PhaseDPostgresRunning 'synthetic' 'synthetic-cluster' 'synthetic-log' 'synthetic-identity' }
 function Invoke-PhaseDPgCtl {
     param($PgCtlPath,$Arguments,$OwnershipPath)
     if($Arguments[2] -cne 'synthetic-cluster'){throw 'cluster_scope_changed'}
@@ -33,29 +20,41 @@ function Reject([scriptblock]$Block,[string]$Expected){
     try{& $Block}catch{if($_.Exception.Message -ceq $Expected){return};throw};throw 'database_failure_not_rejected'
 }
 Reset 0
-& $blocks[0] # just before server/game start
-& $blocks[1] # normal completion; must preserve the same running cluster
-& $blocks[1] # replay must also be a read-only status check
+& $start # just before server/game start
+& $complete # normal completion; must preserve the same running cluster
+& $complete # replay must also be a read-only status check
 if(($commands -join ',') -cne 'status,status,status'){throw 'healthy_cluster_restarted'}
 Reset 3
-Reject $blocks[0] 'phase_d_control_center_database_not_running'
+Reject $start 'phase_d_control_center_database_not_running'
 if(($commands -join ',') -cne 'status'){throw 'startup_silently_repaired_database'}
 Reset 3
-& $blocks[1]
+& $complete
 if(($commands -join ',') -cne 'status,start,status'){throw 'stopped_cluster_not_recovered'}
 Reset 1
-Reject $blocks[1] 'phase_d_control_center_database_status_failed'
+Reject $complete 'phase_d_control_center_database_status_failed'
 if(($commands -join ',') -cne 'status'){throw 'unknown_status_started_database'}
 Reset 3;$script:startFails=$true
-Reject $blocks[1] 'phase_d_control_center_database_restart_failed'
+Reject $complete 'phase_d_control_center_database_restart_failed'
 Reset 3;$script:statusAfterStart=3
-Reject $blocks[1] 'phase_d_control_center_database_not_running'
+Reject $complete 'phase_d_control_center_database_not_running'
 'Runtime database handoff checks passed.'
 # Closing the desktop must not stop a live runtime or unfinished completion.
-$hostSource=Get-Content (Join-Path $PSScriptRoot 'start-nll-phase-d-control-center.ps1') -Raw
-$from=$hostSource.IndexOf('    $databaseCanStop =')
-$to=$hostSource.IndexOf('    foreach($name in @(', $from)
-$close=[scriptblock]::Create($hostSource.Substring($from,$to-$from))
+# The host is an entrypoint, not a dot-sourceable library. Execute its complete
+# cleanup block selected structurally, with process/DB boundaries mocked below.
+$tokens=$null; $errors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'start-nll-phase-d-control-center.ps1'),[ref]$tokens,[ref]$errors)
+if($errors.Count){throw 'desktop_close_parse_failed'}
+$owners=@($ast.FindAll({param($node)
+    $node -is [Management.Automation.Language.TryStatementAst] -and $null -ne $node.Finally -and
+    $null -ne $node.Finally.Find({param($child)
+        $child -is [Management.Automation.Language.CommandAst] -and $child.GetCommandName() -ceq 'Test-ControlCenterRuntimeActive'
+    },$false)
+},$true))
+if($owners.Count -ne 1){throw 'desktop_close_owner_ambiguous'}
+$close=[scriptblock]::Create(($owners[0].Finally.Statements | ForEach-Object {$_.Extent.Text}) -join "`n")
+# No real process or file is changed. Environment cleanup affects this test process only.
+$admin=$null; $session='synthetic-session'; $bootstrap='synthetic-bootstrap'
+function Test-Path {param($LiteralPath) return $false}
 function Test-ControlCenterRuntimeActive {$script:active}
 function Wait-ControlCenterCompletionWatchers {if($script:watcherPending){throw 'completion_still_pending'}}
 function Invoke-ControlCenterPgCtl {param($Arguments) $script:closeCommands.Add($Arguments[0]);return 0}

@@ -75,6 +75,7 @@ try {
             $expectedState = if ($case -eq 'pg-failure') { 'started' } else { 'failed' }
             Assert-PhaseD ($script:lastState -ceq $expectedState) 'cleanup_failure_not_reconcilable'
             Assert-PhaseD ([IO.File]::ReadAllText($hostsPath) -ceq 'baseline') 'proven_rollback_did_not_restore_hosts'
+            if ($case -eq 'proven') { Assert-PhaseD ($script:lastFailure -ceq 'synthetic_start_failed') 'successful_rollback_overwrote_first_failure' }
             if ($case -eq 'pg-failure') {
                 Assert-PhaseD ($script:lastFailure -ceq 'phase_d_control_center_database_restart_failed') 'pg_failure_hidden'
             }

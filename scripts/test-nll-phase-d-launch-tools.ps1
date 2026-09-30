@@ -1,4 +1,4 @@
-param([string]$ReferenceCoordinatorPath = '', [string]$PinnedStartPath = '', [string]$PinnedCompletionPath = '')
+param([string]$PinnedStartPath = '', [string]$PinnedCompletionPath = '')
 # Historical adapter golden checks only. Never execute a generated script.
 # Current coordinator mapping is verified by test-nll-phase-d-runner-routing.ps1.
 $ErrorActionPreference = 'Stop'
@@ -48,20 +48,6 @@ if ($PinnedStartPath -or $PinnedCompletionPath) {
     $startFixture = [IO.File]::ReadAllText($PinnedStartPath)
     $completionFixture = [IO.File]::ReadAllText($PinnedCompletionPath)
 }
-$referenceBody = $null
-if ($ReferenceCoordinatorPath) {
-    $reference = [IO.File]::ReadAllText($ReferenceCoordinatorPath)
-    $begin = $reference.IndexOf('    $expectedParentDbPattern =', [StringComparison]::Ordinal)
-    $end = $reference.IndexOf('    [IO.File]::WriteAllText($derivedStart', [StringComparison]::Ordinal)
-    Assert-PhaseD ($begin -gt 0 -and $end -gt $begin) 'test_reference_block_missing'
-    $reference = $reference.Substring($begin, $end - $begin)
-    $begin = $reference.IndexOf('    $soloRaidStateRoot =', [StringComparison]::Ordinal)
-    $end = $reference.IndexOf('    $captureAnchor =', [StringComparison]::Ordinal)
-    Assert-PhaseD ($begin -gt 0 -and $end -gt $begin) 'test_reference_state_block_missing'
-    # Exclude the sole filesystem mutation block from the old implementation.
-    $referenceBody = [scriptblock]::Create($reference.Remove($begin, $end - $begin) +
-        "`n[pscustomobject]@{ startText = `$startText; completionText = `$completionText }")
-}
 foreach ($build in @('150','151')) {
   foreach ($variant in @($false,$true)) {
     $spec = [ordered]@{
@@ -95,15 +81,6 @@ foreach ($build in @('150','151')) {
       Assert-PhaseD ((Get-TextHash $actual.startText) -ceq $goldenStart["$build-$variant"] -and
           (Get-TextHash $actual.completionText) -ceq $goldenCompletion[$build]) 'golden_output_changed'
     }
-    if ($referenceBody) {
-      $expected = & {
-        foreach ($key in $spec.Keys) { Set-Variable -Name $key -Value $spec[$key] -Scope Local }
-        $candidate = [pscustomobject]@{ accountUid = $spec.accountUid; baseRevisions = @{ revisionSetSha256 = $spec.accountRevisionSetSha256 } }
-        $materialization = [pscustomobject]@{ raidSnapshotUid = $spec.raidSnapshotUid; raidSnapshotSha256 = $spec.raidSnapshotSha256 }
-        & $referenceBody
-      }
-      Assert-PhaseD ($actual.startText -ceq $expected.startText -and $actual.completionText -ceq $expected.completionText) 'legacy_output_changed'
-    }
     foreach ($text in @($actual.startText, $actual.completionText)) {
       $null = [Management.Automation.Language.Parser]::ParseInput($text, [ref]$tokens, [ref]$errors)
       Assert-PhaseD ($errors.Count -eq 0) 'generated_script_parse_failed'
@@ -125,6 +102,6 @@ foreach ($build in @('150','151')) {
     $rejected = $false
     try { $null = New-PhaseDLaunchToolText $spec } catch { $rejected = $_.Exception.Message -ceq 'phase_d_resource_preflight_anchor_invalid' }
     Assert-PhaseD $rejected 'ambiguous_template_accepted'
-    [pscustomobject]@{ build = $build; variant = $variant; startSha256 = Get-TextHash $actual.startText; completionSha256 = Get-TextHash $actual.completionText; goldenChecked = -not [bool]$PinnedStartPath; referenceComparisonPerformed = [bool]$referenceBody }
+    [pscustomobject]@{ build = $build; variant = $variant; startSha256 = Get-TextHash $actual.startText; completionSha256 = Get-TextHash $actual.completionText; goldenChecked = -not [bool]$PinnedStartPath }
   }
 }

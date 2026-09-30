@@ -1,4 +1,4 @@
-# Real atomic progress writer and watcher exit body; synthetic files/processes only.
+# Real atomic progress writer; watcher exit/identity cases live in watcher-completion.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
@@ -34,7 +34,6 @@ try {
     Write-PhaseDProgress $root 'game_exited'
     Write-PhaseDProgress $root 'running'
     $progress = Get-Content -LiteralPath $progressPath -Raw | ConvertFrom-Json
-    $eventCount = $progress.events.Count
     Check-Progress ($progress.stageCode -ceq 'game_exited' -and $progress.events[-1].stageCode -ceq 'running')
     Check-Progress (([IO.File]::ReadAllText($statePath)) -ceq $original)
     # Telemetry cannot wait ten seconds on admission ownership or damage the last record.
@@ -48,30 +47,7 @@ try {
     Write-PhaseDProgress $root 'ready'
     Check-Progress (([IO.File]::ReadAllText($progressPath)) -ceq '{')
     [IO.File]::WriteAllText($progressPath,$before)
-    # Execute the actual watcher exit observation body. Identity failure cannot publish exit.
-    $watcher = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'watch-nll-phase-d-execution.ps1'))
-    $start = $watcher.IndexOf('$runtimeProcessIdentities = $identityDocument')
-    $end = $watcher.IndexOf("Write-PhaseDProgress `$LaunchRoot 'game_exited'",$start)
-    Check-Progress ($start -ge 0 -and $end -gt $start)
-    $body = [scriptblock]::Create($watcher.Substring($start,$end-$start) + "Write-PhaseDProgress `$LaunchRoot 'game_exited'")
-    $LaunchRoot=$root; $identityDocument=@{client=@{synthetic=$true}}
-    function Get-PhaseDVerifiedProcess { param($Identity) throw 'synthetic_identity_mismatch' }
-    try { & $body; throw 'expected_identity_failure' } catch { Check-Progress ($_.Exception.Message -ceq 'synthetic_identity_mismatch') }
-    Check-Progress (([IO.File]::ReadAllText($progressPath)) -ceq $before)
-    $script:waited=$false; $script:disposed=$false
-    function Get-PhaseDVerifiedProcess {
-        param($Identity)
-        $p=[pscustomobject]@{synthetic=$true}
-        $p | Add-Member ScriptMethod WaitForExit { $script:waited=$true }
-        $p | Add-Member ScriptMethod Dispose { $script:disposed=$true }
-        return $p
-    }
-    & $body
-    $progress = Get-Content -LiteralPath $progressPath -Raw | ConvertFrom-Json
-    Check-Progress ($script:waited -and $script:disposed -and $progress.events.Count -eq ($eventCount + 1))
-    Check-Progress ($progress.events[-1].stageCode -ceq 'game_exited')
-    Check-Progress (([IO.File]::ReadAllText($statePath)) -ceq $original)
-    'Phase D progress: concurrent writers, late startup, bounded lock wait, corrupt telemetry, verified exit and admission preservation passed.'
+    'Phase D progress: concurrent writers, late startup, bounded lock wait, corrupt telemetry and admission preservation passed.'
 } finally {
     foreach ($job in $jobs) { $job | Stop-Job; $job | Remove-Job }
     $resolved=[IO.Path]::GetFullPath($root)
