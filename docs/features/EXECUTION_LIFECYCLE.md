@@ -66,7 +66,7 @@
 - 실행 시 runtime bundle은 파일 존재·길이와 승인 sodium DLL·client exe·인증서·선택 manifest SHA를 확인합니다.
   설치·선택·수리는 `Read-PdRuntimeBundle -FullVerification`(overlay 적용 전에는 `-BeforeActivation`)으로 전체 SHA를 확인합니다.
 - 보스 전달은 시작 때 stage 한 번으로 검사합니다. descriptor·seal·profile SHA와 artifact 길이를 대조하며,
-  onboarding seal의 artifact `byteLength`가 없는 입력은 재봉인이 필요합니다. 명시적 delivery 검증은 기본 전체 SHA입니다.
+  `byteLength`가 없는 이전 onboarding seal의 artifact는 재봉인 없이 시작 때도 SHA로 확인합니다. 명시적 delivery 검증은 기본 전체 SHA입니다.
 - runner/watcher/recovery는 진입 시 봉인을 검증하고 해당 프로세스에서 spec을 보관합니다. coordinator는 직접 만든 bundle을 씁니다.
   이후 Job 소속·same-Job zero·receipt·checkpoint 검사는 계속 수행합니다.
 - 기본 차단 규칙 확인과 확장 규칙 생성·확인은 coordinator가 runner child 생성 전에 수행합니다.

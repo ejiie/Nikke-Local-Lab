@@ -34,10 +34,11 @@ internal static class CommonBossDelivery
       var name = Text(row, "relativePath");
       var path = Plain(Path.Combine(root, name));
       Require(!Path.IsPathRooted(name) && names.Add(name) && path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
-      if (fullVerification) Require(FileHash(path) == Text(row, "sha256"));
-      if (!fullVerification || row.TryGetProperty("byteLength", out _))
-        Require(row.TryGetProperty("byteLength", out var size) && size.TryGetInt64(out var length) &&
-          length >= 0 && File.Exists(path) && new FileInfo(path).Length == length);
+      // Seals published before byteLength keep the digest check at launch.
+      var sealedLength = row.TryGetProperty("byteLength", out var size);
+      if (fullVerification || !sealedLength) Require(FileHash(path) == Text(row, "sha256"));
+      if (sealedLength)
+        Require(size.TryGetInt64(out var length) && length >= 0 && File.Exists(path) && new FileInfo(path).Length == length);
     }
     Require(names.Contains("boss-runtime-variant.profile.json") && FileHash(Path.Combine(root, "boss-runtime-variant.profile.json")) == profile.Sha256);
     var adjusted = profile.ShieldFxPreparation?.Variants.Where(row => row.OperationCode == "adjust_candidate").ToArray() ?? [];

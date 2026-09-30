@@ -31,7 +31,6 @@ public sealed class CommonBossDeliveryTests
   [InlineData("escape")]
   [InlineData("duplicate")]
   [InlineData("length")]
-  [InlineData("unsealed-length")]
   public async Task Launch_rejects_drift_or_invalid_artifact_paths(string fault)
   {
     using var fixture = new Fixture();
@@ -44,18 +43,21 @@ public sealed class CommonBossDeliveryTests
       case "escape": fixture.Rows[1]["relativePath"] = "../outside.bundle"; fixture.Publish(); break;
       case "duplicate": fixture.Rows.Add(fixture.Rows[1]); fixture.Publish(); break;
       case "length": fixture.Rows[1]["byteLength"] = 1; fixture.Publish(); break;
-      case "unsealed-length": fixture.Rows[1].Remove("byteLength"); fixture.Publish(); break;
     }
     await Assert.ThrowsAnyAsync<Exception>(() => fixture.Stage());
   }
 
   [Fact]
-  public async Task Historical_seal_can_be_fully_verified_for_resealing_but_cannot_launch()
+  public async Task Historical_seal_without_lengths_launches_with_digest_check()
   {
     using var fixture = new Fixture();
     fixture.Rows[1].Remove("byteLength");
     fixture.Publish();
-    await fixture.Validate(full: true);
+    await fixture.Validate(full: false);
+    Assert.Null(await fixture.Stage());
+    var bytes = File.ReadAllBytes(fixture.Asset);
+    File.WriteAllBytes(fixture.Asset, bytes.Select(static _ => (byte)'x').ToArray());
+    await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Validate(full: false));
     await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Stage());
   }
 
