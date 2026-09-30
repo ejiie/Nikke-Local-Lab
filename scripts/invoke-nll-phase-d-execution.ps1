@@ -866,8 +866,8 @@ try {
     . (Join-Path $runnerBundle.root 'Nll.PhaseDJob.ps1')
     $jobAttempted = $true
     $executionJob = New-PhaseDExecutionJob -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
-    Enter-PhaseDSharedIsolation -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256 -RuntimeBundle $runtimeBundle
-    Enter-PhaseDRunnerIsolation $runnerSpec
+    $isolationRules = @(Enter-PhaseDSharedIsolation -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256 -RuntimeBundle $runtimeBundle)
+    Enter-PhaseDRunnerIsolation $runnerSpec -Rules $isolationRules
     $startToolResult = Invoke-PhaseDChildScript `
         -ExecutionJob $executionJob `
         -TimeoutSeconds 300 -OwnershipPath (Join-Path $launchRoot 'phase-d-child-start.identity.json') `

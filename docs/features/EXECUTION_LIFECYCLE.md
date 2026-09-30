@@ -75,6 +75,16 @@
 위 변경은 source-only 검사 대상입니다. 앱·materializer·runtime bundle 및 보스 전달 입력의 재봉인·설치,
 원본 runtime 실행과 시간 측정은 별도이며 기존 실게임 완료 기록을 대체하지 않습니다.
 
+## 시작 방화벽 조회 통합 (WP-L2b, 설치 전)
+
+- 시작 때 client·기본 physical·확장 그룹을 한 번 조회하고 두 격리 함수가 그 결과를 사용합니다.
+  확장 그룹의 정확한 결손 오류만 허용하며, 다른 조회 오류·필수 inventory 결손은 시작을 거절합니다.
+- 공유 규칙은 `Enable-NetFirewallRule -PassThru`, 확장 규칙은 `New-NetFirewallRule` 반환 객체와
+  해당 application filter로 이름·Outbound·Block·Enabled·프로그램 경로를 확인합니다.
+  적용 후 규칙을 다시 열거하지 않습니다. 반환 결손·불일치는 성공으로 인정하지 않습니다.
+- 적용 전 기준선과 부분 적용/runner child 생성 전 실패 원복은 유지합니다. 종료의 inventory 조회는
+  이 변경 범위가 아닙니다. 실제 시간 절감은 디렉터 설치 뒤 운영자 실행으로 확인해야 합니다.
+
 ## 시작 관찰 제거 (WP-L3, 설치 전)
 
 - bootstrap receipt와 client PID 확인 뒤 시작 receipt/pointer를 바로 게시합니다. 새 시작 계약

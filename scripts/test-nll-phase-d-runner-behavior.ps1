@@ -26,16 +26,17 @@ function Stop-Process { param($Id, [switch]$Force, $ErrorAction) $script:process
 function Get-NetFirewallRule {
     param($Group, $ErrorAction)
     if ($Group -eq 'NLL Phase3B2 Physical Isolation') {
-        1..17 | ForEach-Object { [pscustomobject]@{Direction='Outbound';Action='Block';Enabled='True'} }
+        1..17 | ForEach-Object { [pscustomobject]@{Group='NLL Phase3B2 Physical Isolation';Direction='Outbound';Action='Block';Enabled='True'} }
     } else { @($script:rules.Values) }
 }
 function New-NetFirewallRule {
     param($Name,$DisplayName,$Group,$Direction,$Action,$Enabled,$Profile,$Program,$ErrorAction)
-    $script:rules[$Name] = [pscustomobject]@{ Name=$Name; Program=$Program; Direction=$Direction; Action=$Action; Enabled=$Enabled }
+    $script:rules[$Name] = [pscustomobject]@{ Name=$Name; InstanceID=$Name; Group=$Group; Program=$Program; Direction=$Direction; Action=$Action; Enabled=$Enabled }
+    $script:rules[$Name]
 }
 function Get-NetFirewallApplicationFilter {
     [CmdletBinding()]param([Parameter(ValueFromPipeline=$true)]$InputObject)
-    process { [pscustomobject]@{ Program=$InputObject.Program } }
+    process { [pscustomobject]@{ InstanceID=$InputObject.InstanceID; Program=$InputObject.Program } }
 }
 function Remove-NetFirewallRule {
     [CmdletBinding()]param([Parameter(ValueFromPipeline=$true)]$InputObject)
@@ -144,7 +145,7 @@ try {
         $script:sleepMilliseconds=0; $script:clientReads=0
         if ($case -eq 'digest-failure') { $spec.serverDllSha256='0'*64 }
         $failed=$false
-        try { Enter-PhaseDRunnerIsolation $spec; $start=Invoke-PhaseDRunnerStart $spec | ConvertFrom-Json } catch { $failed=$true; $errorCode=$_.Exception.Message }
+        try { Enter-PhaseDRunnerIsolation $spec -Rules @(Get-NetFirewallRule -Group 'NLL Phase3B2 Physical Isolation'); $start=Invoke-PhaseDRunnerStart $spec | ConvertFrom-Json } catch { $failed=$true; $errorCode=$_.Exception.Message }
         $shouldFail=$case -in @('digest-failure','listener-failure','bootstrap-failure')
         if ($failed -and -not $shouldFail) { throw $errorCode }
         Assert-Test ($failed -eq $shouldFail)
