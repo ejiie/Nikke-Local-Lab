@@ -33,9 +33,11 @@ try
         bossLocaleCatalogHash, bossLocaleSignatureHash), options));
     return 0;
   }
-  if (args is ["stage-native-fx-chunks", var chunkSource, var layoutRoot, var layoutSha256, var chunkDestination])
+  if (args is ["stage-native-fx-chunks", var chunkSource, var layoutRoot, var layoutSha256,
+      var registeredStorePath, var registeredStoreSha256, var registeredStoreLength, var chunkDestination])
   {
-    Console.WriteLine(JsonSerializer.Serialize(NativeFxChunkCandidate.Stage(chunkSource, layoutRoot, layoutSha256, chunkDestination), options));
+    Console.WriteLine(JsonSerializer.Serialize(NativeFxChunkCandidate.Stage(chunkSource, layoutRoot, layoutSha256,
+        registeredStorePath, registeredStoreSha256, registeredStoreLength, chunkDestination), options));
     return 0; // Offline candidate only. The operator owns native-game acceptance.
   }
   if (args is ["export-native-fx", var fxPlan, var fxPlanSha256, var fxDestination])

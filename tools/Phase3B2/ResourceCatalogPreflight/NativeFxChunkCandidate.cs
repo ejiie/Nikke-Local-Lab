@@ -1,7 +1,9 @@
 using System.Buffers.Binary;
 using System.Data.HashFunction.SpookyHash;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace ResourceCatalogPreflight;
 
@@ -70,7 +72,30 @@ internal static class NativeFxChunkCandidate
     }
   }
 
-  internal static object Stage(string sourceRoot, string layoutRoot, string layoutSha256, string destination)
+  // The registered store's full SHA-256 was checked once when the isolated client
+  // was installed or registered (operator decision 2026-09-15: full-store checks
+  // belong to installation, replacement and repair, not normal onboarding). Here
+  // the plan's store must be that registered path with the registered length on
+  // the same handle that serves every read, and each read chunk is still checked
+  // against the pinned index digest by ChunkStoreReader.
+  internal static ChunkStoreReader OpenRegisteredStore(string chunkRoot, string registeredPath,
+      string registeredSha256, string registeredLength)
+  {
+    var storePath = NativeFxExport.Plain(Path.Combine(chunkRoot, "chunk", "store.cdb"));
+    var parsed = long.TryParse(registeredLength, NumberStyles.None, CultureInfo.InvariantCulture, out var length);
+    Require(parsed && length > 256 && Regex.IsMatch(registeredSha256, "\\A[0-9a-f]{64}\\z") &&
+        string.Equals(NativeFxExport.Plain(registeredPath), storePath, StringComparison.OrdinalIgnoreCase), "registered_store_invalid");
+    var store = new ChunkStoreReader(chunkRoot);
+    try
+    {
+      Require(store.StoreLength == length, "store_length_mismatch");
+      return store;
+    }
+    catch { store.Dispose(); throw; }
+  }
+
+  internal static object Stage(string sourceRoot, string layoutRoot, string layoutSha256,
+      string registeredStorePath, string registeredStoreSha256, string registeredStoreLength, string destination)
   {
     sourceRoot = NativeFxExport.Plain(sourceRoot);
     layoutRoot = NativeFxExport.Plain(layoutRoot);
@@ -123,10 +148,9 @@ internal static class NativeFxChunkCandidate
     var index = Read(indexPath, plan.GetProperty("indexSha256").GetString()!);
     CryptographicOperations.ZeroMemory(index);
     var storePath = NativeFxExport.Plain(Path.Combine(chunks, "chunk", "store.cdb"));
-    var storeSha256 = NativeFxExport.HashFile(storePath);
-    pins[storePath] = storeSha256;
-    var storeLength = new FileInfo(storePath).Length;
-    using var store = new ChunkStoreReader(chunks);
+    using var store = OpenRegisteredStore(chunks, registeredStorePath, registeredStoreSha256, registeredStoreLength);
+    var storeSha256 = registeredStoreSha256;
+    var storeLength = store.StoreLength;
     Require(store.IndexTrailerVerified && store.IndexSha256 == binding.GetProperty("indexSha256").GetString() &&
         catalog.BodySha256 == binding.GetProperty("outerCatalogSha256").GetString(), "store_binding_invalid");
     destination = NativeFxExport.Plain(destination);
@@ -207,6 +231,9 @@ internal static class NativeFxChunkCandidate
         finally { CryptographicOperations.ZeroMemory(candidate); }
       }
       ValidatePatches(patches, storeLength);
+      // Rechecks cover the small pinned inputs only (layout/source receipts, binding,
+      // plan, catalog pair, index, candidate bundles). The store is not re-hashed;
+      // OpenRegisteredStore and the per-chunk digests bind it instead.
       void Recheck()
       {
         foreach (var pin in pins) Require(NativeFxExport.HashFile(pin.Key) == pin.Value, "input_drift");
@@ -246,6 +273,9 @@ internal static class NativeFxChunkCandidate
         manifestSha256 = CatalogDatabase.Hash(manifest), sourceStoreSha256 = storeSha256, sourceStoreByteLength = storeLength,
         changedChunkCount = patches.Count, roleCodes = roles.Order(StringComparer.Ordinal).ToArray(),
         indexTrailerVerified = true, exactCompressedLengthRoundTripVerified = true,
+        // Every pinned small input re-hashed unchanged before and after output. The
+        // store's SHA-256 is its registered identity; this run checked its path,
+        // length, index and read chunks, not all of its bytes.
         sourceFilesUnchanged = true, installedFilesModified = false, nativeClientExecuted = false,
         oldChunkDigestsMatch = false, runtimeAdmissionStatusCode = "not_assessed", statusCode = "offline_chunk_candidate_verified"
       };

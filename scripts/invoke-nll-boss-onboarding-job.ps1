@@ -140,13 +140,15 @@ if (($profile.schemaVersion -eq 3 -or ($profile.schemaVersion -eq 4 -and
             (Join-Path $scriptRoot 'materialize-nll-native-fx-layout.py'))) {
         Require ($pins.ContainsKey((Plain $path))) 'native_pin_missing'
     }
+    # Chunk staging trusts only the registered store identity; there is no re-hash fallback.
+    Require ($config.PSObject.Properties.Name -contains 'commonDelivery') 'native_store_not_configured'
     Verify-Pins
     . $nativeHelper
     $fxCache = if (Test-Path -LiteralPath (Join-Path $candidateRoot 'acquired-fx') -PathType Container) {
         Join-Path $candidateRoot 'acquired-fx'
     } else { $config.assetCacheRoot }
     $native = New-NllBossNativeCandidate -Configuration $config.nativePipeline -JobRoot $JobRoot `
-        -CandidateRoot $candidateRoot -CandidateReceiptSha256 (Hash $sealPath) `
+        -CandidateRoot $candidateRoot -CandidateReceiptSha256 (Hash $sealPath) -NativeStore $config.commonDelivery.nativeStore `
         -PythonPath $config.pythonPath -UnityPyRoot $config.unityPyRoot -CacheRoot $fxCache
     $nativePackageHash = $native.chunkReceiptSha256
     Verify-Pins

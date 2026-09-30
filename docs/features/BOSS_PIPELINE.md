@@ -36,6 +36,9 @@
 ```
 
 - 조립 worker는 게임·서버·UAC·서비스·드라이버를 호출하지 않습니다(스크립트 머리말의 계약).
+- native chunk 후보는 설정의 등록 store(`commonDelivery.nativeStore`)를 받아 경로·길이·index·조각
+  digest만 확인하며 6.7 GB store 전체를 hash하지 않습니다(2026-09-29, S39 기준 약 137초 → 5초).
+  전체 검증은 설치·원본 교체·수리 때만 합니다([계약](../contracts/COMMON_BOSS_EXECUTION.md)).
 - DB 등록이 실패하면 게시하지 않아 UI에서 다시 요청할 수 있고, 게시 실패 뒤 재시도는 같은
   불변 DB 연결을 재사용합니다.
 - 새 게시의 admission은 `common-boss-runtime-admission/v1`입니다

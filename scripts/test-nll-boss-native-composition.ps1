@@ -50,6 +50,9 @@ $null = New-Item -ItemType Directory -Path $destination
 $global:LASTEXITCODE = 0
 $mode = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'mode.txt'))
 if ($mode -eq 'chunks') { $global:LASTEXITCODE=1; return }
+# The registered store identity reaches the tool as explicit arguments.
+if ($args.Count -ne 9 -or $args[1] -cne 'stage-native-fx-chunks' -or $args[5] -cne 'C:\synthetic-registered\store.cdb' -or
+    $args[6] -cne ('b' * 64) -or $args[7] -cne '4096') { throw 'synthetic_arguments_invalid' }
 $destination = $args[-1]
 $null = New-Item -ItemType Directory -Path $destination
 $result = @{contractId='nll/native-fx-chunk-candidate/v1';statusCode='offline_chunk_candidate_verified';
@@ -74,8 +77,9 @@ if ($mode -eq 'source-changed') {$result.sourceFilesUnchanged=$false}
     $pathBefore = $env:PATH
     $caught = $false
     try {
+        $store = [pscustomobject]@{ path = 'C:\synthetic-registered\store.cdb'; length = [long]4096; sha256 = 'b' * 64 }
         $result = New-NllBossNativeCandidate -Configuration $config -JobRoot $caseRoot -CandidateRoot $candidate `
-            -CandidateReceiptSha256 $pin -PythonPath $python -UnityPyRoot $caseRoot
+            -CandidateReceiptSha256 $pin -NativeStore $store -PythonPath $python -UnityPyRoot $caseRoot
         Require-Test ($Mode -eq 'success' -and $result.runtimeAdmissionStatusCode -eq 'not_assessed' -and
             -not $result.nativeClientExecuted -and $result.chunkReceiptSha256 -eq (Hash-Test (Join-Path $caseRoot 'native-chunks/receipt.json')))
     } catch {

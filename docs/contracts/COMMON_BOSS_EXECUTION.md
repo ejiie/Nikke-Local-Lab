@@ -197,6 +197,14 @@ cold와 독점 핸들에서 **설치 시 전체 hash 한 번**을 확인한다. 
 정상 준비기의 `--require-native-fx-baseline`은 보정 조각이 있을 때만 작은 등록을 확인하고,
 후보 게시의 오프라인 검증은 설치 등록을 필요로 하지 않는다. 단계별 의미를 구분한다.
 
+보스 조립의 `stage-native-fx-chunks`도 원본 store 전체를 hash하지 않는다(2026-09-29).
+작업자가 pipeline 설정의 등록 store(`commonDelivery.nativeStore`의 경로·길이·SHA-256)를 명시
+입력으로 넘기고, 도구는 plan의 store가 그 경로인지, 읽기 handle의 길이가 등록 길이인지,
+pin된 index hash와 읽은 모든 조각의 digest를 확인한다. chunk receipt의
+`sourceStoreSha256`/`sourceStoreByteLength`는 이 등록 값이며 이번 실행의 전체 측정값이 아니다.
+`sourceFilesUnchanged`는 store를 제외한 작은 pin 입력의 전후 재hash 결과다. 등록 store가
+설정에 없으면 조립은 `boss_pipeline_native_store_not_configured`로 멈춘다.
+
 ## 공통 보스 게시와 운영 DB 연결 (2026-09-15)
 
 운영자의 공통 파이프라인 요구에 따라 새 게시에는 `common-boss-runtime-admission/v1`을

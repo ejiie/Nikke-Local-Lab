@@ -13,6 +13,8 @@ internal sealed class ChunkStoreReader : IDisposable
   internal IReadOnlyDictionary<string, Location> Entries { get; }
   internal string IndexSha256 { get; }
   internal bool IndexTrailerVerified { get; }
+  // Length of the open read handle, which denies other writers while it is open.
+  internal long StoreLength { get; }
 
   internal ChunkStoreReader(string directory)
   {
@@ -32,6 +34,7 @@ internal sealed class ChunkStoreReader : IDisposable
     store = new FileStream(storePath, FileMode.Open, FileAccess.Read, FileShare.Read);
     try
     {
+      StoreLength = store.Length;
       var header = new byte[256];
       store.ReadExactly(header);
       if (!header.AsSpan(0, 8).SequenceEqual(new byte[] { 67, 66, 76, 66, 1, 0, 0, 0 }))
