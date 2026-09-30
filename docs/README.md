@@ -75,7 +75,7 @@ Phase별 완료 계약과 역사적 검증 기준: [1A](contracts/PHASE1A.md), [
 | [archive/stabilization](archive/stabilization/) | 안정화 계획 S-01~S-10, 실 테스트 체크리스트, 관리도구 결함 이력, 용량 감사 |
 | [archive/](archive/) 최상위 | 2026-09-06·09-27 인계, 이전 다음 단계·프로젝트 소개, 과거 구현 계획·아키텍처·기능 로드맵, 151 리소스·Phase 3B-2 기록, 계정 fetch 인수, Samsung→Micron 이관 |
 
-`archive/IMPLEMENTATION_PLAN.md`, `archive/PHASE3B2_*` 일부는 검사·봉인 스크립트가 경로를 참조하므로 옮기지 않습니다.
+`archive/IMPLEMENTATION_PLAN.md`와 `archive/PHASE3B2_*`는 동결된 검사·봉인 절차의 역사 기록으로 보존합니다.
 
 ## 문서 관리 기준
 
@@ -85,3 +85,5 @@ Phase별 완료 계약과 역사적 검증 기준: [1A](contracts/PHASE1A.md), [
 - 문서를 옮기면 Markdown 링크, AGENTS, 검사/봉인 스크립트의 문서 경로를 함께 갱신합니다. 저장소 정책 검사
   (`scripts/verify-repository.ps1`)는 `data`, `runtime`, `cache`, `logs`, `artifacts` 같은 이름의 디렉터리를 추적 경로에 허용하지
   않으므로 폴더 이름을 고를 때 확인합니다.
+
+2026-09-30 검사 재구성: `docs/contracts/PHASE*.md`의 과거 검사 명령과 3A·3B 역사 판정은 이력으로 보존합니다. 삭제된 schema·fixture·검사 스크립트는 같은 tag에서 조회하며 현행 실행 명령은 [GitHub 자동화](operations/GITHUB_AUTOMATION.md)의 `verify-all.ps1`을 따릅니다.

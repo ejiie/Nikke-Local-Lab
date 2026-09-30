@@ -33,16 +33,7 @@ if (-not (Test-Path -LiteralPath $WorkflowPath -PathType Leaf)) {
 $Workflow = Get-Content -Raw -LiteralPath $WorkflowPath
 $HookPath = Join-Path $RepositoryRoot ".githooks/pre-commit"
 $Hook = Get-Content -Raw -LiteralPath $HookPath
-$Phase3B1Path = Join-Path $RepositoryRoot "scripts/verify-phase3b1.ps1"
-if (-not (Test-Path -LiteralPath $Phase3B1Path -PathType Leaf)) {
-    throw "Phase 3B-1 verification script is missing."
-}
-$Phase3B1 = Get-Content -Raw -LiteralPath $Phase3B1Path
-$Phase3B2Path = Join-Path $RepositoryRoot "scripts/verify-phase3b2.ps1"
-if (-not (Test-Path -LiteralPath $Phase3B2Path -PathType Leaf)) {
-    throw "Phase 3B-2 verification script is missing."
-}
-$Phase3B2 = Get-Content -Raw -LiteralPath $Phase3B2Path
+$VerifyAll = Get-Content -Raw -LiteralPath (Join-Path $ScriptDirectory 'verify-all.ps1')
 
 Assert-Contains $Workflow '(?m)^\s*push:\s*$' "Workflow must run from a push event."
 Assert-Contains $Workflow '(?m)^\s*-\s+"agent/\*\*"\s*$' "Workflow must be limited to agent/** branches."
@@ -50,14 +41,6 @@ Assert-Contains $Workflow 'github\.actor\s*==\s*github\.repository_owner' "Workf
 Assert-Contains $Workflow '(?m)^permissions:\s*\r?\n\s+contents:\s*read\s*$' "Workflow default token must be read-only."
 Assert-Contains $Workflow '(?m)^\s*group:\s*agent-publish-main\s*$' "Agent workflows must serialize against the main integration target."
 Assert-Contains $Workflow 'needs:\s*\[validate,\s*postgres\]' "Publish job must depend on Windows and PostgreSQL validation."
-Assert-Contains $Workflow 'verify-repository\.ps1\s+-Mode\s+tracked\s+-AllowRemote' "Workflow must enforce the repository boundary with explicit remote allowance."
-Assert-Contains $Workflow 'verify-phase0-contract\.ps1' "Workflow must run Phase 0 contract checks."
-Assert-Contains $Workflow 'verify-phase3b1\.ps1' "Workflow must run the Phase 3B-1 selected-manager contract and completed baseline checks."
-Assert-Contains $Workflow 'verify-phase3b2\.ps1\s+-ContractOnly' "Workflow must validate the Phase 3B-2 source-free contracts without claiming a live proof."
-Assert-Contains $Workflow 'verify-automation-boss-weakness-variant\.ps1' "Workflow must validate the source-free boss weakness variant automation contract."
-Assert-Contains $Workflow 'verify-phase2b\.ps1\s+-Integration' "Workflow must run live PostgreSQL integration checks."
-Assert-Contains $Workflow 'name:\s*Verify Phase 2B with PostgreSQL' "PostgreSQL validation job must name the Phase 2B gate."
-Assert-Contains $Workflow 'verify-actions-contract\.ps1' "Workflow must validate its own automation contract."
 Assert-Contains $Workflow 'gh\s+pr\s+create' "Workflow must create or reuse a pull request."
 Assert-Contains $Workflow 'gh\s+pr\s+merge' "Workflow must merge through the pull request."
 Assert-Contains $Workflow '--match-head-commit\s+"\$EXPECTED_SHA"' "Merge must be bound to the commit that passed validation."
@@ -77,33 +60,6 @@ $mergePattern = 'git\s+-c\s+user\.name=github-actions\[bot\]\s+-c\s+user\.email=
 if ([regex]::Matches($Workflow, $mergePattern).Count -ne 2) {
     throw 'Both validation jobs must test the merge result with command-local Git identity.'
 }
-foreach ($testScript in @('test-nll-boss-profile-qte.py', 'test-nll-shield-fx-recipes.py', 'test-nll-boss-fx-acquisition.py', 'test-nll-boss-behavior-acquisition.py', 'test-nll-boss-onboarding-candidate.py', 'test-nll-shield-fx-candidate.py', 'test-nll-execution-fx.py', 'test-nll-native-fx.py', 'test-nll-native-fx-layout.py', 'test-nll-native-fx-store.py', 'test-nll-actions-merge.py', 'test-nll-boss-catalog-images.py')) {
-    if ([regex]::Matches($Workflow, [regex]::Escape("python -B scripts/$testScript")).Count -ne 2) {
-        throw 'Both validation jobs must run the source-only Python behavior checks.'
-    }
-}
-if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-boss-publication.ps1')).Count -ne 2) {
-    throw 'Both validation jobs must run atomic boss publication failure/retry checks.'
-}
-if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-boss-native-composition.ps1')).Count -ne 2) {
-    throw 'Both validation jobs must run the offline native composition failure checks.'
-}
-if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-control-center-app-package.ps1')).Count -ne 2) {
-    throw 'Both validation jobs must run full app/UI package rollback and added-file retirement checks.'
-}
-if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-control-center-maintenance.ps1')).Count -ne 2) {
-    throw 'Both validation jobs must run startup/deployment lease and activation checks.'
-}
-if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-control-center-delivery.ps1')).Count -ne 2) {
-    throw 'Both validation jobs must run app/startup/activation transaction and interrupted recovery checks.'
-}
-if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-native-fx-managed-driver.ps1')).Count -ne 2) {
-    throw 'Both validation jobs must run synthetic user-validation driver lifecycle checks.'
-}
-if ([regex]::Matches($Workflow, [regex]::Escape('pwsh -NoProfile -File scripts/test-nll-user-validation-controller.ps1')).Count -ne 2) {
-    throw 'Both validation jobs must run synthetic controller binding and interrupted cleanup checks.'
-}
-
 Assert-NotContains $Workflow '(?m)^\s*pull_request_target:\s*$' "Privileged pull_request_target execution is forbidden."
 Assert-NotContains $Workflow 'secrets\.' "Automation must not depend on a PAT or repository secret."
 Assert-NotContains $Workflow '--admin' "Automation must not bypass branch protection."
@@ -131,15 +87,19 @@ Assert-NotContains $PublishBlock 'actions/checkout' "Write-enabled publish job m
 Assert-Contains $Hook '(?m)^set -eu\s*$' "Pre-commit hook must stop on the first failed check."
 Assert-Contains $Hook 'verify-repository\.ps1.*-AllowRemote' "Pre-commit hook must verify the repository boundary."
 Assert-Contains $Hook 'verify-phase0-contract\.ps1' "Pre-commit hook must verify Phase 0 contracts."
-Assert-Contains $Hook 'verify-phase3b1\.ps1' "Pre-commit hook must verify Phase 3B-1 and the completed baseline locally."
-Assert-Contains $Hook 'verify-phase3b2\.ps1\s+-ContractOnly' "Pre-commit hook must verify the Phase 3B-2 source-free contracts without claiming a live run."
-Assert-Contains $Hook 'verify-automation-boss-weakness-variant\.ps1' "Pre-commit hook must verify the boss weakness variant automation contract."
-Assert-Contains $Hook 'verify-actions-contract\.ps1' "Pre-commit hook must verify Actions automation."
-Assert-Contains $Phase3B1 'verify-phase3b0\.ps1' "Phase 3B-1 must preserve the Phase 3B-0, historical Phase 3A, and completed baseline chain."
-Assert-Contains $Phase3B1 'test-nll-execution-fx-retirement\.ps1' "Windows full baseline must verify real Job / synthetic FX retirement after building Automation."
-$phase2A2 = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts/verify-phase2a2.ps1') -Raw
-Assert-Contains $phase2A2 'test-nll-phase-d-job\.ps1' "Windows baseline must exercise atomic Job creation, handoff and same-job zero proof."
-Assert-Contains $Phase3B2 'verify-phase3b1\.ps1' "Phase 3B-2 must preserve the Phase 3B-1 and completed baseline chain."
-Assert-Contains $Phase3B2 'not_executed_contract_scaffold_only' "Phase 3B-2 Wave 0 must explicitly preserve the not-executed scaffold verdict."
+Assert-Contains $Hook 'verify-repository\.ps1.*-Mode\s+staged' "Pre-commit must check staged paths."
+Assert-Contains $Hook 'verify-automation-boss-weakness-variant\.ps1' "Pre-commit must verify the boss weakness variant contract."
+Assert-Contains $Hook 'verify-actions-contract\.ps1' "Pre-commit must verify Actions automation."
+Assert-Contains $ValidateBlock 'run: pwsh -NoProfile -File scripts/verify-all\.ps1 -SkipIntegration\s*$' "Windows must use the current entry point without PostgreSQL."
+Assert-Contains $PostgresBlock 'run: pwsh -NoProfile -File scripts/verify-all\.ps1\s*$' "Linux must run the current entry point including PostgreSQL."
+foreach ($block in @($ValidateBlock, $PostgresBlock)) {
+    if ([regex]::Matches($block, 'scripts/verify-all\.ps1').Count -ne 1) {
+        throw 'Each validation job must invoke current verification exactly once.'
+    }
+}
+Assert-Contains $VerifyAll "'tracked'.*'working'" "CI must check tracked paths and local verification must check working paths."
+Assert-Contains $VerifyAll 'verify-repository\.ps1.*-AllowRemote' "Current verification must enforce the repository boundary."
+Assert-Contains $VerifyAll 'test-nll-phase-d-job\.ps1' "Windows must exercise atomic Job creation, handoff and same-job zero proof."
+Assert-Contains $VerifyAll 'test-nll-execution-fx-retirement\.ps1' "Windows must verify real Job / synthetic FX retirement."
 
 Write-Output "GitHub Actions owner-only validate/PR/merge contract passed."

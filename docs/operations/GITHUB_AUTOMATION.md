@@ -53,14 +53,11 @@ PowerShell 5.1의 Utility 모듈 자동 로드가 `Get-FileHash` mock을 덮어�
               |
               +-- validate (windows-latest, 15분 제한)
               |     tested merge with origin/main
-              |     -> repository boundary (-Mode tracked -AllowRemote)
-              |     -> source-only onboarding/FX/merge 검사 (PowerShell 7개 + Python 12개)
-              |     -> Phase 0 -> Phase 3B-1(3B-0 -> 3A -> Phase 2B unit chain) -> Phase 3B-2 contract
-              |     -> boss weakness variant -> Actions contract
+              |     -> verify-all.ps1 -SkipIntegration (현행 검사 각 1회)
               |
               +-- postgres (ubuntu-latest + PostgreSQL 17.6 service, 15분 제한)
               |     tested merge with origin/main
-              |     -> verify-phase2b.ps1 -Integration -> 같은 source-only 검사
+              |     -> verify-all.ps1 (현행 검사 + live PostgreSQL 통합)
               |
               v
     publish (ubuntu-latest): create or reuse PR -> squash merge (--match-head-commit) -> delete remote branch
@@ -69,7 +66,21 @@ PowerShell 5.1의 Utility 모듈 자동 로드가 `Get-FileHash` mock을 덮어�
 `.github/workflows/agent-branch-automerge.yml`이 권위입니다. 2026-09-27 run `36324475337`에서 validate job은 약 12분이
 걸렸으므로 검사를 추가할 때 15분 제한과의 여유를 확인합니다.
 
-현재 workflow는 Windows에서 `scripts/verify-phase3b1.ps1`을 실행합니다. 이 gate는 3B-0→3A→완료된 Phase 2B baseline chain을 먼저 보존한 뒤, source-free selected-manager receipt와 최종 `7/10/2` route policy를 검증합니다. 이어 `scripts/verify-phase3b2.ps1 -ContractOnly`으로 Wave 0 assessment schema와 Wave 1 observation-set schema·합성 fixture를 검증하고, `scripts/verify-automation-boss-weakness-variant.ps1`로 Control Center 약점 선택 5종, 공식 아이콘 매핑, 실행별 파생 StaticData, 부모 runtime·공식 설치본 비변경, server/source manifest 및 receipt 결박을 검사합니다. 외부 EpinelPS checkout이 없는 Actions에서는 source-free manifest 형식과 연결 계약까지만 검사하며, checkout이 있는 로컬 gate에서는 manifest의 25개 source 길이·SHA-256까지 대조합니다. 어느 경우에도 파생 pack이나 원본 게임 asset을 업로드하지 않습니다. 이 단계에는 local assessment path를 전달하지 않으며 disposable environment, measured preflight 또는 actual-client live proof를 재현·주장하지 않습니다. pinned PostgreSQL service에서는 `scripts/verify-phase2b.ps1 -Integration`을 실행합니다. Phase 3A script의 checked-in verdict `blocked_insufficient_evidence`는 **승인 우선 정책의 역사적 계약**으로 계속 유지됩니다. 3B-1의 `ready_for_isolated_season26_reference_run`도 이 fixture를 성공으로 바꾸거나 original-client adapter를 활성화하지 않습니다. Phase 2B script는 완료된 Phase 2A2 gate를 먼저 호출한 뒤 permanent six-season directory, 05:00 KST boundary, Normal/Quick Battle unsupported, policy/profile과 1~5팀 Challenge contract를 추가로 검증합니다. 두 host `Program.cs`가 config policy를 source-free domain policy로 materialize하여 runtime의 initial policy로 전달하는 composition과, `MigrateAsync` integration test가 `lab_private_server` schema를 누락 없이 reset하는지를 static guard로 고정합니다.
+`scripts/verify-all.ps1`은 repository/Phase 0/Actions 계약, SDK pin과 solution locked restore/build/format,
+10개 단위 테스트 project, editor/도구 검사, 별도 7개 project build/format, PowerShell/Python 합성 행동 검사와
+보스 약점 계약을 각각 한 번 실행합니다. Windows에서는 PowerShell 5.1의 Job·준비·실행·원복 검사와 FX 퇴역 검사도
+실행합니다. Linux에서는 Windows 전용 검사를 명시적으로 건너뛰고 live PostgreSQL 통합을 추가합니다.
+두 host의 configured policy composition과 migration 테스트의 private-server schema reset guard도 유지합니다.
+
+2026-09-30 D2에 따라 Phase 3A blocked verdict, 3B-0 closure, 3B-1 selected-manager receipt, 3B-2 Wave 0/VM
+판정 모양 검사는 동결했습니다. 역사 문서 `docs/contracts/PHASE*.md`는 보존하고 당시 스크립트·schema·fixture는
+tag `scripts-history-20260930`에서 조회합니다. 이력 문서의 옛 검사 명령은 현재 실행 지시가 아닙니다.
+현행 managed FX service/driver, 사용자 검증 controller와 Job/FX 퇴역 검사는 새 진입점으로 옮겼습니다.
+
+보스 약점 검사는 기존과 같이 외부 checkout이 없으면 source-free manifest 형식과 연결 계약을 검사하고,
+있으면 25개 source 길이·SHA-256도 대조합니다. 원본 게임 asset과 파생 pack은 업로드하지 않습니다.
+pre-commit은 staged repository, Phase 0, 보스 약점, Actions 계약과 editor 구문/행동 검사만 실행합니다.
+전체 검사는 커밋 전에 별도로 실행하며 hook 성공으로 전체·PG 통합 검증을 대체하지 않습니다.
 
 credential-bearing raw profile, original client와 실제 game asset은 Actions 입력이 아닙니다. CI가 보는 result는 `lab_harness_observation/v1` backend 계약이며 `original_client_runtime` damage/HUD/result, wire/presentation adapter와 Phase 3·4 증거를 대신하지 않습니다. 시즌 26 classic Solo Raid compatibility spike는 disposable local 환경의 수동·로컬 gate이며 GitHub Actions green으로 실행 성공을 주장하지 않습니다. 새 경로의 정책과 exact upstream pin은 [PHASE3AR.md](../contracts/PHASE3AR.md)를 따릅니다.
 
@@ -117,7 +128,7 @@ identity 결손으로 실패했다. `--no-commit`에도 identity가 필요하므
 
 ## 로컬 검사
 
-S-06부터 Phase 2A2는 원본 데이터·외부 DLL 참조가 없는 materializer 행동 검사기의
+S-06에서 도입하여 현행 진입점이 유지하는 검사는 원본 데이터·외부 DLL 참조가 없는 materializer 행동 검사기의
 locked restore/build/format도 수행합니다. **CI에서는 실제 materializer 출력 검사와
 151 bootstrap/desktop 빌드를 실행하지 않습니다.** 배포 후보는 별도
 `scripts/test-nll-materializer-behavior.ps1`에 검토된 bundle 경로·SHA-256을 명시해 로컬
@@ -125,30 +136,25 @@ locked restore/build/format도 수행합니다. **CI에서는 실제 materialize
 [S-06](../archive/stabilization/STABILIZATION_PLAN.md#s-06--높음--회귀-검사의-일부가-동작-대신-구현-문자열에-결박됨)을 따릅니다.
 이 gate의 산출물·외부 DLL·receipt는 ignored artifacts에만 두고 Actions에 업로드하지 않습니다.
 
-AGENTS가 작업 전후로 요구하는 gate는 다음 10개입니다. 모두 exit 0이어야 통과입니다.
+작업 전후 로컬 현행 검사(각 1회):
 
-    pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode working -AllowRemote
-    pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
-    pwsh -NoProfile -File scripts/verify-phase2a1.ps1
-    pwsh -NoProfile -File scripts/verify-phase2a2.ps1
-    pwsh -NoProfile -File scripts/verify-phase2b.ps1
-    pwsh -NoProfile -File scripts/verify-phase3a.ps1 -ContractOnly
-    pwsh -NoProfile -File scripts/verify-phase3b0.ps1 -ContractOnly
-    pwsh -NoProfile -File scripts/verify-phase3b1.ps1 -ContractOnly
-    pwsh -NoProfile -File scripts/verify-phase3b2.ps1 -ContractOnly
-    pwsh -NoProfile -File scripts/verify-actions-contract.ps1
+    pwsh -NoProfile -File scripts/verify-all.ps1 -SkipIntegration
 
-CI에서 추가로 실행하는 `scripts/verify-automation-boss-weakness-variant.ps1`도 로컬에서 돌릴 수 있습니다.
+`-SkipIntegration`은 유일한 빠른 로컬 스위치이며 PostgreSQL 통합만 생략합니다. Windows 전용 검사까지
+통과하려면 Windows에서 실행해야 합니다. repository는 로컬에서 `-Mode working`, Actions에서는
+`-Mode tracked`로 검사하며 모두 `-AllowRemote`를 지정합니다.
 
-필요한 도구: PowerShell 7(`pwsh`), Node.js(Phase 2A2의 editor 검사가 `node`를 호출), Python, `global.json`의
-.NET SDK 8.0.407. Phase 2A1 이후 gate는 NuGet restore와 취약성 조회를 하므로 네트워크가 필요하며, 막히면 `NU1900`으로
-실패합니다. repository 검사는 `origin`이 있는 checkout에서 `-AllowRemote` 없이 실행하면 "Remote repositories are not
-allowed in the local-only baseline"으로 실패합니다.
+필요한 도구: PowerShell 7(`pwsh`), Node.js, Python, `global.json`의 .NET SDK 8.0.407,
+Windows 전용 검사에는 Windows PowerShell 5.1. NuGet locked restore와 취약성 조회에 네트워크가 필요합니다.
 
-live PostgreSQL까지 같은 gate로 검증할 때는 폐기 가능한 DB의 `NIKKE_LAB_TEST_DB`와 reviewed reset token을 설정한 뒤 다음을 실행합니다.
+live PostgreSQL 통합까지 검증할 때는 **폐기 가능한 테스트 DB**의 `NIKKE_LAB_TEST_DB`와
+`NIKKE_LAB_TEST_RESET_TOKEN=allow-phase1a-disposable-schema-reset`을 설정하고 실행합니다.
+운영 DB를 사용하지 않습니다. 둘 중 하나라도 없거나 token이 다르면 검사 시작 전에 실패합니다.
 
-    pwsh -NoProfile -File scripts/verify-phase2b.ps1 -Integration
+    pwsh -NoProfile -File scripts/verify-all.ps1
 
-GitHub 저장소 설정 변경이나 workflow 수정 후에는 실제 synthetic branch로 end-to-end push→PR→merge를 다시 검증합니다.
+기존 Phase 2B 완료 이력의 단위·live PostgreSQL 통합 기준은 그대로 유지합니다.
+`-SkipIntegration` 결과만으로 통합 완료를 주장하지 않습니다. workflow 변경의 실제 Windows/Linux job 시간과
+push→PR→merge 결과는 디렉터가 해당 SHA의 Actions에서 확인합니다.
 
-이 검사 목록은 현재 code/config의 fail-closed 상태를 검증합니다. 완료된 3B-1 source-free receipt도 compatibility route를 CI 또는 production composition에서 자동 시작하지 않습니다. 3B-2의 blocked/not-executed 합성 fixture도 실행 증거가 아닙니다. External selected-manager patch 결과는 [PHASE3B1.md](../contracts/PHASE3B1.md), Wave 0 계약과 disposable client proof는 [PHASE3B2.md](../contracts/PHASE3B2.md)의 별도 gate를 따릅니다.
+이 검사는 현재 code/config와 합성 입력의 동작을 검증하며 original-client UI/runtime actual-play를 대신하지 않습니다.
