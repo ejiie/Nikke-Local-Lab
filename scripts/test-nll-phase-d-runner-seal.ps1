@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'test-nll-phase-d-runner-contract.ps1') # supplies synthetic $spec; also checks shape
+. (Join-Path $PSScriptRoot 'test-nll-phase-d-runner-contract.ps1') # supplies synthetic $spec and assertion helper
 . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1')
 function Write-TestJson($Path, $Value) { [IO.File]::WriteAllText($Path, ($Value | ConvertTo-Json -Depth 10)) }
 function Pin-TestBundle {

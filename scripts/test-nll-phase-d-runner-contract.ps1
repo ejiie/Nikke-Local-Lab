@@ -25,6 +25,10 @@ $spec = [ordered]@{
     secretEnvironmentVariable = 'SYNTHETIC_SECRET_REFERENCE'
     derivedSourceManifestSha256 = ('4' * 64); runIntentCode = 'challenge'
 }
+# Other behavior suites dot-source only the synthetic fixture and assertion helper.
+# Run the contract cases once, when this script is invoked directly.
+if ($MyInvocation.InvocationName -eq '.') { return }
+
 $count = 0
 foreach ($build in @('build_150.6.9', 'build_151.8.5')) {
     foreach ($variant in @($false, $true)) {

@@ -55,73 +55,12 @@ jobs:
               throw "Feature branch does not produce a clean merge result with origin/main."
           }
 
-      - name: Verify repository boundary
+      - name: Verify current contracts and behavior
         shell: pwsh
-        run: pwsh -NoProfile -File scripts/verify-repository.ps1 -Mode tracked -AllowRemote
-
-      - name: Verify source-only onboarding and merge behavior
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -File scripts/test-nll-boss-publication.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Atomic boss publication checks failed.' }
-          pwsh -NoProfile -File scripts/test-nll-boss-native-composition.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Boss native composition checks failed.' }
-          pwsh -NoProfile -File scripts/test-nll-control-center-app-package.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Full app package recovery checks failed.' }
-          pwsh -NoProfile -File scripts/test-nll-control-center-maintenance.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Startup maintenance checks failed.' }
-          pwsh -NoProfile -File scripts/test-nll-control-center-delivery.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'App deployment transaction checks failed.' }
-          pwsh -NoProfile -File scripts/test-nll-native-fx-managed-driver.ps1
-          pwsh -NoProfile -File scripts/test-nll-user-validation-controller.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'User-validation driver lifecycle checks failed.' }
-          python -B scripts/test-nll-boss-catalog-images.py
-          if ($LASTEXITCODE -ne 0) { throw 'Boss presentation checks failed.' }
-          python -B scripts/test-nll-boss-profile-qte.py
-          if ($LASTEXITCODE -ne 0) { throw 'QTE profile checks failed.' }
-          python -B scripts/test-nll-shield-fx-recipes.py
-          if ($LASTEXITCODE -ne 0) { throw 'Shield FX recipe checks failed.' }
-          python -B scripts/test-nll-boss-fx-acquisition.py
-          if ($LASTEXITCODE -ne 0) { throw 'FX acquisition checks failed.' }
-          python -B scripts/test-nll-boss-behavior-acquisition.py
-          if ($LASTEXITCODE -ne 0) { throw 'Behavior acquisition checks failed.' }
-          python -B scripts/test-nll-boss-onboarding-candidate.py
-          if ($LASTEXITCODE -ne 0) { throw 'Common candidate checks failed.' }
-          python -B scripts/test-nll-shield-fx-candidate.py
-          if ($LASTEXITCODE -ne 0) { throw 'Isolated FX checks failed.' }
-          python -B scripts/test-nll-execution-fx.py
-          if ($LASTEXITCODE -ne 0) { throw 'Execution FX staging checks failed.' }
-          python -B scripts/test-nll-native-fx.py
-          if ($LASTEXITCODE -ne 0) { throw 'Native FX binding checks failed.' }
-          python -B scripts/test-nll-native-fx-layout.py
-          if ($LASTEXITCODE -ne 0) { throw 'Native FX fixed-layout checks failed.' }
-          python -B scripts/test-nll-native-fx-store.py
-          if ($LASTEXITCODE -ne 0) { throw 'Native FX offline store checks failed.' }
-          python -B scripts/test-nll-actions-merge.py
-          if ($LASTEXITCODE -ne 0) { throw 'Merge identity checks failed.' }
-
-      - name: Verify Phase 0 contracts
-        shell: pwsh
-        run: pwsh -NoProfile -File scripts/verify-phase0-contract.ps1
-
-      - name: Verify Phase 3B-1 selected-manager contract and completed baseline
-        shell: pwsh
-        run: pwsh -NoProfile -File scripts/verify-phase3b1.ps1
-
-      - name: Verify Phase 3B-2 source-free contracts
-        shell: pwsh
-        run: pwsh -NoProfile -File scripts/verify-phase3b2.ps1 -ContractOnly
-
-      - name: Verify boss weakness variant automation contract
-        shell: pwsh
-        run: pwsh -NoProfile -File scripts/verify-automation-boss-weakness-variant.ps1
-
-      - name: Verify Actions automation contract
-        shell: pwsh
-        run: pwsh -NoProfile -File scripts/verify-actions-contract.ps1
+        run: pwsh -NoProfile -File scripts/verify-all.ps1 -SkipIntegration
 
   postgres:
-    name: Verify Phase 2B with PostgreSQL
+    name: Verify current contracts with PostgreSQL
     if: ${{ github.actor == github.repository_owner }}
     permissions:
       contents: read
@@ -174,50 +113,9 @@ jobs:
               throw "Feature branch does not produce a clean merge result with origin/main."
           }
 
-      - name: Verify Phase 2B with PostgreSQL
+      - name: Verify current contracts and PostgreSQL integration
         shell: pwsh
-        run: pwsh -NoProfile -File scripts/verify-phase2b.ps1 -Integration
-
-      - name: Verify source-only onboarding and merge behavior
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -File scripts/test-nll-boss-publication.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Atomic boss publication checks failed.' }
-          pwsh -NoProfile -File scripts/test-nll-boss-native-composition.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Boss native composition checks failed.' }
-          pwsh -NoProfile -File scripts/test-nll-control-center-app-package.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Full app package recovery checks failed.' }
-          pwsh -NoProfile -File scripts/test-nll-control-center-maintenance.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Startup maintenance checks failed.' }
-          pwsh -NoProfile -File scripts/test-nll-control-center-delivery.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'App deployment transaction checks failed.' }
-          pwsh -NoProfile -File scripts/test-nll-native-fx-managed-driver.ps1
-          pwsh -NoProfile -File scripts/test-nll-user-validation-controller.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'User-validation driver lifecycle checks failed.' }
-          python -B scripts/test-nll-boss-catalog-images.py
-          if ($LASTEXITCODE -ne 0) { throw 'Boss presentation checks failed.' }
-          python -B scripts/test-nll-boss-profile-qte.py
-          if ($LASTEXITCODE -ne 0) { throw 'QTE profile checks failed.' }
-          python -B scripts/test-nll-shield-fx-recipes.py
-          if ($LASTEXITCODE -ne 0) { throw 'Shield FX recipe checks failed.' }
-          python -B scripts/test-nll-boss-fx-acquisition.py
-          if ($LASTEXITCODE -ne 0) { throw 'FX acquisition checks failed.' }
-          python -B scripts/test-nll-boss-behavior-acquisition.py
-          if ($LASTEXITCODE -ne 0) { throw 'Behavior acquisition checks failed.' }
-          python -B scripts/test-nll-boss-onboarding-candidate.py
-          if ($LASTEXITCODE -ne 0) { throw 'Common candidate checks failed.' }
-          python -B scripts/test-nll-shield-fx-candidate.py
-          if ($LASTEXITCODE -ne 0) { throw 'Isolated FX checks failed.' }
-          python -B scripts/test-nll-execution-fx.py
-          if ($LASTEXITCODE -ne 0) { throw 'Execution FX staging checks failed.' }
-          python -B scripts/test-nll-native-fx.py
-          if ($LASTEXITCODE -ne 0) { throw 'Native FX binding checks failed.' }
-          python -B scripts/test-nll-native-fx-layout.py
-          if ($LASTEXITCODE -ne 0) { throw 'Native FX fixed-layout checks failed.' }
-          python -B scripts/test-nll-native-fx-store.py
-          if ($LASTEXITCODE -ne 0) { throw 'Native FX offline store checks failed.' }
-          python -B scripts/test-nll-actions-merge.py
-          if ($LASTEXITCODE -ne 0) { throw 'Merge identity checks failed.' }
+        run: pwsh -NoProfile -File scripts/verify-all.ps1
 
   publish:
     name: Open PR and squash merge

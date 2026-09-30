@@ -1,5 +1,5 @@
 param(
-    [switch]$Integration
+    [switch]$SkipIntegration
 )
 
 $ErrorActionPreference = "Stop"
@@ -7,43 +7,115 @@ $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
 $env:DOTNET_NOLOGO = "1"
 
 function Invoke-Checked {
-    param(
-        [string]$Command,
-        [string[]]$Arguments
-    )
+    param([string]$Command, [string[]]$Arguments)
 
+    Write-Output ("> $Command " + ($Arguments -join ' '))
     & $Command @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "$Command failed with exit code $LASTEXITCODE."
     }
 }
 
-$ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RepositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $ScriptDirectory ".."))
-$Phase2A1 = Join-Path $ScriptDirectory "verify-phase2a1.ps1"
-$ProfileImportTests = Join-Path $RepositoryRoot "tests/NikkeLocalLab.ProfileImport.UnitTests/NikkeLocalLab.ProfileImport.UnitTests.csproj"
-$AdminApiTests = Join-Path $RepositoryRoot "tests/NikkeLocalLab.Admin.Api.UnitTests/NikkeLocalLab.Admin.Api.UnitTests.csproj"
-$IntegrationTests = Join-Path $RepositoryRoot "tests/NikkeLocalLab.PostgreSql.IntegrationTests/NikkeLocalLab.PostgreSql.IntegrationTests.csproj"
-$EditorScript = Join-Path $RepositoryRoot "src/NikkeLocalLab.Admin.Api/wwwroot/editor/editor.js"
+$ScriptDirectory = $PSScriptRoot
+$RepositoryRoot = Split-Path -Parent $ScriptDirectory
+$Solution = Join-Path $RepositoryRoot 'NikkeLocalLab.sln'
+$GlobalJsonPath = Join-Path $RepositoryRoot 'global.json'
+$IntegrationTests = Join-Path $RepositoryRoot 'tests/NikkeLocalLab.PostgreSql.IntegrationTests/NikkeLocalLab.PostgreSql.IntegrationTests.csproj'
+$EditorScript = Join-Path $RepositoryRoot 'src/NikkeLocalLab.Admin.Api/wwwroot/editor/editor.js'
 
-$Phase2A1Arguments = @("-NoProfile", "-File", $Phase2A1)
-Invoke-Checked pwsh $Phase2A1Arguments
-Invoke-Checked dotnet @(
-    "test",
-    $ProfileImportTests,
-    "--configuration",
-    "Release",
-    "--no-build",
-    "--no-restore"
+# Refuse an unreviewed database before running any checks. Never infer a local DB.
+if (-not $SkipIntegration) {
+    if ([string]::IsNullOrWhiteSpace($env:NIKKE_LAB_TEST_DB)) {
+        throw 'NIKKE_LAB_TEST_DB is required for PostgreSQL integration verification.'
+    }
+    if ($env:NIKKE_LAB_TEST_RESET_TOKEN -ne 'allow-phase1a-disposable-schema-reset') {
+        throw 'The disposable PostgreSQL reset token is required for integration verification.'
+    }
+}
+
+$RepositoryMode = if ($env:GITHUB_ACTIONS -eq 'true') { 'tracked' } else { 'working' }
+Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'verify-repository.ps1'), '-Mode', $RepositoryMode, '-AllowRemote')
+Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'verify-phase0-contract.ps1'))
+Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'verify-actions-contract.ps1'))
+
+function Assert-FileContains {
+    param(
+        [string]$Path,
+        [string]$Pattern,
+        [string]$FailureCode
+    )
+
+    $content = [System.IO.File]::ReadAllText($Path)
+    if ($content -notmatch $Pattern) {
+        throw $FailureCode
+    }
+}
+
+$IntegrationTestDirectory = Split-Path -Parent $IntegrationTests
+$PrivateServerProgram = Join-Path $RepositoryRoot 'src/NikkeLocalLab.PrivateServer.Api/Program.cs'
+$AdminProgram = Join-Path $RepositoryRoot 'src/NikkeLocalLab.Admin.Api/Program.cs'
+
+foreach ($program in @($PrivateServerProgram, $AdminProgram)) {
+    Assert-FileContains $program "configuration\.ChallengeOperationalPolicy" "phase2b_configured_policy_configuration_missing"
+    Assert-FileContains $program "ChallengeOperationalPolicy[\s\S]*CreateFromControlledCodes" "phase2b_configured_policy_materialization_missing"
+    Assert-FileContains $program "PostgreSqlPrivateServerRuntime\.CreateAsync\(\s*connectionString,\s*initialPolicy\s*\)" "phase2b_configured_policy_composition_missing"
+    Assert-FileContains $program "PrivateServerApplicationException" "phase2b_controlled_startup_error_mapping_missing"
+}
+
+$migrationIntegrationTestFiles = @(
+    Get-ChildItem -LiteralPath $IntegrationTestDirectory -Recurse -Filter "*.cs" -File |
+        Where-Object {
+            $_.FullName -notmatch "[\\/](bin|obj)[\\/]" -and
+            [System.IO.File]::ReadAllText($_.FullName) -match "\bMigrateAsync\s*\("
+        }
 )
-Invoke-Checked dotnet @(
-    "test",
-    $AdminApiTests,
-    "--configuration",
-    "Release",
-    "--no-build",
-    "--no-restore"
+
+if ($migrationIntegrationTestFiles.Count -eq 0) {
+    throw "phase2b_integration_migration_tests_missing"
+}
+
+$privateServerSchemaReset = [System.Text.RegularExpressions.Regex]::Escape(
+    "DROP SCHEMA IF EXISTS lab_private_server CASCADE;"
 )
+foreach ($testFile in $migrationIntegrationTestFiles) {
+    $relativePath = [System.IO.Path]::GetRelativePath($RepositoryRoot, $testFile.FullName)
+    Assert-FileContains `
+        $testFile.FullName `
+        $privateServerSchemaReset `
+        "phase2b_integration_reset_missing_private_server_schema:$relativePath"
+}
+
+$GlobalJson = Get-Content -Raw -LiteralPath $GlobalJsonPath | ConvertFrom-Json
+if ($GlobalJson.sdk.version -ne "8.0.407" -or
+    $GlobalJson.sdk.rollForward -ne "disable" -or
+    [bool]$GlobalJson.sdk.allowPrerelease) {
+    throw "global.json must pin SDK 8.0.407 with rollForward disabled and prereleases denied."
+}
+
+$SdkVersion = (& dotnet --version).Trim()
+if ($LASTEXITCODE -ne 0 -or $SdkVersion -ne "8.0.407") {
+    throw "Verification requires the SDK pinned by global.json (8.0.407). Found: $SdkVersion"
+}
+
+Invoke-Checked dotnet @("restore", $Solution, "--locked-mode")
+Invoke-Checked dotnet @("build", $Solution, "--configuration", "Release", "--no-restore")
+Invoke-Checked dotnet @("format", $Solution, "--verify-no-changes", "--no-restore")
+foreach ($project in @(
+    'NikkeLocalLab.UnitTests',
+    'NikkeLocalLab.Character.UnitTests',
+    'NikkeLocalLab.Raid.UnitTests',
+    'NikkeLocalLab.CombatSupport.UnitTests',
+    'NikkeLocalLab.Profile.UnitTests',
+    'NikkeLocalLab.ProfileImport.UnitTests',
+    'NikkeLocalLab.Admin.Api.UnitTests',
+    'NikkeLocalLab.Automation.UnitTests',
+    'NikkeLocalLab.PrivateServer.UnitTests',
+    'NikkeLocalLab.PrivateServer.Api.UnitTests'
+)) {
+    $path = Join-Path $RepositoryRoot ('tests/' + $project + '/' + $project + '.csproj')
+    Invoke-Checked dotnet @('test', $path, '-c', 'Release', '--no-build', '--no-restore')
+}
+
 Invoke-Checked node @("--check", $EditorScript)
 Invoke-Checked node @('--check', (Join-Path $ScriptDirectory 'measure-nll-editor-dom.cjs'))
 Invoke-Checked node @((Join-Path $ScriptDirectory 'measure-nll-editor-dom.cjs'), '--self-test')
@@ -78,8 +150,6 @@ Invoke-Checked dotnet @('format', $MaterializerChecks, '--verify-no-changes', '-
 $NativeFxEvidence = Join-Path $RepositoryRoot ('artifacts/native-fx-process-checks/' + [guid]::NewGuid().ToString('N'))
 Invoke-Checked dotnet @((Join-Path $RepositoryRoot 'tests/NikkeLocalLab.Materializer.BehaviorChecks/bin/Release/net8.0/NikkeLocalLab.Materializer.BehaviorChecks.dll'), '--native-fx', $NativeFxEvidence, '5')
 Write-Output 'Materializer checker source build passed; pinned output checks/bootstrap151/desktop local gate NOT executed by CI.'
-# The source-linked HTTP bridge is tested with synthetic bytes on loopback only.
-Invoke-Checked dotnet @('test', (Join-Path $RepositoryRoot 'tests/NikkeLocalLab.Automation.UnitTests'), '-c', 'Release', '--no-build', '--no-restore')
 $AssetDeliveryProbe = Join-Path $RepositoryRoot 'tools/PhaseD/AssetDeliveryProbe/NikkeLocalLab.AssetDeliveryProbe.csproj'
 Invoke-Checked dotnet @('restore', $AssetDeliveryProbe, '--locked-mode')
 Invoke-Checked dotnet @('build', $AssetDeliveryProbe, '-c', 'Release', '--no-restore')
@@ -108,28 +178,47 @@ if ($env:OS -eq 'Windows_NT') {
         Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory $test))
     }
     Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory 'test-nll-phase-d-runner-behavior.ps1'), '-JobContract')
+    Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-execution-fx-retirement.ps1'))
+    # Preparation resolves Windows runtime paths; before S2 only the Windows job ran this gate.
+    Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'verify-automation-boss-weakness-variant.ps1'))
 } else {
     Write-Output 'Phase D Windows preparation/legacy-template behavior tests require the Windows local gate.'
 }
 
-if ($Integration) {
-    if ([string]::IsNullOrWhiteSpace($env:NIKKE_LAB_TEST_DB)) {
-        throw "NIKKE_LAB_TEST_DB is required for PostgreSQL integration verification."
-    }
-
-    if ($env:NIKKE_LAB_TEST_RESET_TOKEN -ne "allow-phase1a-disposable-schema-reset") {
-        throw "The disposable PostgreSQL reset token is required for integration verification."
-    }
-
-    Invoke-Checked dotnet @(
-        "test",
-        $IntegrationTests,
-        "--configuration",
-        "Release",
-        "--no-build",
-        "--no-restore"
-    )
+# Source-only behavior checks shared by the Windows and PostgreSQL jobs.
+foreach ($test in @(
+    'test-nll-boss-publication.ps1',
+    'test-nll-boss-native-composition.ps1',
+    'test-nll-control-center-app-package.ps1',
+    'test-nll-control-center-maintenance.ps1',
+    'test-nll-control-center-delivery.ps1',
+    'test-nll-native-fx-managed-driver.ps1',
+    'test-nll-user-validation-controller.ps1',
+    'test-nll-native-fx-managed-service.ps1'
+)) {
+    Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory $test))
 }
 
-$Mode = if ($Integration) { "unit and PostgreSQL integration" } else { "unit" }
-Write-Output "Phase 2A2 $Mode verification passed."
+foreach ($test in @(
+    'test-nll-boss-catalog-images.py',
+    'test-nll-boss-profile-qte.py',
+    'test-nll-shield-fx-recipes.py',
+    'test-nll-boss-fx-acquisition.py',
+    'test-nll-boss-behavior-acquisition.py',
+    'test-nll-boss-onboarding-candidate.py',
+    'test-nll-shield-fx-candidate.py',
+    'test-nll-execution-fx.py',
+    'test-nll-native-fx.py',
+    'test-nll-native-fx-layout.py',
+    'test-nll-native-fx-store.py',
+    'test-nll-actions-merge.py'
+)) {
+    Invoke-Checked python @('-B', (Join-Path $ScriptDirectory $test))
+}
+
+if (-not $SkipIntegration) {
+    Invoke-Checked dotnet @('test', $IntegrationTests, '-c', 'Release', '--no-build', '--no-restore')
+} else {
+    Write-Output 'PostgreSQL integration explicitly skipped; this is not a complete integration result.'
+}
+Write-Output 'Current verification passed.'
