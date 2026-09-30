@@ -1,6 +1,6 @@
 # 보스 추가와 공통 실행 준비
 
-기준: 2026-09-27 `main`의 코드와 `C:\NLL\RuntimeInputs\CommonBossExecution\profiles` 등록 상태.
+기준: 2026-09-30 `main`의 코드와 `C:\NLL\RuntimeInputs\CommonBossExecution\profiles` 등록 상태.
 작업 기록과 실패 조사 원문은 [보관 기록](#보관-기록)에 있습니다.
 
 ## 지켜야 할 규칙
@@ -76,28 +76,38 @@ UI 파일은 `wwwroot/editor/boss-seasons.js`입니다. `user-validation.js`는 
 | 27 | v4 | 작열 | 속성 연동 | 기록 없음 |
 | 29 | v4 | 전격 | 속성 연동 | 151에서 속성 쉴드 정상 확인(2026-09-15) |
 | 34 | v4 | 전격 | 속성 연동 | 대기 |
+| 39 | v4 | 전격 | 속성 연동 | 152에서 조립·테스트 완료 보고(2026-09-29) |
 | 41 | v4 | 작열 | 속성 연동 | 대기 |
 
 2026-09-17 152 전환 때 기존 보스를 152 원본으로 다시 조립했고 설치 직후 5약점 준비는 모두
-`ready`였습니다. 준비 `ready`는 전투·FX 인수가 아닙니다.
+`ready`였습니다. S39는 2026-09-29 UI 조립으로 추가됐습니다. 준비 `ready`는 전투·FX 인수가 아닙니다.
 
 ## 알려진 결함과 남은 작업
 
-- **S39·S42 조립 실패 수정** (2026-09-28, 소스 변경·오프라인 후보 검증만. 설치·게시·실게임 전):
+- **S39·S42 조립 수정** (소스 [#36](https://github.com/ejiie/Nikke-Local-Lab/pull/36)·[#37](https://github.com/ejiie/Nikke-Local-Lab/pull/37), 2026-09-28 설치 → 2026-09-30 재설치):
   - S39 `boss_profile_shield_fx_variant_not_unique`(실제 후보 0개): 같은 이름 계열과 정확한 공통
     효과명이 모두 없을 때만, 원본 의미 문자열이 `<한정어>_<효과>`처럼 구간 단위로 공통 `fx_m_<효과>`로
     끝나는 후보(`island_immune_barrier` → `immune_barrier`)를 받습니다. 그런 후보가 둘 이상이면 계속 거절합니다.
+    운영자가 2026-09-29 UI로 S39를 조립·등록한 뒤 테스트 완료를 보고했습니다.
   - S42 `boss_profile_qte_v3_discovery_invalid`: QTE 행마다 원본 속성이 다를 수 있습니다(전격 2행·수냉
     1행). 원본 보스 속성 실행은 행을 바꾸지 않고, 그 밖에는 연결된 모든 행을 목표 속성으로 바꾸되
     실제로 달라진 행만 셉니다. profile은 정렬된 원본 속성 집합만 요구하고, 행별 원본 속성은
     `recordSetSha256`와 discovery `shieldPatterns.quickTimeEvents[].elementCode`로 확인합니다.
   - 조립기의 `boss_profile_*` 코드가 포괄 코드 대신 작업 결과로 전달됩니다.
-  - QTE 노드 규칙 적용(2026-09-28, 소스 변경·오프라인 후보 검증만): S42 수냉 행동 트리(typed node
-    10개)에는 QTE 노드가 없어 QTE 계약 없는 v4(속성 실드만)로 조립되고 5약점 모두 QTE 행 변경 0입니다.
-    위 혼합 원본 속성 처리는 QTE 노드가 있는 트리의 연결 행에 계속 적용됩니다. 등록 보스는 QTE 계약이
-    있는 8개(S7·10·25·27·29·34·39·41) 모두 트리에 QTE 노드가 있고 S9·S26은 행·노드가 없어 profile·
-    recipe·5약점 pack이 바뀌지 않습니다. [S42 조사](../archive/boss-pipeline/S42_ONBOARDING_QTE_20260922.md),
+  - QTE 노드 규칙: S42 수냉 행동 트리(typed node 10개)에는 QTE 노드가 없어 QTE 계약 없는 v4(속성
+    실드만)로 조립되고 5약점 모두 QTE 행 변경 0입니다(오프라인 후보 검증). 위 혼합 원본 속성 처리는
+    QTE 노드가 있는 트리의 연결 행에 계속 적용됩니다. 등록 보스는 QTE 계약이 있는 8개
+    (S7·10·25·27·29·34·39·41) 모두 트리에 QTE 노드가 있고 S9·S26은 행·노드가 없어 profile·
+    recipe·5약점 pack이 바뀌지 않습니다.
+  - 2026-09-30 설치(`artifacts/boss-pipeline-install-20260930/`): QTE 노드 규칙 materializer, 등록 store를
+    받는 chunk 도구([#38](https://github.com/ejiie/Nikke-Local-Lab/pull/38)), 바뀐 스크립트 5개 재봉인. 새 도구로
+    S39 입력을 다시 만들어 등록된 chunk 11개와 바이트 동일(3.2초)을 확인했고 10보스×5약점 준비는 설치
+    전후 모두 `ready`입니다. 유니온 worker pin은 checkout의 CRLF 변환 전 LF 해시로 남아 있어, 줄바꿈만 다른
+    것을 확인하고 함께 다시 봉인했습니다. S42는 아직 조립 요청 전입니다.
+    [S42 조사](../archive/boss-pipeline/S42_ONBOARDING_QTE_20260922.md),
     [S39 조사](../archive/boss-pipeline/S39_ONBOARDING_FX_20260923.md)
+- 조립 시간: native chunk 후보의 store 전체 hash(약 132초)는 위 설치로 없앴습니다. 남은 큰 구간인
+  5약점 변형(약 23초)과 행동 트리 확보(약 24초)의 단축은 운영자가 뒤로 미뤘습니다.
 - 시작 요청→게임 창 생성 구간(약 32초)의 추가 단축 조사는 운영자가 보류했습니다.
 
 ## 검증
