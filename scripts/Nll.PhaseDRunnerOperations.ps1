@@ -16,7 +16,6 @@ function Get-PhaseDRunnerHostPins {
 }
 function Get-PhaseDRunnerContextPath { 'C:\NLL\Evidence\Phase3B2\Physical\server-profile-v1\identity\synthetic-context.json' }
 function Get-PhaseDRunnerBootstrapEvidenceRoot([string]$Lane) { Join-Path 'C:\NLL\Evidence\Phase3B2\Physical' $Lane }
-function New-PhaseDRunnerStopwatch { [Diagnostics.Stopwatch]::StartNew() }
 function Start-PhaseDRunnerBootstrap {
     param([object]$Specification, [string]$Path)
 

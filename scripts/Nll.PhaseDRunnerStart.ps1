@@ -155,7 +155,6 @@ function Invoke-PhaseDRunnerStart {
     $hostsBeforePath = Join-Path $runRoot 'hosts.before.bin'
     $stdoutPath = Join-Path $runRoot 'server.stdout.log'
     $stderrPath = Join-Path $runRoot 'server.stderr.log'
-    $measurementPath = Join-Path $runRoot 'startup.measurement.json'
     $runStartPath = Join-Path $runRoot 'run-start.receipt.json'
     $runFailurePath = Join-Path $runRoot 'run-failure.receipt.json'
     $bootstrapStartPath = Join-Path $bootstrapRunRoot `
@@ -336,54 +335,12 @@ function Invoke-PhaseDRunnerStart {
         } catch { Write-Verbose 'phase_d_progress_process_timestamp_unavailable' }
         finally { if ($observedClient -is [Diagnostics.Process]) { $observedClient.Dispose() } }
     
-        $stageCode = 'thirty_second_interactive_health_observation'
-        Write-PhaseDProgress $Specification.launchRoot 'health_observation'
-        $samples = @()
-        $deadline = New-PhaseDRunnerStopwatch
-        while ($deadline.Elapsed.TotalSeconds -lt 30) {
-            $client = Get-PinnedProcess $clientProcessId 'nikke'
-            $server = Get-PinnedProcess $serverProcess.Id 'EpinelPS'
-            $bootstrap = Get-PinnedProcess $bootstrapProcess.Id `
-                'NikkeLocalLab.Phase3B2.PhysicalBootstrap'
-            Assert-True ($null -ne $client -and $null -ne $server -and
-                $null -ne $bootstrap) `
-                'phase3b2_epinel_minimal_start_process_lost_during_measurement'
-            $connections = @(
-                foreach ($observedProcessId in @($clientProcessId, $serverProcess.Id,
-                    $bootstrapProcess.Id)) {
-                    Get-NetTCPConnection -OwningProcess $observedProcessId `
-                        -State Established `
-                        -ErrorAction SilentlyContinue
-                }
-            )
-            $nonLoopback = @($connections | Where-Object {
-                $_.RemoteAddress -notin @('127.0.0.1', '::1')
-            })
-            $samples += [ordered]@{
-                offsetMilliseconds = [long]$deadline.Elapsed.TotalMilliseconds
-                clientResponding = [bool]$client.Responding
-                nonLoopbackConnectionCount = $nonLoopback.Count
-            }
-            Start-Sleep -Seconds 2
-        }
-        Write-AtomicUtf8NoBom $measurementPath `
-            (($samples | ConvertTo-Json -Depth 4) + "`n")
-        $measurementElapsedMilliseconds = if ($samples.Count -gt 0) {
-            [long]$samples[-1].offsetMilliseconds
-        } else { 0L }
-        Assert-True (
-            $samples.Count -ge 10 -and
-            $measurementElapsedMilliseconds -ge 28000 -and
-            @($samples | Where-Object { -not $_.clientResponding }).Count -eq 0 -and
-            @($samples | Where-Object {
-                $_.nonLoopbackConnectionCount -ne 0
-            }).Count -eq 0
-        ) 'phase3b2_epinel_minimal_start_health_or_network_invalid'
+        $stageCode = 'publish_start_receipt'
         Write-PhaseDProgress $Specification.launchRoot 'running'
     
         $receipt = [ordered]@{
             schemaVersion = 1
-            contractId = 'nll/phase3b2-epinel-solo-raid-ranking-prefix-start/v9'
+            contractId = 'nll/phase3b2-epinel-solo-raid-ranking-prefix-start/v10'
             startedAtUtc = [DateTimeOffset]::UtcNow.ToString(
                 "yyyy-MM-dd'T'HH:mm:ss'Z'"
             )
@@ -401,12 +358,6 @@ function Invoke-PhaseDRunnerStart {
             listenerHttp3UdpCount = 0
             sailNamedPipeConnected = $true
             sailNamedPipeClosedAfterPayload = $true
-            thirtySecondMeasurementCompleted = $true
-            measurementSampleCount = $samples.Count
-            measurementElapsedMilliseconds = $measurementElapsedMilliseconds
-            minimumAcceptedSampleCount = 10
-            minimumAcceptedElapsedMilliseconds = 28000
-            successfulNonLoopbackConnectionCount = 0
             globalMatchLoopbackMappingApplied = $true
             bootstrapOutboundBlockApplied = $true
             selectedManagerRuntimeBindingApplied = $true

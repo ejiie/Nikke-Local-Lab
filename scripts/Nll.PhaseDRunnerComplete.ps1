@@ -119,7 +119,7 @@ function Invoke-PhaseDRunnerComplete {
         ConvertFrom-Json
     Assert-True (
         $runStart.contractId -ceq
-            'nll/phase3b2-epinel-solo-raid-ranking-prefix-start/v9' -and
+            'nll/phase3b2-epinel-solo-raid-ranking-prefix-start/v10' -and
         [string]$runStart.runIntentCode -in @('challenge', 'practice') -and
         -not $runStart.historicalReceiptBindingApplied -and
         -not $runStart.selfHashBindingApplied

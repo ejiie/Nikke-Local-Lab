@@ -227,9 +227,49 @@ try {
          [int]$identityDocument.client.processId -eq $ClientProcessId) `
         'phase_d_process_identity_unresolved'
     $runtimeProcessIdentities = $identityDocument
+    $pointer = Get-Content -LiteralPath (Join-Path $EvidenceRoot 'active-run.pointer.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $runRoot = [IO.Path]::GetFullPath([string]$pointer.runRoot)
+    Assert-Watcher ($runRoot.StartsWith($EvidenceRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) -and
+        $pointer.runStartReceiptSha256 -ceq $StartReceiptSha256) 'phase_d_watcher_pointer_invalid'
+    # Reuse the run's measurement artifact. Empty means no sample, never measured zero.
+    $measurementPath = Join-Path $runRoot 'startup.measurement.json'
+    $samples = [Collections.Generic.List[object]]::new()
+    Write-AtomicJson $measurementPath @{ samples=@() }
     $client = Get-PhaseDVerifiedProcess -Identity $runtimeProcessIdentities.client
     if ($null -ne $client) {
-        try { $client.WaitForExit() } finally { $client.Dispose() }
+        $observationClock = [Diagnostics.Stopwatch]::StartNew()
+        try {
+            while (-not $client.WaitForExit(0)) {
+                $observedProcesses = [Collections.Generic.List[object]]::new()
+                try {
+                    $observedProcesses.Add(@{ handle=$client; id=$ClientProcessId })
+                    foreach ($role in @('server', 'bootstrap')) {
+                        $process = Get-PhaseDVerifiedProcess -Identity $runtimeProcessIdentities.$role
+                        if ($null -ne $process) { $observedProcesses.Add(@{ handle=$process; id=[int]$runtimeProcessIdentities.$role.processId }) }
+                    }
+                    # Query once without a PID filter: an empty per-PID result can be a CIM error.
+                    # Real query failures propagate; they must never become a zero sample.
+                    $connections = @(Get-NetTCPConnection -ErrorAction Stop)
+                    $observedIds = @($observedProcesses | Where-Object { -not $_.handle.HasExited } | ForEach-Object { $_.id })
+                    $nonLoopback = @($connections | Where-Object {
+                        $_.OwningProcess -in $observedIds -and $_.State -eq 'Established' -and
+                        $_.RemoteAddress -notin @('127.0.0.1', '::1')
+                    })
+                    $samples.Add([ordered]@{
+                        observedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+                        offsetMilliseconds = [long]$observationClock.Elapsed.TotalMilliseconds
+                        nonLoopbackConnectionCount = $nonLoopback.Count
+                    })
+                    Write-AtomicJson $measurementPath @{ samples=$samples.ToArray() }
+                    Assert-Watcher ($nonLoopback.Count -eq 0) 'phase_d_runtime_non_loopback_connection_detected'
+                }
+                finally {
+                    foreach ($process in $observedProcesses) { if ($process.handle -ne $client) { $process.handle.Dispose() } }
+                }
+                if ($client.WaitForExit(30000)) { break }
+            }
+        }
+        finally { $client.Dispose() }
     }
     # Identity was checked above. Publish the observation before any slow cleanup.
     Write-PhaseDProgress $LaunchRoot 'game_exited'

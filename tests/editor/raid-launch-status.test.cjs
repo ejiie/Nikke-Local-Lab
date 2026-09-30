@@ -33,14 +33,20 @@ test("exit and cleanup progress replace running on the next render while admissi
   assert.equal(h.timers.size, 0);
 });
 
-test("health observation is labelled separately from frame readiness and includes timing", () => {
+test("spawn and running do not promise a fixed observation delay or frame readiness", () => {
   const h = setup();
   h.ctx.renderLaunch({ statusCode: "started", launchContextUid: "synthetic-active", progress: {
-    stageCode: "health_observation", events: [{ stageCode: "health_observation",
+    stageCode: "game_spawned", events: [{ stageCode: "game_spawned",
       occurredAtUtc: new Date(Date.now() - 2000).toISOString(), cumulativeMilliseconds: 10000 }] } });
-  assert.match(h.title(), /관찰 중 \(30초\)/);
+  assert.match(h.title(), /게임 프로세스 생성 확인/);
   assert.match(h.description(), /화면 로딩 완료를 뜻하지 않습니다/);
   assert.match(h.description(), /요청 후 .*초 · 현재 단계 .*초/);
+  h.buttons(true);
+  assert.doesNotMatch(h.title() + h.description(), /30초|관찰 중/);
+  h.ctx.renderLaunch({ statusCode: "started", launchContextUid: "synthetic-active",
+    progress: { stageCode: "running", events: [] } });
+  assert.match(h.title(), /게임 실행 중/);
+  assert.doesNotMatch(h.title() + h.description(), /30초|관찰 중/);
   h.buttons(true);
 });
 
@@ -217,7 +223,7 @@ test("phase timing uses its start, without adding the previous phase duration", 
       { stageCode: "health_observation", occurredAtUtc: new Date(at - 5000).toISOString(), cumulativeMilliseconds: 79000, intervalMilliseconds: 0 }
     ]
   } });
-  assert.match(display.title, /30초/);
+  assert.match(display.title, /이전 실행 기동 상태 관찰 중/);
   assert.match(display.description, /요청 후 84\.0초 · 현재 단계 경과 5\.0초/);
   assert.match(display.description, /로딩 완료를 뜻하지 않습니다/);
 });

@@ -498,7 +498,7 @@ function launchProgressDisplay(projection) {
     runtime_preparation: "실행 환경 준비 중", fx_apply: "보스 연출 적용 중",
     server_start: "로컬 서버 시작 중", server_created: "로컬 서버 기동 확인 중",
     resource_check: "실행 리소스 확인 중", game_start: "게임 프로세스 시작 중",
-    game_spawned: "게임 프로세스 생성 확인", health_observation: "게임 기동 상태 관찰 중 (30초)",
+    game_spawned: "게임 프로세스 생성 확인", health_observation: "이전 실행 기동 상태 관찰 중",
     running: "게임 실행 중", game_exited: "게임 종료 확인 · 정리 준비 중",
     runtime_stopping: "게임 종료 · 실행 환경 정리 중", fx_restore: "게임 종료 · 보스 연출 복구 중",
     runtime_restore: "게임 종료 · 실행 환경 복구 중", database_restart: "게임 종료 · 저장 준비 중",
@@ -509,7 +509,7 @@ function launchProgressDisplay(projection) {
   const code = progress.stageCode;
   const title = labels[code] || labels.status_unknown;
   let description = code === "health_observation" || code === "game_spawned"
-    ? "프로세스 상태를 확인하고 있습니다. 게임 화면 로딩 완료를 뜻하지 않습니다."
+    ? "게임 프로세스가 생성되었습니다. 게임 화면 로딩 완료를 뜻하지 않습니다."
     : code === "running" ? "게임이 종료될 때까지 관리 도구를 닫지 마세요."
       : "처리가 완료될 때까지 기다려 주세요. 완료 후 게임 시작 버튼이 활성화됩니다.";
   const events = progress.events || [];

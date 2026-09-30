@@ -199,6 +199,7 @@ Phase 3B-2의 `4/7` local exact-content 결손을 닫기 위해 운영자는 **S
 - 성공 전과 offline staging 전에는 Micron을 수정하지 않으며, rollback은 sealed assessment 전체를 Git-external quarantine으로 이동함
 
 이 예외는 catalog가 exact 경로로 지시하지 않은 locale·일반 resource, official API, telemetry, 로그인 또는 client 실행 중 on-demand fetch로 확대되지 않습니다. 모든 네트워크 요청은 Samsung의 별도 materializer process에서만 발생하며 client, launcher와 Epinel server는 cold여야 합니다. Micron의 P0/P1과 실제 client 실행에서는 기존과 같이 official asset/locale auto-fetch가 비활성이고 non-loopback 성공 연결 수가 `0`이어야 합니다.
+WP-L3의 새 실행은 시작 전 방화벽 차단을 유지하고, watcher가 인계 직후와 게임 실행 중 약 30초마다 이 조건을 표본 검사하며 0이 아닌 연결을 발견하면 기존 외부 연결 stop 조건으로 실행을 중지합니다.
 
 ## Micron 업데이트용 공개 정적 입력 수집 — 2026-09-17 정정
 

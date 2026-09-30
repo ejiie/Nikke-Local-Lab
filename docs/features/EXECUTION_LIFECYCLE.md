@@ -75,6 +75,20 @@
 위 변경은 source-only 검사 대상입니다. 앱·materializer·runtime bundle 및 보스 전달 입력의 재봉인·설치,
 원본 runtime 실행과 시간 측정은 별도이며 기존 실게임 완료 기록을 대체하지 않습니다.
 
+## 시작 관찰 제거 (WP-L3, 설치 전)
+
+- bootstrap receipt와 client PID 확인 뒤 시작 receipt/pointer를 바로 게시합니다. 새 시작 계약
+  `nll/phase3b2-epinel-solo-raid-ranking-prefix-start/v10`은 30초 관찰 완료·표본 수·최소 표본/시간·
+  성공 외부 연결 0 필드를 갖지 않습니다. 화면 로딩이나 전투 성공을 뜻하지 않습니다.
+- watcher는 인계 직후와 이후 약 30초마다 client/server/bootstrap의 검증된 신원에 속한
+  Established non-loopback 연결 수를 기존 `startup.measurement.json`에 기록합니다.
+  이 파일의 `samples` 배열은 이제 실행 중 표본이며 빈 배열은 관측 전 종료를 뜻합니다. 표본 사이의 연결을 모두
+  관측했다는 증거는 아니며, 시작 전 차단과 실행 내내 차단 유지가 네트워크 격리를 담당합니다.
+- 외부 연결을 발견하거나 조회가 실패하면 기존 Job 중지·복구 경로로 들어갑니다.
+  검증된 client handle의 종료 대기는 즉시 풀리므로 30초 이내 종료도 정상 정리·저장으로 이어집니다.
+- 과거 봉인 bundle/receipt는 수정하지 않습니다. 기존 `health_observation` 진행 기록은 역사 표시로
+  유지합니다. 설치 후 variant 유무별 실제 시작·종료·저장과 시간 단축 확인은 남아 있습니다.
+
 ## 실행 중 변경과 원복
 
 - **hosts**: 실행 전 기준선을 백업하고 종료 때 복원합니다.
