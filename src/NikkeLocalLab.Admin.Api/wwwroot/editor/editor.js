@@ -3230,7 +3230,15 @@ for (const button of document.querySelectorAll(".raid-action")) {
 const bossUserValidation = NllUserValidation.create({ document, api, getSelection: () => ({
   seasonNumber: state.selectedBossSeason, weaknessCode: state.selectedWeaknessCode, validationOnly: state.bossValidationOnly
 }) });
-const unionRaid = typeof NllUnionRaid !== "undefined" ? NllUnionRaid.create({ document, api }) : null;
+// One record panel serves both raid tabs and moves into the tab being opened.
+let recordsHost = "solo", unionRecordSelection = null;
+const unionRaid = typeof NllUnionRaid !== "undefined" ? NllUnionRaid.create({ document, api,
+  onBossSelected: selection => {
+    unionRecordSelection = selection;
+    byId("union-records-host").hidden = !selection;
+    if (recordsHost === "union") updateRaidRecordContext();
+  }
+}) : null;
 const raidRecords = typeof NllRaidRecords !== "undefined" ? NllRaidRecords.create({ document,
   navigate: setPage,
   loadAnalysis: async (accountUid, battleUid) => {
@@ -3247,8 +3255,25 @@ const raidRecords = typeof NllRaidRecords !== "undefined" ? NllRaidRecords.creat
   }
 }) : null;
 function updateRaidRecordContext(accountName = byId("top-account-name").textContent) {
+  if (recordsHost === "union") {
+    const selection = unionRecordSelection;
+    void raidRecords?.setContext(selection ? { accountUid: state.accountUid, accountName, seasonNumber: selection.seasonNumber,
+      raidKind: "union", bossStep: selection.order, bossName: selection.bossName } : {});
+    return;
+  }
   void raidRecords?.setContext({ accountUid: state.accountUid, accountName,
     seasonNumber: state.selectedBossSeason, bossName: bossSeasonLabels[state.selectedBossSeason] || "선택 보스" });
+}
+function hostRaidRecords(host) {
+  if (host === recordsHost || !raidRecords) return;
+  recordsHost = host;
+  if (host === "union") byId("union-records-host").append(byId("raid-records"));
+  else byId("selected-boss-card").after(byId("raid-records"));
+  updateRaidRecordContext();
+}
+for (const button of document.querySelectorAll(".tab-button, .jump-button")) {
+  const target = button.dataset.tab || button.dataset.jump;
+  if (target === "raid" || target === "union-raid") button.addEventListener("click", () => hostRaidRecords(target === "raid" ? "solo" : "union"));
 }
 if (unionRaid) document.querySelector('[data-tab="union-raid"]')?.addEventListener("click", () => void unionRaid.refresh());
 const bossSeasons = NllBossSeasons.create({ document, api,
@@ -3264,7 +3289,7 @@ const bossSeasons = NllBossSeasons.create({ document, api,
     selectWeaknessCode(row.defaultWeaknessCode);
   },
   onUnavailable: () => {
-    void raidRecords?.setContext({});
+    if (recordsHost === "solo") void raidRecords?.setContext({});
     state.bossValidationOnly = false;
     void bossUserValidation.refresh();
     ++state.preparationRequestNumber;

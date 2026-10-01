@@ -13,7 +13,7 @@ const NllRaidRecords = (() => {
   }
   function filter(rows, context, mode, weakness) {
     return rows.filter(row => row.accountUid === context.accountUid && row.seasonNumber === context.seasonNumber &&
-      row.mode === mode && (weakness === "all" || (Object.hasOwn(elements, row.weaknessCode) ? row.weaknessCode : "unknown") === weakness))
+      (mode === "all" || row.mode === mode) && (weakness === "all" || (Object.hasOwn(elements, row.weaknessCode) ? row.weaknessCode : "unknown") === weakness))
       .sort((a, b) => (Date.parse(b.playedAt) || 0) - (Date.parse(a.playedAt) || 0));
   }
   function create({ document, loadRecords = null, presentation = () => null, loadAnalysis = async () => ({ status: "analysis_unavailable" }),
@@ -25,6 +25,10 @@ const NllRaidRecords = (() => {
       return el;
     };
     let context = {}, mode = "practice", weakness = "all", records = [], status = "unselected", generation = 0, nextCursor = null;
+    // Union bosses keep their original weakness and the operator reads one list
+    // per boss, so union scope asks for every mode and weakness.
+    const union = () => context.raidKind === "union";
+    const scope = () => union() ? { mode: "all", weakness: "all" } : { mode, weakness };
     const more = node("button", "ghost", "더 보기"); more.type = "button"; more.hidden = true;
     byId("raid-records-list").after(more);
     const refresh = node("button", "ghost", "새로고침"); refresh.type = "button";
@@ -124,6 +128,9 @@ const NllRaidRecords = (() => {
       byId("raid-records-context").textContent = context.accountUid
         ? `${context.accountName || "선택 계정"} · 시즌 ${context.seasonNumber || "—"}` : "계정을 선택해 주세요.";
       for (const key of ["practice", "live"]) byId(`raid-records-${key}`).setAttribute("aria-pressed", String(key === mode));
+      byId("raid-records-practice").parentElement.hidden = union();
+      byId("raid-records-elements").hidden = union();
+      byId("raid-records").querySelector(".raid-records-footnote").hidden = union();
       const controls = Object.entries(elements).map(([code, label]) => {
         const button = node("button", "raid-record-element"); button.type = "button"; button.dataset.recordWeakness = code;
         button.setAttribute("aria-pressed", String(code === weakness));
@@ -138,8 +145,8 @@ const NllRaidRecords = (() => {
         }); return button;
       });
       byId("raid-records-elements").replaceChildren(...controls);
-      byId("raid-records-list-title").textContent = `${mode === "practice" ? "모의전" : "실전"} 기록 · ${elements[weakness]}`;
-      const visible = status === "ready" ? filter(records, context, mode, weakness) : [];
+      byId("raid-records-list-title").textContent = union() ? "기록" : `${mode === "practice" ? "모의전" : "실전"} 기록 · ${elements[weakness]}`;
+      const visible = status === "ready" ? filter(records, context, scope().mode, scope().weakness) : [];
       byId("raid-records-count").textContent = status === "ready" ? `${visible.length}건` : "—";
       byId("raid-records-list").replaceChildren(...visible.map(rowNode));
       more.hidden = !nextCursor || status !== "ready";
@@ -151,7 +158,8 @@ const NllRaidRecords = (() => {
         unconnected: ["기록 조회를 준비하고 있습니다", "모의전·실전과 속성별로 기록을 확인할 수 있도록 준비 중입니다."],
         loading: ["기록을 불러오는 중입니다", "잠시만 기다려 주세요."],
         failed: ["기록을 불러오지 못했습니다", "보스를 다시 선택해 주세요."],
-        ready: ["조건에 맞는 기록이 없습니다", "다른 속성이나 기록 종류를 선택해 보세요."]
+        ready: union() ? ["아직 기록이 없습니다", "이 보스와 전투하면 기록이 표시됩니다."]
+          : ["조건에 맞는 기록이 없습니다", "다른 속성이나 기록 종류를 선택해 보세요."]
       };
       const message = messages[status];
       byId("raid-records-empty-title").textContent = message[0]; byId("raid-records-empty-text").textContent = message[1];
@@ -161,7 +169,7 @@ const NllRaidRecords = (() => {
       context = { ...next };
       if (unchanged) { render(); return; }
       analysis.reset();
-      if (!document.querySelector('[data-tab-panel="raid-analysis"]').hidden) navigate("raid");
+      if (!document.querySelector('[data-tab-panel="raid-analysis"]').hidden) navigate(union() ? "union-raid" : "raid");
       weakness = "all";
       await reload();
     }
@@ -174,7 +182,7 @@ const NllRaidRecords = (() => {
       render();
       if (status !== "loading") return;
       try {
-        const loaded = await loadRecords({ ...context, mode, weakness, cursor });
+        const loaded = await loadRecords({ ...context, ...scope(), cursor });
         if (request !== generation) return;
         const rows = Array.isArray(loaded) ? loaded : loaded.records;
         if (!Array.isArray(rows)) throw new Error("records_invalid");
