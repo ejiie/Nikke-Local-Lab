@@ -3,15 +3,19 @@ param(
     [Parameter(Mandatory)] [string]$ExecutionRoot,
     [Parameter(Mandatory)] [ValidatePattern('^[0-9a-f-]{36}$')]
     [string]$LaunchContextUid,
-    [Parameter(Mandatory)] [string]$ConfigurationPath
+    [Parameter(Mandatory)] [string]$ConfigurationPath,
+    [string]$RuntimeSelectionPath = 'C:\NLL\ControlCenter\runtime-selection.private.json'
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-# Dispatch historical runs to their sealed closure before importing current helpers.
+# Legacy input shapes retain sealed dispatch. Verified v3 runs use the installed
+# recovery implementation; their sealed inputs and binaries remain untouched.
 . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1')
 $recoveryBundle = Read-PhaseDRunnerBundle -LaunchRoot (Join-Path $ExecutionRoot $LaunchContextUid)
 if ($null -ne $recoveryBundle -and
+    ($recoveryBundle.specification.contractId -cne 'nll/phase-d-runner-input/v3' -or
+     $recoveryBundle.specification.PSObject.Properties.Name -ccontains 'resourcePreflightRequired') -and
     [IO.Path]::GetFullPath($PSScriptRoot) -ine [IO.Path]::GetFullPath($recoveryBundle.root)) {
     & (Join-Path $recoveryBundle.root 'recover-nll-phase-d-orphaned-execution.ps1') `
         -ExecutionRoot $ExecutionRoot -LaunchContextUid $LaunchContextUid -ConfigurationPath $ConfigurationPath
@@ -27,6 +31,18 @@ $script:PhaseDVerifiedRunnerBundle = $recoveryBundle
 $executionJob = $null
 $replayOnly = $false
 . (Join-Path $PSScriptRoot 'Nll.PhaseDJob.ps1')
+$script:PhaseDAllowAbsentJobRecovery = $true
+$script:PhaseDRecoveryMaterializer = $null
+if ($null -ne $recoveryBundle.specification.executionFx) {
+    . (Join-Path $PSScriptRoot 'Nll.PhaseDRuntimeBundle.ps1')
+    # Use the installed, pinned retirement consumer to repair older v3 runs.
+    # Never replace a file in their sealed runner/runtime closure.
+    $installed = Read-PdRuntimeBundle $RuntimeSelectionPath -FullVerification
+    if ($null -eq $installed) { throw 'phase_d_recovery_materializer_missing' }
+    $script:PhaseDRecoveryMaterializer = Join-Path $installed.materializerRoot 'NikkeLocalLab.PhaseD.RuntimeMaterializer.exe'
+    $pins = @($installed.files | Where-Object { $_.path -ceq $script:PhaseDRecoveryMaterializer })
+    if ($pins.Count -ne 1) { throw 'phase_d_recovery_materializer_unbound' }
+}
 
 function Assert-Recovery {
     param([bool]$Condition, [string]$Code)
@@ -239,7 +255,7 @@ if (Test-Path -LiteralPath $ownerPath -PathType Leaf) {
 $cleanupCheckpoint=Read-PhaseDPhysicalCleanupCheckpoint $launchRoot $recoveryBundle.sha256
 $replayOnly=$null -ne $cleanupCheckpoint
 if (-not $replayOnly) {
-    $executionJob = Open-PhaseDExecutionJob $launchRoot $recoveryBundle.sha256
+    $executionJob = Open-PhaseDExecutionJob $launchRoot $recoveryBundle.sha256 -AllowAbsent
     Assert-PhaseDChildrenExited -LaunchRoot $launchRoot -RuntimeStartJob $executionJob
     Stop-PhaseDExecutionJob $launchRoot $recoveryBundle.sha256
     Assert-PhaseDChildrenExited -LaunchRoot $launchRoot -RuntimeStartJob $executionJob
@@ -286,16 +302,15 @@ Assert-Recovery `
 $pointer = if (-not $replayOnly) { Get-ChildItem -LiteralPath $evidenceRoot -Recurse -File `
     -Filter 'active-run.pointer.json' -ErrorAction SilentlyContinue |
     Select-Object -First 1 } else { $null }
-if ($priorStatusCode -ceq 'failed' -and $null -eq $pointer -and
-    -not (Test-Path -LiteralPath $SoloRaidPendingPayloadPath -PathType Leaf) -and
-    -not (Test-Path -LiteralPath $soloRaidCaptureReceiptPath -PathType Leaf) -and
-    -not (Test-Path -LiteralPath $soloRaidPersistenceReceiptPath -PathType Leaf)) {
-    [pscustomobject]@{ statusCode = 'failed'; recovered = $false } |
-        ConvertTo-Json -Compress
-    exit 0
-}
 Write-PhaseDProgress $launchRoot 'runtime_restore'
-$runtimeRolledBack = $replayOnly # Historical completed cleanup, not a new absent-Job observation.
+$runtimeRolledBack = $replayOnly
+if (-not $replayOnly -and $null -eq $pointer) {
+    # Startup may fail before publishing a pointer. Only an exact unchanged DB
+    # can use this branch; the rollback checkpoint verifies it again before PG.
+    Assert-Recovery ((Get-Sha256Lower (Join-Path $runtimeRoot 'db.json')) -ceq
+        $recoveryBundle.specification.runtimeDbSha256) 'phase_d_orphan_recovery_baseline_restore_failed'
+    $runtimeRolledBack = $true
+}
 $soloRaidCaptureAttempted = $false
 if ($null -ne $pointer) {
     $active = Get-Content -LiteralPath $pointer.FullName -Raw -Encoding UTF8 |

@@ -66,6 +66,121 @@ public sealed class NativeFxExecutionDeliveryTests
     Assert.True(File.Exists(Path.Combine(fixture.FxRoot, "retired.json")));
   }
 
+  [Theory]
+  [InlineData(false, "exited")]
+  [InlineData(true, "exited")]
+  [InlineData(false, "retirement_self")]
+  [InlineData(false, "runtime_alive")]
+  [InlineData(true, "child_alive")]
+  [InlineData(false, "pid_reused")]
+  [InlineData(false, "reservation")]
+  public void Absent_job_retirement_checks_identities_before_native_ranges(bool applied, string identityState)
+  {
+    if (!OperatingSystem.IsWindows()) return; // Actual Windows Job API, no installed resources.
+    using var fixture = new Fixture(); fixture.Stage();
+    if (applied) fixture.Run();
+    var uid = Path.GetFileName(fixture.Launch);
+    var nonce = Guid.NewGuid().ToString("N");
+    var runner = Path.Combine(fixture.Launch, "tools", "runner");
+    var runtime = Path.Combine(fixture.Launch, "runtime");
+    Directory.CreateDirectory(runner);
+    var manifest = fixture.Manifest();
+    void Write(string path, object value) => File.WriteAllText(path, JsonSerializer.Serialize(value, Json));
+    Write(Path.Combine(runner, "runner.input.json"), new
+    {
+      contractId = "nll/phase-d-runner-input/v3",
+      launchRoot = fixture.Launch,
+      launchContextUid = uid,
+      jobNonce = nonce,
+      weaknessCode = manifest.WeaknessCode,
+      bossRuntimeVariantProfileSha256 = manifest.ProfileSha256,
+      executionFx = new { manifestSha256 = FileHash(fixture.ManifestPath), manifest.CandidateSealSha256, manifest.ProfileSha256, manifest.WeaknessCode }
+    });
+    foreach (var name in new[] { "Nll.PhaseDJob.cs", "Nll.PhaseDJob.ps1" })
+      File.WriteAllText(Path.Combine(runner, name), "synthetic unexecuted code");
+    File.WriteAllText(Path.Combine(runtime, "synthetic.dll"), "synthetic unexecuted binary");
+    var bundlePath = Path.Combine(runner, "runner.bundle.json");
+    Write(bundlePath, new
+    {
+      contractId = "nll/phase-d-runner-bundle/v2",
+      launchContextUid = uid,
+      engineCode = "parameterized/v1",
+      members = Directory.GetFiles(runner).Select(path => new { name = Path.GetFileName(path), sha256 = FileHash(path) }).ToArray(),
+      runtimeCode = new[] { new { name = "synthetic.dll", sha256 = FileHash(Path.Combine(runtime, "synthetic.dll")) } }
+    });
+    var bundleSha = FileHash(bundlePath);
+    var proofPath = Path.Combine(fixture.Launch, "job-zero.receipt.json");
+    Write(proofPath, new
+    {
+      contractId = "nll/phase-d-job-zero/v1",
+      launchContextUid = uid,
+      runnerBundleSha256 = bundleSha,
+      jobNonce = nonce,
+      activeProcesses = 0,
+      runtimeRoot = runtime
+    });
+    File.WriteAllText(Path.Combine(fixture.Launch, "job-reservation.json"), "");
+    using (var job = Nll.PhaseD.ExecutionJob.Create("Local\\NLL.PhaseD." + nonce))
+    {
+      var executable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
+      using var child = job.Start(executable, "/c exit 0");
+      Write(Path.Combine(fixture.Launch, "phase-d-child-start.identity.json"), new
+      {
+        contractId = "nll/phase-d-child-deadline/v1",
+        processId = child.Id,
+        processStartedAtUtc = child.StartTime.ToUniversalTime(),
+        executablePath = executable
+      });
+      job.TerminateAndWait(10000);
+      Assert.True(child.WaitForExit(10000));
+    }
+    using var self = System.Diagnostics.Process.GetCurrentProcess();
+    object identity = new { processId = self.Id, processStartedAtUtc = self.StartTime.ToUniversalTime(), executablePath = self.MainModule!.FileName };
+    if (identityState == "pid_reused") identity = new { processId = self.Id, processStartedAtUtc = self.StartTime.ToUniversalTime().AddSeconds(-1), executablePath = self.MainModule!.FileName };
+    if (identityState == "reservation") identity = new { processId = 0, processStartedAtUtc = (string?)null, executablePath = self.MainModule!.FileName };
+    if (identityState != "exited")
+    {
+      if (identityState == "runtime_alive")
+        Write(Path.Combine(fixture.Launch, "runtime-processes.identity.json"), new
+        {
+          contractId = "nll/phase-d-runtime-process-identities/v1",
+          launchContextUid = uid,
+          client = identity,
+          bootstrap = (object?)null,
+          server = (object?)null
+        });
+      else
+      {
+        var child = JsonSerializer.SerializeToElement(identity, Json);
+        Write(Path.Combine(fixture.Launch, identityState == "retirement_self" ? "phase-d-child-fx-retirement.identity.json" : "phase-d-child-start.identity.json"), new
+        {
+          contractId = "nll/phase-d-child-deadline/v1",
+          processId = child.GetProperty("processId"),
+          processStartedAtUtc = child.GetProperty("processStartedAtUtc"),
+          executablePath = child.GetProperty("executablePath")
+        });
+      }
+    }
+    var proofSha = FileHash(proofPath);
+    var entered = false;
+    void Retire() => NikkeLocalLab.Automation.ExecutionAssetRetirement.Retire(fixture.Launch, bundleSha, proofSha,
+        (_, _, _, termination, verify) => { entered = true; fixture.Run(true, verify, termination); }, allowAbsentJob: true);
+    if (identityState is "exited" or "retirement_self")
+    {
+      Retire(); Assert.True(entered); fixture.Store.AssertOriginal();
+      var receipt = JsonSerializer.Deserialize<CommonNativeRangeCompletion>(File.ReadAllBytes(Path.Combine(fixture.FxRoot, "retired.json")), Json)!;
+      Assert.Equal("restored", receipt.RangeReceipt.State);
+      Assert.Equal(applied ? 60 : 0, receipt.RangeReceipt.BytesWritten);
+      Assert.Equal(proofSha, receipt.TerminationReceiptSha256);
+      Retire(); // Retry after completion uses the same receipt.
+    }
+    else
+    {
+      Assert.ThrowsAny<Exception>(Retire); Assert.False(entered);
+      Assert.False(File.Exists(Path.Combine(fixture.FxRoot, "retired.json")));
+    }
+  }
+
   public static IEnumerable<object[]> VerificationFailures()
   {
     for (var step = 1; step <= 5; step++)
@@ -229,11 +344,11 @@ public sealed class NativeFxExecutionDeliveryTests
     internal object? Stage(bool reuse = false) => NativeFxExecutionDelivery.Stage(Launch, profile, Candidate, Recipe,
         weakness, BaselinePin, Registration, reuse ? Array.Empty<CommonNativePatch>() : Patches);
     internal CommonNativeExecutionV2 Manifest() => JsonSerializer.Deserialize<CommonNativeExecutionV2>(File.ReadAllBytes(ManifestPath), Json)!;
-    internal NativeFxRangeResult Run(bool restore = false, Action? verify = null)
+    internal NativeFxRangeResult Run(bool restore = false, Action? verify = null, string? termination = null)
     {
       Store.ReadBytes = Store.WriteBytes = 0;
       return NativeFxExecutionDelivery.Execute(FxRoot, FileHash(ManifestPath), Guid.Parse(Path.GetFileName(Launch)).ToString("N"),
-          profile, Candidate, weakness, restore ? new string('4', 64) : "", !restore, verify ?? (() => { }), (pin, registration) =>
+          profile, Candidate, weakness, restore ? termination ?? new string('4', 64) : "", !restore, verify ?? (() => { }), (pin, registration) =>
           {
             Require(pin.Path == BaselinePin.Path && registration.JournalPath == Registration.JournalPath);
           }, _ => { Opens++; return new(Store, Registration.Baseline.Store); });

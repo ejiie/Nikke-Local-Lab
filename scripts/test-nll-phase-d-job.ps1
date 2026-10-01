@@ -102,6 +102,28 @@ try {
     [IO.File]::WriteAllBytes($hostsReceipt,$hostsBytes)
     Reject-Test { Invoke-PhaseDWithJobZeroProof $spec.launchRoot $bundle.sha256 { $script:consumed++ } }
     Require-Test ($script:consumed -eq 1) 'absent_job_authorized_cleanup'; $count++
+    $script:PhaseDAllowAbsentJobRecovery=$true
+    Invoke-PhaseDWithJobZeroProof $spec.launchRoot $bundle.sha256 { param($proof,$verify) $verify.Invoke(); $script:consumed++ }
+    Require-Test ($script:consumed -eq 2) 'absent_job_recovery_not_consumed'; $count++
+    $liveIdentity=Join-Path $spec.launchRoot 'runtime-processes.identity.json'
+    Write-AtomicJson $liveIdentity @{contractId='nll/phase-d-runtime-process-identities/v1';launchContextUid=$spec.launchContextUid
+        client=@{processId=$outside.Id;processStartedAtUtc=$outside.StartTime.ToUniversalTime().ToString('o');executablePath=$powershell};bootstrap=$null;server=$null}
+    Reject-Test { Invoke-PhaseDWithJobZeroProof $spec.launchRoot $bundle.sha256 { $script:consumed++ } }; $count++
+    Require-Test ($script:consumed -eq 2) 'live_recorded_identity_authorized_cleanup'
+    Remove-Item -LiteralPath $liveIdentity
+    $script:PhaseDAllowAbsentJobRecovery=$false
+
+    # Retirement runs directly so its recorded child identity is the actual
+    # consumer, not an enclosing PowerShell process that remains alive.
+    $native=Join-Path $root 'synthetic-consumer.exe'
+    Add-Type -TypeDefinition 'public static class SyntheticConsumer { public static void Main(string[] args) { System.Console.WriteLine(System.Diagnostics.Process.GetCurrentProcess().Id); System.Console.WriteLine(string.Join("|", args)); } }' -OutputAssembly $native -OutputType ConsoleApplication
+    $nativeIdentity=Join-Path $root 'native-child.identity.json'
+    $result=Invoke-PhaseDChildScript -ScriptPath $native -DirectExecutable -Arguments ([ordered]@{'-synthetic'='value with spaces'}) `
+        -OwnershipPath $nativeIdentity -TimeoutSeconds 15 -StandardOutputPath (Join-Path $root 'native.stdout') -StandardErrorPath (Join-Path $root 'native.stderr')
+    $nativeOwner=Get-Content -LiteralPath $nativeIdentity -Raw | ConvertFrom-Json
+    $nativeOutput=@($result.StandardOutput.Trim() -split '\r?\n')
+    Require-Test ($result.ExitCode -eq 0 -and $nativeOwner.processId -eq [int]$nativeOutput[0] -and
+        $nativeOwner.executablePath -ceq $native -and $nativeOutput[1] -ceq '--synthetic|value with spaces') 'native_retirement_identity_or_arguments_invalid'; $count++
 
     # A separately sealed execution exercises real watcher acquisition and commit.
     $spec.launchContextUid=[guid]::NewGuid().ToString('D'); $spec.launchRoot=Join-Path $root $spec.launchContextUid

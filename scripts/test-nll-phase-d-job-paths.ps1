@@ -99,7 +99,7 @@ $global:LASTEXITCODE=0
     $ast=Ast-PathTest 'recover-nll-phase-d-orphaned-execution.ps1'
     $branch=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.IfStatementAst] -and $n.Extent.Text.Contains('$executionJob = Open-PhaseDExecutionJob')},$true))[0]
     $action=[scriptblock]::Create($branch.Extent.Text)
-    function Open-PhaseDExecutionJob { [pscustomobject]@{synthetic=$true} }
+    function Open-PhaseDExecutionJob { param($LaunchRoot,$ExpectedBundleSha256,[switch]$AllowAbsent) [pscustomobject]@{synthetic=$true} }
     function Assert-PhaseDChildrenExited { param($LaunchRoot,$RuntimeStartJob) if ($script:late) { throw 'late_child' }; $script:trace += $(if ($null -ne $RuntimeStartJob) {'pre'} else {'post'}) }
     function Stop-PhaseDExecutionJob { $script:trace+='stop' }
     function Invoke-PhaseDExecutionFxCleanup { $script:trace+='fx' }

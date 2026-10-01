@@ -56,7 +56,8 @@ function Invoke-PhaseDEmergencyRollback {
     if ($jobAttempted -and -not (Test-Path -LiteralPath $pointerPath -PathType Leaf)) {
         # New start publishes its baseline before any mutation. No pointer means
         # no runner DB mutation, but extension rules may already exist.
-        # Cleanup still requires live same-job zero proof.
+        # Retire staged FX even when startup never reached the apply step.
+        Invoke-PhaseDExecutionFxCleanup $launchRoot $runnerBundle.sha256
         Invoke-PhaseDWithJobZeroProof $launchRoot $runnerBundle.sha256 {
             Assert-PhaseD ((Get-Sha256Lower $runtimeDbPath) -ceq $runtimeDbSha256) 'phase_d_job_unjournaled_runtime_drift'
             # Coordinator may have installed extension rules before child publication.
@@ -866,8 +867,8 @@ try {
     . (Join-Path $runnerBundle.root 'Nll.PhaseDJob.ps1')
     $jobAttempted = $true
     $executionJob = New-PhaseDExecutionJob -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256
-    Enter-PhaseDSharedIsolation -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256 -RuntimeBundle $runtimeBundle
-    Enter-PhaseDRunnerIsolation $runnerSpec
+    $isolationRules = @(Enter-PhaseDSharedIsolation -LaunchRoot $launchRoot -ExpectedBundleSha256 $runnerBundle.sha256 -RuntimeBundle $runtimeBundle)
+    Enter-PhaseDRunnerIsolation $runnerSpec -Rules $isolationRules
     $startToolResult = Invoke-PhaseDChildScript `
         -ExecutionJob $executionJob `
         -TimeoutSeconds 300 -OwnershipPath (Join-Path $launchRoot 'phase-d-child-start.identity.json') `

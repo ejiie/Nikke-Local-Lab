@@ -24,6 +24,7 @@ function Rejected([scriptblock]$Action,[string]$Code) {
     $script:checks++
 }
 function Invoke-PhaseDWithJobZeroProof {throw 'existing_job_proof_required'}
+function Invoke-PhaseDExecutionFxCleanup { Invoke-PhaseDWithJobZeroProof $launchRoot $runnerBundle.sha256 {} }
 function Invoke-PhaseDPgCtl {
     param($PgCtlPath,$Arguments,$OwnershipPath)
     if(($Arguments -join '|') -cne ('status|-D|'+$launchRoot)){throw 'pg_status_target_changed'}

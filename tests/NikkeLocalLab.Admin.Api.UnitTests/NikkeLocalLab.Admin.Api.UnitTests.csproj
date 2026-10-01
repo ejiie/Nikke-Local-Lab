@@ -30,6 +30,7 @@
     <Compile Include="..\..\tools\Phase3B2\NativeFxUserValidationStore\UserValidationStorePlan.cs" Link="UserValidationStorePlan.cs" />
     <Compile Include="..\..\tools\Phase3B2\NativeFxUserValidationStore\NativeStoreOperations.cs" Link="NativeStoreOperations.cs" />
     <Compile Include="..\..\src\NikkeLocalLab.Automation\ExecutionAssetOverlay.cs" Link="ExecutionAssetOverlay.cs" />
+    <Compile Include="..\..\src\NikkeLocalLab.Automation\ExecutionAssetRetirement.cs" Link="ExecutionAssetRetirement.cs" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Admin.Api\NikkeLocalLab.Admin.Api.csproj" />
     <ProjectReference Include="..\..\src\NikkeLocalLab.Application.PrivateServer\NikkeLocalLab.Application.PrivateServer.csproj" />

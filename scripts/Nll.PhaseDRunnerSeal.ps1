@@ -7,7 +7,7 @@ function Get-PhaseDRunnerCodeMembers {
       'watch-nll-phase-d-execution.ps1', 'recover-nll-phase-d-orphaned-execution.ps1',
       'Nll.PhaseDProcessIdentity.ps1', 'Nll.PhaseDProcessHandle.ps1',
       'Nll.PhaseDChildProcess.ps1', 'Nll.PhaseDCompletion.ps1')
-    if ($Version -eq 2) { @('Nll.PhaseDJob.ps1','Nll.PhaseDJob.cs','Nll.PhaseDSharedIsolation.ps1') }
+    if ($Version -eq 2) { @('Nll.PhaseDJob.ps1','Nll.PhaseDJob.cs','Nll.PhaseDSharedIsolation.ps1','Nll.PhaseDRuntimeBundle.ps1') }
 }
 
 function Get-PhaseDRunnerHash([string]$Path) {
@@ -89,6 +89,9 @@ function Read-PhaseDRunnerBundle {
         # dispatching recovery to that exact closure; never rewrite historical runs.
         if ($version -eq 2 -and 'Nll.PhaseDSharedIsolation.ps1' -cnotin @($manifest.members.name)) {
             $expected = @($expected | Where-Object { $_ -cne 'Nll.PhaseDSharedIsolation.ps1' })
+        }
+        if ($version -eq 2 -and 'Nll.PhaseDRuntimeBundle.ps1' -cnotin @($manifest.members.name)) {
+            $expected = @($expected | Where-Object { $_ -cne 'Nll.PhaseDRuntimeBundle.ps1' })
         }
         if (@($manifest.members).Count -ne $expected.Count -or
             @($manifest.members.name | Select-Object -Unique).Count -ne $expected.Count) { throw 'invalid' }

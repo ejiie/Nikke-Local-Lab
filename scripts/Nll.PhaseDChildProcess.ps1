@@ -143,7 +143,8 @@ function Invoke-PhaseDChildScript {
         [string]$StandardErrorPath,
         [ValidateRange(1, 1800)][int]$TimeoutSeconds = 300,
         [string]$OwnershipPath,
-        [object]$ExecutionJob = $null
+        [object]$ExecutionJob = $null,
+        [switch]$DirectExecutable
     )
     $commandParts = @('& ' + (ConvertTo-PhaseDPowerShellLiteral $ScriptPath))
     foreach ($key in $Arguments.Keys) {
@@ -165,9 +166,20 @@ function Invoke-PhaseDChildScript {
         [Text.Encoding]::Unicode.GetBytes($childCommand))
     $powershell = Join-Path $env:SystemRoot `
         'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if ($DirectExecutable) {
+        if ($null -ne $ExecutionJob -or [IO.Path]::GetExtension($ScriptPath) -ine '.exe') { throw 'phase_d_child_executable_invalid' }
+        $powershell = $ScriptPath
+    }
     Write-PhaseDChildReservation -OwnershipPath $OwnershipPath -ExecutablePath $powershell
     try {
-        if ($null -ne $ExecutionJob) {
+        if ($DirectExecutable) {
+            $nativeArguments = foreach ($key in $Arguments.Keys) {
+                '-' + [string]$key
+                '"' + ([string]$Arguments[$key]).Replace('"', '\"') + '"'
+            }
+            $process = Start-Process -FilePath $ScriptPath -ArgumentList $nativeArguments -WindowStyle Hidden -PassThru `
+                -RedirectStandardOutput $StandardOutputPath -RedirectStandardError $StandardErrorPath
+        } elseif ($null -ne $ExecutionJob) {
             $process = $ExecutionJob.Start($powershell, ('-NoLogo -NoProfile -ExecutionPolicy Bypass -EncodedCommand ' + $encodedCommand))
         } else {
         $process = Start-Process -FilePath $powershell `

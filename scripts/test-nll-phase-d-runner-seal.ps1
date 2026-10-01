@@ -92,12 +92,12 @@ try {
     $ExecutionRoot=Split-Path -Parent $spec.launchRoot; $LaunchContextUid=$id; $ConfigurationPath='synthetic-config'
     $historicalEntry=Join-Path $bundle.root 'recover-nll-phase-d-orphaned-execution.ps1'
     [IO.File]::WriteAllText($historicalEntry, 'param($ExecutionRoot,$LaunchContextUid,$ConfigurationPath) $global:phaseDDispatch=@($ExecutionRoot,$LaunchContextUid,$ConfigurationPath)')
-    foreach ($oldVersion in @(1,2,3)) {
+    foreach ($oldVersion in @(1,2,3,4)) {
         $oldSpec=$spec | ConvertTo-Json -Depth 8 | ConvertFrom-Json
-        $oldSpec.contractId='nll/phase-d-runner-input/v'+$oldVersion
+        $oldSpec.contractId='nll/phase-d-runner-input/v'+[Math]::Min($oldVersion,3)
         if ($oldVersion -lt 3) { $oldSpec.PSObject.Properties.Remove('jobNonce'); $oldSpec.PSObject.Properties.Remove('executionFx') }
         if ($oldVersion -eq 1) { $oldSpec.PSObject.Properties.Remove('weaknessCode') }
-        $oldSpec | Add-Member resourcePreflightRequired $false
+        if ($oldVersion -lt 4) { $oldSpec | Add-Member resourcePreflightRequired $false }
         Write-TestJson (Join-Path $bundle.root 'runner.input.json') $oldSpec
         $oldManifest=[Text.Encoding]::UTF8.GetString($originalManifest) | ConvertFrom-Json
         $bundleVersion=if ($oldVersion -lt 3) {1} else {2}
@@ -109,7 +109,12 @@ try {
         Pin-TestBundle
         $global:phaseDDispatch=$null
         & $dispatch
-        Assert-Test (($global:phaseDDispatch -join '|') -ceq (@($ExecutionRoot,$id,$ConfigurationPath) -join '|')); $count++
+        if ($oldVersion -lt 4) {
+            Assert-Test (($global:phaseDDispatch -join '|') -ceq (@($ExecutionRoot,$id,$ConfigurationPath) -join '|'))
+        } else {
+            Assert-Test ($null -eq $global:phaseDDispatch -and $script:PhaseDVerifiedRunnerBundle.sha256 -ceq (Get-PhaseDRunnerHash $bundle.manifestPath))
+        }
+        $count++
     }
     $LaunchContextUid='44444444-4444-4444-8444-444444444444'
     $global:phaseDDispatch=$null; $rejected=$false

@@ -155,7 +155,8 @@ if (options.ContainsKey("verify-boss-shield-patterns"))
 if (options.ContainsKey("retire-execution-fx"))
 {
   NikkeLocalLab.Automation.ExecutionAssetRetirement.Retire(Required(options, "launch-root"),
-      RequiredText(options, "expected-bundle-sha256"), RequiredText(options, "expected-termination-sha256"), CommonNativeFx.Restore);
+      RequiredText(options, "expected-bundle-sha256"), RequiredText(options, "expected-termination-sha256"), CommonNativeFx.Restore,
+      allowAbsentJob: options.GetValueOrDefault("allow-absent-job") == "true");
   Console.WriteLine("{\"contractId\":\"nll/execution-fx-cleanup/v1\",\"statusCode\":\"private_delivery_retired\"}");
   return;
 }

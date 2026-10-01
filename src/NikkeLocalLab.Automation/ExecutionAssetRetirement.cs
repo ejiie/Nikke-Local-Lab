@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -10,12 +11,15 @@ namespace NikkeLocalLab.Automation;
 /// Sealed-run retirement consumer. Opens (never creates or assigns to) the exact
 /// Windows Job and retains it throughout cleanup. The coordinator must also hold
 /// its proof lock, prohibit relaunch, and keep completion/PG workers outside it.
-/// This verifies exit, not network isolation or native asset delivery.
+/// Explicit recovery may instead verify native NOT_FOUND and exited recorded
+/// identities; applying never accepts an absent Job. This verifies exit, not
+/// network isolation or native asset delivery.
 /// </summary>
 public static class ExecutionAssetRetirement
 {
   public static void Retire(string launchRoot, string bundleSha256, string terminationSha256,
-      Action<string, string, ExecutionAssetBinding, string, Action>? nativeOperation = null, bool applying = false)
+      Action<string, string, ExecutionAssetBinding, string, Action>? nativeOperation = null, bool applying = false,
+      bool allowAbsentJob = false)
   {
     Require(OperatingSystem.IsWindows(), "platform_unsupported");
     launchRoot = Plain(launchRoot);
@@ -89,10 +93,19 @@ public static class ExecutionAssetRetirement
     }
     else Require(!File.Exists(Path.Combine(launchRoot, "job-zero.receipt.json")), "execution_already_closed");
     using var job = OpenJobObject(0x0004, false, "Local\\NLL.PhaseD." + nonce); // QUERY only.
-    Require(!job.IsInvalid, "job_absent_or_inaccessible");
+    var absent = job.IsInvalid && Marshal.GetLastWin32Error() == 2;
+    Require(!job.IsInvalid || (absent && allowAbsentJob && !applying), "job_absent_or_inaccessible");
     void Verify()
     {
       foreach (var pin in pins) Require(FileHash(Plain(pin.Key)) == pin.Value, "sealed_input_drifted");
+      if (absent)
+      {
+        using var probe = OpenJobObject(0x0004, false, "Local\\NLL.PhaseD." + nonce);
+        Require(probe.IsInvalid && Marshal.GetLastWin32Error() == 2, "job_absent_or_inaccessible");
+        Require(File.Exists(Plain(Path.Combine(launchRoot, "job-reservation.json"))), "job_reservation_missing");
+        VerifyRecordedProcessesExited(launchRoot, uid);
+        return;
+      }
       Require(QueryLimits(job, 9, out var limits, (uint)Marshal.SizeOf<Extended>(), IntPtr.Zero) &&
           limits.Basic.Flags == 0x2000, "job_limits_invalid");
       Require(QueryAccounting(job, 1, out var accounting, (uint)Marshal.SizeOf<Accounting>(), IntPtr.Zero) &&
@@ -112,6 +125,48 @@ public static class ExecutionAssetRetirement
       Require(!applying, "apply_contract_invalid");
       ExecutionAssetOverlay.RetireAfterProcessTreeExit(fxRoot, fxSha, binding, terminationSha256, Verify);
     }
+  }
+
+  private static void VerifyRecordedProcessesExited(string launchRoot, string uid)
+  {
+    void Exited(JsonElement identity, bool retirementWorker = false)
+    {
+      var pid = identity.GetProperty("processId").GetInt32();
+      Require(pid > 0, "process_identity_unresolved");
+      var path = Plain(Text(identity, "executablePath"));
+      var exitedBeforeCapture = identity.TryGetProperty("exitedBeforeCapture", out var early) && early.ValueKind == JsonValueKind.True;
+      DateTime started = default;
+      Require(exitedBeforeCapture || identity.GetProperty("processStartedAtUtc").TryGetDateTime(out started), "process_identity_unresolved");
+      Process process;
+      try { process = Process.GetProcessById(pid); }
+      catch (ArgumentException) { return; }
+      using (process)
+      {
+        // Access errors and PID reuse remain unresolved, as in the PowerShell reader.
+        _ = process.Handle;
+        Require(!exitedBeforeCapture && process.StartTime.ToUniversalTime().Ticks == started.ToUniversalTime().Ticks,
+            "process_identity_mismatch");
+        if (process.HasExited) return;
+        // The parent checked all former workers before creating THIS consumer.
+        // Only its exact PID/start/path in the retirement identity may be alive.
+        Require(retirementWorker && pid == Environment.ProcessId &&
+            string.Equals(process.MainModule?.FileName, path, StringComparison.OrdinalIgnoreCase), "process_still_running");
+      }
+    }
+    foreach (var path in Directory.EnumerateFiles(launchRoot, "phase-d-child-*.identity.json"))
+    {
+      using var child = JsonDocument.Parse(Small(path));
+      Require(Text(child.RootElement, "contractId") == "nll/phase-d-child-deadline/v1", "process_identity_unresolved");
+      Exited(child.RootElement, Path.GetFileName(path) == "phase-d-child-fx-retirement.identity.json");
+    }
+    var runtimePath = Path.Combine(launchRoot, "runtime-processes.identity.json");
+    if (!File.Exists(runtimePath)) return;
+    using var runtime = JsonDocument.Parse(Small(runtimePath));
+    var identities = runtime.RootElement;
+    Require(Text(identities, "contractId") == "nll/phase-d-runtime-process-identities/v1" &&
+        Text(identities, "launchContextUid") == uid, "process_identity_unresolved");
+    foreach (var role in new[] { "client", "bootstrap", "server" })
+      if (identities.GetProperty(role).ValueKind != JsonValueKind.Null) Exited(identities.GetProperty(role));
   }
 
   private static string Text(JsonElement value, string name) => value.GetProperty(name).GetString()
