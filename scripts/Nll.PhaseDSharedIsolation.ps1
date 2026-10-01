@@ -10,9 +10,11 @@ function Get-PhaseDIsolationRules {
     $supplied=$PSBoundParameters.ContainsKey('Rules')
     if (-not $supplied) { $Rules = @(Get-NetFirewallRule -Group 'NLL PhaseD 151 Client Isolation' -ErrorAction Stop) }
     $filters=@{}
-    foreach ($filter in @(if ($Applied) { $rules | Get-NetFirewallApplicationFilter -ErrorAction Stop }
-        else { Get-NetFirewallApplicationFilter -PolicyStore PersistentStore -ErrorAction Stop })) {
-        $filters[[string]$filter.InstanceID]=$filter
+    # Applied rules were freshly read by name. Bulk-read their filters once as well;
+    # pipeline association queries perform one provider round trip per rule.
+    foreach ($filter in @(Get-NetFirewallApplicationFilter -PolicyStore PersistentStore -ErrorAction Stop)) {
+        $key=[string]$filter.InstanceID
+        $filters[$key]=@($filters[$key]) + @($filter)
     }
     foreach ($rule in $rules) {
         $apps = @($filters[[string]$rule.InstanceID] | Where-Object { $null -ne $_ })

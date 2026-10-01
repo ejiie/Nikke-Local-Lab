@@ -128,6 +128,14 @@
   no-pointer FX 정리와 설치된 recovery dispatch는 유지합니다.
 - 합성 검사와 코드 변경만 완료한 단계입니다. 앱 패키지 설치, variant 유무별 실제 종료·저장 및 시간 측정은 별도입니다.
 
+## 공유 격리 filter 일괄 조회 (WP-L4b, 설치 전)
+
+- `Get-PhaseDIsolationRules`는 적용 전·후 모두 `PersistentStore` application filter를 호출당 한 번 읽고,
+  요청한 규칙의 `InstanceID`로 대응합니다. 해당 ID가 없거나 중복이면 거절하고 다른 규칙의 filter는 사용하지 않습니다.
+- Enable/Disable/Remove 뒤 이름 기반 규칙 재조회와 그룹·방향·행동·프로그램·Enabled 검증은 유지합니다.
+  filter를 다음 호출까지 보관하지 않으며, 규칙마다 association 조회하던 부분만 일괄 조회로 바꿉니다.
+- 합성 검사는 조회 횟수와 정상 원복·결손·중복·조회 오류를 확인합니다. 성능 절감은 설치 후 운영자 실행으로 측정합니다.
+
 ## 실행 중 변경과 원복
 
 - **hosts**: 실행 전 기준선을 백업하고 종료 때 복원합니다.

@@ -14,7 +14,7 @@ $powershell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powersh
 $jobs = [Collections.Generic.List[object]]::new()
 $processes = [Collections.Generic.List[object]]::new()
 function Get-NetFirewallRule { [CmdletBinding()]param($Name,$Group) @() }
-function Get-NetFirewallApplicationFilter { [CmdletBinding()]param([Parameter(ValueFromPipeline=$true)]$InputObject) }
+function Get-NetFirewallApplicationFilter { [CmdletBinding()]param($PolicyStore,[Parameter(ValueFromPipeline=$true)]$InputObject) }
 function Get-CimInstance { param($ClassName,$ErrorAction) @() }
 $count=0
 try {
