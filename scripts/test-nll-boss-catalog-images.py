@@ -51,6 +51,46 @@ class ImageTests(unittest.TestCase):
         self.assertEqual(before, {path: path.read_bytes() for path in before})
         return receipt
 
+    def union_fixture(self):
+        self.catalog = {"schemaVersion": 1, "contractId": "nll/union-raid-hard-catalog/v1",
+                        "sourceStaticDataSha256": "a" * 64, "seasons": [
+                            {"seasonNumber": season, "statusCode": "available", "bosses": [
+                                {"order": order, "weaknessCode": "water", "imageStatusCode": "unresolved",
+                                 "imageSha256": None} for order in range(1, 6)]} for season in (3, 1)]}
+        self.hints["images"] = [{"seasonNumber": s, "order": o, "monsterImage": "full_synthetic"}
+                                for s, o in ((3, 1), (3, 2), (1, 1))]
+
+    def test_union_images_are_keyed_by_season_and_boss_and_deduplicated(self):
+        self.union_fixture()
+        receipt = self.run_materializer()
+        self.assertEqual(self.requests, ["full_synthetic"])
+        self.assertEqual(receipt["resolvedBossCount"], 3)
+        result = json.loads((self.output / "catalog.json").read_bytes())
+        self.assertEqual([s["seasonNumber"] for s in result["seasons"]], [3, 1])
+        self.assertEqual(result["seasons"][0]["bosses"][0]["imageSha256"], images.digest(synthetic_png()))
+        self.assertEqual(result["seasons"][0]["bosses"][2]["imageStatusCode"], "unresolved")
+        self.assertEqual(result["seasons"][0]["bosses"][2]["weaknessCode"], "water")
+        self.assertEqual(receipt["images"][0]["order"], 1)
+        self.assertEqual(len(list((self.output / "images").iterdir())), 1)
+
+    def test_union_missing_images_keep_catalog_available(self):
+        self.union_fixture()
+        def missing(_):
+            raise ValueError("boss_image_not_installed")
+        receipt = self.run_materializer(images.EnikkFirstImages(lambda _: missing, missing))
+        self.assertEqual(receipt["resolvedBossCount"], 0)
+        result = json.loads((self.output / "catalog.json").read_bytes())
+        self.assertTrue(all(s["statusCode"] == "available" for s in result["seasons"]))
+
+    def test_union_wrong_or_duplicate_boss_hint_is_rejected_before_fetch(self):
+        for season, order in ((2, 1), (3, 6), (3, 2)):
+            self.union_fixture()
+            self.hints["images"][0].update(seasonNumber=season, order=order)
+            with self.subTest(season=season, order=order), self.assertRaisesRegex(ValueError, "hints_invalid"):
+                self.run_materializer()
+            self.assertFalse(self.requests)
+            self.assertFalse(self.output.exists())
+
     def test_exact_image_reuse_preserves_season_identity_and_missing_reference(self):
         receipt = self.run_materializer()
         self.assertEqual(self.requests, ["full_synthetic"])

@@ -18,7 +18,7 @@ public static class RaidRecordEndpoints
         IServiceProvider services, CancellationToken token) =>
     {
       if (accountUid == Guid.Empty || season < 1 || kind is not ("solo" or "union") || step < 1 || step > 5 ||
-              (kind == "solo" && step != 1) || mode is not ("practice" or "live") ||
+              (kind == "solo" && step != 1) || (mode is not ("practice" or "live") && !(kind == "union" && mode == "all")) ||
               weakness is not ("all" or "unknown" or "fire" or "water" or "wind" or "electric" or "iron"))
         throw new ApiRequestException(400, "raid_record_scope_invalid");
       var store = services.GetService<RaidRecordStore>() ?? throw new ApiRequestException(503, "raid_records_unavailable");

@@ -32,6 +32,21 @@ if ($LASTEXITCODE -ne 0) { throw 'boss_union_locales_unreadable' }
   --static-pack $config.staticDataPackPath --game-config $config.gameConfigPath --locale-root $locales `
   *> (Join-Path $OutputRoot 'catalog.log')
 if ($LASTEXITCODE -ne 0) { throw 'boss_union_catalog_unreadable' }
+$imageOptions = $config.bossImageExtraction
+if ($null -eq $imageOptions) { throw 'boss_union_image_tool_missing' }
+$catalogRoot = Join-Path $OutputRoot 'catalog'
+$catalogPath = Join-Path $catalogRoot 'catalog.json'
+$hintsPath = Join-Path $catalogRoot 'images.private.json'
+$presentation = Join-Path $OutputRoot 'presentation'
+& $config.pythonPath (Join-Path $config.repositoryRoot 'scripts/materialize-nll-boss-catalog-images.py') `
+  --catalog $catalogPath --catalog-sha256 (Hash $catalogPath) --hints $hintsPath --hints-sha256 (Hash $hintsPath) `
+  --output-root $presentation --local-source $imageOptions.sourceRoot `
+  --catalog-tool $imageOptions.catalogToolPath --catalog-tool-sha256 $imageOptions.catalogToolSha256 `
+  --dotnet $config.nativePipeline.dotnetPath --unitypy-root $config.unityPyRoot *> (Join-Path $OutputRoot 'images.log')
+if ($LASTEXITCODE -ne 0) { throw 'boss_union_images_failed' }
+# Keep the catalog and its private season sources at the existing output path.
+Copy-Item -LiteralPath (Join-Path $presentation 'images') -Destination $catalogRoot -Recurse
+Copy-Item -LiteralPath (Join-Path $presentation 'catalog.json') -Destination $catalogPath -Force
 if ((Hash $ConfigurationPath) -cne $ExpectedConfigurationSha256) { throw 'boss_union_input_changed' }
 # This directory was newly created above, remains inside the checked output root,
 # and contains only our temporary decoded localization input.

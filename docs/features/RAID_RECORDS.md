@@ -45,6 +45,9 @@
 
 - `GET /admin-api/v1/accounts/{accountUid}/raid-records`: 계정·시즌·레이드 종류·보스 순번·실전/모의전·약점으로
   SQL에서 제한하고, 시각+전투 UID cursor로 100건씩 조회합니다. 피해량은 JSON 문자열입니다.
+- `kind=union&mode=all`은 하드 실전·연습을 함께 최신순으로 조회한다(2026-10-01 소스).
+  각 행의 `mode`는 실제 `live`/`practice`를 유지하고 두 모드에 같은 시각+전투 UID cursor를 적용한다.
+  계정·시즌·보스·약점 필터는 유지하며, 약점 구분 없는 조회는 `weakness=all`이다. `kind=solo&mode=all`은 400이다.
 - `GET /admin-api/v1/accounts/{accountUid}/raid-records/{battleUid}/composition`: 캐릭터별 피해 구성(`damage-composition/v3`).
   다른 계정의 전투는 404입니다. 최초 열람 때 분석하며 동시 분석 1개, 대기 30초 제한입니다.
 - UI: 솔로 보스 오른쪽 기록 패널(`wwwroot/editor/raid-records.js`), 상세 분석 페이지(`raid-analysis.js`).

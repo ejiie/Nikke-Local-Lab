@@ -78,6 +78,7 @@ internal static class UnionRaidCatalog
           .SelectMany(e => Read<WaveDataRecord>(e.FullName)).Where(w => wanted.Contains(w.StageId)).ToArray();
       var locales = BossSeasonCatalog.ReadLocales(localeRoot, true);
       var seasons = Build(managers, presets, waves, Read<MonsterRecord>("MonsterTable.mpk"), locales.Values);
+      var elements = Read<ElementRecord>("ElementTable.mpk");
       Require(Hash(File.ReadAllBytes(pack)) == packHash && locales.Pins.All(p => Hash(File.ReadAllBytes(p.Key)) == p.Value), "input_drifted");
       Directory.CreateDirectory(output);
       foreach (var season in seasons.Where(s => s.FailureCode is null))
@@ -98,13 +99,45 @@ internal static class UnionRaidCatalog
             seasonNumber = season.Number, behaviorKeys = boss.BehaviorKeys });
         }
       }
+      Write(Path.Combine(output, "images.private.json"), new { schemaVersion = 1,
+        contractId = "nll/private-boss-season-images/v1", sourceStaticDataSha256 = packHash, images = ImageHints(seasons) });
       Write(Path.Combine(output, "catalog.json"), new { schemaVersion = 1, contractId = "nll/union-raid-hard-catalog/v1",
         sourceStaticDataSha256 = packHash, seasons = seasons.Select(s => new { seasonNumber = s.Number,
           statusCode = s.FailureCode is null ? "available" : "unresolved", failureCode = s.FailureCode,
           sourceSetSha256 = s.FailureCode is null ? SourceSetHash(Path.Combine(output, $"season-{s.Number}")) : null,
-          bosses = s.Bosses.Select(b => new { order = b.Order, displayName = b.DisplayName }) }) });
+          bosses = s.Bosses.Select(b => new { order = b.Order, displayName = b.DisplayName,
+            weaknessCode = Weakness(b, elements), imageStatusCode = "unresolved", imageSha256 = (string?)null }) }) });
     });
   }
+  // Presentation metadata must not change combat closure or season admission.
+  internal static string? Weakness(Boss boss, ElementRecord[] elements)
+  {
+    var weaknesses = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var monster in boss.Monsters)
+    {
+      if (monster.ElementId is not { Length: > 0 }) return null;
+      foreach (var id in monster.ElementId)
+      {
+        var source = elements.Where(e => e.Id == id).ToArray();
+        if (source.Length != 1) return null;
+        var target = elements.Where(e => e.Id == source[0].WeakElementId).ToArray();
+        if (target.Length != 1) return null;
+        try { weaknesses.Add(BossContentDiscovery.ElementCode(target[0].Element)); }
+        catch (InvalidOperationException error) when (error.Message == "phase_d_boss_discovery_affinity_unresolved") { return null; }
+      }
+    }
+    return weaknesses.Count == 1 ? weaknesses.Single() : null;
+  }
+
+  internal sealed record ImageHint(int SeasonNumber, int Order, string MonsterImage, string? MonsterImageSi);
+  internal static ImageHint[] ImageHints(Season[] seasons) => seasons.SelectMany(season => season.Bosses.SelectMany(boss =>
+  {
+    var names = boss.Presets.Select(p => p.MonsterImage).Distinct(StringComparer.Ordinal).ToArray();
+    if (names.Length != 1 || string.IsNullOrWhiteSpace(names[0])) return Array.Empty<ImageHint>();
+    var si = boss.Presets.Select(p => p.MonsterImageSi).Distinct(StringComparer.Ordinal).ToArray();
+    return new[] { new ImageHint(season.Number, boss.Order, names[0]!, si.Length == 1 ? si[0] : null) };
+  })).ToArray();
+
   private static T One<T>(IEnumerable<T> values, string code)
   { var rows = values.Take(2).ToArray(); Require(rows.Length == 1, code); return rows[0]; }
   private static void Require(bool value, string code)

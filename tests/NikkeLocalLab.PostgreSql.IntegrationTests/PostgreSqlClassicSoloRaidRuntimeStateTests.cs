@@ -65,6 +65,59 @@ public sealed class PostgreSqlClassicSoloRaidRuntimeStateTests
   }
 
   [Fact]
+  public async Task UnionAllModePagesAcrossLiveAndPracticeWithoutDuplicatesOrOmissions()
+  {
+    await using var source = PostgreSqlDataSourceFactory.Create(ConnectionString());
+    await ResetSchemasAsync(source);
+    await new PostgreSqlMigrationRunner().MigrateAsync(source);
+    await PublishSixSeasonRaidCatalogAsync(source);
+    var account = await CreateInitializedAccountUidAsync(source);
+    var other = await CreateInitializedAccountUidAsync(source);
+    var expected = new Dictionary<Guid, (string Mode, DateTime At)>();
+    await using var db = await source.OpenConnectionAsync();
+    await using var tx = await db.BeginTransactionAsync();
+    for (var i = 0; i < 209; i++)
+    {
+      var battle = Guid.Parse($"00000000-0000-0000-0000-{i + 1:000000000000}");
+      var mode = i == 205 ? "solo_challenge" : i % 2 == 0 ? "union_hard" : "union_hard_practice";
+      var at = TestInstant.AddSeconds(-(i / 120)).UtcDateTime; // A timestamp tie crosses each page boundary.
+      if (i < 205) expected.Add(battle, (mode == "union_hard" ? "live" : "practice", at));
+      await using var insert = new NpgsqlCommand("""
+          INSERT INTO lab_private_server.raid_battle_observation
+            (battle_uid,account_uid,mode,season_number,raid_level,boss_step,team,request_damage,accepted_damage,accepted_at_utc,payload,payload_sha256)
+          VALUES (@battle,@account,@mode,@season,8,@step,1,500,500,@at,@payload::jsonb,decode(repeat('aa',32),'hex'));
+          INSERT INTO lab_private_server.raid_character_damage (battle_uid,ordinal,slot,attack_total_damage)
+            SELECT @battle,n,n,100 FROM generate_series(1,5) n;
+          """, db, tx);
+      insert.Parameters.AddWithValue("battle", battle);
+      insert.Parameters.AddWithValue("account", i == 206 ? other : account);
+      insert.Parameters.AddWithValue("mode", mode);
+      insert.Parameters.AddWithValue("season", i == 207 ? 3 : 7);
+      insert.Parameters.AddWithValue("step", i == 208 ? 2 : 1);
+      insert.Parameters.AddWithValue("at", at);
+      insert.Parameters.AddWithValue("payload", i % 2 == 0 ? "{}" : "{\"Weakness\":\"iron\"}");
+      await insert.ExecuteNonQueryAsync();
+    }
+    await tx.CommitAsync();
+    var store = new RaidRecordStore(source);
+    var first = await store.ListAsync(account, 7, "union", 1, "all", "all", null, default);
+    var second = await store.ListAsync(account, 7, "union", 1, "all", "all", first.NextCursor, default);
+    var third = await store.ListAsync(account, 7, "union", 1, "all", "all", second.NextCursor, default);
+    Assert.Equal(100, first.Records.Count); Assert.NotNull(first.NextCursor);
+    Assert.Equal(100, second.Records.Count); Assert.NotNull(second.NextCursor);
+    Assert.Equal(5, third.Records.Count); Assert.Null(third.NextCursor);
+    var records = first.Records.Concat(second.Records).Concat(third.Records).ToArray();
+    Assert.Equal(expected.OrderByDescending(p => p.Value.At).ThenByDescending(p => p.Key).Select(p => p.Key), records.Select(r => r.BattleUid));
+    Assert.Equal(205, records.Select(r => r.BattleUid).Distinct().Count());
+    Assert.All(records, r => { Assert.Equal(expected[r.BattleUid].Mode, r.Mode); Assert.Equal(5, r.Characters.Count); });
+    Assert.All((await store.ListAsync(account, 7, "union", 1, "live", "all", null, default)).Records, r => Assert.Equal("live", r.Mode));
+    Assert.All((await store.ListAsync(account, 7, "union", 1, "practice", "all", null, default)).Records, r => Assert.Equal("practice", r.Mode));
+    Assert.All((await store.ListAsync(account, 7, "union", 1, "all", "iron", null, default)).Records, r => Assert.Equal("iron", r.WeaknessCode));
+    Assert.All((await store.ListAsync(account, 7, "union", 1, "all", "unknown", null, default)).Records, r => Assert.Equal("unknown", r.WeaknessCode));
+    await Assert.ThrowsAsync<ArgumentException>(() => store.ListAsync(account, 7, "solo", 1, "all", "all", null, default));
+  }
+
+  [Fact]
   public async Task LocalUnionMembershipAndSeasonSelectionSurviveReopenAndMigrationReplay()
   {
     await using var source = PostgreSqlDataSourceFactory.Create(ConnectionString());
