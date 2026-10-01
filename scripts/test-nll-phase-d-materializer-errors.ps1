@@ -19,10 +19,12 @@ foreach($name in @('RuntimeCandidatePath','LobbyProjectionPath','parentRoot','ru
  'sourceStaticDataPack','variantStaticDataPack','variantStaticDataReceiptPath','clientBuildCode','clientExecutableSha256')){
  Set-Variable -Name $name -Value 'synthetic'
 }
+$deliveryArguments=@()
 $checks=0
 try{
  foreach($case in @(
   @{code='phase_d_raid_state_operational_binding_missing';exit=1;expected='phase_d_raid_state_operational_binding_missing'},
+  @{code='phase_d_variant_pack_source_changed';exit=1;expected='phase_d_variant_pack_source_changed'},
   @{code='synthetic unsafe diagnostic';exit=1;expected='phase_d_materialization_failed'},
   @{code='synthetic warning';exit=0;expected=''})){
   $body="@echo off`r`n1>&2 echo {`"preparationExceptionType`":`"SyntheticFailure`"}`r`n1>&2 echo $($case.code)`r`nexit /b $($case.exit)`r`n"

@@ -71,7 +71,9 @@ internal static class BossAffinityStaticDataVariant
       string weaknessCode,
       string sourcePackPath,
       string variantPackPath,
-      string receiptPath)
+      string receiptPath,
+      bool createVariantPack = true,
+      (CommonBossDeliveryPlan Plan, JsonElement Seal)? delivery = null)
   {
     weaknessCode = NormalizeCode(weaknessCode) ??
         throw new InvalidOperationException("phase_d_weakness_code_invalid");
@@ -92,7 +94,6 @@ internal static class BossAffinityStaticDataVariant
     var stateEffectRows = DeserializeEntry<StateEffectRecord>(decodedArchive, "StateEffectTable.mpk");
     var functionRows = DeserializeEntry<FunctionRecord>(decodedArchive, "FunctionTable.mpk");
     var quickTimeEventRows = DeserializeEntry<QuickTimeEventRecord>(decodedArchive, "QuickTimeEventTable.mpk");
-    var sourceQuickTimeEventRows = DeserializeEntry<QuickTimeEventRecord>(decodedArchive, "QuickTimeEventTable.mpk");
     ValidateElementTableIndex(elementRows);
     Require(monsterRows.Select(row => row.Id).Distinct().Count() == monsterRows.Length,
         "phase_d_staticdata_monster_index_invalid");
@@ -168,8 +169,19 @@ internal static class BossAffinityStaticDataVariant
     var modifiedFunctionCount = 0;
     var modifiedQuickTimeEventCount = 0;
 
+    if (variantRequired && !createVariantPack)
+    {
+      Require(delivery is not null, "phase_d_boss_runtime_delivery_required");
+      variantSha256 = CommonBossDelivery.CopyVariant(delivery!.Value.Plan, delivery.Value.Seal,
+          profile, weaknessCode, HashFile(sourcePackPath), variantPackPath, receiptPath);
+      return new(profile.ProfileCode, profile.Sha256, profile.SeasonNumber, weaknessCode,
+          sourceBossElementCode, sourceWeaknessCode, targetBossElementCode, true, variantSha256);
+    }
+
+    // Onboarding alone constructs and round-trips the derived payload.
     if (variantRequired)
     {
+      var sourceQuickTimeEventRows = DeserializeEntry<QuickTimeEventRecord>(decodedArchive, "QuickTimeEventTable.mpk");
       var requestedWeakness = AttackTypeForCode(weaknessCode);
       var targetBossElement = BossElementTypeForWeakness(requestedWeakness);
       var canonicalTargetElements = elementRows

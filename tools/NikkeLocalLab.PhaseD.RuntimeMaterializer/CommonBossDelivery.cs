@@ -12,7 +12,7 @@ internal sealed record CommonNativeExecution(string ContractId, string Execution
 internal static class CommonBossDelivery
 {
   private static void Require([System.Diagnostics.CodeAnalysis.DoesNotReturnIf(false)] bool ok) => CommonDeliveryFiles.Require(ok);
-  internal static async Task<(CommonBossDeliveryPlan Plan, BossRuntimeVariantProfile Profile, CommonNativePatch[] Patches)>
+  internal static async Task<(CommonBossDeliveryPlan Plan, BossRuntimeVariantProfile Profile, CommonNativePatch[] Patches, JsonElement Seal)>
       Validate(string descriptor, string digest, string profilePath, string weakness, bool fullVerification = true)
   {
     using var document = ReadJson(descriptor, digest);
@@ -47,7 +47,7 @@ internal static class CommonBossDelivery
       Require(names.Contains("shield-fx-preparation/recipes.receipt.json") &&
           FileHash(Path.Combine(root, "shield-fx-preparation", "recipes.receipt.json")) == preparation.RecipeManifestSha256);
     }
-    if (adjusted.Length == 0) { Require(plan.NativeChunkReceipt is null && plan.NativeStore is null); return (plan, profile, []); }
+    if (adjusted.Length == 0) { Require(plan.NativeChunkReceipt is null && plan.NativeStore is null); return (plan, profile, [], seal.Clone()); }
     Require(plan.NativeChunkReceipt is not null && plan.NativeStore is not null);
     // The installed target is the selected, isolated compatibility clone only.
     var store = Plain(plan.NativeStore!.Path);
@@ -89,12 +89,48 @@ internal static class CommonBossDelivery
     }
     Require(patches.Count is > 0 and <= 32 && patches.Sum(row => row.Before.Length) <= 67108864 &&
         requiredRoles.SetEquals(patches.Select(row => row.RoleCode)));
-    return (plan, profile, patches.Where(row => row.RoleCode == target).ToArray());
+    return (plan, profile, patches.Where(row => row.RoleCode == target).ToArray(), seal.Clone());
+  }
+
+  // Called only with the candidate seal returned by Validate. Its installation
+  // verification already proved the pack; launch checks its length, not its payload.
+  internal static string CopyVariant(CommonBossDeliveryPlan plan, JsonElement seal,
+      BossRuntimeVariantProfile profile, string weakness, string sourcePackSha256,
+      string variantPackPath, string receiptPath)
+  {
+    var root = Path.GetDirectoryName(plan.CandidateSeal.Path)!;
+    JsonElement Member(string name) => seal.GetProperty("artifacts").EnumerateArray()
+        .Single(row => Text(row, "relativePath") == name);
+    var prefix = "five-affinity-variants/" + weakness;
+    var receiptName = prefix + ".receipt.json";
+    var receiptSource = Path.Combine(root, receiptName);
+    using var receipt = ReadJson(receiptSource, Text(Member(receiptName), "sha256"));
+    var row = receipt.RootElement;
+    if (Text(row, "sourceStaticDataSha256") != sourcePackSha256)
+      throw new InvalidOperationException("phase_d_variant_pack_source_changed");
+    Require(Text(row, "contractId") == "nll/boss-affinity-static-data-variant/v1" &&
+        Text(row, "variantProfileSha256") == profile.Sha256 && Text(row, "weaknessCode") == weakness &&
+        row.GetProperty("variantRequired").GetBoolean());
+    var packName = prefix + ".pack";
+    var hash = Text(Member(packName), "sha256");
+    Require(Text(row, "variantStaticDataSha256") == hash);
+    // Preserve the onboarding receipt as provenance; target/shield admission was
+    // checked against the current runtime data before this copy.
+    Directory.CreateDirectory(Path.GetDirectoryName(variantPackPath)!);
+    File.Copy(Plain(Path.Combine(root, packName)), variantPackPath);
+    File.Copy(receiptSource, receiptPath);
+    return hash;
   }
 
   internal static async Task<object?> Stage(string descriptor, string digest, string profilePath, string weakness, string launchRoot)
   {
-    var (plan, profile, patches) = await Validate(descriptor, digest, profilePath, weakness, fullVerification: false);
+    var (plan, profile, patches, _) = await Validate(descriptor, digest, profilePath, weakness, fullVerification: false);
+    return Stage(plan, profile, patches, weakness, launchRoot);
+  }
+
+  internal static object? Stage(CommonBossDeliveryPlan plan, BossRuntimeVariantProfile profile,
+      CommonNativePatch[] patches, string weakness, string launchRoot)
+  {
     if (patches.Length == 0) return null;
     var baseline = CommonNativeFxBaseline.Load(plan.NativeStore!);
     return NativeFxExecutionDelivery.Stage(launchRoot, profile.Sha256, plan.CandidateSeal.Sha256,
