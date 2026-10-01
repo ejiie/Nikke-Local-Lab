@@ -22,6 +22,7 @@ function Copy-PdRuntimeFiles([object]$Bundle, [string]$RuntimeRoot, [string]$Cop
         if ($file.Name -ine 'EpinelPS.dll' -and $file.Name -notlike 'NikkeLocalLab.PhaseD.RuntimeMaterializer.*' -and
             $pins.ContainsKey($file.FullName) -and
             ($file.Extension -in @('.dll','.exe') -or $file.Name -match '\.(deps|runtimeconfig)\.json$')) {
+            if ((Get-PhaseDRunnerLinkCount $file.FullName) -ge 1000) { throw 'phase_d_runtime_hardlink_limit' }
             $linked[$file.Name] = $pins[$file.FullName]
         }
     }

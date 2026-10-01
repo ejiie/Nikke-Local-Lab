@@ -54,6 +54,7 @@ try {
     # Even a correctly re-hashed manifest cannot authorize path traversal, missing
     # or duplicate code members, an unknown engine, or a different execution.
     $originalManifest = [IO.File]::ReadAllBytes($bundle.manifestPath)
+    [IO.File]::WriteAllText((Join-Path $runtimeRoot 'not-code.json'), 'synthetic-not-executable')
     foreach ($mutation in @(
         {param($m) $m.members[0].name='../escape.ps1'},
         {param($m) $m.members[0].name=$m.members[1].name},
@@ -61,6 +62,7 @@ try {
         {param($m) $m.engineCode='unknown/v2'},
         {param($m) $m.launchContextUid='different'},
         {param($m) $m.runtimeCode[0].name='../escape.dll'},
+        {param($m) $m.runtimeCode+=@([pscustomobject]@{name='not-code.json';sha256=(Get-PhaseDRunnerHash (Join-Path $runtimeRoot 'not-code.json'))})},
         {param($m) $m.runtimeCode[0].name=$m.runtimeCode[1].name}
     )) {
         $manifest = [Text.Encoding]::UTF8.GetString($originalManifest) | ConvertFrom-Json
@@ -209,6 +211,139 @@ try {
     Assert-Rejected { Read-PhaseDRunnerBundle $spec.launchRoot }; $count++
     ${function:Get-PhaseDRunnerHash}=$originalHash
 
+    # Retirement is permitted only after terminal publication and the existing
+    # physical cleanup proof. Keep copied executables, data and evidence intact.
+    [IO.File]::WriteAllText($spec.runtimeMaterializer, 'copied materializer')
+    $script:PhaseDVerifiedRunnerBundle=Read-PhaseDRunnerBundle $spec.launchRoot
+    $terminalBundle=$script:PhaseDVerifiedRunnerBundle
+    $statePath=Join-Path $spec.launchRoot 'execution-state.json'
+    $checkpointPath=Join-Path $spec.launchRoot 'physical-cleanup.receipt.json'
+    $evidence=Join-Path $spec.launchRoot ('evidence/'+$id)
+    $null=New-Item -ItemType Directory -Path $evidence
+    $completion=Join-Path $evidence 'completion.receipt.json'
+    $zero=Join-Path $spec.launchRoot 'job-zero.receipt.json'
+    $hostsReceipt=Join-Path $spec.launchRoot 'hosts-restoration.receipt.json'
+    Write-TestJson $completion @{databaseRestored=$true;hostsRestored=$true;extensionFirewallRemoved=$true}
+    Write-TestJson $zero @{contractId='nll/phase-d-job-zero/v1';activeProcesses=0;runnerBundleSha256=$terminalBundle.sha256;jobNonce=$spec.jobNonce}
+    Write-TestJson $hostsReceipt @{contractId='nll/phase-d-hosts-restoration/v1';restoredToCapturedBaseline=$true}
+    $checkpoint=@{contractId='nll/phase-d-physical-cleanup/v1';cleanupKind='completion';launchContextUid=$id;
+        runnerBundleSha256=$terminalBundle.sha256;jobNonce=$spec.jobNonce;terminationSha256=(Get-PhaseDRunnerHash $zero);
+        startIdentitySha256=$null;completionRelativePath=('evidence/'+$id+'/completion.receipt.json');
+        completionSha256=(Get-PhaseDRunnerHash $completion);hostsSha256=(Get-PhaseDRunnerHash $hostsReceipt);fxRetiredSha256=$null}
+    function Set-TestTerminal($Status) {
+        Write-TestJson $statePath @{contractId='nll/phase-d-execution-state/v1';launchContextUid=$id;statusCode=$Status}
+    }
+    function Restore-TestLinks {
+        foreach ($name in $immutable) {
+            $path=Join-Path $runtimeRoot $name
+            if (-not (Test-Path $path)) { $null=New-Item -ItemType HardLink -Path $path -Target $snapshots[$name].path }
+        }
+    }
+    Set-TestTerminal 'completed'
+    Remove-PhaseDRunnerHardlinks $spec.launchRoot # no checkpoint
+    Assert-Test (Test-Path (Join-Path $runtimeRoot 'library.dll')); $count++
+    Write-TestJson $checkpointPath $checkpoint
+    foreach ($status in @('draft','validated','started')) {
+        Set-TestTerminal $status
+        Remove-PhaseDRunnerHardlinks $spec.launchRoot
+        Assert-Test (Test-Path (Join-Path $runtimeRoot 'library.dll')); $count++
+        [IO.File]::Delete((Join-Path $runtimeRoot 'library.dll'))
+        Assert-Rejected { Read-PhaseDRunnerBundle $spec.launchRoot -AllowRetiredRuntime }; $count++
+        Restore-TestLinks
+    }
+    Set-TestTerminal 'completed'
+    [IO.File]::WriteAllText($hostsReceipt,'changed-proof')
+    $failed=$false
+    try { Remove-PhaseDRunnerHardlinks $spec.launchRoot } catch { $failed=$_.Exception.Message -ceq 'phase_d_job_checkpoint_drifted' }
+    Assert-Test ($failed -and (Test-Path (Join-Path $runtimeRoot 'library.dll'))); $count++
+    Write-TestJson $hostsReceipt @{contractId='nll/phase-d-hosts-restoration/v1';restoredToCapturedBaseline=$true}
+    $path=Join-Path $runtimeRoot 'library.dll'
+    [IO.File]::Delete($path)
+    Copy-Item -LiteralPath $snapshots['library.dll'].path -Destination $path
+    $failed=$false
+    try { Remove-PhaseDRunnerHardlinks $spec.launchRoot } catch { $failed=$_.Exception.Message -ceq 'phase_d_runner_hardlink_drifted' }
+    Assert-Test ($failed -and (Test-Path $path)); $count++ # never delete a replacement copy
+    [IO.File]::Delete($path); Restore-TestLinks
+    $preserved=@{}
+    foreach ($file in @($copied | ForEach-Object { Join-Path $runtimeRoot $_ }) + @($completion,$zero,$hostsReceipt,$checkpointPath)) {
+        $preserved[$file]=Get-PhaseDRunnerHash $file
+    }
+    foreach ($status in @('completed','failed','rolled_back')) {
+        Set-TestTerminal $status
+        $counts=@{}
+        foreach ($name in $immutable) { $counts[$name]=Get-PhaseDRunnerLinkCount $snapshots[$name].path }
+        # Simulate interruption midway through unlink; recovery may finish it.
+        [IO.File]::Delete((Join-Path $runtimeRoot $immutable[0]))
+        $read=Read-PhaseDRunnerBundle $spec.launchRoot -AllowRetiredRuntime
+        Assert-Test $read.runtimeCodeRetired; $count++
+        Remove-PhaseDRunnerHardlinks $spec.launchRoot
+        Remove-PhaseDRunnerHardlinks $spec.launchRoot # idempotent replay
+        foreach ($name in $immutable) {
+            Assert-Test (-not (Test-Path (Join-Path $runtimeRoot $name)) -and
+                (Get-PhaseDRunnerLinkCount $snapshots[$name].path) -eq ($counts[$name]-1) -and
+                (Get-PhaseDRunnerHash $snapshots[$name].path) -ceq $snapshots[$name].sha256); $count++
+        }
+        foreach ($file in $preserved.Keys) { Assert-Test ((Get-PhaseDRunnerHash $file) -ceq $preserved[$file]); $count++ }
+        Assert-Rejected { Read-PhaseDRunnerBundle $spec.launchRoot }; $count++ # start/completion stays strict
+        Assert-Test ((Read-PhaseDRunnerBundle $spec.launchRoot -AllowRetiredRuntime).sha256 -ceq $terminalBundle.sha256); $count++
+        [IO.File]::WriteAllText($hostsReceipt,'changed-proof')
+        Assert-Rejected { Read-PhaseDRunnerBundle $spec.launchRoot -AllowRetiredRuntime }; $count++
+        Write-TestJson $hostsReceipt @{contractId='nll/phase-d-hosts-restoration/v1';restoredToCapturedBaseline=$true}
+        Restore-TestLinks
+    }
+    # File IDs alone cannot distinguish an execution link from the installed
+    # filename reached through a replaced runtime directory junction.
+    $movedRuntime=Join-Path $spec.launchRoot 'runtime-saved'
+    foreach ($target in @($runtimeRoot,$movedRuntime)) {
+        if (-not [IO.Path]::GetFullPath($target).StartsWith([IO.Path]::GetFullPath($root)+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'unsafe_test_move' }
+    }
+    Move-Item -LiteralPath $runtimeRoot -Destination $movedRuntime
+    $null=New-Item -ItemType Junction -Path $runtimeRoot -Target $server
+    try {
+        $failed=$false
+        try { Remove-PhaseDRunnerHardlinks $spec.launchRoot } catch { $failed=$_.Exception.Message -ceq 'phase_d_runner_runtime_path_invalid' }
+        Assert-Test $failed; $count++
+        foreach ($name in $immutable) { Assert-Test ((Get-PhaseDRunnerHash $snapshots[$name].path) -ceq $snapshots[$name].sha256); $count++ }
+    } finally {
+        [IO.Directory]::Delete($runtimeRoot) # remove the junction itself, never its target
+        Move-Item -LiteralPath $movedRuntime -Destination $runtimeRoot
+    }
+    # Real NTFS link-count boundary: 999 is allowed; the next run at 1000 is refused
+    # before copying or creating any runtime directory. No production input used.
+    $limitRoot=Join-Path $root 'limit'
+    $null=New-Item -ItemType Directory -Path $limitRoot
+    $limitSource=Join-Path $limitRoot 'library.dll'
+    [IO.File]::WriteAllText($limitSource,'synthetic-limit')
+    $limitLinks=Join-Path $root 'limit-other-links'
+    $null=New-Item -ItemType Directory -Path $limitLinks
+    for ($i=1; $i -le 998; $i++) { $null=New-Item -ItemType HardLink -Path (Join-Path $limitLinks ("link-$i")) -Target $limitSource }
+    $limitBundle=@{serverRoot=$limitRoot;files=@(@{path=$limitSource;length=15;sha256=(Get-PhaseDRunnerHash $limitSource)})}
+    $limitRuntime=Join-Path $root 'limit-runtime'
+    $null=Copy-PdRuntimeFiles $limitBundle $limitRuntime (Join-Path $root 'limit.log')
+    Assert-Test ((Get-PhaseDRunnerLinkCount $limitSource) -eq 1000); $count++
+    $refused=Join-Path $root 'limit-refused'
+    $failed=$false
+    try { Copy-PdRuntimeFiles $limitBundle $refused (Join-Path $root 'limit-refused.log') | Out-Null }
+    catch { $failed=$_.Exception.Message -ceq 'phase_d_runtime_hardlink_limit' }
+    Assert-Test ($failed -and -not (Test-Path $refused)); $count++
+    [IO.File]::Delete((Join-Path $limitRuntime 'library.dll'))
+    Assert-Test ((Get-PhaseDRunnerLinkCount $limitSource) -eq 999 -and [IO.File]::ReadAllText($limitSource) -ceq 'synthetic-limit'); $count++
+
+    # Execute the recovery's real materializer selection. A copied launcher still
+    # needs the retired DLLs, so pending replay must use the installed tool instead.
+    $recoveryAst=[Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $PSScriptRoot 'recover-nll-phase-d-orphaned-execution.ps1'),[ref]$tokens,[ref]$errors)
+    Assert-Test ($errors.Count -eq 0)
+    $selection=@($recoveryAst.FindAll({param($n) $n -is [Management.Automation.Language.IfStatementAst] -and
+        $n.Clauses[0].Item1.Extent.Text -like '*PSObject.Properties*runtimeCodeRetired*'},$true))[0]
+    $selectTool=[scriptblock]::Create($selection.Extent.Text)
+    $script:PhaseDRecoveryMaterializer=Join-Path $root 'installed-materializer.exe'
+    foreach ($retired in @($false,$true)) {
+        $recoveryBundle=[pscustomobject]@{runtimeCodeRetired=$retired}
+        $runtimeMaterializerPath=$spec.runtimeMaterializer
+        . $selectTool
+        Assert-Test ($runtimeMaterializerPath -ceq $(if($retired){$script:PhaseDRecoveryMaterializer}else{$spec.runtimeMaterializer})); $count++
+    }
     $deleteRoot=[IO.Path]::GetFullPath($spec.launchRoot)
     if ([IO.Path]::GetDirectoryName($deleteRoot) -ine [IO.Path]::GetFullPath($root)) { throw 'unsafe_test_cleanup' }
     Remove-Item -LiteralPath $deleteRoot -Recurse -Force

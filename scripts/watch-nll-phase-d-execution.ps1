@@ -502,4 +502,7 @@ catch {
         "$failureCode`n",
         [Text.UTF8Encoding]::new($false))
 }
-finally { if ($null -ne $executionJob) { $executionJob.Dispose() } }
+finally {
+    try { Remove-PhaseDRunnerHardlinks $LaunchRoot }
+    finally { if ($null -ne $executionJob) { $executionJob.Dispose() } }
+}

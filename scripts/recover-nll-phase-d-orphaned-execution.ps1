@@ -12,7 +12,7 @@ Set-StrictMode -Version Latest
 # Legacy input shapes retain sealed dispatch. Verified v3 runs use the installed
 # recovery implementation; their sealed inputs and binaries remain untouched.
 . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1')
-$recoveryBundle = Read-PhaseDRunnerBundle -LaunchRoot (Join-Path $ExecutionRoot $LaunchContextUid)
+$recoveryBundle = Read-PhaseDRunnerBundle -LaunchRoot (Join-Path $ExecutionRoot $LaunchContextUid) -AllowRetiredRuntime
 if ($null -ne $recoveryBundle -and
     ($recoveryBundle.specification.contractId -cne 'nll/phase-d-runner-input/v3' -or
      $recoveryBundle.specification.PSObject.Properties.Name -ccontains 'resourcePreflightRequired') -and
@@ -33,7 +33,7 @@ $replayOnly = $false
 . (Join-Path $PSScriptRoot 'Nll.PhaseDJob.ps1')
 $script:PhaseDAllowAbsentJobRecovery = $true
 $script:PhaseDRecoveryMaterializer = $null
-if ($null -ne $recoveryBundle.specification.executionFx) {
+if ($null -ne $recoveryBundle.specification.executionFx -or $recoveryBundle.runtimeCodeRetired) {
     . (Join-Path $PSScriptRoot 'Nll.PhaseDRuntimeBundle.ps1')
     # Use the installed, pinned retirement consumer to repair older v3 runs.
     # Never replace a file in their sealed runner/runtime closure.
@@ -276,6 +276,9 @@ $evidenceRoot = Join-Path $launchRoot 'evidence'
 $runtimeRoot = Join-Path $launchRoot 'runtime'
 $runtimeMaterializerPath = Join-Path $runtimeRoot `
     'NikkeLocalLab.PhaseD.RuntimeMaterializer.exe'
+if ($recoveryBundle.PSObject.Properties['runtimeCodeRetired'] -and $recoveryBundle.runtimeCodeRetired) {
+    $runtimeMaterializerPath=$script:PhaseDRecoveryMaterializer
+}
 $soloRaidPendingRoot = [IO.Path]::GetFullPath(
     'C:\NLL\ControlCenter\state\phase-d-solo-raid').TrimEnd('\')
 $soloRaidLaunchRoot = Join-Path $soloRaidPendingRoot $LaunchContextUid
@@ -497,4 +500,7 @@ $receipt = [ordered]@{
 Write-AtomicJson (Join-Path $launchRoot 'orphan-recovery.receipt.json') $receipt
 if ($pendingCleanupSucceeded) { Write-PhaseDProgress $launchRoot 'ready' }
 $receipt | ConvertTo-Json -Compress
-} finally { if ($null -ne $executionJob) { $executionJob.Dispose() } }
+} finally {
+    try { Remove-PhaseDRunnerHardlinks $LaunchRoot }
+    finally { if ($null -ne $executionJob) { $executionJob.Dispose() } }
+}

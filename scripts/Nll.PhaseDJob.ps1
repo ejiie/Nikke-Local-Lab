@@ -181,31 +181,6 @@ function Invoke-PhaseDExecutionFxCleanup {
     }
 }
 
-function Assert-PhaseDNativeFxRetirement {
-    param([string]$LaunchRoot, [object]$Specification)
-    if ($null -eq $Specification.executionFx) { return }
-    $root=Join-Path $LaunchRoot 'runtime/execution-fx'
-    $manifestPath=Join-Path $root 'manifest.private.json'
-    if ((Get-PhaseDRunnerHash $manifestPath) -cne $Specification.executionFx.manifestSha256) { throw 'phase_d_job_fx_manifest_drifted' }
-    $manifest=Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($manifest.contractId -cne 'nll/common-native-fx-execution/v2') { return }
-    $receipt=Get-Content -LiteralPath (Join-Path $root 'retired.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-    $range=$receipt.rangeReceipt
-    $bytes=0L
-    foreach ($patch in $manifest.patches) { $bytes += [long]$patch.before.length }
-    if ($receipt.contractId -cne 'nll/common-native-fx-retired/v2' -or
-        $receipt.manifestSha256 -cne $Specification.executionFx.manifestSha256 -or
-        $receipt.terminationReceiptSha256 -cne (Get-PhaseDRunnerHash (Join-Path $LaunchRoot 'job-zero.receipt.json')) -or
-        $receipt.actualGameAcceptanceClaimed -ne $false -or
-        $range.contractId -cne 'nll/common-native-fx-range-receipt/v2' -or
-        $range.validationScope -cne 'patched_ranges' -or $range.state -cne 'restored' -or
-        $range.executionUid -cne $Specification.launchContextUid -or
-        $range.planSha256 -cne $manifest.rangePlanSha256 -or $range.planSha256 -cnotmatch '^[0-9a-f]{64}$' -or
-        $bytes -le 0 -or $bytes -gt 67108864 -or $range.selectedBytes -ne $bytes -or
-        $range.bytesRead -lt $bytes -or $range.bytesRead -gt (2*$bytes) -or
-        $range.bytesWritten -lt 0 -or $range.bytesWritten -gt $bytes) { throw 'phase_d_job_fx_range_retirement_invalid' }
-}
-
 function Protect-PhaseDJobServerLog {
     param([string]$LaunchRoot, [string]$ExpectedBundleSha256)
     Invoke-PhaseDWithJobZeroProof $LaunchRoot $ExpectedBundleSha256 {
@@ -292,42 +267,8 @@ function Test-PhaseDJobHandoffCommitted {
 
 function Read-PhaseDPhysicalCleanupCheckpoint {
     param([string]$LaunchRoot, [string]$ExpectedBundleSha256)
-    $path=Join-Path $LaunchRoot 'physical-cleanup.receipt.json'
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
     $binding=Get-PhaseDJobBinding $LaunchRoot $ExpectedBundleSha256
-    $value=Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($value.contractId -cne 'nll/phase-d-physical-cleanup/v1' -or $value.launchContextUid -cne $binding.bundle.specification.launchContextUid -or
-        $value.runnerBundleSha256 -cne $binding.bundle.sha256 -or $value.jobNonce -cne $binding.bundle.specification.jobNonce -or
-        $value.cleanupKind -cnotin @('completion','rollback') -or
-        (Test-Path -LiteralPath (Join-Path $LaunchRoot 'evidence/active-run.pointer.json'))) { throw 'phase_d_job_checkpoint_invalid' }
-    $pins=@{
-        'job-zero.receipt.json'=$value.terminationSha256
-    }
-    if ($null -ne $value.startIdentitySha256) { $pins['phase-d-child-start.identity.json']=$value.startIdentitySha256 }
-    if ($value.cleanupKind -ceq 'completion') {
-        if ($value.completionRelativePath -cnotmatch '^evidence/[0-9a-f-]{36}/completion\.receipt\.json$') { throw 'phase_d_job_checkpoint_invalid' }
-        $pins['hosts-restoration.receipt.json']=$value.hostsSha256
-        $pins[[string]$value.completionRelativePath]=$value.completionSha256
-    } else {
-        if ($value.runtimeDatabaseSha256 -cne $binding.bundle.specification.runtimeDbSha256) { throw 'phase_d_job_checkpoint_invalid' }
-        $pins['runtime/db.json']=$value.runtimeDatabaseSha256
-        $pins['control-center-hosts.before.bin']=$value.hostsBackupSha256
-        if ($null -ne $value.archiveRelativePath) {
-            if ($value.archiveRelativePath -cnotmatch '^evidence/[0-9a-f-]{36}/active-run\.pointer\.[a-z0-9T.Z-]+\.json$') { throw 'phase_d_job_checkpoint_invalid' }
-            $pins[[string]$value.archiveRelativePath]=$value.archiveSha256
-        } elseif ($null -ne $value.archiveSha256) { throw 'phase_d_job_checkpoint_invalid' }
-    }
-    if ($null -ne $binding.bundle.specification.executionFx) {
-        $pins['runtime/execution-fx/manifest.private.json']=$binding.bundle.specification.executionFx.manifestSha256
-        $pins['runtime/execution-fx/retired.json']=$value.fxRetiredSha256
-    } elseif ($null -ne $value.fxRetiredSha256) { throw 'phase_d_job_checkpoint_invalid' }
-    foreach ($relative in $pins.Keys) {
-        if ($pins[$relative] -cnotmatch '^[0-9a-f]{64}$' -or (Get-PhaseDRunnerHash (Join-Path $LaunchRoot $relative)) -cne $pins[$relative]) { throw 'phase_d_job_checkpoint_drifted' }
-    }
-    Assert-PhaseDNativeFxRetirement $LaunchRoot $binding.bundle.specification
-    # This authorizes PG/pending replay ONLY. It cannot enter a physical cleanup
-    # callback, restore hosts/runtime, adopt a lease, or recreate an absent Job.
-    $value
+    Read-PhaseDRunnerCleanupCheckpoint $LaunchRoot $binding.bundle
 }
 
 function Write-PhaseDPhysicalCleanupCheckpoint {

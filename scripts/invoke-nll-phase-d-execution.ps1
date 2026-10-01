@@ -1079,5 +1079,6 @@ catch {
     throw $failureCode
 }
 finally {
-    if ($null -ne $executionJob) { $executionJob.Dispose() }
+    try { Remove-PhaseDRunnerHardlinks $launchRoot }
+    finally { if ($null -ne $executionJob) { $executionJob.Dispose() } }
 }
