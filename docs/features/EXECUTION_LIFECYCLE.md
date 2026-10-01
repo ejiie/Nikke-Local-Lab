@@ -91,6 +91,16 @@
 위 변경은 source-only 검사 대상입니다. 앱·materializer·runtime bundle 및 보스 전달 입력의 재봉인·설치,
 원본 runtime 실행과 시간 측정은 별도이며 기존 실게임 완료 기록을 대체하지 않습니다.
 
+## 시작 방화벽 조회 통합 (10의 WP-L2b 재작업, 설치 전)
+
+- 시작 때 client·기본 physical·확장 세 그룹을 한 번 조회하고 두 격리 함수가 공유합니다.
+  확장 그룹의 정확한 결손 오류만 허용하며 다른 조회 오류와 필수 inventory 결손은 차단합니다.
+- Enable 후 켠 이름들을 한 번, New 후 생성한 이름들을 한 번 `Get-NetFirewallRule -Name`으로 다시 읽습니다.
+  이름·Outbound·Block·Enabled·프로그램을 그 조회 결과와 application filter로 확인합니다.
+  Enable/New/Disable의 반환 객체는 사용하지 않습니다. 합성 mock도 기본적으로 변경 전 상태를 반환합니다.
+- 적용 전 기준선, 부분 적용 정리 및 종료 원복은 유지합니다. 실제 PC에서는 읽기 전용 조회의 오류 ID와
+  InstanceID 연결만 확인했으며, 변경 cmdlet의 반환 의미는 가정하지 않습니다. 설치·실게임 시간 측정은 별도입니다.
+
 ## 시작 관찰 제거 (WP-L3, 설치 전)
 
 - bootstrap receipt와 client PID 확인 뒤 시작 receipt/pointer를 바로 게시합니다. 새 시작 계약
