@@ -20,7 +20,7 @@ function Resolve-PhaseDPreparedShieldFx {
     if ($Profile.elementShield.modeCode -ceq 'none') { return $null }
     $plan = $Profile.shieldFxPreparation
     if ($plan.contractId -cne 'nll/boss-shield-fx-preparation/v1' -or
-        $plan.policyCode -cne 'source_shield_size_candidate/v2' -or
+        $plan.policyCode -cnotin @('source_shield_size_candidate/v2', 'source_shield_size_candidate/v3') -or
         $plan.sourceBossElementCode -cne $Profile.sourceAffinity.bossElementCode -or
         $plan.recipeManifestSha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'phase_d_boss_variant_profile_invalid' }
     $rows = @($plan.variants | Where-Object { $_.bossElementCode -ceq $TargetElement })

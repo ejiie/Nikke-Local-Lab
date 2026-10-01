@@ -45,7 +45,14 @@
   (`CommonBossRuntimeBindingStore.cs`, V0022 `common_boss_runtime_binding`).
   기존 여섯 시즌의 `challenge-boss-support/v1` 역사 snapshot은 변경하지 않습니다.
 - 준비기는 profile v1/v2/v4만 수락합니다. v4의 `shieldFxPreparation`은
-  `source_shield_size_candidate/v2` 계획이어야 합니다. v3은 과거 검증 전용 경로의 형식입니다.
+  `source_shield_size_candidate/v2` 또는 `/v3` 계획을 수락합니다. 기존 v2 등록도 계속 실행할 수 있습니다.
+  **profile v3**은 과거 검증 전용 형식이며, 여기서의 **크기 정책 v3**과 다릅니다.
+- 새 크기 정책 v3는 활성 Timeline의 Transform binding을 해석하고, Hold의 clip stop 값 또는
+  결박된 반복 구간 전체에서 상수임이 확인된 값을 유지 크기로 사용합니다. 목표 곡선과 animation 소유
+  정적 필드를 보존하고, 균일 배율 비율을 바로 아래 비애니메이션 본체의 scale·position에 함께 반영합니다.
+  본체 leaf까지 조상 행렬이 일치해야 후보가 되며, 구간·소유권·회전·비균일 배율이 해소되지 않으면
+  `shield_recipe_animated_scale_unresolved`입니다. 보정 불필요 행의 bundle byte는 유지합니다.
+  이는 오프라인 입력 검산이며 재onboarding·설치·운영자 실게임 크기 확인은 별도입니다.
 
 ## 코드 위치
 

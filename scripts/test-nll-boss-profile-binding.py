@@ -66,6 +66,8 @@ def main():
     parser = argparse.ArgumentParser(); parser.add_argument("--materializer", type=Path, required=True)
     args = parser.parse_args(); cases = []
     value = synthetic(); cases.append(("non_electric_source", value, True))
+    v3 = copy.deepcopy(value); v3["shieldFxPreparation"]["policyCode"] = "source_shield_size_candidate/v3"
+    cases.append(("animated_size_policy", v3, True))
     no_qte = copy.deepcopy(value); no_qte.pop("quickTimeEventAffinity")
     no_qte["transformation"].update(modeCode="target_monster_element_and_dynamic_shield_fx", allowedTableCodes=["monster", "function"])
     cases.append(("shield_without_qte", no_qte, True))
@@ -80,6 +82,7 @@ def main():
         cases.append(("qte_source_" + "_".join(codes), mixed, True))
     def row(p): return p["shieldFxPreparation"]["variants"][0]
     mutations = [
+        lambda p: p["shieldFxPreparation"].update(policyCode="source_shield_size_candidate/v99"),
         lambda p: p.update(schemaVersion=3),
         lambda p: p.update(unrecognizedField=True),
         lambda p: p.pop("shieldFxPreparation"),

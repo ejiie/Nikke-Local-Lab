@@ -53,11 +53,20 @@ $preparedRows = foreach ($variant in $common.elementShield.fxVariants) {
 $common | Add-Member -NotePropertyName shieldFxPreparation -NotePropertyValue ([pscustomobject]@{
     contractId = 'nll/boss-shield-fx-preparation/v1'; policyCode = 'source_shield_size_candidate/v2'
     sourceBossElementCode = 'electric'; recipeManifestSha256 = ('2' * 64); variants = @($preparedRows) })
-foreach ($weakness in $expectedTargets.Keys) {
-    $selected = (Resolve-PhaseDBossAffinity -Profile $common -WeaknessCode $weakness).preparedShieldFx
-    if ($selected.recipeManifestSha256 -cne ('2' * 64) -or @($selected.variants).Count -ne 1 -or
-        $selected.variants[0].bossElementCode -cne $expectedTargets[$weakness]) { throw 'common_fx_binding_selection_failed' }
+foreach ($policy in @('source_shield_size_candidate/v2', 'source_shield_size_candidate/v3')) {
+    $common.shieldFxPreparation.policyCode = $policy
+    foreach ($weakness in $expectedTargets.Keys) {
+        $selected = (Resolve-PhaseDBossAffinity -Profile $common -WeaknessCode $weakness).preparedShieldFx
+        if ($selected.recipeManifestSha256 -cne ('2' * 64) -or @($selected.variants).Count -ne 1 -or
+            $selected.variants[0].bossElementCode -cne $expectedTargets[$weakness]) { throw 'common_fx_binding_selection_failed' }
+    }
 }
+$common.shieldFxPreparation.policyCode = 'source_shield_size_candidate/v99'
+$rejected = $false
+try { Resolve-PhaseDPreparedShieldFx $common 'fire' | Out-Null }
+catch { $rejected = $_.Exception.Message -ceq 'phase_d_boss_variant_profile_invalid' }
+if (-not $rejected) { throw 'common_fx_unknown_policy_not_rejected' }
+$common.shieldFxPreparation.policyCode = 'source_shield_size_candidate/v3'
 $common.shieldFxPreparation.variants[0].targetFxPrefabSetSha256 = '0' * 64
 $rejected = $false
 try { Resolve-PhaseDPreparedShieldFx $common $common.shieldFxPreparation.variants[0].bossElementCode | Out-Null }
