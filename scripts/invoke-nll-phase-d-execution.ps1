@@ -438,6 +438,11 @@ try {
     $variantStaticDataPack = Join-Path $variantStaticDataRoot 'StaticData.pack'
     $variantStaticDataReceiptPath = Join-Path $launchRoot `
         'static-data-variant.receipt.json'
+    $deliveryArguments = @()
+    if ($null -ne $preparation.plan.commonDelivery) {
+        $deliveryArguments = @('--delivery-path', $preparation.plan.commonDelivery.path,
+            '--delivery-sha256', $preparation.plan.commonDelivery.sha256, '--launch-root', $launchRoot)
+    }
     $materializerInvocation = & {
       # Windows PowerShell 5.1 turns redirected stderr into ErrorRecords.
       # Capture all diagnostics before classifying the exit code; keep these
@@ -445,7 +450,7 @@ try {
       $ErrorActionPreference = 'Continue'
       $PSNativeCommandUseErrorActionPreference = $false
       $global:LASTEXITCODE = $null
-      $output = @(& $runtimeMaterializer `
+      $output = @(& $runtimeMaterializer @deliveryArguments `
         --candidate $RuntimeCandidatePath `
         --lobby $LobbyProjectionPath `
         --source-db (Join-Path $parentRoot 'db.json') `
@@ -606,7 +611,7 @@ try {
         ((Get-Sha256Lower $sealedWeaknessVariantSourceManifestPath) -ceq `
             $expectedWeaknessVariantSourceManifestSha256) `
         'phase_d_weakness_variant_source_manifest_copy_failed'
-    $sourceStaticDataSha256 = Get-Sha256Lower $sourceStaticDataPack
+    $sourceStaticDataSha256 = [string]$staticDataVariant.sourceStaticDataSha256
     $sourceLines = @(
         "role_code`tbyte_length`tsha256"
         "candidate`t$((Get-Item -LiteralPath $RuntimeCandidatePath).Length)`t$(Get-Sha256Lower $RuntimeCandidatePath)"
@@ -663,16 +668,8 @@ try {
             'none'
         }
         else { [string]$materialization.soloRaidStateHeadRevisionUid }
-    $executionFx = $null
-    Write-PhaseDProgress $launchRoot 'fx_stage'
-    if ($null -ne $preparation.plan.commonDelivery) {
-        $delivery = $preparation.plan.commonDelivery
-        $fxOutput = @(& $runtimeMaterializer --stage-common-boss-delivery true --delivery-path $delivery.path `
-            --delivery-sha256 $delivery.sha256 --boss-variant-profile $bossRuntimeVariantProfile `
-            --weakness-code $WeaknessCode --launch-root $launchRoot 2>&1)
-        Assert-PhaseD ($LASTEXITCODE -eq 0) 'phase_d_boss_runtime_delivery_stage_failed'
-        $executionFx = ($fxOutput -join "`n") | ConvertFrom-Json
-    }
+    # The materializer reuses one delivery validation for the sealed pack and FX.
+    $executionFx = $materialization.executionFx
     Write-PhaseDProgress $launchRoot 'runtime_preparation'
     $runnerLaunchInput = [ordered]@{
         weaknessCode = $WeaknessCode

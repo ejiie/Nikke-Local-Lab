@@ -547,7 +547,12 @@ try
       accountUid,
        operationalSoloRaidBinding,
        Convert.FromHexString(candidate.BaseRevisions.RevisionSetSha256));
-  var variantProfile = await BossRuntimeVariantProfile.LoadAsync(
+  var delivery = options.ContainsKey("delivery-path")
+      ? await CommonBossDelivery.Validate(Required(options, "delivery-path"), RequiredText(options, "delivery-sha256"),
+          Required(options, "boss-variant-profile"), RequiredText(options, "weakness-code"), fullVerification: false)
+      : ((CommonBossDeliveryPlan Plan, BossRuntimeVariantProfile Profile, CommonNativePatch[] Patches,
+          System.Text.Json.JsonElement Seal)?)null;
+  var variantProfile = delivery?.Profile ?? await BossRuntimeVariantProfile.LoadAsync(
       Required(options, "boss-variant-profile"));
   Require(variantProfile.SeasonNumber == operationalSoloRaidBinding.SeasonNumber,
       "phase_d_boss_variant_profile_season_mismatch");
@@ -558,7 +563,9 @@ try
       RequiredText(options, "weakness-code"),
       Required(options, "source-static-pack"),
       Required(options, "variant-static-pack"),
-      Required(options, "variant-static-data-receipt"));
+      Required(options, "variant-static-data-receipt"),
+      createVariantPack: false,
+      delivery: delivery is { } prepared ? (prepared.Plan, prepared.Seal) : null);
 
   Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputDatabasePath))!);
   await WriteAtomicAsync(
@@ -573,6 +580,11 @@ try
       "phase_d_output_roundtrip_invalid");
   Require(sourceProgression == RuntimeProgressionSnapshot.Capture(roundTrip!.Users[0]),
       "phase_d_progression_changed_during_materialization");
+
+  var executionFx = delivery is { } ready
+      ? CommonBossDelivery.Stage(ready.Plan, ready.Profile, ready.Patches,
+          RequiredText(options, "weakness-code"), Required(options, "launch-root"))
+      : null;
 
   var receipt = new
   {
@@ -604,6 +616,7 @@ try
     sourceBossElementCode = staticDataVariant.SourceBossElementCode,
     sourceBossWeaknessCode = staticDataVariant.SourceBossWeaknessCode,
     targetBossElementCode = staticDataVariant.TargetBossElementCode,
+    executionFx,
     staticDataVariantRequired = staticDataVariant.VariantRequired,
     staticDataVariantSha256 = staticDataVariant.VariantSha256,
     soloRaidStateAvailable = restoredSoloRaidState.StateAvailable,

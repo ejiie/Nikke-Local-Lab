@@ -91,6 +91,15 @@
 위 변경은 source-only 검사 대상입니다. 앱·materializer·runtime bundle 및 보스 전달 입력의 재봉인·설치,
 원본 runtime 실행과 시간 측정은 별도이며 기존 실게임 완료 기록을 대체하지 않습니다.
 
+## 봉인 속성 pack 재사용 (WP-L5b, 설치 전)
+
+- 실행 materializer는 현재 target monster·shield·QTE 계약을 판정한 뒤 onboarding 봉인의 선택 약점 pack과 receipt를 실행 폴더로 복사합니다.
+  pack 생성·암호화·round-trip 검사는 onboarding에 남고, 변형이 필요 없는 실행은 기존처럼 pack을 만들지 않습니다.
+- 기존 delivery 검증 한 번을 pack 재사용과 FX stage가 공유합니다. receipt의 source pack SHA가 현재 client pack과 다르면
+  `phase_d_variant_pack_source_changed`로 시작을 거부하며, client 교체 뒤에는 재onboarding해야 합니다. 필요한 delivery가 없을 때 재생성으로 우회하지 않습니다.
+- 복사된 receipt의 생성 시각·변경 행 수는 onboarding 출처이며 이번 실행의 재생성 관측이 아닙니다. 실행별 materialization receipt는 별도로 유지합니다.
+  materializer/runtime 재봉인, 변형 유무별 시작·전투·종료·저장 및 시간 측정은 디렉터 설치 뒤 운영자 확인 사항입니다.
+
 ## 시작 방화벽 조회 통합 (10의 WP-L2b 재작업, 설치 전)
 
 - 시작 때 client·기본 physical·확장 세 그룹을 한 번 조회하고 두 격리 함수가 공유합니다.
