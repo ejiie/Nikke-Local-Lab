@@ -10,3 +10,4 @@ node --test tests/editor/workspace-save-retry.test.cjs
 node --test tests/editor/raid-launch-status.test.cjs
 node --test tests/editor/boss-seasons.test.cjs
 node --test tests/editor/user-validation.test.cjs
+node --test tests/editor/union-raid.test.cjs

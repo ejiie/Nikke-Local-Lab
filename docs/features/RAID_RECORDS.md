@@ -45,6 +45,9 @@
 
 - `GET /admin-api/v1/accounts/{accountUid}/raid-records`: 계정·시즌·레이드 종류·보스 순번·실전/모의전·약점으로
   SQL에서 제한하고, 시각+전투 UID cursor로 100건씩 조회합니다. 피해량은 JSON 문자열입니다.
+- `kind=union&mode=all`은 하드 실전·연습을 함께 최신순으로 조회한다(2026-10-01 소스).
+  각 행의 `mode`는 실제 `live`/`practice`를 유지하고 두 모드에 같은 시각+전투 UID cursor를 적용한다.
+  계정·시즌·보스·약점 필터는 유지하며, 약점 구분 없는 조회는 `weakness=all`이다. `kind=solo&mode=all`은 400이다.
 - `GET /admin-api/v1/accounts/{accountUid}/raid-records/{battleUid}/composition`: 캐릭터별 피해 구성(`damage-composition/v3`).
   다른 계정의 전투는 404입니다. 최초 열람 때 분석하며 동시 분석 1개, 대기 30초 제한입니다.
 - UI: 솔로 보스 오른쪽 기록 패널(`wwwroot/editor/raid-records.js`), 상세 분석 페이지(`raid-analysis.js`).
@@ -60,9 +63,8 @@
 
 1. 타임라인 화면은 준비 중 표시만 있습니다. 행동 시간표(사격·교체·스킬·버프·재장전·피격)를 연결해야 합니다.
 2. 크리·코어·사거리 판정별 집계, 다단히트/샷건 묶음, 본인 참여·미참여 풀버스트 구간 분석.
-3. 유니온 탭의 보스별 기록 패널(API는 이미 유니온 mode 지원).
-4. 결과 수신 시 동기 분석 대신 복구 가능한 작업 큐, 원문 보존 용량·정리 정책.
-5. 같은 보스의 시즌 간 통합 조회, 계정 간 비교(초기 범위에서 분리한 후속 항목).
+3. 결과 수신 시 동기 분석 대신 복구 가능한 작업 큐, 원문 보존 용량·정리 정책.
+4. 같은 보스의 시즌 간 통합 조회, 계정 간 비교(초기 범위에서 분리한 후속 항목).
 
 지표 의미와 단계별 완료 조건의 원문은 [통계 구현 계획](../archive/raid-records/RAID_ANALYTICS_IMPLEMENTATION_PLAN.md)
 3~5절입니다. 기존 로그 4건·20명은 분류 합계가 투사체 제외 피해와 일치했지만, 미래 로그의 미분류 0을 보장하지 않습니다.

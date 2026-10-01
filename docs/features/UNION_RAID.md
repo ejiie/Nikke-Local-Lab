@@ -7,6 +7,8 @@
 
 - 관리도구 유니온 탭에서 시즌을 최신순으로 고르고 `시즌 N 보스를 불러오시겠습니까?`에 [예]를 누르면, 그 시즌의
   하드 보스 5개를 원본 행동 트리까지 공통 경로로 조립합니다. [아니오]는 아무것도 바꾸지 않습니다.
+- 이미 불러온 시즌은 묻지 않고 보스 5개 카드(이미지, 왼쪽 위 약점 아이콘, 이름)를 엽니다. 카드를 고르면 그 아래에
+  솔로와 같은 기록 패널이 그 보스의 실전·연습 기록을 함께 최신순으로 보여 줍니다(2026-10-01 운영자 결정, 속성·모드 필터 없음).
 - **원본 속성·QTE·FX를 그대로 씁니다.** 솔로의 약점 자유화와 보정 FX 단계를 호출하지 않습니다.
 - 로컬 계정은 NLL 유니온(레벨 3 이상) 소속, 노멀 전체 완료 상태로 하드에 접근합니다. 공식 계정·서비스는
   바꾸지 않습니다. 새 노멀 전투와 노멀 연습전은 닫힌 응답을 반환합니다.
@@ -25,6 +27,21 @@ UnionRaidManagerTable → MonsterPreset → UnionRaidPresetTable.PresetGroupId �
 - HP는 선택 manager → Hard preset → wave target → monster stat group → 해당 레벨 HP × 원본 HP 비율로
   계산합니다. 참여 수·편성 수는 `ConfigGameTable`에서 읽고, 하루 경계는 서울 05:00입니다.
 - 원본 표와 식별자는 Git 제외 artifacts에만 둡니다. 공개 API·카탈로그에는 원본 ID를 내보내지 않습니다.
+
+## 관리 API 표시 데이터 (2026-10-01 소스)
+
+- 카탈로그의 보스 행은 `weaknessCode`, `imageStatusCode`, `imageSha256`을 가진다. 모든 대상 몬스터의
+  원본 속성 → 약점 관계가 같은 한 코드로 해소될 때만 약점을 표시한다. 관계 결손·모호함·불일치는 `null`이며
+  표시 정보 때문에 시즌을 실패시키거나 원본 전투 데이터를 바꾸지 않는다.
+- hard 프리셋(실전·연습)의 `MonsterImage`가 모두 같은 보스만 `(seasonNumber, order)` 비공개 힌트를 낸다.
+  기존 이미지 생성기로 공개 PNG 우선·로컬 bundle 대체를 수행하고, 같은 이름은 한 번만 처리한다.
+- `GET /admin-api/v1/union-raid/seasons`의 보스 payload는 `order`, `displayName`, `weaknessCode`, `imageUrl`이다.
+  resolved 이미지만 `/admin-api/v1/union-raid/seasons/{season}/bosses/{order}/image?catalog={catalogSha256}`을 반환한다.
+  GET은 현재 카탈로그 pin과 이미지 hash·PNG 서명이 맞을 때만 `image/png`를 제공하고, 아니면 404다.
+  새 표시 필드가 없는 기존 카탈로그는 약점·URL `null`로 계속 읽는다.
+- 설치는 Admin API 앱 배포, materializer 재봉인, 변경 스크립트 배포 및 카탈로그 재동기화가 필요하다.
+  카탈로그 hash가 달라지므로 기존 `published/<시즌>-<catalogSha256>` 조립과의 바인딩이 바뀐다.
+  기존에 조립한 S45도 다시 불러와야 한다. 화면은 아래 범위의 유니온 탭 동작으로 연결했고, 설치·실게임 확인은 남아 있다.
 
 ## 저장
 

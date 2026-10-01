@@ -38,19 +38,20 @@ public sealed class RaidRecordStore(NpgsqlDataSource dataSource)
           !Guid.TryParse(parts[1], out beforeUid)) throw new ArgumentException("raid_cursor_invalid");
       before = new DateTime(ticks, DateTimeKind.Utc);
     }
+    if (mode == "all" && kind != "union") throw new ArgumentException("raid_record_scope_invalid");
     var wireMode = kind == "solo" ? (mode == "live" ? "solo_challenge" : "solo_challenge_practice")
         : (mode == "live" ? "union_hard" : "union_hard_practice");
     await using var command = dataSource.CreateCommand("""
             WITH selected AS (
                 SELECT * FROM lab_private_server.raid_battle_observation
-                WHERE account_uid=@account AND season_number=@season AND mode=@mode AND boss_step=@step
+                WHERE account_uid=@account AND season_number=@season AND mode=ANY(@modes) AND boss_step=@step
                   AND (@weakness='all' OR COALESCE(NULLIF(payload->>'Weakness',''),'unknown')=@weakness)
                   AND (@first OR (accepted_at_utc,battle_uid)<(@before,@uid))
                 ORDER BY accepted_at_utc DESC,battle_uid DESC LIMIT 101
             )
             SELECT b.battle_uid,b.accepted_at_utc,b.team,b.request_damage,
                    COALESCE(NULLIF(b.payload->>'Weakness',''),'unknown'),COALESCE(a.status,'missing'),
-                   c.ordinal,c.slot,c.character_uid,c.attack_total_damage,p.projectile_damage,p.excluded_damage
+                   c.ordinal,c.slot,c.character_uid,c.attack_total_damage,p.projectile_damage,p.excluded_damage,b.mode
             FROM selected b
             LEFT JOIN lab_private_server.raid_character_damage c ON c.battle_uid=b.battle_uid
             LEFT JOIN lab_private_server.raid_projectile_analysis a ON a.battle_uid=b.battle_uid AND a.analysis_version=@version
@@ -59,7 +60,7 @@ public sealed class RaidRecordStore(NpgsqlDataSource dataSource)
             ORDER BY b.accepted_at_utc DESC,b.battle_uid DESC,c.slot,c.ordinal
             """);
     command.Parameters.AddWithValue("account", account); command.Parameters.AddWithValue("season", season);
-    command.Parameters.AddWithValue("mode", wireMode); command.Parameters.AddWithValue("step", step);
+    command.Parameters.AddWithValue("modes", mode == "all" ? new[] { "union_hard", "union_hard_practice" } : new[] { wireMode }); command.Parameters.AddWithValue("step", step);
     command.Parameters.AddWithValue("weakness", weakness); command.Parameters.AddWithValue("first", string.IsNullOrEmpty(cursor));
     command.Parameters.AddWithValue("before", before); command.Parameters.AddWithValue("uid", beforeUid);
     command.Parameters.AddWithValue("version", ProjectileAnalysis.CurrentVersion);
@@ -74,7 +75,7 @@ public sealed class RaidRecordStore(NpgsqlDataSource dataSource)
           BattleUid = battle,
           AccountUid = account,
           SeasonNumber = season,
-          Mode = mode,
+          Mode = reader.GetString(12) is "solo_challenge" or "union_hard" ? "live" : "practice",
           RaidKind = kind,
           BossStep = step,
           PlayedAt = reader.GetDateTime(1),

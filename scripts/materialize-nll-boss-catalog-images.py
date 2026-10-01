@@ -207,22 +207,45 @@ def materialize(catalog_path, catalog_pin, hints_path, hints_pin, output, extrac
             all(source.parent != output and source.parent not in output.parents and output not in source.parents
                 for source in (catalog_path, hints_path)), "output_invalid")
     catalog, hints = read(catalog_path, catalog_pin), read(hints_path, hints_pin)
-    require(catalog.get("schemaVersion") == 1 and catalog.get("contractId") == "nll/boss-season-catalog/v1" and
+    union = catalog.get("contractId") == "nll/union-raid-hard-catalog/v1"
+    require(catalog.get("schemaVersion") == 1 and catalog.get("contractId") in
+            ("nll/boss-season-catalog/v1", "nll/union-raid-hard-catalog/v1") and
             hints.get("schemaVersion") == 1 and hints.get("contractId") == "nll/private-boss-season-images/v1" and
             re.fullmatch(r"[a-f0-9]{64}", catalog.get("sourceStaticDataSha256", "")) and
             catalog["sourceStaticDataSha256"] == hints.get("sourceStaticDataSha256"), "snapshot_binding_invalid")
-    maximum = catalog.get("maximumKnownSeason")
-    require(type(maximum) is int and 0 < maximum <= 1000 and
-            [row.get("seasonNumber") for row in catalog["seasons"]] == list(range(1, maximum + 1)), "season_set_invalid")
+    def cards(document):
+        for season in document["seasons"]:
+            if union:
+                for boss in season["bosses"]:
+                    yield (season["seasonNumber"], boss["order"]), boss, season["statusCode"] == "available"
+            else:
+                yield (season["seasonNumber"],), season, season["discoveryStatusCode"] == "resolved"
+
+    if union:
+        seasons = catalog["seasons"]
+        require(0 < len(seasons) <= 999 and len({s["seasonNumber"] for s in seasons}) == len(seasons) and
+                all(type(s["seasonNumber"]) is int and 1 <= s["seasonNumber"] <= 999 and
+                    s["statusCode"] in ("available", "unresolved") and
+                    ([b["order"] for b in s["bosses"]] == list(range(1, 6)) if s["statusCode"] == "available"
+                     else s["bosses"] == []) for s in seasons), "season_set_invalid")
+    else:
+        maximum = catalog.get("maximumKnownSeason")
+        require(type(maximum) is int and 0 < maximum <= 1000 and
+                [row.get("seasonNumber") for row in catalog["seasons"]] == list(range(1, maximum + 1)), "season_set_invalid")
+    targets = {key: available for key, _, available in cards(catalog)}
     names = {}
-    require(type(hints.get("images")) is list and len(hints["images"]) <= maximum, "hints_invalid")
+    require(type(hints.get("images")) is list and len(hints["images"]) <= len(targets), "hints_invalid")
     for row in hints["images"]:
-        season, name = row.get("seasonNumber"), row.get("monsterImage")
-        require(type(season) is int and 1 <= season <= maximum and season not in names and
+        key = (row.get("seasonNumber"), row.get("order")) if union else (row.get("seasonNumber"),)
+        name = row.get("monsterImage")
+        require(all(type(part) is int for part in key) and key in targets and key not in names and targets[key] and
                 type(name) is str and re.fullmatch(r"full_[A-Za-z0-9_]{1,128}", name), "hints_invalid")
-        require(catalog["seasons"][season - 1]["discoveryStatusCode"] == "resolved", "hints_invalid")
-        names[season] = name
-    require(all(row["imageStatusCode"] == "unresolved" and row["imageSha256"] is None for row in catalog["seasons"]), "already_materialized")
+        names[key] = name
+    require(all(row["imageStatusCode"] == "unresolved" and row["imageSha256"] is None
+                for _, row, _ in cards(catalog)), "already_materialized")
+
+    def identity(key):
+        return {"seasonNumber": key[0], **({"order": key[1]} if union else {})}
     output.mkdir()
     image_root = output / "images"
     image_root.mkdir()
@@ -242,13 +265,12 @@ def materialize(catalog_path, catalog_pin, hints_path, hints_pin, output, extrac
             require(re.fullmatch(r"boss_image_[a-z_]+", str(error)), "extraction_failed")
             failures[name] = str(error)
     result = copy.deepcopy(catalog)
-    for row in result["seasons"]:
-        season = row["seasonNumber"]
-        name = names.get(season)
+    for key, row, _ in cards(result):
+        name = names.get(key)
         pin = resolved.get(name)
         if pin:
             row.update(imageStatusCode="resolved", imageSha256=pin)
-        observations.append({"seasonNumber": season, "statusCode": "resolved" if pin else "unresolved",
+        observations.append({**identity(key), "statusCode": "resolved" if pin else "unresolved",
                              "failureCode": failures.get(name) if name else "boss_image_reference_unresolved",
                              "providerCode": getattr(extract, "sources", {}).get(name, "local_game_dp" if pin else None),
                              "primaryFailureCode": getattr(extract, "remote_failures", {}).get(name)})
@@ -262,12 +284,12 @@ def materialize(catalog_path, catalog_pin, hints_path, hints_pin, output, extrac
     # Private provenance only; no original key in the public view.
     new_file(output / "bindings.private.json", encode({"contractId": "nll/private-boss-presentation-bindings/v1",
              "hintsSha256": hints_pin, "providerCode": getattr(extract, "provider_code", "local_game_dp"), "bindings": [
-                 {"seasonNumber": season, "imageName": name, "imageSha256": resolved.get(name),
+                 {**identity(key), "imageName": name, "imageSha256": resolved.get(name),
                   "providerCode": getattr(extract, "sources", {}).get(name, "local_game_dp" if name in resolved else None)}
-                 for season, name in names.items()]}))
+                 for key, name in names.items()]}))
     receipt = {"contractId": "nll/boss-catalog-images/v1", "sourceCatalogSha256": catalog_pin,
                "sourceHintsSha256": hints_pin, "catalogSha256": digest(raw), "providerCode": getattr(extract, "provider_code", "local_game_dp"),
-               "resolvedSeasonCount": sum(row["statusCode"] == "resolved" for row in observations),
+               ("resolvedBossCount" if union else "resolvedSeasonCount"): sum(row["statusCode"] == "resolved" for row in observations),
                "requestedObjectCount": len(set(names.values())), "uniqueImageCount": len(payloads),
                "images": observations, "officialServiceRequested": False, "nativeClientExecuted": False,
                "sourceModified": False, "runtimeAdmissionStatusCode": "not_assessed"}

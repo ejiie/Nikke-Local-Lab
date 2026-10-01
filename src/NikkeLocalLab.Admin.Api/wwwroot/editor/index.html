@@ -214,12 +214,6 @@
           </div>
           <dialog id="boss-import-dialog" class="boss-dialog" aria-labelledby="boss-import-title"><h3 id="boss-import-title">보스 불러오기</h3><p id="boss-import-question" class="boss-dialog-message"></p><div class="action-row"><button id="boss-import-yes" class="primary" type="button">예</button><button id="boss-import-no" type="button" autofocus>아니오</button></div></dialog>
           <dialog id="boss-message-dialog" class="boss-dialog" aria-labelledby="boss-message-title"><h3 id="boss-message-title"></h3><p id="boss-message-text" class="boss-dialog-message"></p><button id="boss-message-close" class="primary" type="button" autofocus>확인</button></dialog>
-          <dialog id="raid-record-dialog" class="raid-record-dialog" aria-labelledby="raid-record-dialog-title">
-            <div class="raid-records-heading"><div><p class="eyebrow">전투 기록 상세</p><h3 id="raid-record-dialog-title">덱 기록</h3><p id="raid-record-dialog-context"></p></div><button id="raid-record-dialog-close" class="ghost" type="button" aria-label="기록 상세 닫기" autofocus>닫기</button></div>
-            <dl class="raid-record-metrics"><div><dt>Damage</dt><dd id="raid-record-total"></dd></div></dl>
-            <ol id="raid-record-characters" class="raid-record-characters"></ol>
-            <div class="raid-record-analysis-actions"><button id="raid-record-analysis-open" type="button" class="primary">상세 분석 보기</button></div>
-          </dialog>
         </section>
 
         <section class="tab-panel page" data-tab-panel="raid-analysis" hidden>
@@ -237,17 +231,31 @@
 
         <section class="tab-panel page" data-tab-panel="union-raid" hidden>
           <div class="section-heading"><div><p class="eyebrow">NLL · 유니온 레이드</p><h2>하드 모드</h2></div><button id="union-refresh" type="button">목록 새로고침</button></div>
-          <article class="surface union-season-picker">
-            <label for="union-season">시즌 선택 · 최신순</label>
-            <select id="union-season" size="8" aria-label="유니온 레이드 시즌 · 최신순"></select>
-            <p id="union-status" role="status" aria-live="polite">시즌 목록을 불러오세요.</p>
-            <ol id="union-bosses" class="union-bosses"></ol>
-          </article>
+          <div class="union-layout">
+            <article class="surface union-season-picker">
+              <label for="union-season">시즌 선택 · 최신순</label>
+              <select id="union-season" size="14" aria-label="유니온 레이드 시즌 · 최신순"></select>
+              <p id="union-status" role="status" aria-live="polite" hidden></p>
+            </article>
+            <div class="union-detail">
+              <p id="union-detail-empty" class="union-detail-empty">불러온 시즌을 선택하면 보스별 기록을 볼 수 있습니다.</p>
+              <div id="union-boss-cards" class="union-boss-cards" role="group" aria-label="보스 선택" hidden></div>
+              <div id="union-records-host" class="union-records-host" hidden></div>
+            </div>
+          </div>
           <dialog id="union-confirm" class="boss-dialog" aria-labelledby="union-confirm-title">
             <h3 id="union-confirm-title"></h3><p>이 시즌의 하드 모드 보스 5개를 불러옵니다.</p>
             <div class="action-row"><button id="union-yes" class="primary" type="button">예</button><button id="union-no" type="button" autofocus>아니오</button></div>
           </dialog>
         </section>
+
+        <!-- Shared by the solo and union record panels. -->
+        <dialog id="raid-record-dialog" class="raid-record-dialog" aria-labelledby="raid-record-dialog-title">
+          <div class="raid-records-heading"><div><p class="eyebrow">전투 기록 상세</p><h3 id="raid-record-dialog-title">덱 기록</h3><p id="raid-record-dialog-context"></p></div><button id="raid-record-dialog-close" class="ghost" type="button" aria-label="기록 상세 닫기" autofocus>닫기</button></div>
+          <dl class="raid-record-metrics"><div><dt>Damage</dt><dd id="raid-record-total"></dd></div></dl>
+          <ol id="raid-record-characters" class="raid-record-characters"></ol>
+          <div class="raid-record-analysis-actions"><button id="raid-record-analysis-open" type="button" class="primary">상세 분석 보기</button></div>
+        </dialog>
 
         <section class="compatibility-control" hidden>
           <div class="compatibility-control"><input id="fetched-snapshot-file" type="file"><input id="fetched-draft-file" type="file"><input id="fetched-progression-file" type="file"><button id="register-fetched-snapshot" type="button" disabled>이전 파일 등록</button><div id="progression-output"></div></div>

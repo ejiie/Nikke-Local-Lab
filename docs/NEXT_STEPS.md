@@ -1,6 +1,6 @@
 # 다음 작업
 
-최종 갱신: 2026-09-30. 남은 작업의 **유일한 목록**입니다. 현황은 [HANDOFF](HANDOFF.md), 기능별 세부는 `features/` 문서를
+최종 갱신: 2026-10-01. 남은 작업의 **유일한 목록**입니다. 현황은 [HANDOFF](HANDOFF.md), 기능별 세부는 `features/` 문서를
 따릅니다. 항목을 끝내면 여기서 지우고 해당 기능 문서에 결과를 반영합니다. 과거 목록(안정화 S-01~S-10, P0~P6, UI-RAID-01 등)은
 [보관 기록](archive/stabilization/STABILIZATION_PLAN.md)에 있으며, 그 미체크 항목 중 아래에 없는 것은 이후 작업으로 대체됐습니다.
 
@@ -11,10 +11,9 @@
 | 1 | 빠른 시작·재부팅 후 실행 상태 자동 복구 | 10의 Job not-found·신원 종료 기반 복구 설치 후 빠른 시작/일반 재부팅·복구 중 재종료의 실제 환경 확인 | [EXECUTION_LIFECYCLE](features/EXECUTION_LIFECYCLE.md) |
 | 2 | 전체 프로필 영속성(운영자 우선순위 2) | 프로필 아이콘·프레임·칭호·스킨·꾸미기·설정 등 저장 항목 전체의 capture/restore 대조와 누락 구현, client 버전 전환 후에도 마지막 상태 유지 | [EXECUTION_LIFECYCLE](features/EXECUTION_LIFECYCLE.md) |
 | 3 | 레이드 분석 후속: 타임라인, 크리·코어·사거리, 버스트 구간, 행동 시간표 | 기존 표본의 다단히트·지연 발사·지연 폭발 재현, 한 피해의 중복 분류 없음, 긴 로그 범위 조회 | [RAID_RECORDS](features/RAID_RECORDS.md) |
-| 4 | 유니온 탭의 보스별 기록 패널 | 유니온 mode 기록을 5보스별로 조회, 솔로와 공통 조회 계층 사용 | [RAID_RECORDS](features/RAID_RECORDS.md) |
-| 5 | 분석 작업 큐와 BattleLog 보존 정책 | 결과 수신 시 동기 분석 대신 복구 가능한 큐, 용량 관리·정리 정책 | [RAID_RECORDS](features/RAID_RECORDS.md) |
-| 6 | 캐릭터 목록 동기화 후 얼굴 초상화 자동 생성 | 동기화가 `raid_portrait_assets.py` 결과까지 갱신하거나 결손을 표시 | [ACCOUNTS](features/ACCOUNTS.md) |
-| 7 | 저장소 점검·정리·최적화 | 운영자 지시대로 공통 실행 통합 이후 수행. 현재 참조·복구 필요성을 다시 확인하며 과거 용량 후보 조사를 삭제 승인으로 보지 않음 | [용량 후보](archive/stabilization/PROJECT_STORAGE_AUDIT_20260914.md) |
+| 4 | 분석 작업 큐와 BattleLog 보존 정책 | 결과 수신 시 동기 분석 대신 복구 가능한 큐, 용량 관리·정리 정책 | [RAID_RECORDS](features/RAID_RECORDS.md) |
+| 5 | 캐릭터 목록 동기화 후 얼굴 초상화 자동 생성 | 동기화가 `raid_portrait_assets.py` 결과까지 갱신하거나 결손을 표시 | [ACCOUNTS](features/ACCOUNTS.md) |
+| 6 | 저장소 점검·정리·최적화 | 운영자 지시대로 공통 실행 통합 이후 수행. 현재 참조·복구 필요성을 다시 확인하며 과거 용량 후보 조사를 삭제 승인으로 보지 않음 | [용량 후보](archive/stabilization/PROJECT_STORAGE_AUDIT_20260914.md) |
 
 참고: CI의 Windows 검증 job은 제한 15분 중 약 12분을 씁니다(run `36324475337`). 검사를 추가할 때 시간 여유를 확인합니다.
 
