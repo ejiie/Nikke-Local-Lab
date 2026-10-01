@@ -28,6 +28,7 @@ function Fixture([string]$Name) {
     TextFile (Join-Path $published 'wwwroot/editor/assets/portrait.png') 'must-not-replace'
     TextFile (Join-Path $published 'wwwroot/editor/boss-seasons.js') 'synthetic-new-season-controller'
     TextFile (Join-Path $published 'wwwroot/editor/user-validation.js') 'synthetic-new-validation-controller'
+    TextFile (Join-Path $published 'wwwroot/editor/synthetic-panel.js') 'synthetic-script-outside-required-list'
     TextFile (Join-Path $published 'Synthetic.Added.dll') 'synthetic-new-dependency'
     [pscustomobject]@{ app = $app; published = $published; package = (Join-Path $case 'package') }
 }
@@ -38,7 +39,8 @@ try {
     Check (-not $prepared.installedFilesModified)
     Check (Test-NllAppInventory $before @(Get-NllAppInventory $f.app))
     $manifest = Read-NllControlCenterAppPackage $f.package $prepared.manifestSha256
-    Check ($prepared.afterCount -eq $prepared.beforeCount + 3)
+    Check ($prepared.afterCount -eq $prepared.beforeCount + 4)
+    Check (@($manifest.after | Where-Object relativePath -CEQ 'wwwroot/editor/synthetic-panel.js').Count -eq 1)
     foreach ($operation in @('apply','apply','restore','restore','apply','restore')) {
         $result = Invoke-NllControlCenterAppPackage $f.package $prepared.manifestSha256 $f.app $operation
         Check ($result.statusCode -ceq 'verified' -and -not $result.nativeClientExecuted -and -not $result.operationalDatabaseTouched)
@@ -47,7 +49,7 @@ try {
         Check (([IO.File]::ReadAllText((Join-Path $f.app 'wwwroot/editor/presentation.json'))) -ceq 'synthetic-owned-presentation')
         Check (([IO.File]::ReadAllText((Join-Path $f.app 'wwwroot/editor/assets/portrait.png'))) -ceq 'synthetic-image-not-original')
     }
-    Check (@(Get-ChildItem -LiteralPath (Join-Path $f.package 'retired-added') -File -Recurse).Count -eq 6)
+    Check (@(Get-ChildItem -LiteralPath (Join-Path $f.package 'retired-added') -File -Recurse).Count -eq 8)
     Check (-not (Test-Path -LiteralPath (Join-Path $f.app 'wwwroot/editor/boss-seasons.js')))
     Fails { Invoke-NllControlCenterAppPackage $f.package ('f' * 64) $f.app apply } 'manifest_drifted'
     Fails { Invoke-NllControlCenterAppPackage $f.package $prepared.manifestSha256 $f.published apply } 'target_invalid'

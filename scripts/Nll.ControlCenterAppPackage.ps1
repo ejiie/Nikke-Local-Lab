@@ -111,10 +111,11 @@ function New-NllControlCenterAppPackage([string]$AppRoot, [string]$PublishedRoot
         Assert-NllAppPackage (@($published | Where-Object relativePath -CEQ $required).Count -eq 1) 'full_ui_bundle_required'
     }
     # Installed presentation.json and all locally owned assets must survive.
-    # Only compiled app outputs and the complete checked-in editor bundle overlay.
+    # Only compiled app outputs and the complete checked-in editor bundle overlay: every top-level page,
+    # script and stylesheet, so a newly added editor script cannot stay behind as an older copy.
     $overlay = @($published | Where-Object {
         $_.relativePath -cmatch '^[A-Za-z0-9._-]+\.(dll|pdb|exe|deps\.json|runtimeconfig\.json)$' -or
-        $_.relativePath -cin @('wwwroot/editor/index.html','wwwroot/editor/editor.js','wwwroot/editor/editor.css','wwwroot/editor/boss-seasons.js','wwwroot/editor/user-validation.js')
+        $_.relativePath -cmatch '^wwwroot/editor/[A-Za-z0-9_-]+\.(html|js|css)$'
     })
     $null = [IO.Directory]::CreateDirectory($outputRoot)
     $beforeRoot = Join-Path $outputRoot 'before'
