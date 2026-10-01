@@ -264,6 +264,14 @@ UI 실행 준비와 coordinator는 선택 profile hash의 DB 연결을 읽기 �
 계속 미해결로 남긴다. 파생 프레임 근거와 변경 필드를 recipe에 기록하고 native export에서
 재계산하여 동일성을 확인한다. 정적 크기 일치가 실제 게임 렌더링 인수를 대신하지 않는다.
 
+크기 정책 `source_shield_size_candidate/v3`는 활성 Director→Timeline→Animator binding으로
+선택 노드의 animation 소유권을 확인한다. Hold의 clip stop 값 또는 활성 Jump/Destination 반복 구간
+전체의 상수 곡선으로 유지 값을 해소한다. 소멸 키를 유지 값으로 선택하지 않는다. 목표의 소유 필드와
+곡선은 보존하고, 균일 배율 차이는 바로 아래 비애니메이션 본체의 scale·localPosition에 함께 보상한다.
+직렬화·재로드 후 본체 leaf까지 유지 값 대입 조상 행렬이 일치해야 하며, 불명확한 구간·소유권이나
+회전·비균일 배율로 입증하지 못하면 `shield_recipe_animated_scale_unresolved`다. 보정 불필요 출력
+byte와 기존 v2 profile 소비를 유지한다. 새 후보의 재등록·설치·실게임 크기 인수는 별도다.
+
 | 기존 상태 | 의미 | 그 상태만으로 주장할 수 없는 것 |
 | --- | --- | --- |
 | queued/running | 자동 처리 요청/실행 중 | 산출물 검증 완료 |
@@ -280,7 +288,7 @@ completed를 원본 runtime 인수로 확대하지 않는다. 표시 상태는 �
 
 2026-09-27 코드 대조: 아래 목록은 P1 당시의 제약이며 이후 대부분 해소됐다. 일반 준비기
 (`scripts/Nll.PhaseDPreparation.ps1`)는 profile v1/v2/v4를 수락하고 v3은 받지 않는다. 공통 경로는 v4의
-`shieldFxPreparation`(`nll/boss-shield-fx-preparation/v1`, `source_shield_size_candidate/v2`)으로 원본 속성과 보정 대상을
+`shieldFxPreparation`(`nll/boss-shield-fx-preparation/v1`, `source_shield_size_candidate/v2` 또는 `/v3`)으로 원본 속성과 보정 대상을
 profile마다 표현하며, 원본이 전격이 아닌 S9(철갑)·S27/S41(작열) 등도 이 형식으로 등록됐다. 152 서버 후보는 profile
 v1~v4를 해석한다. `materialize-nll-shield-fx-candidate.py`의 원본 전격·고정 세 역할과
 `BossRuntimeVariantProfile.ValidateV3QteAndShieldTransform`은 v3 후보 경로(`-CandidateOnly`, schema 3)에만 남아 있다.

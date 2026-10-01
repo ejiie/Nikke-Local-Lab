@@ -364,7 +364,7 @@ internal sealed record BossRuntimeVariantProfile(
     }
     var plan = ShieldFxPreparation;
     Require(plan is not null && plan.ContractId == "nll/boss-shield-fx-preparation/v1" &&
-            plan.PolicyCode == "source_shield_size_candidate/v2" &&
+            plan.PolicyCode is "source_shield_size_candidate/v2" or "source_shield_size_candidate/v3" &&
             plan.SourceBossElementCode == SourceAffinity.BossElementCode && IsSha256(plan.RecipeManifestSha256),
             "phase_d_boss_variant_profile_invalid");
     var expected = ElementShield.FxVariants.SelectMany(v => v.Mappings.Select(m => (v.BossElementCode, Mapping: m)))

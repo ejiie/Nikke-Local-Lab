@@ -9,6 +9,9 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import math
+import struct
+import zlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,7 +19,8 @@ spec = importlib.util.spec_from_file_location("shield_recipe_fit", Path(__file__
 fit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fit)
 
-POLICY = "source_shield_size_candidate/v2"
+POLICY = "source_shield_size_candidate/v3"
+SUPPORTED_POLICIES = {"source_shield_size_candidate/v2", POLICY}
 FIELDS = {
     "Transform": ("m_LocalPosition", "m_LocalScale"),
     "FxHelper": ("UseScaleHelper", "ScaleHelper"),
@@ -234,10 +238,306 @@ def identity_frame_reference(source, target, source_bindings, target_bindings, t
     return reference, bindings, frames
 
 
+ANIMATED_UNRESOLVED = 'shield_recipe_animated_scale_unresolved'
+
+
+def vector_values(value):
+    return [value[k] for k in ('x', 'y', 'z')] if isinstance(value, dict) else list(value)
+
+
+def scaled_vector(value, ratio):
+    # Unity Transform fields are serialized as float32, including on reload.
+    def single(v):
+        return struct.unpack('<f', struct.pack('<f', v * ratio))[0]
+    return ({k: single(v) for k, v in value.items()} if isinstance(value, dict)
+            else [single(v) for v in value])
+
+
+def streamed_curves(clip):
+    """Decode scalar streamed keys; unsupported Transform encodings fail closed."""
+    streamed = clip['m_MuscleClip']['m_Clip']['data']['m_StreamedClip']
+    raw = struct.pack('<' + 'I' * len(streamed['data']), *streamed['data'])
+    curves = [[] for _ in range(streamed['curveCount'])]
+    offset = 0
+    while offset < len(raw):
+        time, count = struct.unpack_from('<fi', raw, offset)
+        offset += 8
+        require(0 <= count <= (len(raw) - offset) // 20, ANIMATED_UNRESOLVED)
+        for _ in range(count):
+            index, *coefficients = struct.unpack_from('<i4f', raw, offset)
+            offset += 20
+            require(0 <= index < len(curves), ANIMATED_UNRESOLVED)
+            if math.isfinite(time) and time >= 0:
+                require(all(math.isfinite(v) for v in coefficients), ANIMATED_UNRESOLVED)
+                require(not curves[index] or time > curves[index][-1][0], ANIMATED_UNRESOLVED)
+                curves[index].append((time, coefficients))
+    return curves
+
+
+def maintained_value(clip, track, indices, interval=None):
+    """Resolve Hold at clip stop, or a constant segment in a bound Timeline loop.
+
+    A loop may precede the clip's destruction keys; never select its last key as
+    the maintained body size. Every polynomial in the loop must be constant.
+    """
+    muscle = clip['m_MuscleClip']
+    require(track['m_InfiniteClipPostExtrapolation'] == 1 and not muscle['m_LoopTime']
+            and not track.get('mInfiniteClipLoop') and not track['m_Clips'], ANIMATED_UNRESOLVED)
+    require(not track.get('m_InfiniteClipTimeOffset') and not track.get('m_ApplyOffsets')
+            and not track.get('m_InfiniteClipRemoveOffset'), ANIMATED_UNRESOLVED)
+    for field in ('m_InfiniteClipOffsetPosition', 'm_InfiniteClipOffsetEulerAngles', 'm_Position', 'm_EulerAngles'):
+        require(not any(vector_values(track.get(field, [0, 0, 0]))), ANIMATED_UNRESOLVED)
+    for field in ('m_Rotation', 'm_OpenClipOffsetRotation'):
+        rotation = track.get(field, [0, 0, 0, 1])
+        values = [rotation[k] for k in ('x', 'y', 'z', 'w')] if isinstance(rotation, dict) else rotation
+        require(values in ([0, 0, 0, 1], [0, 0, 0, -1]), ANIMATED_UNRESOLVED)
+    require(not track.get('m_AvatarMask', {}).get('m_PathID'), ANIMATED_UNRESOLVED)
+    stop = muscle['m_StopTime']
+    require(math.isfinite(stop) and stop > muscle['m_StartTime'] >= 0, ANIMATED_UNRESOLVED)
+    curves = streamed_curves(clip)
+    values = []
+    for index in indices:
+        require(index < len(curves), ANIMATED_UNRESOLVED)
+        start, end = interval if interval is not None else (stop, stop)
+        require(0 <= start <= end and math.isfinite(end), ANIMATED_UNRESOLVED)
+        keys = curves[index]
+        before = [key for key in keys if key[0] <= min(start, stop)]
+        require(before, ANIMATED_UNRESOLVED)
+        first = before[-1]
+        if interval is None or start >= stop:
+            require(first[0] == stop, ANIMATED_UNRESOLVED)
+        else:
+            segments = [first] + [key for key in keys if start < key[0] <= min(end, stop)]
+            require(all(not any(c[:3]) and c[3] == first[1][3] for _, c in segments), ANIMATED_UNRESOLVED)
+        values.append(first[1][3])
+    return values
+
+
+def animated_inputs(env, snapshot, bindings, selected):
+    """Resolve Transform ownership through actual Director/track/Animator links.
+
+    Names only resolve Unity's relative-path CRC in memory. Nothing is persisted
+    from a game name, object ID, or an unbound clip. Unknown owners are unresolved.
+    """
+    objects = {obj.path_id: obj for obj in env.objects}
+    def local(pointer):
+        require(pointer.get('m_FileID') == 0, ANIMATED_UNRESOLVED)
+        if not pointer['m_PathID']:
+            return None
+        require(pointer['m_PathID'] in objects, ANIMATED_UNRESOLVED)
+        return objects[pointer['m_PathID']]
+    transforms = {k: o.read_typetree() for (k, kind), o in bindings.items() if kind == 'Transform'}
+    game_nodes = {t['m_GameObject']['m_PathID']: k for k, t in transforms.items()}
+    names = {k: local(t['m_GameObject']).read_typetree()['m_Name'] for k, t in transforms.items()}
+    def descendants(root):
+        paths = {0: [root]}
+        def walk(key, path):
+            for child, node in snapshot['nodes'].items():
+                if node['parent'] == key:
+                    child_path = path + ('/' if path else '') + names[child]
+                    paths.setdefault(zlib.crc32(child_path.encode()), []).append(child)
+                    walk(child, child_path)
+        walk(root, '')
+        return paths
+    def script_class(tree):
+        script = local(tree['m_Script'])
+        require(script is not None and script.type.name == 'MonoScript', ANIMATED_UNRESOLVED)
+        return script.read_typetree()['m_ClassName']
+    def maintained_interval(director, timeline):
+        tree = timeline.read_typetree()
+        marker_track = local(tree.get('m_MarkerTrack', {'m_FileID': 0, 'm_PathID': 0}))
+        if marker_track is None:
+            return None
+        markers = [local(p) for p in marker_track.read_typetree()['m_Markers']['m_Objects']]
+        jumps = [m.read_typetree() for m in markers if m is not None
+                 and 'destinationMarker' in m.read_typetree()]
+        if not jumps:
+            return None
+        require(len(jumps) == 1, ANIMATED_UNRESOLVED)
+        jump = jumps[0]
+        require(script_class(jump) == 'JumpMarker', ANIMATED_UNRESOLVED)
+        destination = local(jump['destinationMarker'])
+        require(destination is not None and destination in markers, ANIMATED_UNRESOLVED)
+        dest = destination.read_typetree()
+        require(script_class(dest) == 'DestinationMarker' and len(markers) == 2, ANIMATED_UNRESOLVED)
+        require(jump['m_Enabled'] and not jump['IsSkip'] and not jump['emitOnce']
+                and dest['m_Enabled'] and dest['active'], ANIMATED_UNRESOLVED)
+        start, end = dest['m_Time'], jump['m_Time']
+        require(math.isfinite(start) and math.isfinite(end) and 0 <= start < end,
+                ANIMATED_UNRESOLVED)
+        # This custom Timeline notification only repeats with its enabled receiver.
+        go = local(director['m_GameObject']).read_typetree()
+        receivers = []
+        for pair in go['m_Component']:
+            component = local(pair['component']).read_typetree()
+            if 'IsJump' in component and script_class(component) == 'JumpReceiver':
+                receivers.append(component)
+        require(len(receivers) == 1 and receivers[0]['m_Enabled'] and receivers[0]['IsJump'], ANIMATED_UNRESOLVED)
+        return start, end
+    result = {}
+    for director in env.objects:
+        if director.type.name != 'PlayableDirector':
+            continue
+        dt = director.read_typetree()
+        timeline = local(dt['m_PlayableAsset'])
+        require(timeline is not None, ANIMATED_UNRESOLVED)
+        for pair in dt['m_SceneBindings']:
+            # Deleted Timeline bindings have null keys even when their value survives.
+            track_obj = local(pair['key'])
+            if track_obj is None:
+                continue
+            # SceneBindings can retain tracks from a different, inactive Timeline.
+            parent, visited, chain = track_obj, set(), []
+            while parent.path_id != timeline.path_id:
+                require(parent.path_id not in visited, ANIMATED_UNRESOLVED)
+                visited.add(parent.path_id)
+                tree = parent.read_typetree()
+                chain.append(tree)
+                if 'm_Tracks' in tree:
+                    break
+                parent = local(tree['m_Parent'])
+                require(parent is not None, ANIMATED_UNRESOLVED)
+            if parent.path_id != timeline.path_id:
+                continue
+            require(all(not row.get('m_Muted') for row in chain), ANIMATED_UNRESOLVED)
+            animator = local(pair['value'])
+            if animator is None or animator.type.name != 'Animator':
+                continue
+            at = animator.read_typetree()
+            root = game_nodes.get(at['m_GameObject']['m_PathID'])
+            require(root is not None, ANIMATED_UNRESOLVED)
+            paths = descendants(root)
+            if not selected.intersection(k for group in paths.values() for k in group):
+                continue
+            track = track_obj.read_typetree()
+            require(at['m_Enabled'] and not at.get('m_ApplyRootMotion')
+                    and local(at['m_Controller']) is None and dt['m_Enabled']
+                    and not track['m_Muted'], ANIMATED_UNRESOLVED)
+            clip_obj = local(track['m_InfiniteClip'])
+            require(clip_obj is not None and clip_obj.type.name == 'AnimationClip', ANIMATED_UNRESOLVED)
+            clip = clip_obj.read_typetree()
+            require(not clip.get('m_Legacy') and not clip.get('m_Compressed')
+                    and not any(clip.get(f) for f in ('m_ScaleCurves', 'm_PositionCurves',
+                        'm_RotationCurves', 'm_EulerCurves', 'm_CompressedRotationCurves', 'm_FloatCurves')),
+                    ANIMATED_UNRESOLVED)
+            offset = 0
+            for binding in clip['m_ClipBindingConstant']['genericBindings']:
+                transform = binding['typeID'] == 4
+                attribute = binding['attribute']
+                width = (4 if attribute == 2 else 3 if attribute in (1, 3, 4) else 1) if transform else 1
+                if transform:
+                    nodes = paths.get(binding['path'], [])
+                    require(len(nodes) == 1, ANIMATED_UNRESOLVED)
+                    key = nodes[0]
+                    if key in selected:
+                        require(attribute in (1, 3) and not binding['isPPtrCurve']
+                                and not binding['customType'], ANIMATED_UNRESOLVED)
+                        field = 'position' if attribute == 1 else 'scale'
+                        require(field not in result.get(key, {}), ANIMATED_UNRESOLVED)
+                        result.setdefault(key, {})[field] = maintained_value(
+                            clip, track, range(offset, offset + width), maintained_interval(dt, timeline))
+                offset += width
+    # Controllers and legacy Animation can own descendant transforms without a Timeline.
+    for obj in env.objects:
+        if obj.type.name not in ('Animator', 'Animation'):
+            continue
+        tree = obj.read_typetree()
+        root = game_nodes.get(tree.get('m_GameObject', {}).get('m_PathID'))
+        if root is not None and selected.intersection(k for group in descendants(root).values() for k in group):
+            require(obj.type.name == 'Animator' and local(tree['m_Controller']) is None, ANIMATED_UNRESOLVED)
+    return result
+
+
+def leaf_matrices(snapshot, animation, selected):
+    """Full TRS products, with maintained values substituted, through every leaf."""
+    matrices = {}
+    def product(key):
+        if key in matrices:
+            return matrices[key]
+        node = snapshot['nodes'][key]
+        position = animation.get(key, {}).get('position', vector_values(node['position']))
+        scale = animation.get(key, {}).get('scale', vector_values(node['scale']))
+        q = node['rotation']
+        x, y, z, w = [q[k] for k in ('x', 'y', 'z', 'w')] if isinstance(q, dict) else q
+        norm = math.sqrt(x*x + y*y + z*z + w*w)
+        require(norm > 0 and math.isfinite(norm), ANIMATED_UNRESOLVED)
+        x, y, z, w = (v / norm for v in (x, y, z, w))
+        rotation = [[1-2*(y*y+z*z), 2*(x*y-z*w), 2*(x*z+y*w)],
+                    [2*(x*y+z*w), 1-2*(x*x+z*z), 2*(y*z-x*w)],
+                    [2*(x*z-y*w), 2*(y*z+x*w), 1-2*(x*x+y*y)]]
+        matrix = [[rotation[i][j]*scale[j] for j in range(3)] + [position[i]] for i in range(3)]
+        matrix.append([0, 0, 0, 1])
+        if node['parent'] is not None:
+            parent = product(node['parent'])
+            matrix = [[sum(parent[i][k]*matrix[k][j] for k in range(4)) for j in range(4)] for i in range(4)]
+        matrices[key] = matrix
+        return matrix
+    return {k: product(k) for k in selected if snapshot['nodes'][k]['childCount'] == 0}
+
+
+def matrices_match(source, target, source_animation, target_animation, mapping):
+    try:
+        a = leaf_matrices(source, source_animation, set(mapping))
+        b = leaf_matrices(target, target_animation, set(mapping.values()))
+    except ValueError:
+        return False
+    # Equal-mesh siblings can be permuted by the original static correspondence.
+    remaining = set(b)
+    for key, matrix in a.items():
+        mesh = dict(source['nodes'][key]['components'])['ParticleSystemRenderer']['m_Mesh']
+        matches = [k for k in remaining
+                   if dict(target['nodes'][k]['components'])['ParticleSystemRenderer']['m_Mesh'] == mesh
+                   and all(math.isclose(x, y, rel_tol=1e-6, abs_tol=1e-6)
+                           for ar, br in zip(matrix, b[k]) for x, y in zip(ar, br))]
+        if not matches:
+            return False
+        remaining.remove(sorted(matches)[0])
+    return not remaining
+
+
+def animated_reference(source, target, source_animation, target_animation, mapping):
+    """Preserve owned fields; compensate one uniform scale on the body branch."""
+    reference = copy.deepcopy(source)
+    conflicts = []
+    for key, target_key in mapping.items():
+        left = source_animation.get(key, {})
+        right = target_animation.get(target_key, {})
+        for field in left.keys() | right.keys():
+            a = left.get(field, vector_values(source['nodes'][key][field]))
+            b = right.get(field, vector_values(source['nodes'][key][field]))
+            if a != b:
+                conflicts.append((key, field, a, b))
+            if field in right:
+                reference['nodes'][key][field] = copy.deepcopy(target['nodes'][target_key][field])
+    if not conflicts:
+        return reference, False
+    require(len(conflicts) == 1, ANIMATED_UNRESOLVED)
+    key, field, a, b = conflicts[0]
+    require(field == 'scale' and len(set(a)) == len(set(b)) == 1 and a[0] > 0 and b[0] > 0,
+            ANIMATED_UNRESOLVED)
+    children = [k for k in mapping if source['nodes'][k]['parent'] == key]
+    require(len(children) == 1, ANIMATED_UNRESOLVED)
+    branch = children[0]
+    require(not source['nodes'][branch]['particle'] and branch not in source_animation
+            and mapping[branch] not in target_animation, ANIMATED_UNRESOLVED)
+    leaves = [k for k in mapping if source['nodes'][k]['parent'] == branch]
+    require(leaves and all(source['nodes'][k]['childCount'] == 0 for k in leaves), ANIMATED_UNRESOLVED)
+    for snap, node in ((source, key), (target, mapping[key])):
+        rotation = snap['nodes'][node]['rotation']
+        values = [rotation[k] for k in ('x', 'y', 'z', 'w')] if isinstance(rotation, dict) else rotation
+        require(values in ([0, 0, 0, 1], [0, 0, 0, -1]), ANIMATED_UNRESOLVED)
+    ratio = a[0] / b[0]
+    for field in ('position', 'scale'):
+        reference['nodes'][branch][field] = scaled_vector(source['nodes'][branch][field], ratio)
+    return reference, True
+
+
 def materialize_pair(source: bytes, target: bytes, unitypy):
     """Return a reproducible recipe and optional derived bytes, with no file writes."""
     source_bindings, target_bindings = {}, {}
-    source_snapshot = fit.inspect_bundle(source, unitypy, source_bindings)
+    source_env = unitypy.load(source)
+    source_snapshot = fit.inspect_bundle(source, SimpleNamespace(load=lambda _: source_env), source_bindings)
+    original_source, original_bindings = source_snapshot, source_bindings
     env = unitypy.load(target)
     target_snapshot = fit.inspect_bundle(target, SimpleNamespace(load=lambda _: env), target_bindings)
     before = fit.compare(source_snapshot, target_snapshot, source == target)
@@ -245,10 +545,9 @@ def materialize_pair(source: bytes, target: bytes, unitypy):
               "operationCode": "unresolved", "changes": [], "assessmentBefore": before,
               "assessmentAfter": before, "renderingStatusCode": "unresolved",
               "runtimeAdmissionStatusCode": "not_assessed"}
-    if before["statusCode"] in {"source_reuse", "reuse_candidate"} and not before["reasonCodes"]:
+    if source == target and not before["reasonCodes"]:
         recipe.update(operationCode="reuse", outputBundle=pin(target), sizeStatusCode="original_reuse")
         return recipe, None
-    left, right = source_snapshot["nodes"], target_snapshot["nodes"]
     try:
         try:
             mapping = size_correspondence(source_snapshot, target_snapshot)
@@ -275,11 +574,24 @@ def materialize_pair(source: bytes, target: bytes, unitypy):
     if any(k != v for k, v in mapping.items()):
         recipe['sizeNodeCorrespondence'] = [{'sourceNodeKey': k, 'targetNodeKey': v}
                                             for k, v in sorted(mapping.items())]
+    try:
+        source_animation = animated_inputs(source_env, original_source, original_bindings,
+                                           selected & original_source['nodes'].keys())
+        target_animation = animated_inputs(env, target_snapshot, target_bindings, set(mapping.values()))
+        reference, compensated = animated_reference(source_snapshot, target_snapshot,
+                                                     source_animation, target_animation, mapping)
+    except (ValueError, KeyError, TypeError, IndexError, struct.error, OverflowError):
+        recipe['reasonCodes'] = [ANIMATED_UNRESOLVED]
+        return recipe, None
+    expected_inputs = size_inputs(reference, selected)
     edits = {}
     pending = []
     for key, kind in sorted(selected_bindings):
         fields = FIELDS[kind]
         source_tree = source_bindings[(key, kind)].read_typetree()
+        if kind == 'Transform':
+            source_tree['m_LocalScale'] = reference['nodes'][key]['scale']
+            source_tree['m_LocalPosition'] = reference['nodes'][key]['position']
         obj = target_bindings[(mapping[key], kind)]
         target_tree = obj.read_typetree()
         for field in fields:
@@ -301,7 +613,10 @@ def materialize_pair(source: bytes, target: bytes, unitypy):
     for obj, tree in pending:
         obj.save_typetree(tree)
     if not pending:
-        if size_inputs(source_snapshot, selected) == corresponding_inputs(target_snapshot, mapping):
+        if compensated and not matrices_match(source_snapshot, target_snapshot, source_animation, target_animation, mapping):
+            recipe['reasonCodes'] = [ANIMATED_UNRESOLVED]
+            return recipe, None
+        if expected_inputs == corresponding_inputs(target_snapshot, mapping):
             recipe.update(operationCode="reuse", outputBundle=pin(target), sizeStatusCode="reference_inputs_matched")
         return recipe, None
     files = list(env.files.values())
@@ -314,14 +629,18 @@ def materialize_pair(source: bytes, target: bytes, unitypy):
     after_snapshot = fit.inspect_bundle(payload, SimpleNamespace(load=lambda _: round_trip), after_bindings)
     require(set(after_bindings) == set(target_bindings), "shield_recipe_binding_changed")
     if (size_scope(after_snapshot) != set(mapping.values())
-            or corresponding_inputs(after_snapshot, mapping) != size_inputs(source_snapshot, selected)):
+            or corresponding_inputs(after_snapshot, mapping) != expected_inputs):
         recipe["changes"] = []
+        return recipe, None
+    if compensated and not matrices_match(source_snapshot, after_snapshot, source_animation, target_animation, mapping):
+        recipe['changes'] = []
+        recipe['reasonCodes'] = [ANIMATED_UNRESOLVED]
         return recipe, None
     for change in recipe["changes"]:
         value = field_value(after_bindings[(change["nodeKey"], change["componentCode"])].read_typetree(), change["fieldCode"])
         require(fit.canonical(value) == change["afterSha256"], "shield_recipe_roundtrip_failed")
     recipe.update(operationCode="adjust_candidate", outputBundle=pin(payload),
-                  sizeStatusCode="reference_inputs_matched",
+                  sizeStatusCode="animated_frame_inputs_matched" if compensated else "reference_inputs_matched",
                   preservedObjectFieldsSha256=before_boundary,
                   assessmentAfter=fit.compare(source_snapshot, after_snapshot))
     # Even an equal static snapshot is not evidence of the native helper/render consumer.
@@ -407,7 +726,7 @@ def verify_delivery(root: Path, source_element, variants, cache, unitypy):
 
 
 def profile_binding(manifest, manifest_sha):
-    require(manifest["policyCode"] == POLICY and manifest["preparationStatusCode"] in
+    require(manifest["policyCode"] in SUPPORTED_POLICIES and manifest["preparationStatusCode"] in
             {"reuse_ready", "size_candidates_ready"}, "shield_recipe_not_prepared")
     rows = []
     for row in manifest["variants"]:
@@ -417,7 +736,7 @@ def profile_binding(manifest, manifest_sha):
         rows.append({k: row[k] for k in ("bossElementCode", "sourceFxPrefabSetSha256", "targetFxPrefabSetSha256", "operationCode")}
                     | {"sourceBundle": row["sourceAssetBundles"][0], "targetBundle": row["targetAssetBundles"][0],
                        "outputBundle": row["recipe"]["outputBundle"]})
-    return {"contractId": "nll/boss-shield-fx-preparation/v1", "policyCode": POLICY,
+    return {"contractId": "nll/boss-shield-fx-preparation/v1", "policyCode": manifest["policyCode"],
             "sourceBossElementCode": manifest["sourceBossElementCode"],
             "recipeManifestSha256": manifest_sha, "variants": rows}
 
