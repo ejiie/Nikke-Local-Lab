@@ -349,6 +349,8 @@ function Write-PhaseDPhysicalCleanupCheckpoint {
         $path=Join-Path $LaunchRoot 'physical-cleanup.receipt.json'
         if (Test-Path -LiteralPath $path) { $null=Read-PhaseDPhysicalCleanupCheckpoint $LaunchRoot $ExpectedBundleSha256; return }
         Restore-PhaseDSharedIsolation $LaunchRoot $ExpectedBundleSha256
+        $completion | Add-Member -NotePropertyName extensionFirewallRemoved -NotePropertyValue $true -Force
+        Write-AtomicJson $fullCompletion $completion
         Write-AtomicJson $path ([ordered]@{
             contractId='nll/phase-d-physical-cleanup/v1';cleanupKind='completion';launchContextUid=$binding.bundle.specification.launchContextUid
             runnerBundleSha256=$binding.bundle.sha256;jobNonce=$binding.bundle.specification.jobNonce
@@ -377,7 +379,6 @@ function Write-PhaseDRollbackCleanupCheckpoint {
         foreach ($name in @('epinelps.db','epinelps.db-shm','epinelps.db-wal')) {
             if (Test-Path -LiteralPath (Join-Path $LaunchRoot ('runtime/'+$name))) { throw 'phase_d_job_rollback_not_complete' }
         }
-        if (@(Get-NetFirewallRule -ErrorAction Stop | Where-Object Group -CEQ 'NLL Phase3B2 Epinel Minimal Extension').Count -ne 0) { throw 'phase_d_job_rollback_not_complete' }
         $archives=@(Get-ChildItem -LiteralPath (Join-Path $LaunchRoot 'evidence') -Recurse -File -Filter 'active-run.pointer.*.json')
         if ($archives.Count -gt 1) { throw 'phase_d_job_rollback_archive_ambiguous' }
         $relative=$null; $archiveSha=$null

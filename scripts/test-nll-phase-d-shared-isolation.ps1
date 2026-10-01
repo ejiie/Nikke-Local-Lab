@@ -23,7 +23,7 @@ function Reset-Test {
         [pscustomobject]@{name='NLL.PhaseD151.Program.2';program='C:\NLL\Clients\synthetic\nikke.exe';enabled=$true})
     $script:baseRules=@(1..17 | ForEach-Object { [pscustomobject]@{Group='NLL Phase3B2 Physical Isolation';Name="base-$_";InstanceID="base-$_";Direction='Outbound';Action='Block';Enabled='True'} })
     $script:extension=@();$script:queryFault='none';$script:enableFault='none';$script:enableCalled=$false;$script:runnerFault='none'
-    $script:groupQueries=0;$script:nameQueries=@();$script:mutationReturn='stale'
+    $script:groupQueries=0;$script:nameQueries=@();$script:mutationReturn='stale';$script:restoreFault='none';$script:restoring=$false
     $script:PhaseDRunnerIsolationOwned=$false
     $script:processes=@();$script:services=@();$script:failEnable=$false;$script:failDisable=$false;$script:failStop=$false;$script:stopCalls=0;$script:serviceHashCalls=0
     $script:case=Join-Path $root ([guid]::NewGuid().ToString('N'));$null=New-Item -ItemType Directory $case
@@ -40,6 +40,7 @@ function Get-NetFirewallRule {
                 switch($enableFault){
                     'disabled' {$result.Enabled='False'}
                     'direction' {$result.Direction='Inbound'}
+                    'group' {$result.Group='unowned'}
                     'action' {$result.Action='Allow'}
                     'name' {$result.Name='NLL.PhaseD151.Program.999'}
                     'duplicate' {$result.Name=$Name[0];$result.InstanceID=$Name[0]}
@@ -51,8 +52,13 @@ function Get-NetFirewallRule {
         }
     }
     if ($Name) {
+        if ($restoring -and $restoreFault -ceq 'read-error') { throw 'synthetic_restore_read_failed' }
         if ($runnerFault -ceq 'read-error' -and $script:extension.Count) { throw 'synthetic_readback_failed' }
         $script:extension | Where-Object { $_.Name -cin $Name }
+        foreach ($missing in @($Name | Where-Object { $_ -cnotin @($script:rules.name) -and $_ -cnotin @($script:extension | ForEach-Object { $_.Name }) })) {
+            $id=if($restoring -and $restoreFault -ceq 'query-error'){'synthetic_provider_failure'}else{'CmdletizationQuery_NotFound_InstanceID'}
+            Write-Error -Message 'synthetic_name_query_failed' -ErrorId $id -Category ObjectNotFound -TargetObject $missing
+        }
     }
     if ($Group -contains 'NLL Phase3B2 Physical Isolation') { $script:baseRules }
     if ($Group -contains 'NLL Phase3B2 Epinel Minimal Extension') {
@@ -88,7 +94,7 @@ function Enable-NetFirewallRule {
         $before=[pscustomobject]@{Name=$name;InstanceID=$name;Direction='Outbound';Action='Block';Enabled=[string]$row.enabled}
         $row.enabled=$true
         if($script:failEnable){throw 'synthetic_enable_failed'}
-        if($PassThru -and $script:mutationReturn -cne 'empty'){$before}
+        if($script:mutationReturn -cne 'empty'){$before}
     }
 }
 function New-NetFirewallRule {
@@ -112,8 +118,20 @@ function Disable-NetFirewallRule {
     param([string[]]$Name,[switch]$PassThru)
     foreach($name in $Name){
         if($script:failDisable){throw 'synthetic_disable_failed'}
-        $row=$script:rules|Where-Object name -CEQ $name;$before=$row.PSObject.Copy();$row.enabled=$false
-        if($PassThru -and $script:mutationReturn -cne 'empty'){$before}
+        $row=$script:rules|Where-Object name -CEQ $name;$before=$row.PSObject.Copy()
+        if($restoreFault -cne 'disable-noop'){$row.enabled=$false}
+        $script:restoring=$true
+        if($script:mutationReturn -cne 'empty'){$before}
+    }
+}
+function Remove-NetFirewallRule {
+    [CmdletBinding()]param([Parameter(ValueFromPipeline=$true)]$InputObject,[switch]$PassThru)
+    process {
+        $before=$InputObject.PSObject.Copy()
+        if($restoreFault -ceq 'remove-error'){throw 'synthetic_remove_failed'}
+        if($restoreFault -cne 'remove-noop'){$script:extension=@($script:extension | Where-Object Name -CNE $InputObject.Name)}
+        $script:restoring=$true
+        if($mutationReturn -cne 'empty'){$before}
     }
 }
 function Get-CimInstance {
@@ -219,9 +237,9 @@ try {
         Reject {Enter-PhaseDSharedIsolation $case $seal $bundle | Out-Null} 'synthetic_query_failed'
         Need (-not (Test-Path (Join-Path $case 'shared-isolation.before.json')) -and -not $rules[0].enabled)
     }
-    foreach($fault in @('missing','disabled','direction','action','name','duplicate','program','swapped-programs','filter-missing','read-error')) {
+    foreach($fault in @('missing','disabled','group','direction','action','name','duplicate','program','swapped-programs','filter-missing','read-error')) {
         Reset-Test;$script:enableFault=$fault
-        $code=if($fault -in @('direction','action','filter-missing')){'phase_d_isolation_rule_invalid'}elseif($fault -ceq 'read-error'){'synthetic_readback_failed'}else{'phase_d_shared_isolation_apply_failed'}
+        $code=if($fault -in @('group','direction','action','filter-missing')){'phase_d_isolation_rule_invalid'}elseif($fault -ceq 'read-error'){'synthetic_readback_failed'}else{'phase_d_shared_isolation_apply_failed'}
         Reject {Enter-PhaseDSharedIsolation $case $seal $bundle | Out-Null} $code
         # A failed/invalid readback never admits the run, even if a write succeeded.
         Need ($rules[0].enabled -and $rules[1].enabled -and (Test-Path (Join-Path $case 'shared-isolation.before.json')))
@@ -242,7 +260,7 @@ try {
             $admitted=$true
         } catch {
             $code=if($fault -in @('base-count','base-disabled','existing')){'phase3b2_epinel_minimal_start_firewall_precondition_invalid'}
-                elseif($fault -ceq 'partial'){'synthetic_partial_apply'}elseif($fault -ceq 'read-error'){'synthetic_readback_failed'}else{'phase3b2_epinel_minimal_start_firewall_apply_failed'}
+                elseif($fault -ceq 'partial'){'synthetic_partial_apply'}elseif($fault -ceq 'read-error'){'synthetic_readback_failed'}elseif($fault -in @('apply-name','duplicate')){'synthetic_name_query_failed'}else{'phase3b2_epinel_minimal_start_firewall_apply_failed'}
             Need ($_.Exception.Message -ceq $code)
             $caught=$true
         }
@@ -265,9 +283,32 @@ try {
         Need ($script:groupQueries -eq 1 -and $script:nameQueries.Count -eq 2)
         Need (@(Compare-Object @($rules[0].name,$rules[1].name) $script:nameQueries[0]).Count -eq 0)
         Need (@(Compare-Object @('NLL.Phase3B2.EpinelMinimal.BootstrapBlock','NLL.PhaseD.RuntimeServerBlock') $script:nameQueries[1]).Count -eq 0)
-        $script:extension=@();Restore-PhaseDSharedIsolation $case $seal
+        Restore-PhaseDSharedIsolation $case $seal
+        Need ($script:extension.Count -eq 0)
         Need (-not $rules[0].enabled -and -not $rules[1].enabled)
     }
+    Reset-Test
+    Enter-PhaseDSharedIsolation $case $seal $bundle | Out-Null
+    $script:enableFault='group'
+    Reject {Restore-PhaseDSharedIsolation $case $seal} 'phase_d_isolation_rule_invalid'
+    Need ($rules[0].enabled -and -not (Test-Path (Join-Path $case 'shared-isolation.restored.json')))
+    foreach($fault in @('disable-noop','remove-noop','remove-error','read-error','query-error')) {
+        Reset-Test
+        $inventory=@(Enter-PhaseDSharedIsolation $case $seal $bundle)
+        Enter-PhaseDRunnerIsolation @{launchRoot=$case;bootstrapRoot=(Join-Path $case 'bootstrap')} -Rules $inventory
+        $script:restoreFault=$fault
+        $code=@{'disable-noop'='phase_d_shared_isolation_restore_failed';'remove-noop'='phase_d_extension_firewall_remove_failed';
+            'remove-error'='synthetic_remove_failed';'read-error'='synthetic_restore_read_failed';'query-error'='synthetic_name_query_failed'}[$fault]
+        Reject {Restore-PhaseDSharedIsolation $case $seal} $code
+        Need (-not (Test-Path (Join-Path $case 'shared-isolation.restored.json')))
+        $script:restoreFault='none';Restore-PhaseDSharedIsolation $case $seal
+        Need (-not $rules[0].enabled -and -not $rules[1].enabled -and $rules[2].enabled -and $extension.Count -eq 0)
+    }
+    Reset-Test
+    Enter-PhaseDSharedIsolation $case $seal $bundle | Out-Null
+    $script:rules=@($rules | Where-Object name -CNE 'NLL.PhaseD151.Program.0')
+    Reject {Restore-PhaseDSharedIsolation $case $seal} 'synthetic_name_query_failed'
+    Need ($rules[0].enabled -and -not (Test-Path (Join-Path $case 'shared-isolation.restored.json')))
     Write-Output "Shared isolation lifecycle: $checks checks passed."
 } finally {
     $resolved=[IO.Path]::GetFullPath($root)

@@ -13,6 +13,9 @@ function Write-Test([string]$Path, [string]$Text) { [IO.File]::WriteAllText($Pat
 $powershell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 $jobs = [Collections.Generic.List[object]]::new()
 $processes = [Collections.Generic.List[object]]::new()
+function Get-NetFirewallRule { [CmdletBinding()]param($Name,$Group) @() }
+function Get-NetFirewallApplicationFilter { [CmdletBinding()]param([Parameter(ValueFromPipeline=$true)]$InputObject) }
+function Get-CimInstance { param($ClassName,$ErrorAction) @() }
 $count=0
 try {
     $null = New-Item -ItemType Directory -Path (Join-Path $spec.launchRoot 'runtime') -Force
@@ -90,10 +93,13 @@ try {
     $completionRoot=Join-Path $spec.launchRoot ('evidence/' + [guid]::NewGuid().ToString('D'))
     $null=New-Item -ItemType Directory -Path $completionRoot
     $completionFile=Join-Path $completionRoot 'completion.receipt.json'
-    Write-AtomicJson $completionFile @{databaseRestored=$true;hostsRestored=$true}
+    Write-AtomicJson $completionFile @{databaseRestored=$true;hostsRestored=$true;extensionFirewallRemoved=$false}
     $hostsReceipt=Join-Path $spec.launchRoot 'hosts-restoration.receipt.json'
     Write-AtomicJson $hostsReceipt @{contractId='nll/phase-d-hosts-restoration/v1';restoredToCapturedBaseline=$true}
     Write-PhaseDPhysicalCleanupCheckpoint $spec.launchRoot $bundle.sha256 $completionFile
+    $completion=Get-Content -LiteralPath $completionFile -Raw | ConvertFrom-Json
+    $checkpoint=Read-PhaseDPhysicalCleanupCheckpoint $spec.launchRoot $bundle.sha256
+    Require-Test ($completion.extensionFirewallRemoved -and $checkpoint.completionSha256 -ceq (Get-PhaseDRunnerHash $completionFile)) 'checkpoint_did_not_bind_final_firewall_receipt'; $count++
     $job.Dispose()
     Require-Test ($null -ne (Read-PhaseDPhysicalCleanupCheckpoint $spec.launchRoot $bundle.sha256)) 'replay_checkpoint_lost_after_job_close'; $count++
     $hostsBytes=[IO.File]::ReadAllBytes($hostsReceipt)

@@ -67,7 +67,7 @@ function Invoke-PhaseDChildScript {
     Assert-Watcher ($case -in @('early-exit','exit-before-sample') -or ($script:waited -and $script:disposed)) 'completion_before_client_exit'
  Assert-Watcher ($script:jobOrder -ceq 'zero,redact,fx') 'completion_before_job_cleanup'; $script:jobOrder+=',completion'
     [IO.File]::WriteAllText((Join-Path $EvidenceRoot 'active-run.pointer.archived.json'), 'synthetic-archived')
-    [IO.File]::WriteAllText((Join-Path $EvidenceRoot 'completion.receipt.json'), '{"diagnosticObservationStatus":"not_observed"}')
+    [IO.File]::WriteAllText((Join-Path $EvidenceRoot 'completion.receipt.json'), '{"databaseRestored":true,"hostsRestored":true,"extensionFirewallRemoved":false}')
     [IO.File]::WriteAllText($SoloRaidPendingPayloadPath, 'synthetic-pending')
     [pscustomobject]@{ ExitCode = 0; StandardOutput = '{}' }
 }
@@ -93,11 +93,21 @@ function Invoke-EmergencyRollback { throw 'unexpected_emergency_rollback' }
 function Stop-PhaseDExecutionJob { $script:jobOrder='zero' }
 function Protect-PhaseDJobServerLog { $script:jobOrder+=',redact' }
 function Invoke-PhaseDExecutionFxCleanup { Assert-Watcher ($script:jobOrder -ceq 'zero,redact') 'fx_before_job_zero'; $script:jobOrder+=',fx' }
-function Write-PhaseDPhysicalCleanupCheckpoint { Assert-Watcher ($script:jobOrder -ceq 'zero,redact,fx,completion') 'checkpoint_before_physical_completion'; $script:checkpointWritten=$true }
+function Write-PhaseDPhysicalCleanupCheckpoint {
+    param($LaunchRoot,$ExpectedBundleSha256,$CompletionPath)
+    Assert-Watcher ($script:jobOrder -ceq 'zero,redact,fx,completion') 'checkpoint_before_physical_completion'
+    $receipt=Get-Content -LiteralPath $CompletionPath -Raw | ConvertFrom-Json
+    Assert-Watcher (-not $receipt.extensionFirewallRemoved) 'child_claimed_firewall_cleanup'
+    if($case -eq 'isolation-failure'){throw 'phase_d_shared_isolation_restore_failed'}
+    $receipt.extensionFirewallRemoved=$true
+    Write-AtomicJson $CompletionPath $receipt
+    $script:checkpointWritten=$true
+}
+function Write-PhaseDRollbackCleanupCheckpoint { throw 'phase_d_shared_isolation_restore_failed' }
 function Assert-PhaseDChildrenExited { }
 try {
 $ExpectedRunnerBundleSha256='a'*64
-foreach ($case in @('early-exit', 'exit-before-sample', 'normal-exit', 'long-run', 'server-exited', 'pg-failure', 'persist-failure', 'identity-failure', 'reused-server', 'network-client', 'network-server', 'network-bootstrap', 'query-failure')) {
+foreach ($case in @('early-exit', 'exit-before-sample', 'normal-exit', 'long-run', 'server-exited', 'pg-failure', 'persist-failure', 'isolation-failure', 'identity-failure', 'reused-server', 'network-client', 'network-server', 'network-bootstrap', 'query-failure')) {
     $script:queries=0; $script:waitCount=0; $script:opened=0; $script:closed=0; $script:jobOrder=''
     $physicalCleanupCommitted=$false
     $script:checkpointWritten=$false
@@ -137,7 +147,7 @@ foreach ($case in @('early-exit', 'exit-before-sample', 'normal-exit', 'long-run
     $success = $case -in @('early-exit','exit-before-sample','normal-exit','long-run','server-exited')
     $expectedStatus = if ($success) { 'completed' } else { 'started' }
     Assert-Watcher ($state.statusCode -ceq $expectedStatus -and $context.statusCode -ceq $expectedStatus) 'watcher_completion_state_invalid'
-    Assert-Watcher ((Test-Path -LiteralPath $SoloRaidPendingPayloadPath) -eq ($case -in @('pg-failure','persist-failure'))) 'pending_deleted_before_acknowledgement'
+    Assert-Watcher ((Test-Path -LiteralPath $SoloRaidPendingPayloadPath) -eq ($case -in @('pg-failure','persist-failure','isolation-failure'))) 'pending_deleted_before_acknowledgement'
     Assert-Watcher ($null -eq $state.clientProcessId -and $null -eq $state.watcherProcessId) 'exited_process_indicator_not_cleared'
     $progressPath=Join-Path $LaunchRoot 'execution-progress.json'
     $exitObserved=$false
@@ -145,7 +155,7 @@ foreach ($case in @('early-exit', 'exit-before-sample', 'normal-exit', 'long-run
         $progress=Get-Content -LiteralPath $progressPath -Raw | ConvertFrom-Json
         $exitObserved=@($progress.events | Where-Object {$_.stageCode -ceq 'game_exited'}).Count -gt 0
     }
-    Assert-Watcher ($exitObserved -eq ($success -or $case -in @('pg-failure','persist-failure'))) ('unverified_exit_progress_' + $case)
+    Assert-Watcher ($exitObserved -eq ($success -or $case -in @('pg-failure','persist-failure','isolation-failure'))) ('unverified_exit_progress_' + $case)
     if ($case -eq 'identity-failure') {
         Assert-Watcher (-not $script:waited -and -not $script:disposed -and -not $script:hostsRestored -and
             -not $script:databaseReady -and -not $script:persisted) 'identity_failure_changed_runtime'
@@ -167,6 +177,15 @@ foreach ($case in @('early-exit', 'exit-before-sample', 'normal-exit', 'long-run
         Assert-Watcher ($detail.failureCode -ceq $expectedFailure -and $script:jobOrder -ceq 'zero,redact,fx') 'unsafe_network_failure_cleanup'
         Assert-Watcher (-not $script:persisted -and -not $script:hostsRestored) 'failed_rollback_released_state'
     }
+    if($case -eq 'isolation-failure') {
+        $receipt=Get-Content -LiteralPath (Join-Path $EvidenceRoot 'completion.receipt.json') -Raw | ConvertFrom-Json
+        Assert-Watcher (-not $receipt.extensionFirewallRemoved -and -not $script:checkpointWritten -and
+            -not $script:databaseReady -and -not $script:persisted) 'isolation_failure_released_state'
+    }
+    if($success) {
+        $output=Get-Content -LiteralPath (Join-Path $LaunchRoot 'completion.output.json') -Raw | ConvertFrom-Json
+        Assert-Watcher $output.extensionFirewallRemoved 'completion_output_preceded_firewall_verification'
+    }
     if ($success) { Assert-Watcher ($null -eq $state.failureCode -and $script:databaseReady -and $script:persisted) 'completed_without_database_or_acknowledgement' }
     else { Assert-Watcher ($null -ne $state.failureCode) 'failure_not_reconcilable' }
 }
@@ -177,4 +196,4 @@ finally {
         [IO.Path]::GetFileName($resolved) -notlike 'nll-watcher-completion-*') { throw 'unsafe_test_cleanup' }
     Remove-Item -LiteralPath $resolved -Recurse -Force
 }
-'Phase D watcher: 13 exit/network/identity/database/persistence cases passed; synthetic resources only.'
+'Phase D watcher: 14 exit/network/identity/isolation/database/persistence cases passed; synthetic resources only.'

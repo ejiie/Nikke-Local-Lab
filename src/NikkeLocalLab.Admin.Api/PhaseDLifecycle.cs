@@ -61,6 +61,9 @@ public sealed class PhaseDProcessRunner : IPhaseDProcessRunner
   private sealed record Owner(int SchemaVersion, string State, int? ProcessId,
       DateTime? StartedAtUtc, string ExecutablePath);
 
+  private sealed record Watcher(int SchemaVersion, string ContractId, int ProcessId,
+      DateTime ProcessStartedAtUtc, string ExecutablePath);
+
   public async Task<int> RunAsync(ProcessStartInfo startInfo, string identityPath)
   {
     // Publication precedes creation. A crash inside the creation/publication gap
@@ -105,7 +108,19 @@ public sealed class PhaseDProcessRunner : IPhaseDProcessRunner
     if (!File.Exists(identityPath)) return false; // legacy run; other admission proofs still apply
     try
     {
-      var owner = JsonSerializer.Deserialize<Owner>(File.ReadAllText(identityPath));
+      Owner? owner;
+      if (Path.GetFileName(identityPath) == "completion-watcher.identity.json")
+      {
+        var watcher = JsonSerializer.Deserialize<Watcher>(File.ReadAllText(identityPath),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        if (watcher is null || watcher.SchemaVersion != 1 ||
+            watcher.ContractId != "nll/phase-d-completion-watcher-identity/v1" ||
+            watcher.ProcessId <= 0 || watcher.ProcessStartedAtUtc == default)
+          throw new InvalidDataException();
+        owner = new Owner(watcher.SchemaVersion, "running", watcher.ProcessId,
+            watcher.ProcessStartedAtUtc, watcher.ExecutablePath);
+      }
+      else owner = JsonSerializer.Deserialize<Owner>(File.ReadAllText(identityPath));
       if (owner is null || owner.SchemaVersion != 1 ||
           !string.Equals(owner.ExecutablePath, Path.GetFullPath(expectedExecutablePath), StringComparison.OrdinalIgnoreCase) ||
           owner.State is not ("starting" or "running" or "exited"))
