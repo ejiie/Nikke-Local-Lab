@@ -12,6 +12,30 @@ function Assert-PdBundlePin([object]$Pin, [switch]$LengthOnly) {
         (Get-Item -LiteralPath $Pin.path).Length -eq $Pin.length -and
         ($LengthOnly -or (Get-PdBundleHash $Pin.path) -ceq $Pin.sha256)) 'file_drifted'
 }
+# Only top-level pinned code is shared. Configuration, overlays and every nested
+# writable tree remain copies; cache/logs and database exclusions are unchanged.
+function Copy-PdRuntimeFiles([object]$Bundle, [string]$RuntimeRoot, [string]$CopyLog) {
+    $pins = @{}
+    foreach ($pin in $Bundle.files) { $pins[[string]$pin.path] = $pin }
+    $linked = @{}
+    foreach ($file in Get-ChildItem -LiteralPath $Bundle.serverRoot -File) {
+        if ($file.Name -ine 'EpinelPS.dll' -and $file.Name -notlike 'NikkeLocalLab.PhaseD.RuntimeMaterializer.*' -and
+            $pins.ContainsKey($file.FullName) -and
+            ($file.Extension -in @('.dll','.exe') -or $file.Name -match '\.(deps|runtimeconfig)\.json$')) {
+            if ((Get-PhaseDRunnerLinkCount $file.FullName) -ge 1000) { throw 'phase_d_runtime_hardlink_limit' }
+            $linked[$file.Name] = $pins[$file.FullName]
+        }
+    }
+    $excluded = @('db.json','epinelps.db','epinelps.db-shm','epinelps.db-wal') + @($linked.Values | ForEach-Object { $_.path })
+    & (Join-Path $env:SystemRoot 'System32/robocopy.exe') $Bundle.serverRoot $RuntimeRoot /E /XJ /R:0 /W:0 /COPY:DAT `
+        /XD cache logs /XF $excluded /NFL /NDL /NJH /NJS /NP /LOG:$CopyLog | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw 'phase_d_runtime_copy_failed' }
+    foreach ($name in $linked.Keys) {
+        # Never fall back to copying: the seal below relies on this file identity.
+        $null = New-Item -ItemType HardLink -Path (Join-Path $RuntimeRoot $name) -Target $linked[$name].path -ErrorAction Stop
+    }
+    return $linked
+}
 function Read-PdRuntimeBundle([string]$PointerPath, [switch]$BeforeActivation, [switch]$FilePinsOnly, [switch]$FullVerification) {
     Assert-PdBundle (-not ($BeforeActivation -and $FilePinsOnly)) 'read_mode_invalid'
     if (-not (Test-Path -LiteralPath $PointerPath)) { return $null }

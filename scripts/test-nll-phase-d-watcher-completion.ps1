@@ -5,6 +5,7 @@ Set-StrictMode -Version Latest
 $executionJob = $null
 $physicalCleanupCommitted = $false
 . (Join-Path $PSScriptRoot 'Nll.PhaseDProcessIdentity.ps1')
+. (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1')
 $tokens = $null; $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile(
     (Join-Path $PSScriptRoot 'watch-nll-phase-d-execution.ps1'), [ref]$tokens, [ref]$errors)

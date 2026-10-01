@@ -136,6 +136,22 @@
   filter를 다음 호출까지 보관하지 않으며, 규칙마다 association 조회하던 부분만 일괄 조회로 바꿉니다.
 - 합성 검사는 조회 횟수와 정상 원복·결손·중복·조회 오류를 확인합니다. 성능 절감은 설치 후 운영자 실행으로 측정합니다.
 
+## 실행 코드 hardlink (WP-L5a, 설치 전)
+
+- 실행 runtime은 설치 bundle에 pin된 최상위 DLL·EXE·deps/runtimeconfig 파일만 hardlink합니다.
+  variant로 덮어쓰는 `EpinelPS.dll`, 일반 설정 및 하위 디렉터리는 실제 복사하고, DB·SQLite·로그는
+  기존처럼 실행별로 생성합니다. materializer 4개 파일도 실제 복사합니다. cache junction은 유지합니다.
+- runner seal은 hardlink의 설치 pin을 사용하며 읽을 때 원본과 실행 파일의 NTFS 신원·길이를 대조합니다.
+  복사본과 과거 seal은 SHA-256 검사를 유지합니다. hardlink 생성 실패는 시작 실패이며 복사 fallback은 없습니다.
+  실행 폴더 삭제는 link만 제거하고, 공유되는 읽기 전용 속성을 설정하지 않습니다.
+- 원본 링크 수가 1000 이상이면 `phase_d_runtime_hardlink_limit`로 시작을 거부합니다. terminal 상태와
+  물리 정리 checkpoint를 확인한 뒤 봉인에 명시된 hardlink 코드만 파일 ID 대조 후 지웁니다.
+  복사본·DB·evidence는 보존합니다. 비terminal/정리 미완료 실행의 링크는 유지합니다.
+- recovery만 terminal+checkpoint 증거가 있는 실행의 링크 부재를 허용합니다. 일반 runner 시작·완료 진입은
+  여전히 완전한 코드 closure를 요구합니다. 닫힌 실행의 pending replay는 설치된 pin 검증 materializer를 사용합니다.
+- 설치 bundle의 불변성과 설치·복구 시 전체 SHA 검증이 전제입니다. 합성 NTFS 검사만 완료하며
+  variant 유무별 시작·종료·저장 및 성능 측정은 설치 후 운영자 확인이 필요합니다.
+
 ## 실행 중 변경과 원복
 
 - **hosts**: 실행 전 기준선을 백업하고 종료 때 복원합니다.
