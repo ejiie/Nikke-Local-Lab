@@ -24,6 +24,7 @@ function Reset-Test {
     $script:baseRules=@(1..17 | ForEach-Object { [pscustomobject]@{Group='NLL Phase3B2 Physical Isolation';Name="base-$_";InstanceID="base-$_";Direction='Outbound';Action='Block';Enabled='True'} })
     $script:extension=@();$script:queryFault='none';$script:enableFault='none';$script:enableCalled=$false;$script:runnerFault='none'
     $script:groupQueries=0;$script:nameQueries=@();$script:mutationReturn='stale';$script:restoreFault='none';$script:restoring=$false
+    $script:filterBulkQueries=0;$script:filterAssociationQueries=0;$script:filterFault='none'
     $script:PhaseDRunnerIsolationOwned=$false
     $script:processes=@();$script:services=@();$script:failEnable=$false;$script:failDisable=$false;$script:failStop=$false;$script:stopCalls=0;$script:serviceHashCalls=0
     $script:case=Join-Path $root ([guid]::NewGuid().ToString('N'));$null=New-Item -ItemType Directory $case
@@ -73,7 +74,19 @@ function Get-NetFirewallRule {
 function Get-NetFirewallApplicationFilter {
     [CmdletBinding()]param($PolicyStore,[Parameter(ValueFromPipeline=$true)]$InputObject)
     process {
+        if ($InputObject) { $script:filterAssociationQueries++ }
+        else {
+            if ($PolicyStore -cne 'PersistentStore') { throw 'unexpected_filter_store' }
+            $script:filterBulkQueries++
+        }
+        if ($filterFault -ceq 'read-error') { throw 'synthetic_filter_read_failed' }
+        # Bulk results contain unrelated rules, including unrelated duplicate IDs.
+        if (-not $InputObject) {
+            [pscustomobject]@{InstanceID='unrelated';Program='C:\unrelated-one.exe'}
+            [pscustomobject]@{InstanceID='unrelated';Program='C:\unrelated-two.exe'}
+        }
         foreach($row in @(@($script:rules)+@($script:extension) | Where-Object { -not $InputObject -or $_.name -ceq $InputObject.InstanceID })) {
+            if ($filterFault -ceq 'missing' -and $row.name -ceq $script:rules[0].name) { continue }
             $program=$row.program
             if ($enableCalled -and $enableFault -ceq 'filter-missing') { continue }
             if ($enableCalled -and $enableFault -ceq 'program') { $program='C:\unbound.exe' }
@@ -83,6 +96,9 @@ function Get-NetFirewallApplicationFilter {
                 if ($runnerFault -ceq 'filter-missing') { continue }
             }
             [pscustomobject]@{InstanceID=$row.name;Program=$program}
+            if ($filterFault -ceq 'duplicate' -and $row.name -ceq $script:rules[0].name) {
+                [pscustomobject]@{InstanceID=$row.name;Program=$program}
+            }
         }
     }
 }
@@ -309,6 +325,27 @@ try {
     $script:rules=@($rules | Where-Object name -CNE 'NLL.PhaseD151.Program.0')
     Reject {Restore-PhaseDSharedIsolation $case $seal} 'synthetic_name_query_failed'
     Need ($rules[0].enabled -and -not (Test-Path (Join-Path $case 'shared-isolation.restored.json')))
+    # Both entry modes join the requested rules against one fresh bulk result.
+    foreach($applied in @($false,$true)) {
+        Reset-Test
+        $requested=@(Get-NetFirewallRule -Name @($rules.name))
+        $result=@(Get-PhaseDIsolationRules -Rules $requested -Applied:$applied)
+        Need ($filterBulkQueries -eq 1 -and $filterAssociationQueries -eq 0 -and $result.Count -eq $rules.Count)
+        foreach($row in $rules) {
+            Need (@($result | Where-Object { $_.name -ceq $row.name -and $_.program -ceq $row.program -and $_.enabled -eq $row.enabled }).Count -eq 1)
+        }
+        foreach($fault in @('missing','duplicate','read-error')) {
+            $script:filterFault=$fault
+            $code=if($fault -ceq 'read-error'){'synthetic_filter_read_failed'}else{'phase_d_isolation_rule_invalid'}
+            Reject {Get-PhaseDIsolationRules -Rules $requested -Applied:$applied} $code
+        }
+    }
+    Reset-Test
+    Enter-PhaseDSharedIsolation $case $seal $bundle | Out-Null
+    Need ($filterBulkQueries -eq 2 -and $filterAssociationQueries -eq 0)
+    Restore-PhaseDSharedIsolation $case $seal
+    Need ($filterBulkQueries -eq 4 -and $filterAssociationQueries -eq 0)
+    Need (-not $rules[0].enabled -and -not $rules[1].enabled -and $rules[2].enabled)
     Write-Output "Shared isolation lifecycle: $checks checks passed."
 } finally {
     $resolved=[IO.Path]::GetFullPath($root)
