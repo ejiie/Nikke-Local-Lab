@@ -115,6 +115,19 @@
 - 과거 봉인 bundle/receipt는 수정하지 않습니다. 기존 `health_observation` 진행 기록은 역사 표시로
   유지합니다. 설치 후 variant 유무별 실제 시작·종료·저장과 시간 단축 확인은 남아 있습니다.
 
+## 종료 경로 정리 (WP-L4, 설치 전)
+
+- runner completion은 pending capture, 로그 redaction·원문 app 로그 삭제, DB·SQLite·hosts 원복을 수행합니다.
+  사용하지 않는 v9 marker/score/damage-source 분석과 Trial DB 통계 비교는 제거했습니다. 완료 receipt v10은
+  복원 결과를 기록하며 전투 점수·실게임 검증을 주장하지 않습니다. 과거 봉인 receipt는 변경하지 않습니다.
+- 확장 방화벽 제거와 공유 격리 원복은 watcher의 기존 물리 정리 checkpoint에서 처리합니다. 기준선의 규칙 이름과
+  두 확장 규칙만 조회하고, 변경 뒤 같은 이름들을 한 번 다시 읽습니다. Disable/Remove 반환 객체는 사용하지 않습니다.
+  `extensionFirewallRemoved`는 이 확인 뒤 true가 되며 최종 receipt hash·출력·checkpoint는 그 값을 참조합니다.
+- API는 살아 있는 completion watcher의 PID·시작 시각·실행 경로를 확인해 recovery 시작과 종결 분류를 보류합니다.
+  죽은 watcher는 기존 복구로 이어지고 불완전 신원은 차단합니다. recovery 자체의 watcher 재확인, Job 부재 복구,
+  no-pointer FX 정리와 설치된 recovery dispatch는 유지합니다.
+- 합성 검사와 코드 변경만 완료한 단계입니다. 앱 패키지 설치, variant 유무별 실제 종료·저장 및 시간 측정은 별도입니다.
+
 ## 실행 중 변경과 원복
 
 - **hosts**: 실행 전 기준선을 백업하고 종료 때 복원합니다.

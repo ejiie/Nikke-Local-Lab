@@ -329,7 +329,7 @@ public sealed class FilesystemPhaseDExecutionService : IPhaseDExecutionService
         foreach (var item in active)
         {
           var launchRoot = Path.Combine(_options.ExecutionRoot, item.LaunchContextUid.ToString());
-          if (new[] { "coordinator.owner.json", "recovery.owner.json" }.Any(name =>
+          if (new[] { "coordinator.owner.json", "recovery.owner.json", "completion-watcher.identity.json" }.Any(name =>
               _processes.HasUnsettledOwner(Path.Combine(launchRoot, name), _options.PowerShellPath)))
             return false;
           var startInfo = new ProcessStartInfo
@@ -394,7 +394,7 @@ public sealed class FilesystemPhaseDExecutionService : IPhaseDExecutionService
       // A missing/malformed unclassified record must NOT be treated as history.
       var projection = await ReadProjectionAsync(directory, cancellationToken).ConfigureAwait(false) ??
           throw new PhaseDExecutionException("phase_d_execution_owner_unresolved");
-      if (new[] { "coordinator.owner.json", "recovery.owner.json" }.Any(owner =>
+      if (new[] { "coordinator.owner.json", "recovery.owner.json", "completion-watcher.identity.json" }.Any(owner =>
           _processes.HasUnsettledOwner(Path.Combine(directory, owner), _options.PowerShellPath)))
       {
         active.Add(projection);

@@ -157,8 +157,6 @@ function Invoke-EmergencyRollback {
             (Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'),
             [IO.File]::ReadAllBytes($hostsBefore))
     }
-    Get-NetFirewallRule -Group 'NLL Phase3B2 Epinel Minimal Extension' `
-        -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     Move-Item -LiteralPath $pointerPath `
         -Destination (Join-Path $runRoot 'active-run.pointer.emergency-archived.json') `
         -Force
@@ -289,16 +287,10 @@ try {
         -StandardErrorPath (Join-Path $LaunchRoot 'derived-completion.stderr.log')
     if ($completionResult.ExitCode -ne 0) { throw 'phase_d_completion_failed' }
     $completionApplied = $true
-    $completionOutput = $completionResult.StandardOutput
-    [IO.File]::WriteAllText(
-        (Join-Path $LaunchRoot 'completion.output.json'),
-        ($completionOutput.TrimEnd() + "`n"),
-        [Text.UTF8Encoding]::new($false))
     $archivedPointer = Get-ChildItem -LiteralPath $EvidenceRoot -Recurse `
         -Filter 'active-run.pointer.archived.json' -File | Select-Object -First 1
     if ($null -eq $archivedPointer) { throw 'phase_d_completion_pointer_archive_missing' }
     $completionPath = Join-Path $archivedPointer.DirectoryName 'completion.receipt.json'
-    $completionSha256 = Get-Sha256Lower $completionPath
     Restore-ControlCenterHosts
     $controlCenterHostsRestored = $true
     Write-AtomicJson (Join-Path $LaunchRoot 'hosts-restoration.receipt.json') `
@@ -314,6 +306,10 @@ try {
         })
     Write-PhaseDPhysicalCleanupCheckpoint $LaunchRoot $ExpectedRunnerBundleSha256 $completionPath
     $physicalCleanupCommitted = $true
+    $completionSha256 = Get-Sha256Lower $completionPath
+    [IO.File]::WriteAllText(
+        (Join-Path $LaunchRoot 'completion.output.json'),
+        [IO.File]::ReadAllText($completionPath), [Text.UTF8Encoding]::new($false))
     Write-PhaseDProgress $LaunchRoot 'database_restart'
     Ensure-PhaseDPostgresRunning `
         -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-pg.identity.json') `

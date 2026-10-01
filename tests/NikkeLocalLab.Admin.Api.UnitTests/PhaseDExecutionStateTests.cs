@@ -285,6 +285,72 @@ public sealed class PhaseDExecutionStateTests
     Assert.Equal(0, runner.Calls);
   }
 
+  [Theory]
+  [InlineData("started", false)]
+  [InlineData("started", true)]
+  [InlineData("completed", false)]
+  [InlineData("failed", false)]
+  public async Task CompletionWatcherOwnsTransitionUntilExactProcessExits(string status, bool absentProcess)
+  {
+    using var current = Process.GetCurrentProcess();
+    var runner = new FakeProcessRunner { ReadWatcherIdentity = true };
+    runner.Exit.SetResult(0);
+    using var fixture = new ExecutionStateFixture(runner);
+    var uid = EntityUid.New();
+    fixture.WriteState(uid, "\"watcherProcessStartedAtUtc\": null", "phase_d_test_failure", status);
+    var launchRoot = Path.Combine(fixture.ExecutionRoot, uid.ToString());
+    var identity = Path.Combine(launchRoot, "completion-watcher.identity.json");
+    var options = fixture.Options with { PowerShellPath = current.MainModule!.FileName };
+    var service = new FilesystemPhaseDExecutionService(new UnavailableProfileManagementService(), options, runner);
+    void WriteWatcher(DateTime start, int processId) => File.WriteAllText(identity, JsonSerializer.Serialize(new
+    {
+      schemaVersion = 1,
+      contractId = "nll/phase-d-completion-watcher-identity/v1",
+      processId,
+      processStartedAtUtc = start,
+      executablePath = options.PowerShellPath
+    }));
+    WriteWatcher(current.StartTime.ToUniversalTime(), current.Id);
+    Assert.False(await service.ReconcileAsync());
+    Assert.Equal(0, runner.Calls);
+    Assert.False(File.Exists(Path.Combine(launchRoot, "recovery.owner.json")));
+    Assert.Empty(Directory.GetFiles(Path.Combine(fixture.ExecutionRoot, ".lifecycle-closed")));
+
+    // Same PID with a different start is a departed watcher, not a live owner.
+    WriteWatcher(current.StartTime.ToUniversalTime().AddSeconds(1), absentProcess ? int.MaxValue : current.Id);
+    Assert.Equal(status == "started", await service.ReconcileAsync());
+    Assert.Equal(status == "started" ? 1 : 0, runner.Calls);
+    Assert.False(current.HasExited);
+  }
+
+  [Theory]
+  [InlineData("malformed")]
+  [InlineData("wrong-path")]
+  [InlineData("wrong-contract")]
+  public async Task UnresolvedWatcherNeverStartsRecovery(string fault)
+  {
+    using var current = Process.GetCurrentProcess();
+    var runner = new FakeProcessRunner { ReadWatcherIdentity = true };
+    using var fixture = new ExecutionStateFixture(runner);
+    var uid = EntityUid.New();
+    fixture.WriteState(uid, "\"watcherProcessStartedAtUtc\": null", "phase_d_test_failure", "started");
+    var options = fixture.Options with { PowerShellPath = current.MainModule!.FileName };
+    var identity = Path.Combine(fixture.ExecutionRoot, uid.ToString(), "completion-watcher.identity.json");
+    File.WriteAllText(identity, fault == "malformed" ? "{" : JsonSerializer.Serialize(new
+    {
+      schemaVersion = 1,
+      contractId = fault == "wrong-contract" ? "invalid" : "nll/phase-d-completion-watcher-identity/v1",
+      processId = current.Id,
+      processStartedAtUtc = current.StartTime.ToUniversalTime(),
+      executablePath = fault == "wrong-path" ? fixture.Options.PowerShellPath : options.PowerShellPath
+    }));
+    var service = new FilesystemPhaseDExecutionService(new UnavailableProfileManagementService(), options, runner);
+    var failure = await Assert.ThrowsAsync<PhaseDExecutionException>(() => service.ReconcileAsync());
+    Assert.Equal("phase_d_owner_identity_unresolved", failure.Message);
+    Assert.Equal(0, runner.Calls);
+    Assert.Equal("started", (await service.GetAsync(uid))!.StatusCode);
+  }
+
   [Fact]
   public async Task RecoveryFailurePreservesActiveStateAndEvidence()
   {
@@ -614,6 +680,7 @@ public sealed class PhaseDExecutionStateTests
     public TaskCompletionSource<int> Exit { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public int Calls { get; private set; }
     public bool OwnerActive { get; set; }
+    public bool ReadWatcherIdentity { get; set; }
     public bool RuntimeActive { get; set; }
     public bool? ClientsActive { get; set; }
     public Task<int> RunAsync(ProcessStartInfo startInfo, string identityPath)
@@ -632,7 +699,9 @@ public sealed class PhaseDExecutionStateTests
       Entered.TrySetResult();
       return Exit.Task;
     }
-    public bool HasUnsettledOwner(string path, string executable) => OwnerActive;
+    public bool HasUnsettledOwner(string path, string executable) =>
+        ReadWatcherIdentity && Path.GetFileName(path) == "completion-watcher.identity.json"
+            ? new PhaseDProcessRunner().HasUnsettledOwner(path, executable) : OwnerActive;
     public bool RuntimeProcessExists() => RuntimeActive;
     public bool ClientProcessExists() => ClientsActive ?? RuntimeActive;
   }

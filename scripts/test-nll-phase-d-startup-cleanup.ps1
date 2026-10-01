@@ -32,8 +32,13 @@ $oldSystemRoot=$env:SystemRoot
 $envNames=@('NLL_SYNTHETIC_CONNECTION','NLL_SYNTHETIC_SECRET','NLL_CONTROL_CENTER_PG_CTL','NLL_CONTROL_CENTER_PG_DATA','NLL_CONTROL_CENTER_PG_LOG')
 $oldEnv=@{};foreach($name in $envNames){$oldEnv[$name]=[Environment]::GetEnvironmentVariable($name)}
 function Get-PhaseDJobSystemHostsPath { $hostsPath }
-function Get-NetFirewallRule { param($Group,$ErrorAction) @() }
-function Get-PhaseDIsolationRules { param($Name) [pscustomobject]@{name='NLL.PhaseD151.Program.1';program='C:\NIKKE\synthetic.exe';enabled=$script:blocked} }
+function Get-NetFirewallRule {
+    [CmdletBinding()]param($Group,$Name)
+    if ($Name -contains 'NLL.PhaseD151.Program.1') {
+        [pscustomobject]@{Name='NLL.PhaseD151.Program.1';Group='NLL PhaseD 151 Client Isolation'}
+    }
+}
+function Get-PhaseDIsolationRules { param($Rules,[switch]$Applied) [pscustomobject]@{name='NLL.PhaseD151.Program.1';program='C:\NIKKE\synthetic.exe';enabled=$script:blocked} }
 function Get-CimInstance { param($ClassName,$ErrorAction) @() }
 function Disable-NetFirewallRule { param($Name,$ErrorAction) $script:blocked=$false; $script:trace.Add('isolation') }
 function Enable-NetFirewallRule { throw 'unexpected_enable' }

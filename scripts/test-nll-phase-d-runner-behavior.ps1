@@ -70,7 +70,7 @@ function Start-Process {
         Assert-Test (($ArgumentList -join ' ') -ceq '--headless --local-only')
         $p = [pscustomobject]@{Id=901;ProcessName='EpinelPS';Responding=$true}
         $script:processes[901]=$p
-        [IO.File]::WriteAllText($RedirectStandardOutput, 'synthetic-server')
+        [IO.File]::WriteAllText($RedirectStandardOutput, "synthetic-server`nauthtoken: synthetic-secret`n")
         [IO.File]::WriteAllText($RedirectStandardError, '')
         return $p
     }
@@ -203,10 +203,16 @@ try {
             Assert-Test ((Get-PhaseDRunnerHash $hosts) -ceq $script:hostPins.applied)
         } else {
             Assert-Test $script:captureCalled
+            $log=@(Get-ChildItem -LiteralPath $spec.launchRoot -Recurse -Filter server.stdout.log)[0]
+            Assert-Test (([IO.File]::ReadAllText($log.FullName)) -notmatch 'synthetic-secret')
+            Assert-Test ($completion.redactedServerLogMatchCount -eq 1)
             Assert-Test ((Get-PhaseDRunnerHash $db) -ceq $spec.runtimeDbSha256 -and (Get-PhaseDRunnerHash $hosts) -ceq $baseHash)
-            Assert-Test ($script:rules.Count -eq 0 -and -not (Test-Path -LiteralPath $pointerPath))
-            Assert-Test ($completion.diagnosticObservationStatus -ceq $(if ($case -eq 'observed-exit') {'observed'} else {'not_observed'}))
-            Assert-Test (-not $completion.scoreProjectionVerified -and -not $completion.damageSourceObservationComplete)
+            Assert-Test ($script:rules.Count -eq 2 -and -not (Test-Path -LiteralPath $pointerPath))
+            Assert-Test ($completion.databaseRestored -and $completion.hostsRestored -and -not $completion.extensionFirewallRemoved)
+            Assert-Test ('diagnosticObservationStatus' -notin $completion.PSObject.Properties.Name -and
+                'scoreProjectionVerified' -notin $completion.PSObject.Properties.Name)
+            Assert-Test (@(Get-ChildItem -LiteralPath $runtimeRoot -Recurse -Filter 'app-*.log').Count -eq 0)
+            Assert-Test (@(Get-ChildItem -LiteralPath $spec.launchRoot -Recurse -Filter regroup.observations.json).Count -eq 0)
         }
         $count++
        }

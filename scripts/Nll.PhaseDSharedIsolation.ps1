@@ -16,7 +16,7 @@ function Get-PhaseDIsolationRules {
     }
     foreach ($rule in $rules) {
         $apps = @($filters[[string]$rule.InstanceID] | Where-Object { $null -ne $_ })
-        if ($apps.Count -ne 1 -or $rule.Direction -ne 'Outbound' -or $rule.Action -ne 'Block' -or
+        if ($apps.Count -ne 1 -or $rule.Group -cne 'NLL PhaseD 151 Client Isolation' -or $rule.Direction -ne 'Outbound' -or $rule.Action -ne 'Block' -or
             $rule.Name -cnotmatch '^NLL\.PhaseD151\.Program\.[0-9]+$') { throw 'phase_d_isolation_rule_invalid' }
         [pscustomobject]@{name=[string]$rule.Name; program=[string]$apps[0].Program; enabled=([string]$rule.Enabled -eq 'True')}
     }
@@ -100,17 +100,29 @@ function Restore-PhaseDSharedIsolation {
     # Caller retains its live Job or verified absent-Job recovery proof until return.
     param([string]$LaunchRoot, [string]$ExpectedBundleSha256)
     $path=Join-Path $LaunchRoot 'shared-isolation.before.json'
-    if (-not (Test-Path -LiteralPath $path)) { return } # no acquisition / historical run
-    $before=Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($before.contractId -cne 'nll/phase-d-shared-isolation/v1' -or
+    $acquired=Test-Path -LiteralPath $path
+    $before=if ($acquired) { Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json }
+        else { [pscustomobject]@{rules=@();services=@()} }
+    if ($acquired -and ($before.contractId -cne 'nll/phase-d-shared-isolation/v1' -or
         $before.launchRoot -cne [IO.Path]::GetFullPath($LaunchRoot) -or
         $before.runnerBundleSha256 -cne $ExpectedBundleSha256 -or
         @($before.rules).Count -eq 0 -or
-        @($before.rules.name | Sort-Object -Unique).Count -ne @($before.rules).Count) {
+        @($before.rules.name | Sort-Object -Unique).Count -ne @($before.rules).Count)) {
         throw 'phase_d_shared_isolation_journal_invalid'
     }
-    $current=@(Get-PhaseDIsolationRules)
-    $shared=@($current | Where-Object { Test-PhaseDSharedIsolationPath $_.program })
+    $extensionNames=@('NLL.Phase3B2.EpinelMinimal.BootstrapBlock','NLL.PhaseD.RuntimeServerBlock')
+    $names=@($before.rules | ForEach-Object { $_.name })+$extensionNames
+    $queryErrors=@()
+    $rules=@(Get-NetFirewallRule -Name $names -ErrorAction SilentlyContinue -ErrorVariable queryErrors)
+    foreach ($queryError in $queryErrors) {
+        if ($queryError.FullyQualifiedErrorId -cne 'CmdletizationQuery_NotFound_InstanceID,Get-NetFirewallRule' -or
+            [string]$queryError.TargetObject -cnotin $extensionNames) { throw $queryError }
+    }
+    $extension=@($rules | Where-Object { $_.Name -cin $extensionNames })
+    if (@($extension | Where-Object Group -CNE 'NLL Phase3B2 Epinel Minimal Extension').Count) {
+        throw 'phase_d_shared_isolation_rule_changed'
+    }
+    $shared=@(Get-PhaseDIsolationRules -Rules @($rules | Where-Object { $_.Name -cnotin $extensionNames }) -Applied)
     if ($shared.Count -ne @($before.rules).Count) { throw 'phase_d_shared_isolation_rule_changed' }
     foreach ($row in $before.rules) {
         if ($row.enabled -isnot [bool] -or -not (Test-PhaseDSharedIsolationPath $row.program) -or
@@ -126,6 +138,7 @@ function Restore-PhaseDSharedIsolation {
             $restored.beforeSha256 -cne (Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant()) {
             throw 'phase_d_shared_isolation_receipt_invalid'
         }
+        if ($extension.Count) { throw 'phase_d_shared_isolation_state_changed' }
         foreach ($row in $before.rules) {
             if (@($shared | Where-Object { $_.name -ceq $row.name -and $_.enabled -eq $row.enabled }).Count -ne 1) {
                 throw 'phase_d_shared_isolation_state_changed'
@@ -133,7 +146,7 @@ function Restore-PhaseDSharedIsolation {
         }
         return # A retried completion must not stop a subsequent official session.
     }
-    $services=@(Get-PhaseDIsolationServices @($shared.program))
+    $services=@(Get-PhaseDIsolationServices @($shared | ForEach-Object { $_.program }))
     if ($services.Count -ne @($before.services).Count) { throw 'phase_d_shared_isolation_service_changed' }
     foreach ($baseline in $before.services) {
         $service=@($services | Where-Object { $_.name -ceq $baseline.name -and $_.program -ieq $baseline.program })
@@ -154,17 +167,27 @@ function Restore-PhaseDSharedIsolation {
         }
     }
     # Service stop alone is not process-tree proof: retain blocks while a helper lives.
-    Assert-PhaseDIsolationProcessesCold @($current.program)
+    Assert-PhaseDIsolationProcessesCold @($shared | ForEach-Object { $_.program })
     $enable=@($before.rules | Where-Object enabled | ForEach-Object { $_.name })
     $disable=@($before.rules | Where-Object { -not $_.enabled } | ForEach-Object { $_.name })
+    if ($extension.Count) { $extension | Remove-NetFirewallRule -ErrorAction Stop | Out-Null }
     if ($enable.Count) { Enable-NetFirewallRule -Name $enable -ErrorAction Stop | Out-Null }
     if ($disable.Count) { Disable-NetFirewallRule -Name $disable -ErrorAction Stop | Out-Null }
-    $after=@(Get-PhaseDIsolationRules)
+    # Mutation objects may describe the old state. One fresh read covers all changed names.
+    $queryErrors=@()
+    $rules=@(Get-NetFirewallRule -Name $names -ErrorAction SilentlyContinue -ErrorVariable queryErrors)
+    foreach ($queryError in $queryErrors) {
+        if ($queryError.FullyQualifiedErrorId -cne 'CmdletizationQuery_NotFound_InstanceID,Get-NetFirewallRule' -or
+            [string]$queryError.TargetObject -cnotin $extensionNames) { throw $queryError }
+    }
+    if (@($rules | Where-Object { $_.Name -cin $extensionNames }).Count) { throw 'phase_d_extension_firewall_remove_failed' }
+    $after=@(Get-PhaseDIsolationRules -Rules $rules -Applied)
     foreach ($row in $before.rules) {
         if (@($after | Where-Object { $_.name -ceq $row.name -and $_.program -ieq $row.program -and $_.enabled -eq $row.enabled }).Count -ne 1) {
             throw 'phase_d_shared_isolation_restore_failed'
         }
     }
+    if (-not $acquired) { return }
     Write-PhaseDIsolationJson (Join-Path $LaunchRoot 'shared-isolation.restored.json') ([ordered]@{
         contractId='nll/phase-d-shared-isolation-restored/v1';runnerBundleSha256=$ExpectedBundleSha256
         beforeSha256=(Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant();restored=$true})
