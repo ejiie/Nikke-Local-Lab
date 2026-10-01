@@ -6,11 +6,11 @@ function Test-PhaseDSharedIsolationPath([string]$Path) {
 }
 
 function Get-PhaseDIsolationRules {
-    param([string[]]$Name)
-    $rules = @(if ($Name) { Get-NetFirewallRule -Name $Name -ErrorAction Stop }
-        else { Get-NetFirewallRule -Group 'NLL PhaseD 151 Client Isolation' -ErrorAction Stop })
+    param([object[]]$Rules, [switch]$Applied)
+    $supplied=$PSBoundParameters.ContainsKey('Rules')
+    if (-not $supplied) { $Rules = @(Get-NetFirewallRule -Group 'NLL PhaseD 151 Client Isolation' -ErrorAction Stop) }
     $filters=@{}
-    foreach ($filter in @(if ($Name) { $rules | Get-NetFirewallApplicationFilter -ErrorAction Stop }
+    foreach ($filter in @(if ($Applied) { $rules | Get-NetFirewallApplicationFilter -ErrorAction Stop }
         else { Get-NetFirewallApplicationFilter -PolicyStore PersistentStore -ErrorAction Stop })) {
         $filters[[string]$filter.InstanceID]=$filter
     }
@@ -50,7 +50,15 @@ function Assert-PhaseDIsolationProcessesCold([string[]]$Programs) {
 function Enter-PhaseDSharedIsolation {
     param([string]$LaunchRoot, [string]$ExpectedBundleSha256, [object]$RuntimeBundle)
     if ($null -eq $RuntimeBundle) { return }
-    $all=@(Get-PhaseDIsolationRules)
+    $rules=@(Get-NetFirewallRule -Group @('NLL PhaseD 151 Client Isolation',
+        'NLL Phase3B2 Physical Isolation', 'NLL Phase3B2 Epinel Minimal Extension') `
+        -ErrorAction SilentlyContinue -ErrorVariable queryErrors)
+    foreach ($queryError in $queryErrors) {
+        # An absent extension group is expected before acquisition. No other query error is safe.
+        if ($queryError.FullyQualifiedErrorId -cne 'CmdletizationQuery_NotFound_RuleGroup,Get-NetFirewallRule' -or
+            [string]$queryError.TargetObject -cne 'NLL Phase3B2 Epinel Minimal Extension') { throw $queryError }
+    }
+    $all=@(Get-PhaseDIsolationRules -Rules @($rules | Where-Object Group -CEQ 'NLL PhaseD 151 Client Isolation'))
     $expected=@(@($RuntimeBundle.clientPrograms.path)+@($RuntimeBundle.blockOnlyPrograms) | Sort-Object -Unique)
     if ($all.Count -ne $expected.Count -or @(Compare-Object $expected @($all.program)).Count) {
         throw 'phase_d_isolation_inventory_changed'
@@ -73,14 +81,17 @@ function Enter-PhaseDSharedIsolation {
         rules=$shared;services=$services})
     $enable=@($shared | Where-Object { -not $_.enabled } | ForEach-Object { $_.name })
     if ($enable.Count) {
-        Enable-NetFirewallRule -Name $enable -ErrorAction Stop | Out-Null
-        $after=@(Get-PhaseDIsolationRules -Name $enable)
-        if ($after.Count -ne $enable.Count -or @($after | Where-Object { -not $_.enabled }).Count -or
-            @(Compare-Object $enable @($after.name)).Count -or
-            @(Compare-Object @($shared | Where-Object { $_.name -in $enable } | ForEach-Object program) @($after.program)).Count) {
-            throw 'phase_d_shared_isolation_apply_failed'
+        $enabled=@(Enable-NetFirewallRule -Name $enable -PassThru -ErrorAction Stop)
+        $after=@(Get-PhaseDIsolationRules -Rules $enabled -Applied)
+        if ($after.Count -ne $enable.Count) { throw 'phase_d_shared_isolation_apply_failed' }
+        foreach ($row in @($shared | Where-Object { $_.name -in $enable })) {
+            if (@($after | Where-Object { $_.name -ceq $row.name -and $_.program -ieq $row.program -and $_.enabled }).Count -ne 1) {
+                throw 'phase_d_shared_isolation_apply_failed'
+            }
         }
     }
+    # Pass this launch's inventory to runner isolation; no second group enumeration.
+    $rules
 }
 
 function Restore-PhaseDSharedIsolation {
@@ -160,12 +171,12 @@ function Restore-PhaseDSharedIsolation {
 # Coordinator calls this before creating the runner child. Existing cleanup owns
 # the extension group, including failure before the runner publishes its pointer.
 function Enter-PhaseDRunnerIsolation {
-    param([object]$Specification)
+    param([object]$Specification, [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Rules)
     $group = 'NLL Phase3B2 Epinel Minimal Extension'
-    $base = @(Get-NetFirewallRule -Group 'NLL Phase3B2 Physical Isolation' -ErrorAction Stop)
+    $base = @($Rules | Where-Object Group -CEQ 'NLL Phase3B2 Physical Isolation')
     if ($base.Count -ne 17 -or @($base | Where-Object {
         $_.Direction -ne 'Outbound' -or $_.Action -ne 'Block' -or $_.Enabled -ne 'True'
-    }).Count -or @(Get-NetFirewallRule -Group $group -ErrorAction SilentlyContinue).Count) {
+    }).Count -or @($Rules | Where-Object Group -CEQ $group).Count) {
         throw 'phase3b2_epinel_minimal_start_firewall_precondition_invalid'
     }
     $script:PhaseDRunnerIsolationOwned = $true
@@ -173,16 +184,20 @@ function Enter-PhaseDRunnerIsolation {
         'NLL.Phase3B2.EpinelMinimal.BootstrapBlock' = (Join-Path $Specification.bootstrapRoot 'artifact/NikkeLocalLab.Phase3B2.PhysicalBootstrap.exe')
         'NLL.PhaseD.RuntimeServerBlock' = (Join-Path $Specification.launchRoot 'runtime/EpinelPS.exe')
     }
-    foreach ($name in $programs.Keys) {
+    $created = @(foreach ($name in $programs.Keys) {
         New-NetFirewallRule -Name $name -DisplayName $name -Group $group -Direction Outbound -Action Block `
-            -Enabled True -Profile Any -Program $programs[$name] -ErrorAction Stop | Out-Null
-    }
-    $rules = @(Get-NetFirewallRule -Group $group -ErrorAction Stop)
-    if ($rules.Count -ne $programs.Count) { throw 'phase3b2_epinel_minimal_start_firewall_apply_failed' }
-    foreach ($rule in $rules) {
-        $apps = @($rule | Get-NetFirewallApplicationFilter -ErrorAction Stop)
-        if (-not $programs.Contains($rule.Name) -or $rule.Direction -ne 'Outbound' -or
-            $rule.Action -ne 'Block' -or $rule.Enabled -ne 'True' -or $apps.Count -ne 1 -or
-            $apps[0].Program -cne $programs[$rule.Name]) { throw 'phase3b2_epinel_minimal_start_firewall_apply_failed' }
+            -Enabled True -Profile Any -Program $programs[$name] -ErrorAction Stop
+    })
+    if ($created.Count -ne $programs.Count) { throw 'phase3b2_epinel_minimal_start_firewall_apply_failed' }
+    $filters=@($created | Get-NetFirewallApplicationFilter -ErrorAction Stop)
+    foreach ($name in $programs.Keys) {
+        $matching=@($created | Where-Object Name -CEQ $name)
+        if ($matching.Count -ne 1) { throw 'phase3b2_epinel_minimal_start_firewall_apply_failed' }
+        $rule=$matching[0]
+        $apps=@($filters | Where-Object InstanceID -CEQ $rule.InstanceID)
+        if ($rule.Group -cne $group -or $rule.Direction -ne 'Outbound' -or $rule.Action -ne 'Block' -or $rule.Enabled -ne 'True' -or
+            $apps.Count -ne 1 -or $apps[0].Program -cne $programs[$name]) {
+            throw 'phase3b2_epinel_minimal_start_firewall_apply_failed'
+        }
     }
 }
