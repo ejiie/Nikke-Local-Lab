@@ -34,8 +34,10 @@ $testScriptsRoot=$PSScriptRoot
 $body=[scriptblock]::Create('$PSScriptRoot=$testScriptsRoot;' + $text.Substring($begin,$end-$begin) +
     '; [pscustomobject]@{spec=$runnerSpec;bundle=$runnerBundle;start=$derivedStart;completion=$derivedCompletion;watcher=$watcher}')
 $script:bundleCalls=0; $script:rejectBundle=$false
+$script:stagedRuntimePins=@{'synthetic.dll'=@{path='synthetic-source';length=1;sha256=('a'*64)}}
 function New-PhaseDRunnerBundle {
-    param($Specification,$ScriptsRoot)
+    param($Specification,$ScriptsRoot,$RuntimeCodePins)
+    Assert-Route ([object]::ReferenceEquals($RuntimeCodePins,$script:stagedRuntimePins))
     Assert-PhaseDRunnerSpecification $Specification
     Assert-Route ($ScriptsRoot -ceq $testScriptsRoot)
     $script:bundleCalls++
@@ -62,6 +64,7 @@ foreach ($build in @('build_151.8.5','build_152.8.11')) {
             $sourceManifestSha256=$expected.derivedSourceManifestSha256
             $ValidationKind=$expected.runIntentCode
             $runtimeBundle=@{bootstrapRoot=$expected.bootstrapRoot;bootstrap=@{sha256=$expected.bootstrapSha256};serverExe=@{sha256=$expected.serverExeSha256}}
+            $runtimeCodePins=$script:stagedRuntimePins
             & $body
         }
         $actual=& $invokeMapping

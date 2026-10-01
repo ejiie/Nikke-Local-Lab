@@ -124,6 +124,98 @@ try {
     [IO.File]::WriteAllText($toolPath, 'invalid')
     Assert-Rejected { Read-PhaseDRunnerBundle $spec.launchRoot }; $count++
     Assert-Test ($null -eq (Read-PhaseDRunnerBundle (Join-Path $root 'legacy-run'))); $count++
+    # Real NTFS links and copies, synthetic bytes only. Exercise the coordinator's
+    # staging helper and both sides of the seal without starting any process.
+    . (Join-Path $PSScriptRoot 'Nll.PhaseDRuntimeBundle.ps1')
+    $server = Join-Path $root 'installed server'
+    $null = New-Item -ItemType Directory -Path $server
+    $immutable = @('EpinelPS.exe','library.dll','EpinelPS.deps.json','EpinelPS.runtimeconfig.json')
+    $copied = @('EpinelPS.dll','gameconfig.json','appsettings.json','site.pfx',
+        'NikkeLocalLab.PhaseD.RuntimeMaterializer.exe','NikkeLocalLab.PhaseD.RuntimeMaterializer.dll',
+        'NikkeLocalLab.PhaseD.RuntimeMaterializer.deps.json','NikkeLocalLab.PhaseD.RuntimeMaterializer.runtimeconfig.json',
+        'static-data-variant/StaticData.pack','execution-fx/retired.json','nested/library.dll','unsealed.dll')
+    $generated = @('db.json','epinelps.db','epinelps.db-shm','epinelps.db-wal','logs/app-test.log')
+    $snapshots = @{}
+    foreach ($name in $immutable + $copied + $generated + @('cache/sentinel')) {
+        $path = Join-Path $server $name
+        $null = New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force
+        [IO.File]::WriteAllText($path, 'synthetic:'+$name)
+        $snapshots[$name] = [pscustomobject]@{path=$path;length=(Get-Item $path).Length;sha256=(Get-PhaseDRunnerHash $path);attributes=(Get-Item $path).Attributes}
+    }
+    $installed = [pscustomobject]@{serverRoot=$server;files=@($snapshots.Values | Where-Object { (Split-Path -Leaf $_.path) -ne 'unsealed.dll' })}
+    $id = '55555555-5555-4555-8555-555555555555'
+    $spec.launchContextUid=$id; $spec.launchRoot=Join-Path $root $id
+    $runtimeRoot=Join-Path $spec.launchRoot 'runtime'
+    $linked=Copy-PdRuntimeFiles $installed $runtimeRoot (Join-Path $root 'copy.log')
+    Assert-Test ($linked.Count -eq $immutable.Count); $count++
+    foreach ($name in $immutable) {
+        Assert-Test (Test-PhaseDRunnerHardlink (Join-Path $runtimeRoot $name) $snapshots[$name].path $snapshots[$name].length); $count++
+    }
+    foreach ($name in $copied) {
+        $path=Join-Path $runtimeRoot $name
+        Assert-Test ((Get-PhaseDRunnerHash $path) -ceq $snapshots[$name].sha256 -and
+            -not (Test-PhaseDRunnerHardlink $path $snapshots[$name].path $snapshots[$name].length)); $count++
+        # Includes the variant DLL overwrite, config saves and FX retirement.
+        [IO.File]::WriteAllText($path, 'execution-only mutation')
+    }
+    Assert-Test (-not (Test-Path (Join-Path $runtimeRoot 'cache'))); $count++
+    foreach ($name in $generated) {
+        $path=Join-Path $runtimeRoot $name
+        Assert-Test (-not (Test-Path $path)); $count++
+        $null=New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force
+        [IO.File]::WriteAllText($path, 'materialized database or log')
+        Assert-Test (-not (Test-PhaseDRunnerHardlink $path $snapshots[$name].path $snapshots[$name].length)); $count++
+        [IO.File]::WriteAllText($path, 'restored baseline')
+        Remove-Item -LiteralPath $path -Force
+    }
+    # Force an actual link-creation failure: an excluded destination already exists.
+    # The existing bytes must survive, rather than a silent fallback copy.
+    $collision=Join-Path $root 'collision'
+    $null=New-Item -ItemType Directory -Path $collision
+    [IO.File]::WriteAllText((Join-Path $collision 'library.dll'), 'collision')
+    $failed=$false
+    try { Copy-PdRuntimeFiles $installed $collision (Join-Path $root 'collision.log') | Out-Null } catch { $failed=$true }
+    Assert-Test ($failed -and [IO.File]::ReadAllText((Join-Path $collision 'library.dll')) -ceq 'collision'); $count++
+
+    $spec.runtimeMaterializer=Join-Path $runtimeRoot 'NikkeLocalLab.PhaseD.RuntimeMaterializer.exe'
+    [IO.File]::WriteAllText($spec.runtimeMaterializer, 'copied materializer')
+    $toolPath=Join-Path $spec.launchRoot 'tool.manifest.tsv'
+    $contextPath=Join-Path $spec.launchRoot 'launch-context.json'
+    $originalHash=${function:Get-PhaseDRunnerHash}
+    $hashReads=[Collections.Generic.List[string]]::new()
+    function Get-PhaseDRunnerHash([string]$Path) {
+        $hashReads.Add($Path)
+        if ((Split-Path -Parent $Path) -eq $runtimeRoot -and (Split-Path -Leaf $Path) -in $immutable) { throw 'linked_code_was_rehashed' }
+        & $originalHash $Path
+    }
+    $bundle=New-PhaseDRunnerBundle $spec $PSScriptRoot -RuntimeCodePins $linked
+    Pin-TestBundle
+    $null=Read-PhaseDRunnerBundle $spec.launchRoot
+    Assert-Test ($hashReads.Contains((Join-Path $runtimeRoot 'EpinelPS.dll')) -and $hashReads.Contains($spec.runtimeMaterializer)); $count++
+    $manifest=Get-Content $bundle.manifestPath -Raw | ConvertFrom-Json
+    foreach ($member in $manifest.runtimeCode | Where-Object { $_.name -in $immutable }) {
+        Assert-Test ($member.sha256 -ceq $linked[$member.name].sha256); $count++
+    }
+    # Identical bytes in an independent replacement still cannot reuse a source pin.
+    $path=Join-Path $runtimeRoot 'library.dll'
+    Remove-Item -LiteralPath $path
+    Copy-Item -LiteralPath $snapshots['library.dll'].path -Destination $path
+    Assert-Rejected { Read-PhaseDRunnerBundle $spec.launchRoot }; $count++
+    Remove-Item -LiteralPath $path
+    $null=New-Item -ItemType HardLink -Path $path -Target $snapshots['library.dll'].path
+    $null=Read-PhaseDRunnerBundle $spec.launchRoot
+    # A copied runtime code member still uses the ordinary hash guard.
+    [IO.File]::WriteAllText($spec.runtimeMaterializer, 'modified materializer')
+    Assert-Rejected { Read-PhaseDRunnerBundle $spec.launchRoot }; $count++
+    ${function:Get-PhaseDRunnerHash}=$originalHash
+
+    $deleteRoot=[IO.Path]::GetFullPath($spec.launchRoot)
+    if ([IO.Path]::GetDirectoryName($deleteRoot) -ine [IO.Path]::GetFullPath($root)) { throw 'unsafe_test_cleanup' }
+    Remove-Item -LiteralPath $deleteRoot -Recurse -Force
+    foreach ($pin in $snapshots.Values) {
+        Assert-Test ((Get-PhaseDRunnerHash $pin.path) -ceq $pin.sha256 -and (Get-Item $pin.path).Attributes -eq $pin.attributes); $count++
+    }
+
 }
 finally {
     $resolved = [IO.Path]::GetFullPath($root)

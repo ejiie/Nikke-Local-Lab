@@ -335,11 +335,7 @@ try {
     New-Item -ItemType Directory -Path $runtimeRoot, $evidenceRoot, $toolsRoot -Force |
         Out-Null
     $copyLog = Join-Path $launchRoot 'runtime-copy.log'
-    $robocopy = Join-Path $env:SystemRoot 'System32\robocopy.exe'
-    & $robocopy $runtimeBaseRoot $runtimeRoot /E /XJ /R:0 /W:0 /COPY:DAT `
-        /XD cache logs /XF db.json epinelps.db epinelps.db-shm epinelps.db-wal `
-        /NFL /NDL /NJH /NJS /NP /LOG:$copyLog | Out-Null
-    Assert-PhaseD ($LASTEXITCODE -lt 8) 'phase_d_runtime_copy_failed'
+    $runtimeCodePins = Copy-PdRuntimeFiles $runtimeBundle $runtimeRoot $copyLog
     $parentCache = Get-Item -LiteralPath (Join-Path $runtimeBaseRoot 'cache') -Force
     New-Item -ItemType Junction -Path (Join-Path $runtimeRoot 'cache') `
         -Target $parentCache.FullName | Out-Null
@@ -707,7 +703,7 @@ try {
     $runnerSpec = New-PhaseDRunnerSpecification -LaunchInput $runnerLaunchInput `
         -PreparationBindingSha256 $preparation.bindingSha256 -ProfileSha256 $bossRuntimeVariantProfileSha256 `
         -SourceManifestSha256 $sourceManifestSha256 -RunIntentCode $ValidationKind
-    $runnerBundle = New-PhaseDRunnerBundle -Specification $runnerSpec -ScriptsRoot $PSScriptRoot
+    $runnerBundle = New-PhaseDRunnerBundle -Specification $runnerSpec -ScriptsRoot $PSScriptRoot -RuntimeCodePins $runtimeCodePins
     $derivedStart = Join-Path $runnerBundle.root 'invoke-nll-phase-d-runner.ps1'
     $derivedCompletion = $derivedStart
     $watcher = Join-Path $runnerBundle.root 'watch-nll-phase-d-execution.ps1'

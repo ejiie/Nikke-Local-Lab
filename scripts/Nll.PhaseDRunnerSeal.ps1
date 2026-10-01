@@ -20,8 +20,51 @@ function Get-PhaseDRunnerRuntimeCode([string]$LaunchRoot) {
     } | Sort-Object Name)
 }
 
+# Metadata-only identity check. No file contents are read and no shared attributes
+# are changed. A replacement copy or symlink cannot use an installed bundle pin.
+function Test-PhaseDRunnerHardlink([string]$Path, [string]$Source, [long]$Length) {
+    if (-not ('Nll.PhaseD.RuntimeFileIdentity' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.IO;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+namespace Nll.PhaseD {
+    public static class RuntimeFileIdentity {
+        [StructLayout(LayoutKind.Sequential)]
+        private struct Info {
+            public uint Attributes;
+            public System.Runtime.InteropServices.ComTypes.FILETIME Created, Accessed, Written;
+            public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+        }
+        [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+        private static extern SafeFileHandle CreateFile(string path, uint access, uint share, IntPtr security, uint mode, uint flags, IntPtr template);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        private static extern bool GetFileInformationByHandle(SafeFileHandle file, out Info info);
+        private static Info Read(string path) {
+            using (var file = CreateFile(path, 0, 7, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero)) {
+                Info info;
+                if (file.IsInvalid || !GetFileInformationByHandle(file, out info)) throw new Win32Exception(Marshal.GetLastWin32Error());
+                return info;
+            }
+        }
+        public static bool Same(string path, string source, long length) {
+            if (String.Equals(Path.GetFullPath(path), Path.GetFullPath(source), StringComparison.OrdinalIgnoreCase)) return false;
+            var a = Read(path); var b = Read(source);
+            return (a.Attributes & 0x410) == 0 && (b.Attributes & 0x410) == 0 && a.Links > 1 &&
+                a.Volume == b.Volume && a.IndexHigh == b.IndexHigh && a.IndexLow == b.IndexLow &&
+                (((long)a.SizeHigh << 32) | a.SizeLow) == length;
+        }
+    }
+}
+'@
+    }
+    [Nll.PhaseD.RuntimeFileIdentity]::Same($Path, $Source, $Length)
+}
+
 function New-PhaseDRunnerBundle {
-    param([object]$Specification, [string]$ScriptsRoot)
+    param([object]$Specification, [string]$ScriptsRoot, [hashtable]$RuntimeCodePins = @{})
     Assert-PhaseDRunnerSpecification $Specification
     $root = Join-Path $Specification.launchRoot 'tools/runner'
     if (Test-Path -LiteralPath $root) { throw 'phase_d_runner_bundle_exists' }
@@ -45,7 +88,14 @@ function New-PhaseDRunnerBundle {
     [IO.File]::WriteAllText($inputPath, (($Specification | ConvertTo-Json -Depth 8) + "`n"), [Text.UTF8Encoding]::new($false))
     $members += [ordered]@{ name='runner.input.json'; sha256=(Get-PhaseDRunnerHash $inputPath) }
     $runtimeCode = @(Get-PhaseDRunnerRuntimeCode $Specification.launchRoot | ForEach-Object {
-        [ordered]@{ name=$_.Name; sha256=(Get-PhaseDRunnerHash $_.FullName) }
+        if ($RuntimeCodePins.ContainsKey($_.Name)) {
+            $pin = $RuntimeCodePins[$_.Name]
+            if ($_.Name -ieq 'EpinelPS.dll' -or $pin.sha256 -cnotmatch '^[0-9a-f]{64}$' -or
+                -not (Test-PhaseDRunnerHardlink $_.FullName $pin.path $pin.length)) { throw 'phase_d_runner_hardlink_drifted' }
+            [ordered]@{ name=$_.Name; sha256=$pin.sha256; hardlinkSource=$pin.path; length=$pin.length }
+        } else {
+            [ordered]@{ name=$_.Name; sha256=(Get-PhaseDRunnerHash $_.FullName) }
+        }
     })
     if ($runtimeCode.Count -eq 0) { throw 'phase_d_runner_runtime_closure_empty' }
     $manifest = [ordered]@{
@@ -103,8 +153,12 @@ function Read-PhaseDRunnerBundle {
         if ($runtimeCode.Count -eq 0 -or @($manifest.runtimeCode).Count -ne $runtimeCode.Count -or
             @($manifest.runtimeCode.name | Select-Object -Unique).Count -ne $runtimeCode.Count) { throw 'invalid' }
         foreach ($member in $manifest.runtimeCode) {
-            if ($member.name -cnotin @($runtimeCode.Name) -or $member.sha256 -cnotmatch '^[0-9a-f]{64}$' -or
-                (Get-PhaseDRunnerHash (Join-Path (Join-Path $LaunchRoot 'runtime') $member.name)) -cne $member.sha256) { throw 'invalid' }
+            if ($member.name -cnotin @($runtimeCode.Name) -or $member.sha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'invalid' }
+            $path = Join-Path (Join-Path $LaunchRoot 'runtime') $member.name
+            if ($null -ne $member.PSObject.Properties['hardlinkSource']) {
+                if ($member.name -ieq 'EpinelPS.dll' -or
+                    -not (Test-PhaseDRunnerHardlink $path $member.hardlinkSource $member.length)) { throw 'invalid' }
+            } elseif ((Get-PhaseDRunnerHash $path) -cne $member.sha256) { throw 'invalid' }
         }
         $spec = Get-Content -LiteralPath (Join-Path $root 'runner.input.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         if (($version -eq 2) -ne ($spec.contractId -ceq 'nll/phase-d-runner-input/v3')) { throw 'invalid' }
