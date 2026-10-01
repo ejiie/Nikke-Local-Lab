@@ -8,7 +8,7 @@
 
 | # | 작업 | 완료 조건 | 문서 |
 |---|---|---|---|
-| 1 | 빠른 시작·재부팅 후 실행 상태 자동 복구 | Job 부재를 same-Job 증명으로 위장하지 않는 재시작 복구 계약, 빠른 시작/일반 재부팅/PID 재사용/권한 거부/FX 유무/복구 중 재종료 검사 | [EXECUTION_LIFECYCLE](features/EXECUTION_LIFECYCLE.md) |
+| 1 | 빠른 시작·재부팅 후 실행 상태 자동 복구 | 10의 Job not-found·신원 종료 기반 복구 설치 후 빠른 시작/일반 재부팅·복구 중 재종료의 실제 환경 확인 | [EXECUTION_LIFECYCLE](features/EXECUTION_LIFECYCLE.md) |
 | 2 | 전체 프로필 영속성(운영자 우선순위 2) | 프로필 아이콘·프레임·칭호·스킨·꾸미기·설정 등 저장 항목 전체의 capture/restore 대조와 누락 구현, client 버전 전환 후에도 마지막 상태 유지 | [EXECUTION_LIFECYCLE](features/EXECUTION_LIFECYCLE.md) |
 | 3 | 레이드 분석 후속: 타임라인, 크리·코어·사거리, 버스트 구간, 행동 시간표 | 기존 표본의 다단히트·지연 발사·지연 폭발 재현, 한 피해의 중복 분류 없음, 긴 로그 범위 조회 | [RAID_RECORDS](features/RAID_RECORDS.md) |
 | 4 | 유니온 탭의 보스별 기록 패널 | 유니온 mode 기록을 5보스별로 조회, 솔로와 공통 조회 계층 사용 | [RAID_RECORDS](features/RAID_RECORDS.md) |

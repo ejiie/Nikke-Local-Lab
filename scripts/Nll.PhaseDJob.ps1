@@ -28,12 +28,41 @@ function New-PhaseDExecutionJob {
 }
 
 function Open-PhaseDExecutionJob {
-    param([string]$LaunchRoot, [string]$ExpectedBundleSha256)
+    param([string]$LaunchRoot, [string]$ExpectedBundleSha256, [switch]$AllowAbsent)
     $binding = Get-PhaseDJobBinding $LaunchRoot $ExpectedBundleSha256
     if (-not (Test-Path -LiteralPath (Join-Path $LaunchRoot 'job-reservation.json') -PathType Leaf)) { throw 'phase_d_job_reservation_missing' }
     Initialize-PhaseDJobType
     try { [Nll.PhaseD.ExecutionJob]::Open($binding.name) }
-    catch { throw 'phase_d_job_owner_unresolved' }
+    catch {
+        for ($nativeException = $_.Exception; $null -ne $nativeException; $nativeException = $nativeException.InnerException) {
+            if ($AllowAbsent -and $nativeException -is [ComponentModel.Win32Exception] -and $nativeException.NativeErrorCode -eq 2) { return $null }
+        }
+        throw 'phase_d_job_owner_unresolved'
+    }
+}
+
+function Test-PhaseDAbsentJobRecovery {
+    $enabled = Get-Variable PhaseDAllowAbsentJobRecovery -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+    return $enabled -eq $true
+}
+
+function Assert-PhaseDRecordedProcessesExited {
+    param([string]$LaunchRoot)
+    Assert-PhaseDChildrenExited -LaunchRoot $LaunchRoot
+    $path = Join-Path $LaunchRoot 'runtime-processes.identity.json'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return }
+    $identities = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($identities.contractId -cne 'nll/phase-d-runtime-process-identities/v1' -or
+        $identities.launchContextUid -cne (Split-Path -Leaf $LaunchRoot)) { throw 'phase_d_process_identity_unresolved' }
+    foreach ($role in @('client','bootstrap','server')) {
+        # Capture can stop partway through; check every identity that was recorded.
+        if ($null -eq $identities.$role) { continue }
+        $process = Get-PhaseDVerifiedProcess $identities.$role
+        if ($null -ne $process) {
+            try { if (-not $process.HasExited) { throw 'phase_d_process_still_running' } }
+            finally { $process.Dispose() }
+        }
+    }
 }
 
 function Invoke-PhaseDJobProofLock {
@@ -46,10 +75,13 @@ function Stop-PhaseDExecutionJob {
     param([string]$LaunchRoot, [string]$ExpectedBundleSha256)
     Invoke-PhaseDJobProofLock $LaunchRoot {
         $binding = Get-PhaseDJobBinding $LaunchRoot $ExpectedBundleSha256
-        $job = Open-PhaseDExecutionJob $LaunchRoot $ExpectedBundleSha256
+        $job = Open-PhaseDExecutionJob $LaunchRoot $ExpectedBundleSha256 -AllowAbsent:(Test-PhaseDAbsentJobRecovery)
         try {
-            if ($job.Contains($PID)) { throw 'phase_d_job_cleanup_owner_inside_job' }
-            $job.TerminateAndWait(10000)
+            if ($null -eq $job) { Assert-PhaseDRecordedProcessesExited $LaunchRoot }
+            else {
+                if ($job.Contains($PID)) { throw 'phase_d_job_cleanup_owner_inside_job' }
+                $job.TerminateAndWait(10000)
+            }
             $path = Join-Path $LaunchRoot 'job-zero.receipt.json'
             if (Test-Path -LiteralPath $path) {
                 $prior = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -65,7 +97,7 @@ function Stop-PhaseDExecutionJob {
                 activeProcesses=0; observedAtUtc=[DateTimeOffset]::UtcNow.ToString('o')
                 runtimeRoot=(Join-Path $LaunchRoot 'runtime')
             })
-        } finally { $job.Dispose() }
+        } finally { if ($null -ne $job) { $job.Dispose() } }
     }
 }
 
@@ -79,11 +111,12 @@ function Invoke-PhaseDWithJobZeroProof {
             $receipt.runnerBundleSha256 -cne $binding.bundle.sha256 -or
             $receipt.jobNonce -cne $binding.bundle.specification.jobNonce -or $receipt.activeProcesses -ne 0 -or
             $receipt.runtimeRoot -cne (Join-Path $LaunchRoot 'runtime')) { throw 'phase_d_job_proof_invalid' }
-        # A receipt or absent job is NEVER OS proof. Keep this same kernel object
-        # and the lock alive throughout the consuming operation.
-        $job = Open-PhaseDExecutionJob $LaunchRoot $ExpectedBundleSha256
+        # Live cleanup retains the same kernel object. Recovery alone accepts
+        # native NOT_FOUND plus independently verified exited process identities.
+        $job = Open-PhaseDExecutionJob $LaunchRoot $ExpectedBundleSha256 -AllowAbsent:(Test-PhaseDAbsentJobRecovery)
         try {
-            if ($job.Contains($PID) -or $job.ActiveProcesses -ne 0) { throw 'phase_d_job_zero_unproven' }
+            if ($null -eq $job) { Assert-PhaseDRecordedProcessesExited $LaunchRoot }
+            elseif ($job.Contains($PID) -or $job.ActiveProcesses -ne 0) { throw 'phase_d_job_zero_unproven' }
             $receiptPath = Join-Path $LaunchRoot 'job-zero.receipt.json'
             $receiptSha = (Get-FileHash -LiteralPath $receiptPath).Hash.ToLowerInvariant()
             $verifyJob = $job
@@ -91,14 +124,21 @@ function Invoke-PhaseDWithJobZeroProof {
             $verifySha = $receiptSha
             # Retain the SAME live Job and receipt under the proof lock. The
             # immutable code closure was checked once at process entry.
+            $verifyLaunchRoot = $LaunchRoot
+            $verifyBundleSha = $ExpectedBundleSha256
             $verify = [Action]{
-                $verifyJob.Validate()
-                if ($verifyJob.ActiveProcesses -ne 0 -or (Get-FileHash -LiteralPath $verifyPath).Hash.ToLowerInvariant() -cne $verifySha) {
-                    throw 'phase_d_job_zero_unproven'
+                if ($null -eq $verifyJob) {
+                    $unexpected = Open-PhaseDExecutionJob $verifyLaunchRoot $verifyBundleSha -AllowAbsent
+                    if ($null -ne $unexpected) { $unexpected.Dispose(); throw 'phase_d_job_zero_unproven' }
+                    Assert-PhaseDRecordedProcessesExited $verifyLaunchRoot
+                } else {
+                    $verifyJob.Validate()
+                    if ($verifyJob.ActiveProcesses -ne 0) { throw 'phase_d_job_zero_unproven' }
                 }
+                if ((Get-FileHash -LiteralPath $verifyPath).Hash.ToLowerInvariant() -cne $verifySha) { throw 'phase_d_job_zero_unproven' }
             }.GetNewClosure()
             & $Action $receipt $verify $receiptSha
-        } finally { $job.Dispose() }
+        } finally { if ($null -ne $job) { $job.Dispose() } }
     }
 }
 
@@ -121,14 +161,17 @@ function Invoke-PhaseDExecutionFxCleanup {
     Invoke-PhaseDWithJobZeroProof $LaunchRoot $ExpectedBundleSha256 {
         param($proof, $verifyProcessTreeExit, $terminationReceiptSha256)
         $verifyProcessTreeExit.Invoke()
-        # PS5 cannot load the Net8/10 retirement assembly. The sealed materializer
-        # CLI reopens the SAME named Job and verifies the closure inside its callback.
-        # Outer handle + proof lock stay alive for this entire bounded invocation.
+        # The CLI verifies the sealed execution independently. Recovery uses the
+        # installed consumer and permits only NOT_FOUND + exited recorded identities.
+        # Keep the proof lock (and the live Job, when present) throughout the call.
         Write-PhaseDProgress $LaunchRoot 'fx_restore'
-        $result = Invoke-PhaseDChildScript -ScriptPath $binding.bundle.specification.runtimeMaterializer `
+        $materializer = $binding.bundle.specification.runtimeMaterializer
+        if (Test-PhaseDAbsentJobRecovery) { $materializer = $script:PhaseDRecoveryMaterializer }
+        $result = Invoke-PhaseDChildScript -ScriptPath $materializer -DirectExecutable `
             -Arguments ([ordered]@{
                 '-retire-execution-fx'='true'; '-launch-root'=$LaunchRoot
                 '-expected-bundle-sha256'=$ExpectedBundleSha256; '-expected-termination-sha256'=$terminationReceiptSha256
+                '-allow-absent-job'=([string](Test-PhaseDAbsentJobRecovery)).ToLowerInvariant()
             }) -TimeoutSeconds 300 -OwnershipPath (Join-Path $LaunchRoot 'phase-d-child-fx-retirement.identity.json') `
             -StandardOutputPath (Join-Path $LaunchRoot 'fx-retirement.stdout.log') `
             -StandardErrorPath (Join-Path $LaunchRoot 'fx-retirement.stderr.log')

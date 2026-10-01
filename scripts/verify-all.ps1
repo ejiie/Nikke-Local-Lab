@@ -170,7 +170,7 @@ if ($env:OS -eq 'Windows_NT') {
     $WindowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
     foreach ($test in @('test-nll-phase-d-preparation.ps1',
         'test-nll-phase-d-runner-contract.ps1', 'test-nll-phase-d-runner-seal.ps1', 'test-nll-phase-d-job.ps1', 'test-nll-phase-d-job-paths.ps1',
-        'test-nll-phase-d-runner-behavior.ps1',
+        'test-nll-phase-d-startup-cleanup.ps1', 'test-nll-phase-d-runner-behavior.ps1',
         'test-nll-phase-d-runner-routing.ps1', 'test-nll-phase-d-runner-dependencies.ps1',
         'test-nll-phase-d-shared-state.ps1', 'test-nll-phase-d-shared-isolation.ps1', 'test-nll-phase-d-progress.ps1', 'test-nll-phase-d-prestart-recovery.ps1',
         'test-nll-phase-d-database-lifecycle.ps1',

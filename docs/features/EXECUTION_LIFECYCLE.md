@@ -24,7 +24,9 @@
   편성·결과를 같은 영속 DB transaction으로 처리하기 때문입니다(`Assert-PhaseDPostgresRunning`,
   `Ensure-PhaseDPostgresRunning`). 모든 시즌·모드에 같은 수명주기를 적용합니다.
 - 실행 코드는 `nll/phase-d-runner-input/v3`, `nll/phase-d-runner-bundle/v2`로 실행마다 봉인됩니다.
-  watcher/recovery도 그 사본에 결박되어 저장소의 다음 버전과 섞이지 않습니다.
+  watcher는 그 사본에 결박됩니다. v1/v2 복구는 봉인 사본에 위임하고, v3 복구는 기존 봉인 전체를 검증한 뒤
+  설치된 복구 코드를 사용합니다. L1 전 `resourcePreflightRequired` 입력은 봉인 사본에 위임합니다.
+  과거 실행의 봉인 파일은 수정하지 않습니다.
 - 기한 초과는 강제 종료·자동 원복이 아니라 소유권 증거를 보존한 비종결 상태입니다.
 - 실행 완료(`completed`)는 정리·저장 완료이며 5덱 완주를 뜻하지 않습니다.
 
@@ -44,6 +46,20 @@
   `health_observation`은 18.728초에서 31.691초가 됩니다. 기존 기록 자체는 고치지 않았으며,
   이는 표시 의미의 수정 예시입니다. 시작 시간 단축이나 설치 후 실게임 측정 결과가 아닙니다.
 - 디렉터의 앱 패키지 교체와 변형 유무별 실제 시작·종료·저장 확인이 남아 있습니다.
+
+## 2026-10-01 시작 실패 정리·복구 (코드 변경, 설치 전)
+
+- Job 생성 뒤 시작 pointer 게시 전에 실패해도 FX 정리를 먼저 실행합니다. 미적용 FX는 before 범위를
+  확인하고 기존 `retired.json`에 `restored`, `bytesWritten=0`을 기록합니다. 이어 hosts/DB 원복 확인,
+  공유 격리 원복을 포함한 물리 정리 checkpoint, PostgreSQL 확인을 수행합니다.
+- v3 자동 복구는 named Job의 Win32 2(not found)에 한해서 기록된 runtime·child 신원의 종료를 모두
+  확인하고 정리를 계속합니다. 살아 있는 신원, PID 재사용, 빈 child reservation, 권한 오류는 차단합니다.
+  Job을 다시 만들거나 receipt만으로 종료를 추정하지 않으며 기존 `job-zero/v1`·정리 receipt를 사용합니다.
+- 봉인된 과거 v3 실행에도 수정이 적용되도록 설치된 recovery와 현재 선택 bundle에 pin된 materializer를
+  사용합니다. materializer도 기존 실행의 코드·FX·종료 pin을 검증합니다. FX retirement worker는 직접 실행하고
+  자신의 정확한 PID·시각·경로만 소비자 예외로 인정하며 이전 worker는 부모의 종료 검사에서 배제하지 않습니다.
+- 포인터가 없는 복구는 runtime DB가 봉인한 기준 해시 그대로인 경우에만 rollback으로 인정합니다.
+  운영 설치와 기존 비종결 실행의 자동 `rolled_back`·공유 규칙 원복 확인은 디렉터의 인수 단계입니다.
 
 ## 코드 위치
 
@@ -116,10 +132,9 @@
 
 ## 알려진 결함과 남은 작업
 
-- **빠른 시작·재부팅 후 자동 복구**: 게임을 켠 채 Windows를 종료하면 Job이 사라져 기존 same-Job 증명이
-  불가능하고(`phase_d_job_owner_unresolved`) 새 실행이 `phase_d_runtime_not_cold`로 막힙니다. 2026-09-22에는
-  해당 실행 한 건만 운영자 승인 하에 수동 복구했습니다. Job 부재를 위장하지 않는 별도 재시작 복구 계약과
-  빠른 시작/일반 재부팅/PID 재사용/권한 거부/FX 적용 여부/복구 중 재종료 검증이 필요합니다.
+- **빠른 시작·재부팅 후 자동 복구**: 2026-10-01 코드가 Job not-found와 기록된 신원 종료를 확인하는
+  복구를 추가했습니다. 설치 후 빠른 시작/일반 재부팅 및 복구 중 재종료의 실제 환경 검증은 남아 있습니다.
+  PID 재사용·권한 오류·불완전 신원은 계속 unresolved입니다. 2026-09-22 수동 복구 기록을 소급 변경하지 않습니다.
   [복구 기록](../archive/execution/SHUTDOWN_RECOVERY_20260922.md)
 - **전체 프로필 영속성**: 위 P-02~P-09 외의 프로필 아이콘·프레임·칭호 등 저장 항목 전체의 capture/restore
   대조가 남아 있습니다(운영자 우선순위 2).
