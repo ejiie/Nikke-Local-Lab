@@ -24,6 +24,7 @@ a particular run passed those gates.
 | Retained 151 runtime bundles | `C:\NLL\Runtime\PhaseD151-v10`, `C:\NLL\Runtime\PhaseD151-v9` | Not selected. `PhaseD152-v1` pins v10 as `parentManifest`, and v10 pins v9, so neither may be deleted. A 151 rollback also needs the 151 client restored from D: and matching app/registry/pipeline/firewall selection. |
 | Removed 151 client | `C:\NLL\Clients\NIKKE-151.8.5-ResourceProbe` (absent) | Verified archive: `D:\NikkeLocalLab\Backups\client-151-archive-20260917-01\NIKKE-151.8.5-ResourceProbe` (1,244 files / 20,430,992,968 bytes). Restore to the original C: path before selecting any 151 runtime; never execute the D: copy. |
 | Removed 150 client | `C:\NLL\Clients\NIKKE-150.6.9-Physical` (absent) | Verified archive: `D:\NikkeLocalLab\Backups\client-150-archive-20260912-01\NIKKE-150.6.9-Physical` (39,504 files / 27,264,219,735 bytes). Archival only. |
+| Moved Samsung→Micron migration staging | `C:\NLL\Migrations\SamsungToMicron` (absent) | Archive: `D:\NikkeLocalLab\Backups\migration-SamsungToMicron-v1\265861b9-9ff0-4e01-b409-7ce97c53aad1` (223,086 files / 129,838,692,663 bytes, private ACL kept). Archival only; no runtime, script or configuration reads it. |
 | Independent cube-localization repair input | `C:\NLL\RuntimeInputs\CubeLocale-150-v1` | Two hash-pinned locale inputs for the cold Control Center repair; independent of any client tree. |
 | Common boss registry | `C:\NLL\RuntimeInputs\CommonBossExecution\profiles` | `registry.json` lists seasons 7, 9, 10, 25, 26, 27, 29, 34, 39, 41. Written only by the boss publication step. |
 | 152 native FX baseline and journal | `C:\NLL\RuntimeInputs\CommonBossExecution\native-fx-152.8.11` | Registered once at the 152 installation. Normal launch/cleanup use range transactions; do not rescan the whole store or reset the journal. |
@@ -54,3 +55,5 @@ Account fresh-capture paths for the older Phase C fetch are in [PHASE_C_FRESH_CA
   ([storage audit](archive/stabilization/PROJECT_STORAGE_AUDIT_20260914.md)).
 - Earlier docs said v10's `server\cache` was a junction to v9. On 2026-09-27 it is a regular directory; the
   v9/v10 dependency is the manifest parent pin above.
+- The finished migration staging moved from C: to D: on 2026-10-03 after every file's SHA-256 matched
+  (C: free 30.6 → 145.9 GiB). Records are in the Git-ignored `artifacts/storage-cleanup-20261001/`.
