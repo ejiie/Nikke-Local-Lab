@@ -8,6 +8,14 @@
 
 - **실행 환경**: 공식 152.8.11을 봉인한 `NIKKE-152.8.11-ResourceProbe`와 `PhaseD152-v1` runtime을 사용합니다.
   151 client는 D:에 보관했습니다([경로 권위](MICRON_CURRENT_PATHS.md)).
+- **152.8.13 업데이트(2026-10-16, 설치 대기)**: `E:\NIKKE`를 `NIKKE-152.8.13-ResourceProbe`로 봉인하고(1,132개 파일),
+  `PhaseD152-v2`(서버 upstream `17eb33f` 버전 파일, 서명 검증한 StaticData `566822`)를 봉인했습니다. 등록 보스 11개를
+  공통 파이프라인으로 재조립했고, 설치 후보(설정·레지스트리·DB 등록 계획·앱 배포 계획)는 Git 제외
+  `artifacts/apply-152.8.13-20261015/`에 있습니다. 운영자가 관리자 pwsh로 `C:\NLL\Staging\ClientUpdates\tools-152.8.13\run-install-uac.ps1`을
+  실행하면 overlay·방화벽(복제본 6개, 공식 프로그램 15개를 `E:\NIKKE`로)·native FX 기준·DB 등록·선택 전환·앱 배포·
+  전 시즌 준비 검사를 하고, 실패하면 되돌립니다. 리소스 안내 번호는 152.8.13 client 파일·설치 metadata·캐시에서 얻을 수
+  없었고 CDN `latest-655.txt`는 설치 publication과 달랐습니다. 첫 실행의 4/7 요청을 `supply_guidance.ps1`로 받아
+  공급·재봉인합니다. 152.8.11 client 보관(D:)은 실게임 확인 뒤 합니다.
 - **운영 DB**: schema V0028. 캐릭터 catalog 202명, 보스 시즌 목록 42개(로컬 자료 기준).
 - **솔로 레이드**: 공통 파이프라인으로 S7·9·10·25·26·27·29·34·39·41을 등록했습니다. S42 조립 수정은 2026-09-30에
   설치했고 운영자의 조립 요청 전입니다([보스 파이프라인](features/BOSS_PIPELINE.md)).
