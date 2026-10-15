@@ -28,7 +28,7 @@ $spec = [ordered]@{
 if ($MyInvocation.InvocationName -eq '.') { return }
 
 $count = 0
-foreach ($build in @('build_151.8.5', 'build_152.8.11')) {
+foreach ($build in @('build_151.8.5', 'build_152.8.11', 'build_152.8.13')) {
     foreach ($variant in @($false, $true)) {
         $candidate = [ordered]@{}; foreach ($key in $spec.Keys) { $candidate[$key] = $spec[$key] }
         $candidate.clientBuildCode = $build

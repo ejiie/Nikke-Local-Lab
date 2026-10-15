@@ -45,7 +45,7 @@ function New-PhaseDRunnerBundle {
     @{root=(Join-Path $Specification.launchRoot 'tools/runner');sha256=('d'*64)}
 }
 $count=0
-foreach ($build in @('build_151.8.5','build_152.8.11')) {
+foreach ($build in @('build_151.8.5','build_152.8.11','build_152.8.13')) {
     foreach ($variant in @($false,$true)) {
         $expected=[ordered]@{}; foreach ($key in $spec.Keys) { $expected[$key]=$spec[$key] }
         $expected.clientBuildCode=$build
@@ -76,9 +76,9 @@ foreach ($build in @('build_151.8.5','build_152.8.11')) {
         $count++
     }
 }
-Assert-Route ($script:bundleCalls -eq 4)
+Assert-Route ($script:bundleCalls -eq 6)
 $script:rejectBundle=$true; $rejected=$false
 try { $null=& $invokeMapping } catch { $rejected=$_.Exception.Message -ceq 'phase_d_runner_bundle_invalid' }
-Assert-Route ($rejected -and $script:bundleCalls -eq 5) # no fallback or retry
+Assert-Route ($rejected -and $script:bundleCalls -eq 7) # no fallback or retry
 Assert-Route (-not (Test-Path $root))
-'Runner routing: 4 real coordinator mappings, fixed-only engine, retired-template independence and no fallback passed.'
+'Runner routing: 6 real coordinator mappings, fixed-only engine, retired-template independence and no fallback passed.'

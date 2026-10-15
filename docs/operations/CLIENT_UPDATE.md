@@ -30,7 +30,11 @@
    `resourcehosts2`는 upstream처럼 BaseUrl/Version만 돌려줍니다.
 6. **리소스 안내 공급**: 외부 자동 다운로드를 끈 상태이므로 client가 요청하는 `latest-<n>.txt`와 native catalog·서명
    파일을 로컬에서 공급해야 합니다. 152에서는 이 누락으로 첫 실행이 4/7 단계(`DownloadPatch - Initialize failed`)에서
-   멈췄고, 파일 15개를 hash 대조 후 공급해 해소했습니다.
+   멈췄고, 파일 15개를 hash 대조 후 공급해 해소했습니다. 안내 번호 `<n>`은 client가 정합니다. 152.8.13에서는
+   client 파일(`global-metadata.dat`는 0바이트, GameAssembly 내장)·설치 metadata·캐시 어디에도 없었고,
+   `latest-655.txt`는 CDN에 있었지만 publication 7개가 설치본 `.patch_state.json`과 달랐습니다. 번호를 추측해
+   탐색하지 않으며, 일치하는 안내가 없으면 첫 실행 4/7 실패의 Player 로그 요청 주소로 확정한 뒤 그 파일 1개만
+   받습니다. 받은 안내의 publication이 `.patch_state.json`과 모두 일치해야 공급합니다.
 7. **목록·계정 자료**: 운영 DB를 dump한 뒤 기존 importer로 새 불변 캐릭터 catalog snapshot을 추가하고 시즌 목록을
    갱신합니다. 기존 계정 revision·육성·진행도는 바꾸지 않습니다. 새 캐릭터 얼굴 초상화는
    `tools/AccountCollector/raid_portrait_assets.py`를 따로 실행합니다.
@@ -38,8 +42,11 @@
    바뀐 시즌(152에서는 S10·S26·S34)의 과거 기록은 보존하되 새 구성에 자동 상속하지 않습니다.
 9. **native FX 기준 등록**: 새 client의 FX store를 한 번 검증해 별도 baseline/journal
    (`C:\NLL\RuntimeInputs\CommonBossExecution\native-fx-<build>`)에 등록합니다. 이전 버전 journal을 초기화하지 않습니다.
-10. **검증·설치**: 필수 gate, 폐기 PostgreSQL 통합, 저장/복원 검사를 통과한 뒤 새 `PhaseD<build>-v1` bundle을
-    `runtime-selection.private.json`으로 선택합니다. 방화벽의 복제본 규칙 경로를 새 client로 바꿉니다.
+10. **검증·설치**: 새 build 코드는 실행 파일과 복호 StaticData(서명 검증 후 내부 ZIP 전체의 SHA-256) 한 쌍으로
+    허용합니다. 허용 위치는 materializer `RuntimeVersionBinding`·`CommonDeliveryFiles`, `Nll.PhaseDRuntimeBundle.ps1`,
+    `Nll.PhaseDRunnerContract.ps1`, Admin API `PhaseDPreparation`, `LocalBootstrap`입니다. 필수 gate, 폐기 PostgreSQL
+    통합, 저장/복원 검사를 통과한 뒤 새 `PhaseD<major>-v<n>` bundle을 `runtime-selection.private.json`으로
+    선택합니다. 방화벽의 복제본 규칙 경로를 새 client로, 공식 프로그램 규칙을 현재 공식 설치본으로 바꿉니다.
 11. **이전 client 보관**: cold 상태에서 `D:\NikkeLocalLab\Backups\client-<build>-archive-<date>-01`로 복사하고 모든
     파일 hash를 대조한 뒤에만 C: 사본을 제거합니다. 이전 runtime bundle·cache·journal은 남깁니다.
 12. **운영자 실게임 확인**: 로비 진입, 등록 보스 실행, 종료 후 기록 복원을 확인합니다.

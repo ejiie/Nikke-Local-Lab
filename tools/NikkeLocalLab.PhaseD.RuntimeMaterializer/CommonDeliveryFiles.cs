@@ -36,7 +36,7 @@ internal static class CommonDeliveryFiles
   internal static string InstalledStoreBuild(string path)
   {
     path = Plain(path);
-    foreach (var build in new[] { "151.8.5", "152.8.11" })
+    foreach (var build in new[] { "151.8.5", "152.8.11", "152.8.13" })
       if (path.StartsWith(@"C:\NLL\Clients\NIKKE-" + build + @"-ResourceProbe\Unity\com_proximabeta_NIKKE\com.shiftup.patch\", StringComparison.OrdinalIgnoreCase) &&
           path.EndsWith(@"\chunk\store.cdb", StringComparison.OrdinalIgnoreCase)) return build;
     throw new InvalidDataException("phase_d_common_delivery_store_not_admitted");

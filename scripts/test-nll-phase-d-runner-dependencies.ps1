@@ -4,7 +4,7 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.PhaseDRunnerSeal.ps1')
 $original=$spec; $count=0
 try {
-    foreach ($build in @('build_151.8.5','build_152.8.11')) {
+    foreach ($build in @('build_151.8.5','build_152.8.11','build_152.8.13')) {
       foreach ($variant in @($false,$true)) {
         $caseRoot=Join-Path $root "$build-$variant"
         $null=New-Item -ItemType Directory -Path $caseRoot
