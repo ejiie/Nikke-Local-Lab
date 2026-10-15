@@ -179,6 +179,8 @@ if ($env:OS -eq 'Windows_NT') {
         Invoke-Checked $WindowsPowerShell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $ScriptDirectory $test))
     }
     Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-execution-fx-retirement.ps1'))
+    # The client update toolkit validates Windows path authority (C:\NLL, E:\NIKKE).
+    Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'test-nll-client-update-toolkit.ps1'))
     # Preparation resolves Windows runtime paths; before S2 only the Windows job ran this gate.
     Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory 'verify-automation-boss-weakness-variant.ps1'))
 } else {

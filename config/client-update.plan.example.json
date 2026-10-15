@@ -1,0 +1,22 @@
+{
+    "contractId":  "nll/client-update-plan/v1",
+    "build":  "152.8.13",
+    "previousBuild":  "152.8.11",
+    "officialRoot":  "E:\\NIKKE",
+    "stagingRoot":  "C:\\NLL\\Staging\\ClientUpdates\\152.8.13-20261015",
+    "runtimeRoot":  "C:\\NLL\\Runtime\\PhaseD152-v2",
+    "pipelineInputsRoot":  "C:\\NLL\\RuntimeInputs\\BossPipeline\\152.8.13-v1",
+    "workName":  "apply-152.8.13-20261015",
+    "previousSourceManifestPath":  "C:\\NLL\\Staging\\ResourceProbeClones\\\u003cprevious clone uid\u003e\\source.private.json",
+    "upstreamCommit":  "\u003c40-hex upstream EpinelPS commit that updates gameconfig.json/gameversion.json\u003e",
+    "upstreamExcluded":  [
+                             "\u003cupstream feature commits not applied\u003e"
+                         ],
+    "gameConfigPath":  "C:\\NLL\\Staging\\ClientUpdates\\152.8.13-20261015\\upstream-152.8.13.gameconfig.private.json",
+    "gameConfigSha256":  "\u003csha256 of that file\u003e",
+    "staticDataPackPath":  "C:\\NLL\\Staging\\ClientUpdates\\152.8.13-20261015\\StaticData-\u003cversion\u003e.pack",
+    "serverPublishRoot":  "C:\\NLL\\Staging\\ClientUpdates\\152.8.13-20261015\\server-publish",
+    "serverSourceRoot":  "C:\\Users\\nlloperator\\Documents\\Github\\Nikke-Local-Lab\\.external\\EpinelPS-152.8.13-candidate",
+    "localeStagingRoot":  "C:\\NLL\\Staging\\ResourceProbeServerInputs\\\u003cnew uid\u003e",
+    "installationId":  "nll-152.8.13-20261016"
+}
