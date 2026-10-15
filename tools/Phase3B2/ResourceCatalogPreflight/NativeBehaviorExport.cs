@@ -69,7 +69,11 @@ internal static class NativeBehaviorExport
     using var store = new ChunkStoreReader(chunks);
     Require(store.IndexSha256 == indexHash, "index_drift");
     var bundle = Resolve(inner.Connection);
-    Require(bundle == Resolve(embedded.Connection), "catalog_disagreement");
+    var shipped = Resolve(embedded.Connection);
+    var shippedCatalogCode = AddressableFxBinding.ShippedAgreement(
+        [new(shipped.Key, shipped.IsLocal)], [new(bundle.Key, bundle.IsLocal)],
+        key => AddressableFxBinding.ChunkFileExists(outer.Connection, key));
+    Require(shippedCatalogCode is not null, "catalog_disagreement");
     byte[] bytes;
     if (bundle.IsLocal)
     {
@@ -101,7 +105,7 @@ internal static class NativeBehaviorExport
       foreach (var pin in pins) Require(NativeFxExport.HashFile(pin.Path) == pin.Hash, "input_drift");
       Require(NativeFxExport.HashFile(path) == hash, "output_drift");
       return new { contractId = "nll/native-behavior-export/v1", planSha256,
-        statusCode = "offline_payload_bound", bundle = bundle.Key, sha256 = hash, byteLength = bytes.Length,
+        statusCode = "offline_payload_bound", bundle = bundle.Key, sha256 = hash, byteLength = bytes.Length, shippedCatalogCode,
         innerCatalogSha256 = inner.BodySha256, outerCatalogSha256 = outer.BodySha256,
         indexSha256 = indexHash, sourceMutationPerformed = false, nativeClientExecuted = false };
     }

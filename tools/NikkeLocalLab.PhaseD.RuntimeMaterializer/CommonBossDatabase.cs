@@ -24,13 +24,20 @@ internal static class CommonBossDatabase
   internal static async Task<CommonBossRuntimeBinding> AdoptLegacy(string profilePath, string connection) =>
       await Publish(await BossRuntimeVariantProfile.LoadAsync(profilePath), CommonDeliveryFiles.FileHash(profilePath), connection, true);
 
+  // Update equivalence ignores archive origins: the observation source hash and the bundle that carries the
+  // behavior graph change with client builds. The graph and every reference set must still match exactly.
+  internal static BossRuntimeVariantBehaviorAssembly? WithoutBundleOrigin(BossRuntimeVariantBehaviorAssembly? assembly) =>
+      assembly is null ? null : assembly with { BundleByteLength = 0, BundleSha256 = new string('0', 64) };
+
   private static byte[] SourceIdentity(BossRuntimeVariantProfile p, bool includeArchiveOrigin) =>
       SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
       {
         contractId = "nll/common-boss-runtime-source/v1", p.SeasonNumber,
         SelectedManagerObservation = includeArchiveOrigin ? p.SelectedManagerObservation :
             p.SelectedManagerObservation with { SourceObservationSha256 = new string('0', 64) },
-        p.ChallengeSelector, p.SourceAffinity, p.SkillClosure, p.BehaviorAssembly, p.QuickTimeEventAffinity
+        p.ChallengeSelector, p.SourceAffinity, p.SkillClosure,
+        BehaviorAssembly = includeArchiveOrigin ? p.BehaviorAssembly : WithoutBundleOrigin(p.BehaviorAssembly),
+        p.QuickTimeEventAffinity
       })));
 
   private static async Task<CommonBossRuntimeBinding> Publish(BossRuntimeVariantProfile p, string candidateHash, string connection,

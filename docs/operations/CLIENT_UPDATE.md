@@ -39,7 +39,11 @@
    갱신합니다. 기존 계정 revision·육성·진행도는 바꾸지 않습니다. 새 캐릭터 얼굴 초상화는
    `tools/AccountCollector/raid_portrait_assets.py`를 따로 실행합니다.
 8. **등록 보스 재조립**: 기존 보스를 공통 조립기로 새 원본에서 다시 만들고 5약점 준비를 검사합니다. 전투 입력이
-   바뀐 시즌(152에서는 S10·S26·S34)의 과거 기록은 보존하되 새 구성에 자동 상속하지 않습니다.
+   바뀐 시즌(152에서는 S10·S26·S34)의 과거 기록은 보존하되 새 구성에 자동 상속하지 않습니다. 행동 그래프와 참조
+   집합이 같고 그것을 담은 bundle만 바뀐 경우는 같은 전투 입력으로 봅니다. 152.8.13에서는 출하 catalog
+   (`aa/catalog.db`)와 패치 core catalog가 행동 bundle을 다르게 가리켰고 출하본 쪽 bundle은 설치된 chunk catalog에
+   없었습니다. 출하본에만 있는 의존 bundle이 모두 원격이고 설치본에서 공급할 수 없을 때만 패치 catalog를 채택하며
+   (`shippedCatalogCode=superseded_unsuppliable`), 그 밖의 불일치는 계속 거부합니다.
 9. **native FX 기준 등록**: 새 client의 FX store를 한 번 검증해 별도 baseline/journal
    (`C:\NLL\RuntimeInputs\CommonBossExecution\native-fx-<build>`)에 등록합니다. 이전 버전 journal을 초기화하지 않습니다.
 10. **검증·설치**: 새 build 코드는 실행 파일과 복호 StaticData(서명 검증 후 내부 ZIP 전체의 SHA-256) 한 쌍으로

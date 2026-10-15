@@ -84,6 +84,25 @@ internal static class AddressableFxBinding
     return new(assetKey, rows.ToArray());
   }
 
+  // The installed client resolves bundles through the patched (inner) catalog that the chunk catalog links. The
+  // shipped (embedded) catalog either agrees, or is superseded only when nothing installed can load its choice:
+  // every bundle it alone names is remote and absent from the chunk catalog. Other disagreement returns null.
+  internal static string? ShippedAgreement(IReadOnlyList<Dependency> shipped, IReadOnlyList<Dependency> patched,
+      Func<string, bool> chunkFileExists)
+  {
+    if (shipped.SequenceEqual(patched)) return "agrees";
+    return shipped.Where(dependency => !patched.Contains(dependency))
+        .All(dependency => !dependency.IsLocal && !chunkFileExists(dependency.Key)) ? "superseded_unsuppliable" : null;
+  }
+
+  internal static bool ChunkFileExists(SqliteConnection db, string key)
+  {
+    using var command = db.CreateCommand();
+    command.CommandText = "SELECT COUNT(*) FROM files_chunktype WHERE key=$key COLLATE BINARY";
+    command.Parameters.AddWithValue("$key", key);
+    return (long)command.ExecuteScalar()! > 0;
+  }
+
   internal static byte[] Assemble(SqliteConnection db, string key, Func<string, int, int, byte[]> read)
   {
     using var command = db.CreateCommand();
