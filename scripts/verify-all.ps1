@@ -196,7 +196,8 @@ foreach ($test in @(
     'test-nll-control-center-delivery.ps1',
     'test-nll-native-fx-managed-driver.ps1',
     'test-nll-user-validation-controller.ps1',
-    'test-nll-native-fx-managed-service.ps1'
+    'test-nll-native-fx-managed-service.ps1',
+    'test-nll-resource-voice-selection.ps1'
 )) {
     Invoke-Checked pwsh @('-NoProfile', '-File', (Join-Path $ScriptDirectory $test))
 }

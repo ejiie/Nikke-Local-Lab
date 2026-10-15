@@ -17,6 +17,16 @@ function Get-NllResourcePreflightToolSetSha256 {
     finally { $hasher.Dispose() }
 }
 
+function ConvertTo-NllVoiceResourceSelection([string]$Locale, [string]$DownloadType) {
+    # A new enum spelling must be measured, not silently treated as Full/Minimal or absence of audio.
+    # 'None' was measured on 2026-10-16 from the official client after choosing not to install character
+    # voice: voiceLocale "None" while voiceDownloadType keeps its previous value (Minimal).
+    if ($Locale -cnotin @('en','ko','ja','None') -or $DownloadType -cnotin @('Minimal','Full')) {
+        throw 'phase_d_resource_voice_selection_unresolved'
+    }
+    [pscustomobject]@{ language = $Locale.ToLowerInvariant(); scope = $DownloadType.ToLowerInvariant() }
+}
+
 function Get-NllVoiceResourceSelection {
     # Only the two proven PlayerPrefs fields. Never enumerate or serialize the
     # rest of the key, which may contain unrelated private settings.
@@ -32,13 +42,7 @@ function Get-NllVoiceResourceSelection {
             }
             $values += [string]$value
         }
-        if ($values[0] -cnotin @('en','ko','ja') -or
-            $values[1] -cnotin @('Minimal','Full')) {
-            # A new enum spelling must be measured, not silently treated as
-            # Full/Minimal or absence of audio.
-            throw 'phase_d_resource_voice_selection_unresolved'
-        }
-        [pscustomobject]@{ language = $values[0]; scope = $values[1].ToLowerInvariant() }
+        ConvertTo-NllVoiceResourceSelection $values[0] $values[1]
     }
     finally { $key.Dispose() }
 }
