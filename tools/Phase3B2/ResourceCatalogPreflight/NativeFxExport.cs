@@ -64,7 +64,9 @@ internal static class NativeFxExport
         AddressableFxBinding.Require(role is "electric" or "water" or "fire" or "wind" or "iron" && roles.Add(role) && keys.Add(key), "roles_invalid");
         var first = AddressableFxBinding.Resolve(embedded.Connection, key);
         var second = AddressableFxBinding.Resolve(inner.Connection, key);
-        AddressableFxBinding.Require(first.Dependencies.SequenceEqual(second.Dependencies), "catalog_disagreement");
+        var shippedCatalogCode = AddressableFxBinding.ShippedAgreement(first.Dependencies, second.Dependencies,
+            dependencyKey => AddressableFxBinding.ChunkFileExists(outer.Connection, dependencyKey));
+        AddressableFxBinding.Require(shippedCatalogCode is not null, "catalog_disagreement");
         var dependencies = new List<object>();
         foreach (var dependency in second.Dependencies)
         {
@@ -91,7 +93,7 @@ internal static class NativeFxExport
           }
           finally { CryptographicOperations.ZeroMemory(bytes); }
         }
-        bindings.Add(new { role, assetKey = key, dependencies });
+        bindings.Add(new { role, assetKey = key, dependencies, shippedCatalogCode });
       }
       // Recheck pinned inputs before any output; no folder exists on a failed binding.
       foreach (var input in inputs) AddressableFxBinding.Require(HashFile(input.Path) == input.Hash, "input_drift");

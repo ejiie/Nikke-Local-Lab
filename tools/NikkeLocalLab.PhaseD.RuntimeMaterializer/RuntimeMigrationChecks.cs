@@ -26,6 +26,16 @@ internal static class RuntimeMigrationChecks
       catch (InvalidOperationException) { rejected = true; }
       Check(rejected);
     }
+    // A client update may move the same behavior graph into another bundle; any graph or reference change still differs.
+    var assembly = new BossRuntimeVariantBehaviorAssembly("preserve_exact_external_behavior_tree", 1, new string('1', 64),
+        "resolved", 2415189, new string('2', 64), 1, 924, new string('3', 64), new string('4', 64), new string('5', 64),
+        new string('6', 64), new string('7', 64));
+    var moved = assembly with { BundleByteLength = 26126416, BundleSha256 = new string('8', 64) };
+    Check(CommonBossDatabase.WithoutBundleOrigin(assembly) == CommonBossDatabase.WithoutBundleOrigin(moved));
+    Check(CommonBossDatabase.WithoutBundleOrigin(assembly) != CommonBossDatabase.WithoutBundleOrigin(moved with { NodeCount = 925 }));
+    Check(CommonBossDatabase.WithoutBundleOrigin(assembly) !=
+        CommonBossDatabase.WithoutBundleOrigin(moved with { CanonicalGraphSha256 = new string('9', 64) }));
+    Check(CommonBossDatabase.WithoutBundleOrigin(null) is null);
     var user = new User { LastNormalStageCleared = 123, LastStoryStageCleared = 122, CompletedScenarios = ["synthetic-completed"] };
     var before = RuntimeProgressionSnapshot.Capture(user);
     var roundTrip = JsonConvert.DeserializeObject<User>(JsonConvert.SerializeObject(user))!;

@@ -131,6 +131,31 @@ public sealed class AddressableFxBindingTests : IDisposable
   }
 
   [Fact]
+  public void ChunkFileLookupIsExactAndCaseSensitive()
+  {
+    Assert.True(AddressableFxBinding.ChunkFileExists(db, "synthetic-current.bundle"));
+    Assert.False(AddressableFxBinding.ChunkFileExists(db, "Synthetic-current.bundle"));
+    Assert.False(AddressableFxBinding.ChunkFileExists(db, "synthetic-shipped.bundle"));
+  }
+
+  [Fact]
+  public void ShippedCatalogAgreesOrIsSupersededOnlyByUnsuppliableRemoteBundles()
+  {
+    AddressableFxBinding.Dependency Remote(string key) => new(key, false);
+    AddressableFxBinding.Dependency Local(string key) => new(key, true);
+    bool Installed(string key) => AddressableFxBinding.ChunkFileExists(db, key);
+    var patched = new[] { Remote("synthetic-current.bundle"), Local("synthetic-local.bundle") };
+    Assert.Equal("agrees", AddressableFxBinding.ShippedAgreement(patched, patched, Installed));
+    // The shipped build named a bundle that the installed chunk catalog no longer carries.
+    Assert.Equal("superseded_unsuppliable", AddressableFxBinding.ShippedAgreement(
+        [Remote("synthetic-shipped.bundle"), Local("synthetic-local.bundle")], patched, Installed));
+    // Still loadable shipped choices keep the disagreement ambiguous.
+    Assert.Null(AddressableFxBinding.ShippedAgreement([Remote("synthetic-other.bundle"), Local("synthetic-local.bundle")], patched, Installed));
+    Assert.Null(AddressableFxBinding.ShippedAgreement([Remote("synthetic-current.bundle"), Local("synthetic-shipped.bundle")], patched, Installed));
+    Assert.Null(AddressableFxBinding.ShippedAgreement([Local("synthetic-current.bundle"), Local("synthetic-local.bundle")], patched, Installed));
+  }
+
+  [Fact]
   public void ShortDecodedChunkCannotPass()
     => Assert.Throws<PreflightException>(() => AddressableFxBinding.Assemble(db, "synthetic-current.bundle", (_, _, _) => [0]));
 
