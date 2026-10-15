@@ -1,13 +1,14 @@
 # Micron current path authority
 
-Verified against the filesystem on 2026-09-27. Update this file whenever a selection pointer, client lane or
-backup location changes; older receipts keep their historical paths.
+Verified against the filesystem on 2026-09-27; official install row updated 2026-10-15. Update this file whenever a
+selection pointer, client lane or backup location changes; older receipts keep their historical paths.
 
 ## Current host
 
 The active project OS is the Micron Windows installation and the operator profile is `C:\Users\nlloperator`.
-Samsung remains a separately bootable general-purpose/game OS; its mounted `E:` volume is not an input or runtime
-dependency of the Micron project lane.
+Samsung remains a separately bootable general-purpose/game OS. On 2026-10-15 the operator designated the official
+installation on its `E:` volume (`E:\NIKKE`) as the official-current source for Micron; `C:\NIKKE` no longer exists.
+Nothing else on `E:` is an input or runtime dependency of the Micron project lane.
 
 Operator clarification on 2026-09-05: Micron **already is the separate experimental OS** for this compatibility lane.
 Do not repeatedly request designation of Micron as an experimental OS. Per-run recovery, exact client/runtime pins,
@@ -18,7 +19,7 @@ a particular run passed those gates.
 
 | Role | Exact path | Mutation authority |
 |---|---|---|
-| Official current NIKKE installation | `C:\NIKKE` | The official launcher installs and updates it. Local Lab/EpinelPS tools may read approved inputs but must not patch it or use it as a private-server execution target. |
+| Official current NIKKE installation | `E:\NIKKE` | Operator designation 2026-10-15 (`C:\NIKKE` was removed). The official launcher (`E:\NIKKE\Launcher`) installs and updates it. Local Lab/EpinelPS tools may read approved inputs and copy it into a new sealed clone, but must not patch it or use it as a private-server execution target. Its programs are the shared block-only firewall targets. |
 | Selected client | `C:\NLL\Clients\NIKKE-152.8.11-ResourceProbe` | Sealed 2026-09-17 (1,082 files / 20,890,819,394 bytes). The approved Epinel DLL and client-local certificate overlay are applied only to this clone. |
 | Selected runtime bundle | `C:\NLL\Runtime\PhaseD152-v1` | Selected by `C:\NLL\ControlCenter\runtime-selection.private.json`. Current manifest `bundle.private.json` SHA-256 `2596c8b74616bcac688a34d5120f58ffe615a6b74669a754b097bf583731f091` (2026-09-30 boss pipeline install); each install re-seals it, so match the latest installation receipt rather than an older hash. |
 | Retained 151 runtime bundles | `C:\NLL\Runtime\PhaseD151-v10`, `C:\NLL\Runtime\PhaseD151-v9` | Not selected. `PhaseD152-v1` pins v10 as `parentManifest`, and v10 pins v9, so neither may be deleted. A 151 rollback also needs the 151 client restored from D: and matching app/registry/pipeline/firewall selection. |
@@ -36,9 +37,9 @@ a particular run passed those gates.
 | Active repository | `C:\Users\nlloperator\Documents\Github\Nikke-Local-Lab` | Normal source workspace. |
 | Operator launcher | Desktop `NLL 지휘관 관리 도구.lnk` | The repair/smoke launcher source is `scripts/NLL-Phase-D-Repair-And-Smoke.cmd`; its former Desktop copy is absent. |
 | Recovery backups | `D:\NikkeLocalLab\Backups` | Backup/Golden/checkpoint storage, not an active runtime. |
-| Samsung-mounted game installation | `E:\NIKKE` | Out of scope on Micron. Do not read, update, copy from, or bind scripts to it. |
+| Former official installation | `C:\NIKKE` (absent) | Removed before 2026-10-15. Older receipts and the 152.8.11 firewall rules name it; it is provenance only. |
 
-`C:\NIKKE` is **mutable official-current**, not the immutable Local Lab baseline. Immutability belongs to a separately
+`E:\NIKKE` is **mutable official-current**, not the immutable Local Lab baseline. Immutability belongs to a separately
 named, version/hash-sealed copy under `C:\NLL\Clients`. An official update is a new candidate; follow the
 [client update order](operations/CLIENT_UPDATE.md) and never silently repoint an existing lane or receipt.
 Account fresh-capture paths for the older Phase C fetch are in [PHASE_C_FRESH_CAPTURE_PATHS](operations/PHASE_C_FRESH_CAPTURE_PATHS.md).

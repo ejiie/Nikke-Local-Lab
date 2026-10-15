@@ -10,7 +10,7 @@
 
 ## 저장소에 들어갈 수 없는 것
 
-- `C:\NIKKE`의 파일 복사본
+- 공식 설치본(`E:\NIKKE`, 이전 `C:\NIKKE`)의 파일 복사본
 - MPK, NKDB, NKAB, UnityFS, bundle, catalog, localization 원문
 - 복호·디코드 JSON, StaticData ZIP, 이미지, 음성, 영상, 애니메이션
 - 실제 캐릭터/몬스터/스킬 데이터 dump
@@ -36,7 +36,7 @@
 `%LOCALAPPDATA%\NikkeLocalLab\{data,database,vault,cache,logs,secrets,staging,compatibility}` 구조는 현재 만들어져
 있지 않으며 위 위치가 실제 운영 경로입니다. 원본 내용·계정 raw·비밀을 저장소 추적 경로에 두지 않는 규칙은 같습니다.
 
-Micron `C:\NIKKE`는 공식 launcher가 설치·업데이트하는 mutable official-current source입니다. Local Lab importer는 여기에서 읽을 수 있지만 쓰기 capability를 갖지 않으며, EpinelPS/private-server 실험은 이 경로를 수정하거나 실행 대상으로 삼지 않습니다. 재현성·실험용 client는 저장소 밖의 `C:\NLL\Clients\NIKKE-<build>-*`에 별도 version/hash로 봉인합니다. 현재 실제 경로와 Samsung 배제 규칙은 [MICRON_CURRENT_PATHS.md](MICRON_CURRENT_PATHS.md)를 따릅니다.
+Micron의 공식 설치본 `E:\NIKKE`(2026-10-15 운영자 지정, 이전 `C:\NIKKE`는 제거됨)는 공식 launcher가 설치·업데이트하는 mutable official-current source입니다. Local Lab importer는 여기에서 읽을 수 있지만 쓰기 capability를 갖지 않으며, EpinelPS/private-server 실험은 이 경로를 수정하거나 실행 대상으로 삼지 않습니다. 재현성·실험용 client는 저장소 밖의 `C:\NLL\Clients\NIKKE-<build>-*`에 별도 version/hash로 봉인합니다. 현재 실제 경로와 Samsung 배제 규칙은 [MICRON_CURRENT_PATHS.md](MICRON_CURRENT_PATHS.md)를 따릅니다.
 
 Phase 3 modified-local 연구에서 허용되는 변경 대상은 **disposable VM/별도 OS와 그 안의 client copy**뿐입니다. 단순 디렉터리 복제본은 host system trust를 격리하지 못합니다. 다음 변경은 [PHASE3AR.md](contracts/PHASE3AR.md)에 고정된 EpinelPS commit과 exact client build를 대상으로 사전 검토한 경우에만 허용합니다.
 
@@ -44,7 +44,7 @@ Phase 3 modified-local 연구에서 허용되는 변경 대상은 **disposable V
 - disposable VM/OS 안에서만 root CA trust 변경; client-local certificate bundle은 복제본에도 적용 가능
 - 검토·hash 고정한 native compatibility shim 교체
 
-각 변경은 적용 전에 frozen lane 원래 byte의 SHA-256과 backup 위치, 적용 byte의 SHA-256, 적용 순서와 rollback 순서를 manifest에 기록합니다. 실행 종료 또는 실패 뒤에는 rollback을 검증하고 공식-current `C:\NIKKE`가 Local Lab에 의해 변경되지 않았음을 다시 확인합니다. backup, certificate/private key, shim binary, patched output, client snapshot과 상세 original member manifest는 Git·CI·remote에 넣지 않습니다.
+각 변경은 적용 전에 frozen lane 원래 byte의 SHA-256과 backup 위치, 적용 byte의 SHA-256, 적용 순서와 rollback 순서를 manifest에 기록합니다. 실행 종료 또는 실패 뒤에는 rollback을 검증하고 공식-current 설치본(`E:\NIKKE`)이 Local Lab에 의해 변경되지 않았음을 다시 확인합니다. backup, certificate/private key, shim binary, patched output, client snapshot과 상세 original member manifest는 Git·CI·remote에 넣지 않습니다.
 
 EpinelPS는 Local Lab repository에 vendor하지 않고 기본적으로 별도 local checkout/process로 둡니다. 검토 기준은 `28b2f5413a0a1e3521a11ae162f91851335c8b40`이며 다른 commit이나 prebuilt binary로 바뀌면 새 provenance/hash 검토가 필요합니다. 공개 source의 존재는 기술적 prior art일 뿐 Shift Up의 승인 증거가 아니며, EpinelPS source를 복사·수정·배포하는 선택은 AGPL-3.0 의무를 별도로 검토해야 합니다.
 
@@ -71,7 +71,7 @@ runtime cache 또는 DB를 덮어쓰지 않습니다. 저장소에는 역할·�
 
 직접 작성한 source·계약·문서·합성 fixture는 사용자 소유 private GitHub repository에 저장할 수 있습니다. push 전에 working/staged/tracked 정책 검사를 통과해야 합니다.
 
-private remote도 제3자 저장소라는 점은 변하지 않습니다. 따라서 로컬 전용 금지 데이터는 암호화 여부와 관계없이 commit, Actions artifact, cache, log, release에 올리지 않습니다. Actions runner는 `C:\NIKKE`나 로컬 runtime root에 접근하지 않습니다.
+private remote도 제3자 저장소라는 점은 변하지 않습니다. 따라서 로컬 전용 금지 데이터는 암호화 여부와 관계없이 commit, Actions artifact, cache, log, release에 올리지 않습니다. Actions runner는 공식 설치본(`E:\NIKKE`)이나 로컬 runtime root에 접근하지 않습니다.
 
 ## 배포 경계
 

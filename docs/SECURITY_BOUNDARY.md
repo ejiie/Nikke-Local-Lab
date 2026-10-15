@@ -19,7 +19,7 @@
 - live 공식 traffic의 가로채기, credential-bearing capture 또는 공식 session/request replay
 - 게임 프로세스 메모리 읽기·쓰기, 코드 주입, 후킹
 - 주 설치본 또는 공식 서비스 접속을 위한 anti-cheat/launcher/publisher 보호 기능의 우회·무력화
-- Local Lab/EpinelPS에 의한 공식-current `C:\NIKKE`, 공식 account state 또는 공식 진행도의 수정
+- Local Lab/EpinelPS에 의한 공식-current 설치본(2026-10-15부터 `E:\NIKKE`), 공식 account state 또는 공식 진행도의 수정
 - manifest에 없는 native binary, certificate 또는 prebuilt selector의 실행
 - public/LAN bind, internet port forwarding 또는 제3자 접속
 - Local Lab, EpinelPS fork, client/asset, certificate, selector 또는 patched binary의 배포
@@ -155,7 +155,7 @@ loopback 서버, 합성 계정, 실행 제한 시간, 사전 backup/pin과 종�
 - 이 승인은 새 client 버전에서 DLL 내장 로직이 동작한다는 증거가 아닙니다. 버전별 호환성과 실행 성공은 해당 버전의
   설치 검사와 운영자 실게임 확인으로 따로 판정합니다.
 
-공식-current `C:\NIKKE`와 공식 계정 경로는 modified-local 연결 대상이 아닙니다. `C:\NIKKE`는 공식 launcher update와 운영자 fresh capture에는 사용할 수 있지만 Local Lab/EpinelPS server에 연결하지 않습니다. 원본 client compatibility 실험은 [PHASE3AR.md](contracts/PHASE3AR.md)의 승인 lane과 별도 version/hash 봉인 client를 사용합니다. 현재 Micron 경로 권위는 [MICRON_CURRENT_PATHS.md](MICRON_CURRENT_PATHS.md)를 따릅니다. lab-owned test harness는 backend 계약 검사 도구이고 최종 인수 조건을 대체하지 않습니다.
+공식-current 설치본(2026-10-15 운영자 지정 `E:\NIKKE`, 이전 `C:\NIKKE`는 제거됨)과 공식 계정 경로는 modified-local 연결 대상이 아닙니다. 이 설치본은 공식 launcher update, 운영자 fresh capture와 새 버전 봉인 복제의 읽기 원본에는 사용할 수 있지만 Local Lab/EpinelPS server에 연결하지 않습니다. 원본 client compatibility 실험은 [PHASE3AR.md](contracts/PHASE3AR.md)의 승인 lane과 별도 version/hash 봉인 client를 사용합니다. 현재 Micron 경로 권위는 [MICRON_CURRENT_PATHS.md](MICRON_CURRENT_PATHS.md)를 따릅니다. lab-owned test harness는 backend 계약 검사 도구이고 최종 인수 조건을 대체하지 않습니다.
 
 Phase 3A의 `blocked_insufficient_evidence`는 당시 rights-holder-approved route 정책 아래의 유효한 역사적 판정입니다. 공개 EpinelPS prior art와 운영자의 local-only risk 결정은 그 판정을 삭제하거나 `ready_for_phase3b`로 바꾸지 않습니다. 대신 modified-local lane을 별도로 열며, 공개 저장소를 Shift Up의 승인·묵인 증거로 해석하지 않습니다. 권리자 승인은 `not_claimed`, 법적 상태는 `not_determined`입니다.
 
@@ -266,7 +266,7 @@ tree 외부 통신 차단, local trust와 rollback 검증을 준비하고 필요
 
 ## Phase 1A source 보장 범위
 
-`C:\NIKKE` 자체 ACL은 동일 사용자 프로세스의 모든 쓰기를 차단하지 않습니다. Phase 1A의 보장은 OS 전체 불변이 아니라 다음 capability 경계입니다.
+공식 설치본(`E:\NIKKE`) 자체 ACL은 동일 사용자 프로세스의 모든 쓰기를 차단하지 않습니다. Phase 1A의 보장은 OS 전체 불변이 아니라 다음 capability 경계입니다.
 
 - source adapter는 `FileMode.Open`과 `FileAccess.Read`만 사용하고 쓰기 API를 노출하지 않습니다.
 - rooted path, traversal, UNC/device path, ADS, source/repository/runtime overlap을 거부합니다.

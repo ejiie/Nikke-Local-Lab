@@ -22,7 +22,7 @@
 [UI 소스·WebView2 shell·로컬 이미지 분리 안내](docs/ARCHITECTURE.md#관리도구-ui-재사용)를
 확인합니다. 이 저장소는 소스 게시본이며 게임 이미지·계정 데이터·설치 실행 파일은 포함하지 않습니다.
 
-`C:\NIKKE`는 공식 launcher가 관리하는 설치본이며 Local Lab 실행·변경 대상이 아닙니다.
+`E:\NIKKE`(2026-10-15부터, 이전 `C:\NIKKE`)는 공식 launcher가 관리하는 설치본이며 Local Lab 실행·변경 대상이 아닙니다.
 검증된 Epinel DLL과 별도 봉인한 로컬 client lane을 유지합니다.
 게임 원본·asset·DB·실계정 raw·비밀 정보는 Git에 넣지 않습니다.
 세부 범위와 허용 조건은 [SCOPE](docs/SCOPE.md), [보안](docs/SECURITY_BOUNDARY.md),

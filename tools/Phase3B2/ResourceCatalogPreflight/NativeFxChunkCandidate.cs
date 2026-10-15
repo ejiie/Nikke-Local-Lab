@@ -157,7 +157,7 @@ internal static class NativeFxChunkCandidate
     Require(!Directory.Exists(destination) && !File.Exists(destination) && Directory.Exists(Path.GetDirectoryName(destination)),
         "output_exists_or_parent_missing");
     foreach (var boundary in pins.Keys.Select(path => Path.GetDirectoryName(path)!).Append(sourceRoot).Append(layoutRoot)
-        .Append(chunks).Append(@"C:\NLL").Append(@"C:\NIKKE"))
+        .Append(chunks).Append(@"C:\NLL").Append(@"C:\NIKKE").Append(@"E:\NIKKE"))
     {
       var prefix = Path.GetFullPath(boundary).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
       var outputPrefix = destination.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;

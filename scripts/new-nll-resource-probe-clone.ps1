@@ -4,6 +4,8 @@ param(
     [ValidatePattern('^[0-9a-f]{64}$')][string]$ExpectedExecutableSha256,
     [ValidatePattern('^[0-9a-f]{64}$')][string]$ExpectedAssemblySha256,
     [ValidatePattern('^[0-9a-f]{64}$')][string]$ExpectedPlanSha256,
+    # Official install designated by the operator on 2026-10-15 (C:\NIKKE no longer exists).
+    [ValidateSet('E:\NIKKE')][string]$SourceRoot = 'E:\NIKKE',
     [switch]$ExecuteApprovedClone
 )
 
@@ -93,7 +95,7 @@ function Write-NllCloneNewJson([string]$Path, [object]$Value) {
 # Import only the pure/read-only helpers for synthetic tests.
 if ($MyInvocation.InvocationName -eq '.') { return }
 Assert-NllClone ($PSVersionTable.PSVersion.Major -ge 7) 'powershell7_required'
-$sourceRoot = 'C:\NIKKE'
+$sourceRoot = $SourceRoot
 $destinationRoot = 'C:\NLL\Clients\NIKKE-' + $Build + '-ResourceProbe'
 Assert-NllCloneNoReparse $sourceRoot
 Assert-NllCloneNoReparse $destinationRoot

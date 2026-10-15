@@ -64,7 +64,8 @@ internal static class BossSeasonCatalog
     outputRoot = Path.GetFullPath(outputRoot);
     Require(!Directory.Exists(outputRoot) && !File.Exists(outputRoot), "output_exists");
     foreach (var path in new[] { outputRoot, staticPack, localeRoot }) Plain(path);
-    Require(!outputRoot.StartsWith(@"C:\NIKKE", StringComparison.OrdinalIgnoreCase), "official_path_forbidden");
+    Require(!outputRoot.StartsWith(@"C:\NIKKE", StringComparison.OrdinalIgnoreCase) &&
+        !outputRoot.StartsWith(@"E:\NIKKE", StringComparison.OrdinalIgnoreCase), "official_path_forbidden");
     var packHash = Hash(staticPack);
     Require(packHash == expectedPackSha256, "input_drifted");
     var locales = ReadLocales(localeRoot, allowEmptyLocales);

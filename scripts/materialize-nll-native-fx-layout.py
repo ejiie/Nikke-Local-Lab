@@ -156,7 +156,7 @@ def stage(source, source_sha256, output, unity, decompress):
             and source not in output.parents and output not in source.parents, "output_invalid")
     if sys.platform == "win32":
         require(all(p != output and p not in output.parents and output not in p.parents
-                    for p in (Path("C:/NLL"), Path("C:/NIKKE"))), "output_protected")
+                    for p in (Path("C:/NLL"), Path("C:/NIKKE"), Path("E:/NIKKE"))), "output_protected")
     pins = {}
 
     def read(path, pin):

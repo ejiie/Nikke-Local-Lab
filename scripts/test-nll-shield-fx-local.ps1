@@ -16,7 +16,8 @@ Require ((Hash $BundlePath) -ceq $ExpectedBundleSha256) 'shield_fx_local_bundle_
 $bundle = Get-Content -LiteralPath $BundlePath -Raw | ConvertFrom-Json
 Require ($bundle.contractId -ceq 'nll/phase-d-runtime-bundle/v1') 'shield_fx_local_bundle_invalid'
 $cache = Join-Path ([IO.Path]::GetFullPath([string]$bundle.serverRoot)) 'cache'
-Require (-not $cache.StartsWith('C:\NIKKE', [StringComparison]::OrdinalIgnoreCase)) 'shield_fx_local_official_path_rejected'
+Require (-not $cache.StartsWith('C:\NIKKE', [StringComparison]::OrdinalIgnoreCase) -and
+    -not $cache.StartsWith('E:\NIKKE', [StringComparison]::OrdinalIgnoreCase)) 'shield_fx_local_official_path_rejected'
 foreach ($pin in $bundle.files) {
     Require ((Hash $pin.path) -ceq $pin.sha256 -and
         (Get-Item -LiteralPath $pin.path).Length -eq $pin.length) 'shield_fx_local_bundle_file_drifted'

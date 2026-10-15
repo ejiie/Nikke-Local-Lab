@@ -21,7 +21,8 @@ function Get-RnPin([string]$Path) {
     [ordered]@{path=[IO.Path]::GetFullPath($Path);length=(Get-Item -LiteralPath $Path).Length;sha256=(Get-RnHash $Path)}
 }
 function Get-RnBlockOnlyProgramPaths {
-    $paths=@(Get-ChildItem -LiteralPath 'C:\NIKKE' -Recurse -File -Filter '*.exe' | Select-Object -ExpandProperty FullName)
+    # Official install root since the operator's 2026-10-15 designation (C:\NIKKE was removed).
+    $paths=@(Get-ChildItem -LiteralPath 'E:\NIKKE' -Recurse -File -Filter '*.exe' | Select-Object -ExpandProperty FullName)
     foreach ($service in @(Get-CimInstance Win32_Service | Where-Object {$_.Name -match '^(ACE|AntiCheat|TQM)' -or $_.PathName -match 'AntiCheatExpert|TQM64|NIKKE'})) {
         Assert-Rn ($service.State -ceq 'Stopped') 'related_service_running'
         $match=[regex]::Match($service.PathName,'^(?:"(?<exe>[^"]+\.exe)"|(?<exe>\S+\.exe))(?:\s|$)','IgnoreCase')
@@ -87,7 +88,8 @@ function Get-RnBlockedProgramObservations([string[]]$PinnedPaths,[object[]]$Proc
         }
         Assert-Rn ($index -ge 0 -and $entry.ProcessId -gt 0) 'blocked_program_identity_invalid'
         [ordered]@{programIndex=$index
-            role=$(if ($PinnedPaths[$index].StartsWith('C:\NIKKE\',[StringComparison]::OrdinalIgnoreCase)) {'official_install_program'} else {'installed_related_service'})
+            role=$(if ($PinnedPaths[$index].StartsWith('C:\NIKKE\',[StringComparison]::OrdinalIgnoreCase) -or
+                $PinnedPaths[$index].StartsWith('E:\NIKKE\',[StringComparison]::OrdinalIgnoreCase)) {'official_install_program'} else {'installed_related_service'})
             processId=$entry.ProcessId;parentProcessId=$entry.ParentProcessId
             createdAtUtc=$entry.CreationDate.ToUniversalTime()}
     }

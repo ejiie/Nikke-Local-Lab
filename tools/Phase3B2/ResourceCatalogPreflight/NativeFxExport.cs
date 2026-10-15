@@ -100,7 +100,7 @@ internal static class NativeFxExport
       AddressableFxBinding.Require(!Directory.Exists(destination) && !File.Exists(destination) &&
           Directory.Exists(Path.GetDirectoryName(destination)), "output_exists_or_parent_missing");
       foreach (var boundary in inputs.Select(item => Path.GetDirectoryName(item.Path)!).Append(chunks).Append(local)
-          .Append(@"C:\NIKKE").Append(@"C:\NLL"))
+          .Append(@"C:\NIKKE").Append(@"E:\NIKKE").Append(@"C:\NLL"))
       {
         var prefix = Path.GetFullPath(boundary).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         AddressableFxBinding.Require(!destination.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
