@@ -79,10 +79,13 @@
     1회 받아 publication 7개가 복제본 `.patch_state.json`과 같을 때만 쓰고, 다르면 복제본에서 만든 로컬 안내를 씁니다
     (2026-10-16 운영자 결정). 안내와 catalog 14개를 bundle 캐시에 두고 bundle·선택 포인터를 다시 봉인합니다. 관리 도구를
     다시 연 뒤 실행합니다.
-11. **음성**: 음성 언어·다운로드 범위는 공식 client와 같은 `HKCU\Software\com.proximabeta\NIKKE`의 `voiceLocale_*`·
-    `voiceDownloadType_*`입니다. 복제본에 그 언어 그룹(예 `Ko_Required`)이 없으면 매 실행 다운로드 안내가 뜨고, NLL은 외부
-    다운로드를 막아 두어 실패한 뒤 진행합니다. NLL 실행은 `en/ko/ja` × `Minimal/Full`만 받아들이므로(`Get-NllVoiceResourceSelection`)
-    다른 값은 측정 후 코드에 추가해야 합니다. 음성이 필요하면 공식 client에서 받은 뒤 다시 복제합니다.
+11. **음성**: 음성 언어·다운로드 범위는 Micron 사용자 레지스트리 `HKCU\Software\com.proximabeta\NIKKE`의 `voiceLocale_*`·
+    `voiceDownloadType_*`입니다. 공식 게임은 Samsung Windows(`E:`)에서 실행하므로 그쪽 선택은 Micron에 반영되지 않습니다.
+    복제본에 선택 언어의 음성 그룹(예 `Ko_Required`)이 없으면 client는 로비 전에 음성 다운로드를 요구하고, NLL은 외부
+    다운로드를 막아 두어 로비에 들어갈 수 없습니다. 공식에서 캐릭터 음성을 설치하지 않으면 `voiceLocale`이 `None`이 됩니다
+    (2026-10-16 Samsung 프로필에서 측정, `voiceDownloadType`은 그대로). Micron에도 같은 값을 넣으면 음성 그룹을 받지 않습니다.
+    NLL 실행은 `en/ko/ja/None` × `Minimal/Full`을 받아들이고(`ConvertTo-NllVoiceResourceSelection`) 다른 값은 측정 후
+    추가합니다. 음성이 필요하면 공식 client에서 받은 뒤 다시 복제합니다.
 12. **이전 client 보관**: 운영자 확인 뒤 cold 상태에서 `D:\NikkeLocalLab\Backups\client-<build>-archive-<date>-01`로 복사하고 모든
     파일 hash를 대조한 뒤에만 C: 사본을 제거합니다. 이전 runtime bundle·cache·journal은 남깁니다.
 13. **기록**: [경로 권위](../MICRON_CURRENT_PATHS.md), [HANDOFF](../HANDOFF.md), [DECISIONS](../DECISIONS.md)를 갱신하고 운영자 확인을
