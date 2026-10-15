@@ -14,8 +14,12 @@ internal static class RuntimeMigrationChecks
     const string updated = "9c50d1e5e2312783b7ae908237081ff2976e06dcb0d90ae1d59f563afc5c73ef";
     Check(RuntimeVersionBinding.ExpectedArchive("build_152.8.11", updated) ==
         "42611495f81734528e8d9f3b4286ed2f8531ad0d75be087a1fb8ef39f9c32367");
+    const string latest = "21fdc9daf18e2953dc17867a4db6725ffc31e6d8229d09a472949c4ba08b60bc";
+    Check(RuntimeVersionBinding.ExpectedArchive("build_152.8.13", latest) ==
+        "4c5d48f2fdb50db10437467b8969cc9600f743d3e7c6e48b322927838e1ccc3b");
     foreach (var pair in new[] { ("build_150.6.9", current), ("build_151.8.5", previous),
-        ("build_152.8.11", current), ("build_151.8.5", updated), ("build_unknown", current) })
+        ("build_152.8.11", current), ("build_151.8.5", updated), ("build_152.8.11", latest),
+        ("build_152.8.13", updated), ("build_unknown", current) })
     {
       var rejected = false;
       try { RuntimeVersionBinding.ExpectedArchive(pair.Item1, pair.Item2); }

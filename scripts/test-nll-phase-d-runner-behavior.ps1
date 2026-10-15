@@ -111,7 +111,7 @@ foreach ($name in $environmentNames) { $previousEnvironment[$name]=[Environment]
 $count=0
 try {
     $env:USERPROFILE=$root
-    foreach ($build in @('build_151.8.5','build_152.8.11')) {
+    foreach ($build in @('build_151.8.5','build_152.8.11','build_152.8.13')) {
       foreach ($variant in @($false,$true)) {
        foreach ($case in @('early-exit','observed-exit','digest-failure','listener-failure','bootstrap-failure','unresponsive','capture-failure')) {
         $caseRoot=Join-Path $root "$build-$variant-$case"

@@ -22,7 +22,8 @@ function Get-RnPin([string]$Path) {
 }
 function Get-RnBlockOnlyProgramPaths {
     # Official install root since the operator's 2026-10-15 designation (C:\NIKKE was removed).
-    $paths=@(Get-ChildItem -LiteralPath 'E:\NIKKE' -Recurse -File -Filter '*.exe' | Select-Object -ExpandProperty FullName)
+    # The Win32 '*.exe' filter also matches longer extensions such as 'NIKKE.exe_crashsight_data_db'.
+    $paths=@(Get-ChildItem -LiteralPath 'E:\NIKKE' -Recurse -File -Filter '*.exe' | Where-Object Extension -ieq '.exe' | Select-Object -ExpandProperty FullName)
     foreach ($service in @(Get-CimInstance Win32_Service | Where-Object {$_.Name -match '^(ACE|AntiCheat|TQM)' -or $_.PathName -match 'AntiCheatExpert|TQM64|NIKKE'})) {
         Assert-Rn ($service.State -ceq 'Stopped') 'related_service_running'
         $match=[regex]::Match($service.PathName,'^(?:"(?<exe>[^"]+\.exe)"|(?<exe>\S+\.exe))(?:\s|$)','IgnoreCase')

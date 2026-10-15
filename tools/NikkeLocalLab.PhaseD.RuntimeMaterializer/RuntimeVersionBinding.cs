@@ -18,6 +18,9 @@ internal static class RuntimeVersionBinding
     "build_152.8.11" when executableSha256 ==
         "9c50d1e5e2312783b7ae908237081ff2976e06dcb0d90ae1d59f563afc5c73ef" =>
         "42611495f81734528e8d9f3b4286ed2f8531ad0d75be087a1fb8ef39f9c32367",
+    "build_152.8.13" when executableSha256 ==
+        "21fdc9daf18e2953dc17867a4db6725ffc31e6d8229d09a472949c4ba08b60bc" =>
+        "4c5d48f2fdb50db10437467b8969cc9600f743d3e7c6e48b322927838e1ccc3b",
     _ => throw new InvalidOperationException("phase_d_client_staticdata_binding_invalid")
   };
 }

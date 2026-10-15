@@ -47,6 +47,7 @@ function Read-PdRuntimeBundle([string]$PointerPath, [switch]$BeforeActivation, [
     $builds = @{
         'build_151.8.5' = @('151.8.5','36fa20306d010087cdb336bbbb8a6718013d4a16838178045b1270af631b1732')
         'build_152.8.11' = @('152.8.11','9c50d1e5e2312783b7ae908237081ff2976e06dcb0d90ae1d59f563afc5c73ef')
+        'build_152.8.13' = @('152.8.13','21fdc9daf18e2953dc17867a4db6725ffc31e6d8229d09a472949c4ba08b60bc')
     }
     Assert-PdBundle ($builds.ContainsKey([string]$bundle.clientBuildCode)) 'build_not_admitted'
     $build = $builds[[string]$bundle.clientBuildCode]

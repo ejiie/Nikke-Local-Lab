@@ -105,7 +105,7 @@ internal static class Program
         using var clientBinding = JsonDocument.Parse(File.ReadAllBytes(
             Path.Combine(AppContext.BaseDirectory, "client-binding.json")));
         var clientBuild = clientBinding.RootElement.GetProperty("build").GetString();
-        Require(clientBuild is "151.8.5" or "152.8.11", "client_build_not_admitted");
+        Require(clientBuild is "151.8.5" or "152.8.11" or "152.8.13", "client_build_not_admitted");
         var clientRoot = Path.Combine(@"C:\NLL\Clients", "NIKKE-" + clientBuild + "-ResourceProbe");
         var clientPath = Path.Combine(clientRoot, @"NIKKE\game\nikke.exe");
         var resourcePath = Path.Combine(clientRoot, @"Unity\com_proximabeta_NIKKE\");

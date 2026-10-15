@@ -28,7 +28,7 @@ function Assert-PhaseDRunnerSpecification {
         if (($Specification.schemaVersion -isnot [int] -and $Specification.schemaVersion -isnot [long]) -or
             $Specification.schemaVersion -ne 1 -or $Specification.contractId -cne 'nll/phase-d-runner-input/v3' -or
             $Specification.engineCode -cne 'parameterized/v1' -or
-            $Specification.clientBuildCode -cnotin @('build_151.8.5','build_152.8.11') -or
+            $Specification.clientBuildCode -cnotin @('build_151.8.5','build_152.8.11','build_152.8.13') -or
             $Specification.runIntentCode -cnotin @('challenge','practice')) { throw 'invalid' }
         foreach ($name in @('launchContextUid','accountUid','raidSnapshotUid')) {
             $value = $Specification.$name
