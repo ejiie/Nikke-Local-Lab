@@ -65,7 +65,8 @@ internal static class UnionRaidCatalog
     output = Path.GetFullPath(output);
     Require(!Directory.Exists(output) && !File.Exists(output), "output_exists");
     BossSeasonCatalog.Plain(output);
-    Require(!output.StartsWith(@"C:\NIKKE", StringComparison.OrdinalIgnoreCase), "output_invalid");
+    Require(!output.StartsWith(@"C:\NIKKE", StringComparison.OrdinalIgnoreCase) &&
+        !output.StartsWith(@"E:\NIKKE", StringComparison.OrdinalIgnoreCase), "output_invalid");
     var packHash = Hash(File.ReadAllBytes(pack));
     BossSeasonCatalog.ReadLocalArchive(pack, config, archive =>
     {

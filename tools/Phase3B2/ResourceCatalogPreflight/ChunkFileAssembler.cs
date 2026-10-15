@@ -66,7 +66,7 @@ internal static class ChunkFileAssembler
             suffix = Path.Combine(parent.Name, suffix);
             parent = parent.Parent;
         }
-        foreach (var forbidden in new[] { sourceDirectory, @"C:\NIKKE", @"C:\NLL\Clients" })
+        foreach (var forbidden in new[] { sourceDirectory, @"C:\NIKKE", @"E:\NIKKE", @"C:\NLL\Clients" })
         {
             var boundary = Path.GetFullPath(forbidden).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
             if (destination.StartsWith(boundary, StringComparison.OrdinalIgnoreCase))

@@ -21,13 +21,15 @@ public sealed class PhaseDArtifactSafetyTests
         "NikkeLocalLab.PhaseD.RuntimeMaterializer", "Program.cs"));
     materializer = System.Text.RegularExpressions.Regex.Replace(materializer, @"\s+", " ");
     const string officialPathGuard =
-        "Require(!path.StartsWith(@\"C:\\NIKKE\", StringComparison.OrdinalIgnoreCase), " +
+        "Require(!path.StartsWith(@\"C:\\NIKKE\", StringComparison.OrdinalIgnoreCase) && " +
+        "!path.StartsWith(@\"E:\\NIKKE\", StringComparison.OrdinalIgnoreCase), " +
         "\"phase_d_user_validation_official_path_rejected\");";
 
-    // The materializer may name the official installation only to reject it.
+    // The materializer may name the official installation (current E:, former C:) only to reject it.
     Assert.Contains(officialPathGuard, materializer, StringComparison.Ordinal);
     var execution = scripts + materializer.Replace(officialPathGuard, "", StringComparison.Ordinal);
     Assert.DoesNotContain(@"C:\NIKKE", execution, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain(@"E:\NIKKE", execution, StringComparison.OrdinalIgnoreCase);
     Assert.DoesNotContain(@"D:\", execution, StringComparison.OrdinalIgnoreCase);
     Assert.Contains("AssetDownloadUtil.ConfigureOfficialOutbound(false)", materializer, StringComparison.Ordinal);
   }

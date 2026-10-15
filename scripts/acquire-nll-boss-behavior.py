@@ -42,7 +42,7 @@ def acquire(args):
     cache, output = (fx.plain_path(p) for p in (args.cache_root, args.output_root))
     protected = [tool.parent, plan_path.parent, Path(plan['chunkRoot']), Path(plan['localBundleRoot'])]
     protected += [Path(plan[r][k]['path']).parent for r in ('embedded', 'inner', 'outer') for k in ('body', 'signature')]
-    if sys.platform == 'win32': protected += [Path('C:/NLL'), Path('C:/NIKKE')]
+    if sys.platform == 'win32': protected += [Path('C:/NLL'), Path('C:/NIKKE'), Path('E:/NIKKE')]
     for target in (cache, output):
         fx.require(all(target != p and target not in p.parents and p not in target.parents for p in protected),
                    'native_behavior_output_invalid')

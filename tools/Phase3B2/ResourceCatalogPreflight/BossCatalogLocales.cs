@@ -16,6 +16,7 @@ internal static class BossCatalogLocales
     destination = NativeFxExport.Plain(destination);
     if (Directory.Exists(destination) || File.Exists(destination) ||
         destination.StartsWith(@"C:\NIKKE", StringComparison.OrdinalIgnoreCase) ||
+        destination.StartsWith(@"E:\NIKKE", StringComparison.OrdinalIgnoreCase) ||
         destination.StartsWith(source + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
         source.StartsWith(destination + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
       throw new PreflightException("resource_boss_locale_target_invalid");

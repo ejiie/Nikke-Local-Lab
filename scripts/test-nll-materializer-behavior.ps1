@@ -23,7 +23,8 @@ Require ((Hash $BundlePath) -ceq $ExpectedBundleSha256) 's06_bundle_pin_mismatch
 $bundle = Get-Content -LiteralPath $BundlePath -Raw | ConvertFrom-Json
 Require ($bundle.contractId -ceq 'nll/phase-d-runtime-bundle/v1') 's06_bundle_contract_invalid'
 $referenceRoot = [IO.Path]::GetFullPath([string]$bundle.serverRoot)
-Require (-not $referenceRoot.StartsWith('C:\NIKKE', [StringComparison]::OrdinalIgnoreCase)) 's06_official_path_rejected'
+Require (-not $referenceRoot.StartsWith('C:\NIKKE', [StringComparison]::OrdinalIgnoreCase) -and
+    -not $referenceRoot.StartsWith('E:\NIKKE', [StringComparison]::OrdinalIgnoreCase)) 's06_official_path_rejected'
 [xml]$definition = Get-Content -LiteralPath $project -Raw
 $referencePins = @()
 foreach ($reference in $definition.SelectNodes('//Reference')) {

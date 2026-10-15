@@ -19,7 +19,8 @@ Need ($OutputRoot.StartsWith($allowed,[StringComparison]::OrdinalIgnoreCase)) 'o
 Need (@(Get-ChildItem -LiteralPath $OutputRoot -Force).Count -eq 0) 'output_not_empty'
 foreach($pin in $sync.toolPins){ Need ((Hash $pin.path) -ceq $pin.sha256) 'tool_changed' }
 $presentationPath=[IO.Path]::GetFullPath($sync.presentationPath)
-Need (-not $presentationPath.StartsWith('C:\NIKKE\',[StringComparison]::OrdinalIgnoreCase)) 'official_output_forbidden'
+Need (-not $presentationPath.StartsWith('C:\NIKKE\',[StringComparison]::OrdinalIgnoreCase) -and
+    -not $presentationPath.StartsWith('E:\NIKKE\',[StringComparison]::OrdinalIgnoreCase)) 'official_output_forbidden'
 $beforeHash=Hash $presentationPath
 $previous=Get-Content -LiteralPath $presentationPath -Raw|ConvertFrom-Json
 Need ($previous.contractId -ceq 'nll/control-center-presentation/v1') 'presentation_invalid'

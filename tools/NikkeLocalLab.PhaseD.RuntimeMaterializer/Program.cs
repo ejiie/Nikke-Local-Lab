@@ -1830,7 +1830,8 @@ static async Task PrepareUserValidationAccountAsync(IReadOnlyDictionary<string, 
 
 static void AssertUserValidationPath(string path)
 {
-  Require(!path.StartsWith(@"C:\NIKKE", StringComparison.OrdinalIgnoreCase),
+  Require(!path.StartsWith(@"C:\NIKKE", StringComparison.OrdinalIgnoreCase) &&
+      !path.StartsWith(@"E:\NIKKE", StringComparison.OrdinalIgnoreCase),
       "phase_d_user_validation_official_path_rejected");
   for (FileSystemInfo? entry = File.Exists(path) ? new FileInfo(path) : new DirectoryInfo(path);
       entry is not null; entry = entry is FileInfo file ? file.Directory : ((DirectoryInfo)entry).Parent)

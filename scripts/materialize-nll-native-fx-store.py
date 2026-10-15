@@ -138,7 +138,7 @@ def writable_root(root):
     require(root != Path(root.anchor), "root_invalid")
     if sys.platform == "win32":
         require(all(p != root and p not in root.parents and root not in p.parents
-                    for p in (Path("C:/NLL"), Path("C:/NIKKE"))), "root_protected")
+                    for p in (Path("C:/NLL"), Path("C:/NIKKE"), Path("E:/NIKKE"))), "root_protected")
     return root
 
 

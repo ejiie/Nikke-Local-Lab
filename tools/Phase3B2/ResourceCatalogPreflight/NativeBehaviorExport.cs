@@ -86,7 +86,7 @@ internal static class NativeBehaviorExport
       Require(!Directory.Exists(destination) && !File.Exists(destination) &&
           Directory.Exists(Path.GetDirectoryName(destination)), "output_invalid");
       foreach (var boundary in pins.Select(p => Path.GetDirectoryName(p.Path)!).Append(chunks).Append(local)
-          .Append(@"C:\NLL").Append(@"C:\NIKKE"))
+          .Append(@"C:\NLL").Append(@"C:\NIKKE").Append(@"E:\NIKKE"))
       {
         var prefix = Path.GetFullPath(boundary).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var outputPrefix = destination.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;

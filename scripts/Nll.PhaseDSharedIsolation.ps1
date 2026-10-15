@@ -1,7 +1,9 @@
 # Shared official programs are blocked only while a local game owns them.
 # Importing this helper never changes firewall/service state.
 function Test-PhaseDSharedIsolationPath([string]$Path) {
-    $Path.StartsWith('C:\NIKKE\', [StringComparison]::OrdinalIgnoreCase) -or
+    # E:\NIKKE is the official install since 2026-10-15; C:\NIKKE stays for rules recorded before that.
+    $Path.StartsWith('E:\NIKKE\', [StringComparison]::OrdinalIgnoreCase) -or
+        $Path.StartsWith('C:\NIKKE\', [StringComparison]::OrdinalIgnoreCase) -or
         $Path -ieq 'C:\Program Files\AntiCheatExpert\ACE-Service64.exe'
 }
 

@@ -10,7 +10,8 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Nll.ResourceNative.ps1')
 function Check([bool]$value, [string]$code) { Assert-Rn $value ('user_validation_stage_' + $code) }
 function Read-Pin([object]$pin) {
-    Check (-not $pin.path.StartsWith('C:\NIKKE', [StringComparison]::OrdinalIgnoreCase)) 'official_input_rejected'
+    Check (-not $pin.path.StartsWith('C:\NIKKE', [StringComparison]::OrdinalIgnoreCase) -and
+        -not $pin.path.StartsWith('E:\NIKKE', [StringComparison]::OrdinalIgnoreCase)) 'official_input_rejected'
     Assert-RnPin $pin
     Read-RnJson $pin.path $pin.sha256
 }

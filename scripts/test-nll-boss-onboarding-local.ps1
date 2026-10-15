@@ -19,7 +19,8 @@ $bundle = Get-Content -LiteralPath $BundlePath -Raw | ConvertFrom-Json
 Require ($bundle.contractId -ceq 'nll/phase-d-runtime-bundle/v1') 'boss_onboarding_local_bundle_invalid'
 $cache = Join-Path ([string]$bundle.serverRoot) 'cache'
 $config = Join-Path ([string]$bundle.serverRoot) 'gameconfig.json'
-Require (-not $cache.StartsWith('C:\NIKKE', [StringComparison]::OrdinalIgnoreCase)) 'boss_onboarding_local_official_path_rejected'
+Require (-not $cache.StartsWith('C:\NIKKE', [StringComparison]::OrdinalIgnoreCase) -and
+    -not $cache.StartsWith('E:\NIKKE', [StringComparison]::OrdinalIgnoreCase)) 'boss_onboarding_local_official_path_rejected'
 foreach ($path in @($StaticDataPackPath, $config)) {
     Require (@($bundle.files | Where-Object {
         [IO.Path]::GetFullPath([string]$_.path) -ieq [IO.Path]::GetFullPath($path)

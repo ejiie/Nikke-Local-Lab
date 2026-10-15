@@ -106,7 +106,7 @@ def stage(args, unity):
     protected += [Path(plan[name][kind]["path"]).parent for name in ("embedded", "inner", "outer")
                   for kind in ("body", "signature")]
     if sys.platform == "win32":
-        protected += [Path("C:/NLL"), Path("C:/NIKKE")]
+        protected += [Path("C:/NLL"), Path("C:/NIKKE"), Path("E:/NIKKE")]
     fx.require(not output.exists() and output.parent.is_dir() and all(
         output != p and output not in p.parents and p not in output.parents for p in protected),
         "native_fx_output_invalid")

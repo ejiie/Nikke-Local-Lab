@@ -5,6 +5,17 @@
 미실행 상태로 되돌리거나 이미 완료된 안정화 작업을 재지시하지 않는다. 뒤의 결정이 앞의 결정을 대체한 경우
 해당 줄에 `→ 대체` 표시를 남긴다.
 
+## 2026-10-15 결정 (152.8.13 업데이트)
+
+- 공식 현재 설치본은 `E:\NIKKE`다(`C:\NIKKE`는 제거됨). 읽기 원본과 새 버전 봉인 복제 원본으로만 쓰고 수정하거나
+  private-server 실행 대상으로 삼지 않으며, 그 실행 파일은 공유 차단 대상이다. 이전 `C:\NIKKE` 결정을 대체한다.
+- upstream EpinelPS에서는 버전 파일 commit(`17eb33f`, 152.8.13)만 NLL 서버에 적용한다. 같은 기간의 기능 commit
+  `370b43e`(스테이지·메신저·전초기지)는 NLL 기반 코드와 7개 파일이 충돌하고 레이드 범위 밖이라 제외한다.
+- 152.8.13 StaticData(`566822`)는 운영자가 승인한 공식 CDN 1회 익명 요청으로 받고, 공식 서명·ZIP CRC·필수 표를
+  검증한 경우에만 쓴다. 공식 client Temp의 pack은 NLL 실행이 5약점 변형 pack으로 덮어쓸 수 있으므로 원본 근거로 쓰지 않는다.
+- 공식 설치본에 한국어 음성 데이터가 없는 상태로 152.8.13 복제를 진행한다(운영자 선택). 실게임에서 음성 다운로드
+  시도나 시작 정지가 보이면 공식 client에서 음성을 받은 뒤 다시 복제한다.
+
 ## 2026-09-13~28 후속 결정
 
 - 2026-09-13: 게임 실행과 화면·전투 판정은 운영자, 구현·자동 검사·검증용 설치·CI/병합은 에이전트가 맡는다.
@@ -48,7 +59,7 @@
 - Phase 3 원본 client 연구는 운영자가 승인한 개인·비상업·비배포·로컬 전용 범위다. 권리자 승인은 주장하지 않으며 법적 상태는 `not_determined`로 둔다.
 - public EpinelPS commit `28b2f5413a0a1e3521a11ae162f91851335c8b40`은 exact `150.6.9` client에 대한 기술적 prior art/reference로 고정한다. 공개 저장소의 존재를 Shift Up의 승인·묵인·비집행 약속으로 해석하지 않는다.
 - EpinelPS는 Local Lab source tree에 vendor하지 않고 별도 checkout/process로 먼저 평가한다. generated protocol source, game data, certificate와 patched binary는 이 저장소에 넣지 않는다.
-- Micron `C:\NIKKE`는 공식 launcher 소유의 mutable official-current 설치본이다. 공식 update/fresh capture 외에는 사용하지 않고 Local Lab/EpinelPS가 수정하거나 private-server 실행 대상으로 삼지 않는다. 실험 권위는 별도 version/hash로 봉인한 `C:\NLL\Clients\NIKKE-<build>-*` lane이며 현재 경로 계약은 [MICRON_CURRENT_PATHS.md](MICRON_CURRENT_PATHS.md)를 따른다.
+- → 대체(2026-10-15, 공식 설치본은 `E:\NIKKE`) Micron `C:\NIKKE`는 공식 launcher 소유의 mutable official-current 설치본이다. 공식 update/fresh capture 외에는 사용하지 않고 Local Lab/EpinelPS가 수정하거나 private-server 실행 대상으로 삼지 않는다. 실험 권위는 별도 version/hash로 봉인한 `C:\NLL\Clients\NIKKE-<build>-*` lane이며 현재 경로 계약은 [MICRON_CURRENT_PATHS.md](MICRON_CURRENT_PATHS.md)를 따른다.
 - system hosts/root CA는 disposable VM/OS에서만 바꾸고, client-local certificate bundle/native compatibility shim은 사전 backup, 원본·적용 SHA-256과 검증 가능한 rollback을 갖춘 경우에만 허용한다.
 - 캐릭터 빌드는 revision 기반이며 과거 revision은 불변이다.
 - 생성 기본 프리셋은 `combat-max/v1`이다.

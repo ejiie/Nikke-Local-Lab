@@ -6,7 +6,7 @@
 
 ## 경계
 
-- `C:\NIKKE`는 공식 launcher만 업데이트합니다. NLL 도구는 읽기 입력으로만 쓰고 실행 대상으로 삼지 않습니다.
+- 공식 설치본 `E:\NIKKE`(2026-10-15 운영자 지정, 이전 `C:\NIKKE`)는 공식 launcher만 업데이트합니다. NLL 도구는 읽기 입력과 봉인 복제 원본으로만 쓰고 실행 대상으로 삼지 않습니다.
 - 새 버전은 새 후보입니다. 기존 lane이나 receipt를 새 버전으로 조용히 바꾸지 않습니다.
 - 공식 로그인·토큰·통신 가로채기·메모리 주입을 쓰지 않습니다. 공개 metadata 익명 요청의 승인 범위는
   [보안 경계](../SECURITY_BOUNDARY.md)를 따릅니다.
@@ -18,6 +18,9 @@
    `GameAssembly.dll` hash, `sd.bin` 표, Addressables/dp/saus catalog 해석, 새 `StaticData.pack` 위치·hash를 기록합니다.
 2. **StaticData 해석 설정**: 새 pack이 기존 gameconfig로 복호화되지 않으면 salt를 추정하지 않습니다. 152에서는
    공개된 EpinelPS 해당 버전 commit의 gameconfig를 commit SHA로 고정해 AES·서명·ZIP CRC·필수 표 검사를 통과시켰습니다.
+   공식 client Temp의 `StaticData.pack`은 NLL 실행이 5약점 변형 pack으로 덮어쓸 수 있습니다(152.8.13에서 실제로 그랬고,
+   몬스터·함수 표만 다르고 서명 digest가 맞지 않았습니다). 서명 검증을 통과한 pack만 원본으로 쓰고, 없으면 upstream
+   설정이 가리키는 공식 pack을 [보안 경계](../SECURITY_BOUNDARY.md)의 업데이트용 정적 입력 수집 규칙으로 받습니다.
 3. **내용 비교**: 캐릭터·시즌·보스 행동/속성/QTE/FX 참조의 추가·변경을 기존 해석기로 비교합니다. 목록·이름·이미지
    해석 성공을 전투 실행 가능으로 해석하지 않습니다.
 4. **client 복제·봉인**: `C:\NLL\Clients\NIKKE-<build>-ResourceProbe`로 복사하고 전체 manifest를 대조합니다.

@@ -10,7 +10,7 @@ output placement from nearby folders.
 
 | Role | Exact path |
 |---|---|
-| Official current client/update root | `C:\NIKKE` |
+| Official current client/update root | `E:\NIKKE` (since 2026-10-15; `C:\NIKKE` was removed) |
 | Frozen Phase3B2 client lane (not an official mirror) | `C:\NLL\Clients\NIKKE-150.6.9-Physical` |
 | Active repository | `C:\Users\nlloperator\Documents\Github\Nikke-Local-Lab` |
 | Local secret input | `C:\Users\nlloperator\Documents\Github\Nikke-Local-Lab\.env` |
@@ -33,11 +33,11 @@ The collector calculates its output below `C:\Users\nlloperator\Database\raw`.
 The migrated copy beside `getFromBlaLink.py` is not the active output and must
 not be used as a fresh capture.
 
-On Micron, the official launcher updates and starts `C:\NIKKE`. The Phase C
+On Micron, the official launcher updates and starts `E:\NIKKE`. The Phase C
 fresh trigger sync may use that official-current client after the runtime is
 cold. Local Lab private-server scripts must not repoint the official tree, and
-the official launcher must not update the frozen Phase3B2 lane. `E:\NIKKE` is
-the mounted Samsung installation and is not a Phase C input. See
+the official launcher must not update the frozen Phase3B2 lane. Before 2026-10-15 the
+official tree was `C:\NIKKE`; older receipts keep that path. See
 [MICRON_CURRENT_PATHS.md](../MICRON_CURRENT_PATHS.md).
 
 ## Runtime UID and `.env` fields

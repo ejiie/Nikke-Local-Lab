@@ -80,7 +80,8 @@ def assemble(args):
         'runtimeSha256': digest(runtime), 'behaviorBundleSha256': digest(bundles[0]),
         'elementModified': False, 'fxModified': False, 'nativeClientExecuted': False}
     registry = Path(settings['registryRoot']).resolve()
-    require(not registry.is_relative_to(Path('C:/NIKKE').resolve()) and registry != registry.parent, 'registry_invalid')
+    require(not any(registry.is_relative_to(Path(p).resolve()) for p in ('C:/NIKKE', 'E:/NIKKE'))
+            and registry != registry.parent, 'registry_invalid')
     registry.mkdir(parents=True, exist_ok=True)
     destination = registry / f"{season}-{settings['catalogSha256']}"
     # No partial season becomes visible. Duplicate work must agree byte-for-byte.

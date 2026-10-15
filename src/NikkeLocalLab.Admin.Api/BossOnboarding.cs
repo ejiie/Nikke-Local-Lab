@@ -44,7 +44,8 @@ public sealed class FilesystemBossOnboardingService : IBossOnboardingService
   {
     this.root = FilesystemBossSeasonCatalogService.Plain(root);
     if (Path.TrimEndingDirectorySeparator(this.root) == Path.TrimEndingDirectorySeparator(Path.GetPathRoot(this.root)!) ||
-        this.root.StartsWith(@"C:\NIKKE", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("boss_job_root_invalid");
+        this.root.StartsWith(@"C:\NIKKE", StringComparison.OrdinalIgnoreCase) ||
+        this.root.StartsWith(@"E:\NIKKE", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("boss_job_root_invalid");
     this.catalog = catalog; this.runner = runner; this.time = time ?? TimeProvider.System;
     this.userValidation = userValidation;
     Directory.CreateDirectory(this.root);
